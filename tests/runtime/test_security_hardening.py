@@ -823,3 +823,68 @@ async def test_admin_rate_limit_fails_open_on_redis_trouble(monkeypatch: pytest.
     monkeypatch.setattr("core.redis_health.mark_redis_failure", lambda _op, _e: None)
     # Must not raise.
     await webhook_security.check_admin_rate_limit_dep(_admin_rl_request(), Response(), temp_config)
+
+
+@pytest.mark.asyncio
+async def test_operator_action_cooldown_claims_and_rejects_duplicates(
+    monkeypatch: pytest.MonkeyPatch, temp_config: Any
+) -> None:
+    from fastapi import HTTPException
+
+    from core import webhook_security
+
+    monkeypatch.setattr(temp_config.security, "ADMIN_ACTION_COOLDOWN_SECONDS", 45)
+
+    async def redis_ok(_operation: str) -> bool:
+        return True
+
+    claims: list[tuple[str, str, int]] = []
+
+    async def claim(key: str, value: str, ttl: int) -> bool:
+        claims.append((key, value, ttl))
+        return len(claims) == 1
+
+    monkeypatch.setattr("core.redis_health.ensure_redis_available", redis_ok)
+    monkeypatch.setattr("core.redis_client.redis_set_nx_ex", claim)
+
+    await webhook_security.enforce_operator_action_cooldown(
+        "deep_analyze",
+        "42",
+        security_config=temp_config.security,
+        minimum_seconds=300,
+    )
+    assert claims == [("lock:operator-action:deep_analyze:42", "1", 300)]
+
+    with pytest.raises(HTTPException) as exc:
+        await webhook_security.enforce_operator_action_cooldown(
+            "deep_analyze",
+            "42",
+            security_config=temp_config.security,
+            minimum_seconds=300,
+        )
+    assert exc.value.status_code == 429
+    assert exc.value.headers == {"Retry-After": "300"}
+
+
+@pytest.mark.asyncio
+async def test_operator_action_cooldown_fails_closed_when_redis_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch, temp_config: Any
+) -> None:
+    from fastapi import HTTPException
+
+    from core import webhook_security
+
+    monkeypatch.setattr(temp_config.security, "ADMIN_ACTION_COOLDOWN_SECONDS", 60)
+
+    async def redis_down(_operation: str) -> bool:
+        return False
+
+    monkeypatch.setattr("core.redis_health.ensure_redis_available", redis_down)
+
+    with pytest.raises(HTTPException) as exc:
+        await webhook_security.enforce_operator_action_cooldown(
+            "reanalyze",
+            "9",
+            security_config=temp_config.security,
+        )
+    assert exc.value.status_code == 503

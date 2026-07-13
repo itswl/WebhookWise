@@ -22,6 +22,7 @@ from core.logger import get_logger
 from core.redis_client import redis_ping
 from core.redis_health import get_redis_health_snapshot
 from core.redis_streams import redis_xinfo_group_lag, redis_xlen, redis_xpending_pending
+from core.webhook_security import operator_action_guard
 from db.engine import test_db_connection
 from db.session import get_db_session
 from models import WebhookEvent
@@ -337,7 +338,10 @@ async def list_suppressed_endpoint(
 @admin_router.post(
     "/admin/dead-letters/{event_id}/replay",
     response_model=ReplayResponse,
-    dependencies=[Depends(verify_admin_write)],
+    dependencies=[
+        Depends(verify_admin_write),
+        Depends(operator_action_guard("dead_letter_replay", "event_id")),
+    ],
 )
 async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
     try:
@@ -387,7 +391,10 @@ async def _replay_dead_letter_ids(event_ids: list[int], session: AsyncSession) -
 @admin_router.post(
     "/admin/dead-letters/replay-batch",
     response_model=ReplayAllResponse,
-    dependencies=[Depends(verify_admin_write)],
+    dependencies=[
+        Depends(verify_admin_write),
+        Depends(operator_action_guard("dead_letter_replay_batch")),
+    ],
 )
 async def replay_dead_letter_batch(
     request: ReplayBatchRequest,
@@ -418,7 +425,10 @@ async def replay_dead_letter_batch(
 @admin_router.post(
     "/admin/dead-letters/replay-all",
     response_model=ReplayAllResponse,
-    dependencies=[Depends(verify_admin_write)],
+    dependencies=[
+        Depends(verify_admin_write),
+        Depends(operator_action_guard("dead_letter_replay_all")),
+    ],
 )
 async def replay_all_dead_letters(
     batch_size: int = Query(50, ge=1, le=500), session: AsyncSession = Depends(get_db_session)

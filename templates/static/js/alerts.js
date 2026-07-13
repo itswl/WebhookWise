@@ -12,6 +12,7 @@ const AlertsModule = {
     nextCursor: null,
     hasMore: false,
     _loadingMore: false,
+    _pendingActions: new Set(),
     currentForwardId: null,
     _searchTerm: '',
     _searchDebounce: null,
@@ -94,34 +95,31 @@ const AlertsModule = {
             const action = btn.getAttribute('data-action');
             const id = btn.getAttribute('data-id');
             console.log('Button click:', action, id);
-
-            if (action === 'reanalyze') {
-                this.reanalyzeAlert(id);
-            } else if (action === 'deep-analyze') {
-                this.deepAnalyzeAlert(id);
-            } else if (action === 'forward') {
-                this.openForwardModal(id);
-            } else if (action === 'replay-dl') {
-                this.replayDeadLetter(id);
-            } else if (action === 'quick-silence') {
-                this.quickSilence(id);
-            } else if (action === 'replay-dry') {
-                this.replayDryRun(id);
-            } else if (action === 'acknowledge') {
-                this.updateWorkflow(id, { workflow_status: 'acknowledged' });
-            } else if (action === 'resolve') {
-                this.updateWorkflow(id, { workflow_status: 'resolved' });
-            } else if (action === 'assign') {
-                this.assignWorkflow(id);
-            } else if (action === 'notes') {
-                this.manageNotes(id);
-            } else if (action === 'feedback-correct') {
-                this.sendFeedback(id, 'correct');
-            } else if (action === 'feedback-incorrect') {
-                this.sendFeedback(id, 'incorrect');
+            const handlers = {
+                'reanalyze': () => this.reanalyzeAlert(id),
+                'deep-analyze': () => this.deepAnalyzeAlert(id),
+                'forward': () => this.openForwardModal(id),
+                'replay-dl': () => this.replayDeadLetter(id),
+                'quick-silence': () => this.quickSilence(id),
+                'replay-dry': () => this.replayDryRun(id),
+                'acknowledge': () => this.updateWorkflow(id, { workflow_status: 'acknowledged' }),
+                'resolve': () => this.updateWorkflow(id, { workflow_status: 'resolved' }),
+                'assign': () => this.assignWorkflow(id),
+                'notes': () => this.manageNotes(id),
+                'feedback-correct': () => this.sendFeedback(id, 'correct'),
+                'feedback-incorrect': () => this.sendFeedback(id, 'incorrect')
+            };
+            const handler = handlers[action];
+            if (handler) {
+                const menu = btn.closest('.alert-action-menu');
+                if (menu) menu.removeAttribute('open');
+                void this._runButtonAction(btn, action + ':' + id, handler);
             }
             return;
         }
+
+        // The toolbar is interactive but must not expand/collapse the card.
+        if (e.target.closest('.alert-toolbar')) return;
 
         // Tab switching
         if (e.target.closest('.tab')) {
@@ -180,6 +178,29 @@ const AlertsModule = {
                 if (webhook && !webhook.parsed_data && !webhook.ai_analysis) {
                     this.loadFullAlertData(webhookId, alertItem);
                 }
+            }
+        }
+    },
+
+    async _runButtonAction(button, key, handler) {
+        if (this._pendingActions.has(key)) return;
+        this._pendingActions.add(key);
+        if (button) {
+            button.disabled = true;
+            button.classList.add('is-busy');
+            button.setAttribute('aria-busy', 'true');
+        }
+        try {
+            await Promise.resolve(handler());
+        } catch (error) {
+            console.error('Alert action failed:', key, error);
+            showError(t('alerts.msg.requestFailed') + ': ' + (error && error.message || error));
+        } finally {
+            this._pendingActions.delete(key);
+            if (button) {
+                button.disabled = false;
+                button.classList.remove('is-busy');
+                button.removeAttribute('aria-busy');
             }
         }
     },
@@ -374,16 +395,19 @@ const AlertsModule = {
             const isDuplicate = duplicateType !== 'new' && !!webhook.is_duplicate;
             const analysis = webhook.ai_analysis || {};
             const summary = webhook.summary || analysis.summary || '';
+            const summaryText = String(summary || '').trim();
+            const webhookId = escapeHtml(String(webhook.id));
 
-            html += '<div class="alert-item" data-id="' + escapeHtml(String(webhook.id)) + '">';
+            html += '<div class="alert-item" data-id="' + webhookId + '">';
             html += '<div class="alert-header">';
+            html += '<div class="alert-card-top">';
             html += '<div class="alert-left">';
             html += '<div class="alert-title-row">';
             html += '<span class="alert-icon">' + getAlertIcon(importance) + '</span>';
-            html += '<span class="alert-title">' + escapeHtml(String(summary || webhook.source || t('alerts.titleFallback', {id: webhook.id}))) + '</span>';
+            html += '<span class="alert-title' + (summaryText ? '' : ' is-muted') + '">' + escapeHtml(summaryText || t('alerts.summaryUnavailable', {id: webhook.id})) + '</span>';
             html += '</div>';
             html += '<div class="alert-meta">';
-            html += '<span class="alert-meta-item">🆔 #' + escapeHtml(String(webhook.id)) + '</span>';
+            html += '<span class="alert-meta-item">🆔 #' + webhookId + '</span>';
             html += '<span class="alert-meta-item">📍 ' + escapeHtml(String(webhook.source || 'unknown')) + '</span>';
 
             // Always show the client IP
@@ -406,7 +430,7 @@ const AlertsModule = {
                 }
             }
             html += '</div></div>';
-            html += '<div class="alert-right">';
+            html += '<div class="alert-status">';
             html += '<span class="badge badge-' + importance + '">' + getImportanceText(importance) + '</span>';
             if (isDuplicate) {
                 html += '<span class="badge badge-duplicate" title="' + t('alerts.badge.duplicate') + '">' + t('alerts.badge.duplicate') + '</span>';
@@ -421,28 +445,37 @@ const AlertsModule = {
             }
             var workflowStatus = webhook.workflow_status || 'open';
             var workflowClass = workflowStatus === 'resolved' || workflowStatus === 'ignored' ? 'badge-low' : (workflowStatus === 'open' ? 'badge-high' : 'badge-medium');
-            html += '<span class="badge ' + workflowClass + '">' + escapeHtml(workflowStatus.replace('_', ' ')) + '</span>';
+            html += '<span class="badge ' + workflowClass + '">' + escapeHtml(t('alerts.workflow.' + workflowStatus)) + '</span>';
             html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
-            html += '<div class="alert-actions">';
-            html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.reanalyze') + '</button>';
-            html += '<button class="btn btn-sm" data-action="deep-analyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔬 ' + t('alerts.action.deepAnalyze') + '</button>';
-            html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 ' + t('alerts.action.forward') + '</button>';
-            html += '<button class="btn btn-sm btn-warn" data-action="quick-silence" data-id="' + escapeHtml(String(webhook.id)) + '" title="' + t('alerts.action.quickSilenceTitle') + '">🔕 ' + t('alerts.action.quickSilence') + '</button>';
-            html += '<button class="btn btn-sm" data-action="replay-dry" data-id="' + escapeHtml(String(webhook.id)) + '" title="' + t('alerts.action.replayDryTitle') + '">🔁 ' + t('alerts.action.replayDry') + '</button>';
+            html += '</div></div>';
+
+            html += '<div class="alert-toolbar">';
+            html += '<div class="alert-primary-actions">';
             if (workflowStatus === 'open') {
-                html += '<button class="btn btn-sm" data-action="acknowledge" data-id="' + webhook.id + '">👋 Acknowledge</button>';
+                html += '<button type="button" class="btn btn-sm" data-action="acknowledge" data-id="' + webhookId + '">👋 ' + escapeHtml(t('alerts.action.acknowledge')) + '</button>';
             }
             if (workflowStatus !== 'resolved' && workflowStatus !== 'ignored') {
-                html += '<button class="btn btn-sm" data-action="resolve" data-id="' + webhook.id + '">✅ Resolve</button>';
+                html += '<button type="button" class="btn btn-sm btn-primary" data-action="resolve" data-id="' + webhookId + '">✅ ' + escapeHtml(t('alerts.action.resolve')) + '</button>';
             }
-            html += '<button class="btn btn-sm" data-action="assign" data-id="' + webhook.id + '">👤 Assign / SLA</button>';
-            html += '<button class="btn btn-sm" data-action="notes" data-id="' + webhook.id + '">📝 Notes</button>';
-            html += '<button class="btn btn-sm" data-action="feedback-correct" data-id="' + webhook.id + '" title="Analysis was correct">👍</button>';
-            html += '<button class="btn btn-sm" data-action="feedback-incorrect" data-id="' + webhook.id + '" title="Analysis needs correction">👎</button>';
+            html += '</div>';
+
+            var secondaryActions = [];
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="reanalyze" data-id="' + webhookId + '">🔄 ' + escapeHtml(t('alerts.action.reanalyze')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="deep-analyze" data-id="' + webhookId + '">🔬 ' + escapeHtml(t('alerts.action.deepAnalyze')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="forward" data-id="' + webhookId + '">🚀 ' + escapeHtml(t('alerts.action.forward')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm btn-warn" data-action="quick-silence" data-id="' + webhookId + '" title="' + escapeHtml(t('alerts.action.quickSilenceTitle')) + '">🔕 ' + escapeHtml(t('alerts.action.quickSilence')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="replay-dry" data-id="' + webhookId + '" title="' + escapeHtml(t('alerts.action.replayDryTitle')) + '">🔁 ' + escapeHtml(t('alerts.action.replayDry')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="assign" data-id="' + webhookId + '">👤 ' + escapeHtml(t('alerts.action.assign')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="notes" data-id="' + webhookId + '">📝 ' + escapeHtml(t('alerts.action.notes')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="feedback-correct" data-id="' + webhookId + '">👍 ' + escapeHtml(t('alerts.action.feedbackCorrect')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="feedback-incorrect" data-id="' + webhookId + '">👎 ' + escapeHtml(t('alerts.action.feedbackIncorrect')) + '</button>');
             if (webhook.processing_status === 'dead_letter') {
-                html += '<button class="btn btn-sm btn-danger" data-action="replay-dl" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.replayDeadLetter') + '</button>';
+                secondaryActions.push('<button type="button" class="btn btn-sm btn-danger" data-action="replay-dl" data-id="' + webhookId + '">🔄 ' + escapeHtml(t('alerts.action.replayDeadLetter')) + '</button>');
             }
-            html += '</div></div></div>';
+            html += '<details class="alert-action-menu">';
+            html += '<summary class="btn btn-sm alert-more-trigger">••• ' + escapeHtml(t('alerts.action.more')) + '<span class="alert-action-count">' + secondaryActions.length + '</span></summary>';
+            html += '<div class="alert-secondary-actions">' + secondaryActions.join('') + '</div>';
+            html += '</details></div></div>';
 
             html += '<div class="alert-details">';
             html += '<div class="details-tabs">';
@@ -1027,19 +1060,23 @@ const AlertsModule = {
     async confirmForward() {
         const url = document.getElementById('forwardUrl').value;
         if (!url) return alert(t('alerts.msg.enterForwardUrl'));
+        const id = this.currentForwardId;
+        const button = document.getElementById('confirmForwardBtn');
 
-        try {
-            const result = await API.forward(this.currentForwardId, url);
+        await this._runButtonAction(button, 'forward-confirm:' + id, async () => {
+            try {
+                const result = await API.forward(id, url);
 
-            if (result.success) {
-                alert('✅ ' + t('alerts.msg.forwardSuccess'));
-                this.closeForwardModal();
-            } else {
-                alert('❌ ' + t('alerts.msg.forwardFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
+                if (result.success) {
+                    alert('✅ ' + t('alerts.msg.forwardSuccess'));
+                    this.closeForwardModal();
+                } else {
+                    alert('❌ ' + t('alerts.msg.forwardFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
+                }
+            } catch (error) {
+                alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
             }
-        } catch (error) {
-            alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
-        }
+        });
     },
 
     /**
