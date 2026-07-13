@@ -9,6 +9,7 @@ from api.v1.webhook import JSONDict
 from core.auth import verify_admin_write, verify_api_key
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError
+from core.webhook_security import operator_action_guard
 from db.session import get_db_session
 from models import DeepAnalysis, WebhookEvent
 from schemas.analysis import DeepAnalysisListResponse, deep_analysis_to_dict
@@ -39,7 +40,10 @@ _run_openclaw_deep_analysis = deep_analysis_workflow.run_openclaw_deep_analysis
 @deep_analysis_router.post(
     "/deep-analyze/{webhook_id}",
     response_model=None,
-    dependencies=[Depends(verify_admin_write)],
+    dependencies=[
+        Depends(verify_admin_write),
+        Depends(operator_action_guard("deep_analyze", "webhook_id", minimum_seconds=300)),
+    ],
 )
 async def deep_analyze_webhook(
     webhook_id: int, payload: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)
@@ -156,7 +160,10 @@ async def get_deep_analyses(
 @deep_analysis_router.post(
     "/deep-analyses/{analysis_id}/retry",
     response_model=None,
-    dependencies=[Depends(verify_admin_write)],
+    dependencies=[
+        Depends(verify_admin_write),
+        Depends(operator_action_guard("deep_analysis_retry", "analysis_id")),
+    ],
 )
 async def retry_deep_analysis(
     analysis_id: int, session: AsyncSession = Depends(get_db_session)
@@ -179,7 +186,10 @@ async def retry_deep_analysis(
 @deep_analysis_router.post(
     "/deep-analyses/{analysis_id}/forward",
     response_model=None,
-    dependencies=[Depends(verify_admin_write)],
+    dependencies=[
+        Depends(verify_admin_write),
+        Depends(operator_action_guard("deep_analysis_forward", "analysis_id")),
+    ],
 )
 async def forward_deep_analysis(
     analysis_id: int,

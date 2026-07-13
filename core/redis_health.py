@@ -167,6 +167,10 @@ def rate_limit_admin_api(client_ip: str) -> str:
     return f"rl:a:{client_ip}"
 
 
+def operator_action_lock(action: str, resource_id: str) -> str:
+    return f"lock:operator-action:{action}:{resource_id}"
+
+
 def ai_error_alert_lock(error_hash: str) -> str:
     return f"ai_error_alert_lock:{error_hash}"
 

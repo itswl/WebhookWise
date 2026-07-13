@@ -1,6 +1,7 @@
 from core.redis_health import (
     ai_error_alert_lock,
     openclaw_poller_stability,
+    operator_action_lock,
     rate_limit_burst,
     rate_limit_global,
     rate_limit_sustained,
@@ -18,6 +19,7 @@ def test_redis_key_builders_preserve_current_schema() -> None:
     assert rate_limit_burst("1.2.3.4") == "rl:b:1.2.3.4"
     assert rate_limit_sustained("1.2.3.4") == "rl:s:1.2.3.4"
     assert rate_limit_global() == "rl:g"
+    assert operator_action_lock("reanalyze", "42") == "lock:operator-action:reanalyze:42"
     assert ai_error_alert_lock("hash") == "ai_error_alert_lock:hash"
     assert scheduled_task_lock("job") == "scheduled-task-lock:job"
     assert openclaw_poller_stability(42) == "openclaw:poller:stability:42"

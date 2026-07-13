@@ -190,6 +190,19 @@ const API = {
         ].includes(body?.detail);
     },
 
+    async parseJsonResponse(response) {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+            const rawDetail = payload && (payload.error || payload.detail || payload.message);
+            const detail = typeof rawDetail === 'string' ? rawDetail : (rawDetail ? JSON.stringify(rawDetail) : 'HTTP ' + response.status);
+            const error = new Error(detail);
+            error.status = response.status;
+            error.retryAfter = response.headers.get('Retry-After');
+            throw error;
+        }
+        return payload;
+    },
+
     // ========== Alert-related API ==========
 
     /**
@@ -234,8 +247,7 @@ const API = {
      */
     async reanalyze(id) {
         const response = await this.authenticatedFetch('/v1/reanalyze/' + id, { method: 'POST' });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
+        return await this.parseJsonResponse(response);
     },
 
     /**
@@ -250,8 +262,7 @@ const API = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ target_url: url })
         });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
+        return await this.parseJsonResponse(response);
     },
 
     /**
@@ -419,8 +430,7 @@ const API = {
                 engine: engine
             })
         });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
+        return await this.parseJsonResponse(response);
     },
 
     /**
@@ -435,7 +445,7 @@ const API = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ target_url: targetUrl })
         });
-        return await response.json();
+        return await this.parseJsonResponse(response);
     },
 
     /**
@@ -448,7 +458,7 @@ const API = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
-        return await response.json();
+        return await this.parseJsonResponse(response);
     },
 
     // ========== Forwarding Rules API ==========
@@ -664,8 +674,7 @@ const API = {
         const response = await this.authenticatedFetch('/v1/admin/dead-letters/' + eventId + '/replay', {
             method: 'POST'
         });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
+        return await this.parseJsonResponse(response);
     },
 
     async replayDeadLettersByIds(eventIds) {
@@ -674,14 +683,12 @@ const API = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ event_ids: eventIds })
         });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
+        return await this.parseJsonResponse(response);
     },
 
     async replayAllDeadLetters(batchSize) {
         const q = batchSize ? '?batch_size=' + encodeURIComponent(batchSize) : '';
         const response = await this.authenticatedFetch('/v1/admin/dead-letters/replay-all' + q, { method: 'POST' });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
+        return await this.parseJsonResponse(response);
     }
 };
