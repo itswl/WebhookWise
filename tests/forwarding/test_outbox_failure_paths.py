@@ -66,6 +66,7 @@ async def _insert_outbox(
     max_attempts: int = 3,
     target_type: str = "webhook",
     target_url: str = "https://example.test/hook",
+    forward_rule_id: int | None = None,
     next_attempt_at: datetime | None = None,
     updated_at: datetime | None = None,
     created_at: datetime | None = None,
@@ -78,6 +79,7 @@ async def _insert_outbox(
             idempotency_key=f"forward:test-{now.timestamp()}",
             webhook_event_id=webhook_event_id,
             original_event_id=original_event_id,
+            forward_rule_id=forward_rule_id,
             target_type=target_type,
             target_url=target_url,
             status=status,
@@ -181,6 +183,55 @@ class TestClaimOutbox:
 
 
 class TestFinalizeOutboxFailure:
+    async def test_permanent_failure_exhausts_and_disables_rule(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from models import AuditLog, ForwardOutbox, ForwardRule
+        from services.forwarding.outbox import _finalize_outbox_failure
+
+        async def _noop(*_: object, **__: object) -> None:
+            pass
+
+        monkeypatch.setattr("services.forwarding.outbox.enqueue_forward_notification", _noop)
+        monkeypatch.setattr("services.forwarding.rules.publish_rules_invalidation", _noop)
+        monkeypatch.setattr("services.forwarding.rules.invalidate_forward_rules_cache", lambda: None)
+
+        async with session_factory.begin() as session:
+            rule = ForwardRule(
+                name="invalid Feishu target",
+                enabled=True,
+                target_type="feishu",
+                target_url="https://open.feishu.cn/open-apis/bot/v2/hook/invalid",
+            )
+            session.add(rule)
+            await session.flush()
+            rule_id = int(rule.id)
+        outbox_id = await _insert_outbox(
+            session_factory,
+            target_type="feishu",
+            forward_rule_id=rule_id,
+        )
+
+        await _finalize_outbox_failure(
+            outbox_id,
+            "forward status=failed: feishu business error code=19001: invalid token",
+            permanent=True,
+            quarantine_rule=True,
+        )
+
+        async with session_factory() as session:
+            record = await session.get(ForwardOutbox, outbox_id)
+            rule = await session.get(ForwardRule, rule_id)
+            audit = (await session.execute(select(AuditLog))).scalar_one()
+        assert record is not None
+        assert record.status == ForwardOutboxStatus.EXHAUSTED
+        assert rule is not None
+        assert rule.enabled is False
+        assert audit.action == "auto_disabled"
+        assert audit.actor == "system"
+
     async def test_transitions_to_retrying(
         self,
         session_factory: async_sessionmaker[AsyncSession],

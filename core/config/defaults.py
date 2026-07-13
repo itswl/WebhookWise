@@ -193,7 +193,7 @@ class AIConfig(StaticSettings):
     AI_ROUTING_ENABLED: bool = Field(default=False)
     AI_ROUTING_SKIP_IMPORTANCE: str = Field(default="low")
 
-    ENABLE_AI_DEGRADATION: bool = Field(default=False)
+    ENABLE_AI_DEGRADATION: bool = Field(default=True)
     OPENAI_TEMPERATURE: float = Field(default=0.2, ge=0.0, le=2.0)
     AI_USER_PROMPT_FILE: str = Field(default="prompts/webhook_analysis_detailed.txt")
     AI_USER_PROMPT: str = Field(default="")

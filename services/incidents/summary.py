@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 
 from core.datetime_utils import utcnow
 from core.logger import get_logger
@@ -24,7 +24,7 @@ _SUMMARY_LEASE_SECONDS = 180
 async def _load_summary_input(incident_id: int) -> tuple[str, str] | None:
     async with session_scope() as session:
         incident = await session.get(Incident, incident_id)
-        if incident is None:
+        if incident is None or incident.alert_count < 2:
             return None
         stmt = (
             select(WebhookEvent)
@@ -97,6 +97,7 @@ async def _claim_pending_summaries() -> list[int]:
             select(Incident)
             .where(
                 Incident.status.in_(["quiet", "closed"]),
+                Incident.alert_count >= 2,
                 Incident.summary_analysis.is_(None),
                 Incident.summary_status.in_(["pending", "retrying", "processing"]),
                 or_(
@@ -124,6 +125,13 @@ async def _mark_summary_retry(incident_id: int, error: BaseException | str) -> N
             return
         message = str(error)[:1000]
         incident.summary_last_error = message
+        if isinstance(error, BaseException):
+            from services.analysis.ai_errors import is_ai_provider_retryable_error, is_ai_provider_runtime_error
+
+            if is_ai_provider_runtime_error(error) and not is_ai_provider_retryable_error(error):
+                incident.summary_status = "failed"
+                incident.summary_next_attempt_at = None
+                return
         if incident.summary_attempts >= _SUMMARY_MAX_ATTEMPTS:
             incident.summary_status = "failed"
             incident.summary_next_attempt_at = None
@@ -135,6 +143,7 @@ async def _mark_summary_retry(incident_id: int, error: BaseException | str) -> N
 
 async def run_pending_incident_summaries() -> dict[str, int]:
     """Process one claimed batch; durable state retries crashes and failures."""
+    await _skip_ineligible_summaries()
     if not AIProviderPolicy.from_config().available:
         return {"claimed": 0, "completed": 0, "failed": 0}
     incident_ids = await _claim_pending_summaries()
@@ -157,6 +166,26 @@ async def run_pending_incident_summaries() -> dict[str, int]:
             await _mark_summary_retry(incident_id, exc)
             failed += 1
     return {"claimed": len(incident_ids), "completed": completed, "failed": failed}
+
+
+async def _skip_ineligible_summaries() -> int:
+    """Stop legacy singleton incidents from consuming AI retries indefinitely."""
+    async with session_scope() as session:
+        result = await session.execute(
+            update(Incident)
+            .where(
+                Incident.alert_count < 2,
+                Incident.summary_analysis.is_(None),
+                Incident.summary_status.in_(["pending", "retrying", "processing"]),
+            )
+            .values(
+                summary_status="skipped",
+                summary_next_attempt_at=None,
+                summary_last_error="singleton incidents are not summarized",
+                updated_at=utcnow(),
+            )
+        )
+        return int(result.rowcount or 0)
 
 
 def _build_alert_briefs(members: list[WebhookEvent]) -> str:

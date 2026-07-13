@@ -3,6 +3,8 @@
 #
 # Then start observability in a separate Compose project:
 #   docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d
+# Add --profile diagnostics only while investigating traces, profiles, or eBPF signals:
+#   docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile diagnostics up -d
 #   docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile load run --rm k6
 
 name: webhookwise-observability
@@ -26,8 +28,6 @@ services:
       - "${FARO_RECEIVER_PORT:-12347}:12347"
     depends_on:
       prometheus:
-        condition: service_started
-      tempo:
         condition: service_started
       loki:
         condition: service_started
@@ -65,6 +65,8 @@ services:
 
   beyla:
     image: ${BEYLA_IMAGE:-grafana/beyla:3.15.0}
+    profiles:
+      - diagnostics
     command: ["-config", "/etc/beyla/config.yml"]
     pid: "container:webhook-receiver"
     privileged: true
@@ -100,6 +102,8 @@ services:
 
   pyroscope:
     image: ${PYROSCOPE_IMAGE:-grafana/pyroscope:2.0.2}
+    profiles:
+      - diagnostics
     command: ["server"]
     volumes:
       - pyroscope_data:/var/lib/pyroscope
@@ -110,6 +114,8 @@ services:
 
   tempo:
     image: ${TEMPO_IMAGE:-grafana/tempo:2.10.5}
+    profiles:
+      - diagnostics
     user: "0:0"
     command: ["-config.file=/etc/tempo.yml"]
     volumes:
@@ -148,11 +154,7 @@ services:
         condition: service_started
       alloy:
         condition: service_started
-      tempo:
-        condition: service_started
       loki:
-        condition: service_started
-      pyroscope:
         condition: service_started
     networks:
       - webhook_net

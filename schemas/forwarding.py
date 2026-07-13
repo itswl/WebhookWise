@@ -163,6 +163,10 @@ class ForwardRuleSchema(BaseModel):
     # absent on create/update responses (no trace lookup there), hence defaults.
     hit_count: int = 0
     last_matched_at: datetime | str | None = None
+    delivery_status: str = "unknown"
+    delivery_failure_count_24h: int = 0
+    last_delivery_at: datetime | str | None = None
+    last_delivery_error: str = ""
 
 
 class ForwardRuleListResponse(APIResponse[list[ForwardRuleSchema]]):
@@ -178,7 +182,7 @@ def forward_rule_to_dict(rule: Any, *, mask_target_url: bool = False) -> dict[st
     if mask_target_url and data.get("target_url"):
         data["target_url"] = mask_url(str(data["target_url"]))
         data["target_url_sensitive"] = False
-    for field in ("created_at", "updated_at"):
+    for field in ("created_at", "updated_at", "last_matched_at", "last_delivery_at"):
         if isinstance(data.get(field), datetime):
             data[field] = utc_isoformat(data[field])
     return data

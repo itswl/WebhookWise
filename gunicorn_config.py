@@ -16,7 +16,7 @@ def _int_env(name: str, default: int) -> int:
 
 
 bind = f"{os.getenv('HOST', '0.0.0.0')}:{os.getenv('PORT', '8000')}"
-workers = _int_env("API_WORKERS", 4)
+workers = _int_env("API_WORKERS", 2)
 worker_class = "uvicorn.workers.UvicornWorker"
 timeout = _int_env("GUNICORN_TIMEOUT", 120)
 graceful_timeout = _int_env("GUNICORN_GRACEFUL_TIMEOUT", 30)

@@ -74,7 +74,7 @@ async def test_grouping_closes_quiet_incident_when_no_new_events(
     assert stats == {"scanned": 0, "created": 0, "updated": 0, "closed": 1}
     assert persisted is not None
     assert persisted.status == "quiet"
-    assert persisted.summary_status == "pending"
+    assert persisted.summary_status == "skipped"
 
 
 @pytest.mark.asyncio
@@ -94,12 +94,17 @@ async def test_full_incident_rolls_over_to_new_incident(
             updated_at=now,
             alert_count=_MAX_MEMBERS_PER_INCIDENT,
         )
-        event = WebhookEvent(
+        first = WebhookEvent(
             source="prometheus",
             timestamp=now,
             parsed_data={"RuleName": "cpu"},
         )
-        session.add_all([full, event])
+        second = WebhookEvent(
+            source="prometheus",
+            timestamp=now + timedelta(seconds=1),
+            parsed_data={"RuleName": "cpu"},
+        )
+        session.add_all([full, first, second])
 
     async with session_factory() as session:
         with (
@@ -114,8 +119,10 @@ async def test_full_incident_rolls_over_to_new_incident(
     async with session_factory() as session:
         memberships = list((await session.execute(select(IncidentMember))).scalars().all())
     assert stats["created"] == 1
-    assert len(memberships) == 1
-    assert memberships[0].incident_id != full.id
+    assert len(memberships) == 2
+    incident_ids = {membership.incident_id for membership in memberships}
+    assert len(incident_ids) == 1
+    assert full.id not in incident_ids
 
 
 @pytest.mark.asyncio
@@ -135,12 +142,19 @@ async def test_new_incident_notification_is_committed_to_outbox_before_schedulin
     )
     now = utcnow()
     async with session_factory.begin() as session:
-        session.add(
-            WebhookEvent(
-                source="prometheus",
-                timestamp=now,
-                parsed_data={"RuleName": "disk"},
-            )
+        session.add_all(
+            [
+                WebhookEvent(
+                    source="prometheus",
+                    timestamp=now,
+                    parsed_data={"RuleName": "disk"},
+                ),
+                WebhookEvent(
+                    source="prometheus",
+                    timestamp=now + timedelta(seconds=1),
+                    parsed_data={"RuleName": "disk"},
+                ),
+            ]
         )
 
     schedule = AsyncMock()
@@ -186,18 +200,30 @@ async def test_summary_persists_after_external_call_returns(
             source="prometheus",
             started_at=now,
             updated_at=now,
-            alert_count=1,
+            alert_count=2,
             summary_status="processing",
         )
-        event = WebhookEvent(source="prometheus", timestamp=now, parsed_data={"RuleName": "cpu"})
-        session.add_all([incident, event])
+        first = WebhookEvent(source="prometheus", timestamp=now, parsed_data={"RuleName": "cpu"})
+        second = WebhookEvent(
+            source="prometheus",
+            timestamp=now + timedelta(seconds=1),
+            parsed_data={"RuleName": "cpu"},
+        )
+        session.add_all([incident, first, second])
         await session.flush()
-        session.add(
-            IncidentMember(
-                incident_id=incident.id,
-                event_id=event.id,
-                event_timestamp=now,
-            )
+        session.add_all(
+            [
+                IncidentMember(
+                    incident_id=incident.id,
+                    event_id=first.id,
+                    event_timestamp=now,
+                ),
+                IncidentMember(
+                    incident_id=incident.id,
+                    event_id=second.id,
+                    event_timestamp=now + timedelta(seconds=1),
+                ),
+            ]
         )
         incident_id = incident.id
 

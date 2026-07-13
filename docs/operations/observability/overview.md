@@ -101,7 +101,15 @@ docker compose up -d --build
 docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d --build
 ```
 
-Grafana is available at `http://localhost:3000` with Prometheus, Tempo, Loki, and Pyroscope datasources provisioned. The provisioned AIOps dashboards are described in [dashboards.md](dashboards.md). Alertmanager is available at `http://localhost:9093`. Alloy is available at `http://localhost:12345`, and the local Faro endpoint is `http://localhost:12347/collect`.
+The default observability stack keeps Alloy, Prometheus, Alertmanager, Loki, and Grafana running. Grafana is available at `http://localhost:3000`; Alertmanager is available at `http://localhost:9093`; Alloy is available at `http://localhost:12345`; and the local Faro endpoint is `http://localhost:12347/collect`.
+
+Start Tempo, Pyroscope, and Beyla only for an active diagnostics session:
+
+```bash
+docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile diagnostics up -d --build
+```
+
+The Tempo and Pyroscope datasources remain provisioned in Grafana but have no data while the diagnostics profile is stopped. Enable the profile whenever application tracing or profiling is enabled.
 
 Pyroscope is available directly at `http://localhost:4040`. For practical reading notes on CPU cores, top table, flamegraphs, and common WebhookWise API / worker patterns, see [local-lab/profiling.md](local-lab/profiling.md#viewing-profiles).
 

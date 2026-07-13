@@ -168,7 +168,9 @@ const IncidentsModule = (function () {
                 html += '<div style="margin-top:0.4rem; font-size:0.78rem; color:var(--text-muted);">' + t('incidents.confidence') + ': ' + Number(summary.confidence).toFixed(2) + '</div>';
             }
             html += '</div>';
-        } else if (data.status === 'quiet') {
+        } else if (data.summary_status === 'failed') {
+            html += '<div style="padding:0.5rem; margin-bottom:1rem; font-size:0.82rem; color:var(--warning);">⚠️ ' + t('incidents.summaryFailed') + '</div>';
+        } else if (data.summary_status === 'pending' || data.summary_status === 'retrying' || data.summary_status === 'processing') {
             html += '<div style="padding:0.5rem; margin-bottom:1rem; font-size:0.82rem; color:var(--text-muted);">💬 ' + t('incidents.summaryPending') + '</div>';
         }
 
@@ -354,6 +356,7 @@ const IncidentsModule = (function () {
         toggle: toggle,
         render: render,
         search: search,
+        toggleStatus: toggleStatus,
         closeIncident: closeIncident,
         reopenIncident: reopenIncident,
         silenceIncidentSources: silenceIncidentSources

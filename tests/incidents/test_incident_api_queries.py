@@ -96,6 +96,7 @@ async def test_incident_queries_return_paginated_timeline_and_summary(
                 source="grafana",
                 started_at=utcnow(),
                 updated_at=utcnow(),
+                alert_count=2,
             )
         )
 
@@ -212,6 +213,7 @@ async def test_summary_claim_retry_and_failure_state(
             source="prometheus",
             started_at=now,
             updated_at=now,
+            alert_count=2,
             summary_status="pending",
             summary_next_attempt_at=now,
         )
@@ -262,6 +264,10 @@ async def test_pending_summary_batch_records_success_and_failure() -> None:
         patch(
             "services.incidents.summary._claim_pending_summaries",
             new=AsyncMock(return_value=[1, 2]),
+        ),
+        patch(
+            "services.incidents.summary._skip_ineligible_summaries",
+            new=AsyncMock(return_value=0),
         ),
         patch(
             "services.incidents.summary.summarize_incident",

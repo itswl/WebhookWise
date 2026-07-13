@@ -188,7 +188,7 @@ async def test_feishu_forward_checks_business_status_code() -> None:
         status_code = 200
 
         def json(self) -> dict[str, object]:
-            return {"StatusCode": 9499, "StatusMessage": "bad card"}
+            return {"StatusCode": 19001, "StatusMessage": "incoming webhook access token invalid"}
 
         def raise_for_status(self) -> None:
             return None
@@ -223,7 +223,83 @@ async def test_feishu_forward_checks_business_status_code() -> None:
 
     assert result["status"] == "failed"
     assert result["status_code"] == 200
-    assert "9499" in str(result["message"])
+    assert result["error_code"] == "19001"
+    assert result["retryable"] is False
+    assert result["disable_rule"] is True
+
+
+def test_feishu_rate_limit_remains_retryable() -> None:
+    import httpx
+
+    from services.forwarding.remote import _feishu_business_failure
+
+    response = httpx.Response(
+        200,
+        json={"StatusCode": 11232, "StatusMessage": "frequency limited"},
+        request=httpx.Request("POST", "https://open.feishu.cn/open-apis/bot/v2/hook/unit"),
+    )
+
+    failure = _feishu_business_failure(response)
+
+    assert failure is not None
+    assert failure["error_code"] == "11232"
+    assert failure["retryable"] is True
+    assert failure["disable_rule"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status_code", "retryable", "disable_rule"),
+    [
+        (400, False, False),
+        (401, False, True),
+        (503, True, False),
+    ],
+)
+async def test_http_failures_separate_delivery_retry_from_rule_health(
+    status_code: int,
+    retryable: bool,
+    disable_rule: bool,
+) -> None:
+    import httpx
+
+    from services.forwarding.circuit_breakers import RemoteForwardDependencies
+    from services.forwarding.policies import ForwardDeliveryPolicy
+    from services.forwarding.remote import post_json_to_remote
+
+    async def accept_url(url: str, **_: Any) -> str:
+        return url
+
+    class Client:
+        async def post(self, url: str, **_: Any) -> httpx.Response:
+            return httpx.Response(status_code, request=httpx.Request("POST", url))
+
+    class Breaker:
+        async def call_async(self, func: Any, *args: Any, **kwargs: Any) -> object:
+            return await func(*args, **kwargs)
+
+    result = await post_json_to_remote(
+        "https://example.test/hook",
+        {"hello": "world"},
+        policy=ForwardDeliveryPolicy(
+            timeout_seconds=2,
+            max_attempts=3,
+            retry_initial_delay=1,
+            retry_max_delay=10,
+            retry_backoff_multiplier=2.0,
+            stale_processing_threshold_seconds=60,
+            max_delivery_age_seconds=1800,
+        ),
+        dependencies=RemoteForwardDependencies(
+            http_client=Client(),
+            circuit_breaker=cast(Any, Breaker()),
+            validate_url=accept_url,
+        ),
+    )
+
+    assert result["status"] == "failed"
+    assert result["retryable"] is retryable
+    assert result["disable_rule"] is disable_rule
 
 
 @pytest.mark.asyncio
