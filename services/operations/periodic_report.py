@@ -283,17 +283,14 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         )
     ).all()
     unhealthy_rules = [
-        {"rule": str(rule_name or "unknown"), "failures": int(count)}
-        for rule_name, count in unhealthy_rule_rows
+        {"rule": str(rule_name or "unknown"), "failures": int(count)} for rule_name, count in unhealthy_rule_rows
     ]
 
     from services.operations.action_center import get_action_center
 
     action_center = await get_action_center(session)
     previous_noise_pct = round(100.0 * previous_duplicates / previous_total, 1) if previous_total else 0.0
-    volume_change_pct = (
-        round(100.0 * (total_events - previous_total) / previous_total, 1) if previous_total else None
-    )
+    volume_change_pct = round(100.0 * (total_events - previous_total) / previous_total, 1) if previous_total else None
 
     return {
         "window_days": window_days,

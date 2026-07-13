@@ -383,9 +383,7 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
             "sla_breaches": len(overdue_incidents) + len(overdue_events),
             "feedback_total_30d": feedback_total,
             "feedback_agreement_pct": (
-                round(100.0 * feedback_breakdown.get("correct", 0) / feedback_total, 1)
-                if feedback_total
-                else None
+                round(100.0 * feedback_breakdown.get("correct", 0) / feedback_total, 1) if feedback_total else None
             ),
         },
         "items": items[:30],
