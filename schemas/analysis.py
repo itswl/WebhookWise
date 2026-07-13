@@ -22,7 +22,9 @@ class WebhookAnalysisResult(BaseModel):
     source: str = Field(description="Source system name")
     event_type: str = Field(description="Detailed event type/name")
     importance: Importance = Field(description="Event importance level", default=Importance.MEDIUM)
-    summary: str = Field(description="Event summary (in Chinese, within 50 characters, including key metrics or error information)")
+    summary: str = Field(
+        description="Event summary (in Chinese, within 50 characters, including key metrics or error information)"
+    )
     alert_identity: dict[str, Any] = Field(
         default_factory=dict,
         description="Key fields used to distinguish alert attribution and instances, e.g. project, region, namespace, service, resource, rule, and metric",
@@ -30,10 +32,23 @@ class WebhookAnalysisResult(BaseModel):
     impact_scope: str | None = Field(None, description="Impact scope assessment")
     actions: list[str] = Field(default_factory=list, description="List of recommended response actions")
     risks: list[str] = Field(default_factory=list, description="List of potential related risks")
-    monitoring_suggestions: list[str] = Field(default_factory=list, description="Follow-up monitoring optimization suggestions")
+    monitoring_suggestions: list[str] = Field(
+        default_factory=list, description="Follow-up monitoring optimization suggestions"
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
+
+
+class IncidentSummaryResult(BaseModel):
+    """Structured post-incident analysis returned by the shared AI client."""
+
+    summary: str = Field(min_length=1, max_length=1000)
+    root_cause: str = Field(min_length=1, max_length=2000)
+    impact: str = Field(min_length=1, max_length=2000)
+    timeline_summary: str = Field(min_length=1, max_length=4000)
+    recommendations: list[str] = Field(default_factory=list, max_length=5)
+    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class DeepAnalysisRecord(BaseModel):

@@ -239,6 +239,7 @@ async def test_auth_api_key_and_admin_write_branches(monkeypatch: pytest.MonkeyP
     assert api_key_is_read_only.value.status_code == 403
     assert "API key is insufficient" in str(api_key_is_read_only.value.detail)
 
+
 @pytest.mark.asyncio
 async def test_url_security_edge_cases_private_policy_and_dns_cache(
     monkeypatch: pytest.MonkeyPatch,

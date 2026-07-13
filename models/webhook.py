@@ -92,7 +92,9 @@ class WebhookEvent(Base):
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), server_default=func.now())
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow(), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow(), server_default=func.now()
+    )
 
     __table_args__ = (
         Index("idx_hash_timestamp", "alert_hash", "timestamp"),

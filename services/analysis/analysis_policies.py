@@ -20,6 +20,14 @@ DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE = (
     "如果信息不足，在 unknowns、assumptions、next_checks 中说明缺口和后续验证步骤，仍然给出当前最佳判断。"
 )
 
+DEFAULT_INCIDENT_SUMMARY_PROMPT_TEMPLATE = """你是一名分析生产事件的 SRE。以下是按时间排序的告警摘要。
+请识别已知故障模式，并在建议中给出可执行的排查或预防步骤。
+输出必须符合指定的结构化数据模型，所有文本字段使用中文。
+
+告警：
+{alert_briefs}
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class RuleAnalysisPolicy:
@@ -123,6 +131,17 @@ class PromptPolicy:
             builtin_prompt=DEFAULT_DEEP_ANALYSIS_PROMPT_TEMPLATE,
             inline_source="env:DEEP_ANALYSIS_PROMPT",
             builtin_source="builtin:deep_analysis",
+        )
+
+    @classmethod
+    def incident_summary(cls) -> "PromptPolicy":
+        cfg = get_config_manager().ai
+        return cls(
+            inline_prompt=str(cfg.INCIDENT_SUMMARY_PROMPT),
+            prompt_file=str(cfg.INCIDENT_SUMMARY_PROMPT_FILE),
+            builtin_prompt=DEFAULT_INCIDENT_SUMMARY_PROMPT_TEMPLATE,
+            inline_source="env:INCIDENT_SUMMARY_PROMPT",
+            builtin_source="builtin:incident_summary",
         )
 
 

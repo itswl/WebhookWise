@@ -1,8 +1,9 @@
 """Knowledge-base retrieval: embed the alert, cosine-rank chunks, format context.
 
-For a small corpus (tens–hundreds of chunks) the stored embeddings are loaded
-and ranked in Python — no pgvector, no extra component. When the corpus grows,
-swap the candidate fetch + scoring for a vector index behind this same function.
+Stored embeddings are ranked in Python without an extra vector component. The
+candidate fetch is explicitly bounded to the most recently updated configured
+chunks; larger corpora should replace that fetch with a vector index behind the
+same function.
 """
 
 from __future__ import annotations
@@ -50,7 +51,18 @@ async def retrieve(session: AsyncSession, query_text: str) -> list[RetrievedChun
     if not cfg.KB_ENABLED or not query_text.strip():
         return []
 
-    rows = (await session.execute(select(KBDocument).where(KBDocument.embedding.isnot(None)))).scalars().all()
+    stmt = (
+        select(
+            KBDocument.title,
+            KBDocument.content,
+            KBDocument.source_ref,
+            KBDocument.embedding,
+        )
+        .where(KBDocument.embedding.isnot(None))
+        .order_by(KBDocument.updated_at.desc(), KBDocument.id.desc())
+        .limit(cfg.KB_MAX_CANDIDATES)
+    )
+    rows = (await session.execute(stmt)).all()
     if not rows:
         return []
 
@@ -63,9 +75,7 @@ async def retrieve(session: AsyncSession, query_text: str) -> list[RetrievedChun
     for row in rows:
         score = _cosine(query_vec, row.embedding or [])
         if score >= cfg.KB_MIN_SCORE:
-            scored.append(
-                RetrievedChunk(title=row.title, content=row.content, source_ref=row.source_ref, score=score)
-            )
+            scored.append(RetrievedChunk(title=row.title, content=row.content, source_ref=row.source_ref, score=score))
     scored.sort(key=lambda c: c.score, reverse=True)
     top = scored[: max(1, cfg.KB_TOP_K)]
     if top:

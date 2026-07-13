@@ -22,6 +22,7 @@ async def test_admin_prompt_endpoints_normalize_kinds_and_sanitize_errors(
 
     assert admin._normalize_prompt_kind(" ai ") == "user"
     assert admin._normalize_prompt_kind("deep-analysis") == "deep_analysis"
+    assert admin._normalize_prompt_kind("incident") == "incident_summary"
     with pytest.raises(ValueError):
         admin._normalize_prompt_kind("other")
 

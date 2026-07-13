@@ -63,6 +63,7 @@ __all__ = [
     "reload_user_prompt_template",
 ]
 
+
 def analyze_with_rules(
     data: dict[str, Any], source: str, *, policy: RuleAnalysisPolicy | None = None
 ) -> AnalysisResult:
@@ -155,8 +156,15 @@ def analyze_with_rules(
         res["summary"] = f"{prefix} {rule_name}"
 
     if importance == "high":
-        res["actions"] = ["Immediately confirm the scope of impact", "Check metrics/logs from the last 5 minutes", "Follow the runbook to remediate"]
-        res["risks"] = ["May cause service unavailability or degradation of core capabilities", "May affect users or business data"]
+        res["actions"] = [
+            "Immediately confirm the scope of impact",
+            "Check metrics/logs from the last 5 minutes",
+            "Follow the runbook to remediate",
+        ]
+        res["risks"] = [
+            "May cause service unavailability or degradation of core capabilities",
+            "May affect users or business data",
+        ]
     elif importance == "low":
         res["actions"] = ["Confirm whether this is an expected event", "Supplement alerting rules if necessary"]
         res["risks"] = ["The alert may be largely noise"]

@@ -17,7 +17,7 @@ from core.sensitive_data import redact_headers
 from db.session import acquire_advisory_xact_lock, session_scope
 from models import WebhookEvent, WebhookEventInput
 from services.dedup import generate_alert_hash
-from services.webhooks.repository import check_duplicate_event
+from services.webhooks.repository import check_duplicate_event, check_duplicate_event_by_dedup_key
 from services.webhooks.types import AnalysisResult, WebhookProcessingStatus, unknown_analysis_result
 
 logger = get_logger("webhooks.command_service")
@@ -292,11 +292,49 @@ async def _resolve_duplicate_status(
     original_event: WebhookEvent | None,
     original_event_id: int | None,
     skip_duplicate_lookup: bool,
+    existing_event_id: int | None = None,
 ) -> _DuplicateStatus:
+    # Redis/earlier DB resolution is an optimization, not the commit authority.
+    # Re-check under the transaction's advisory lock so two workers that both
+    # resolved NEW cannot both persist and forward an original.
+    if payload.dedup_key:
+        check = await check_duplicate_event_by_dedup_key(
+            payload.dedup_key,
+            session=session,
+            window_seconds=max(1, int(get_config_manager().retry.DEDUP_WINDOW_SECONDS)),
+            exclude_event_id=existing_event_id,
+            rechain_previous_id=payload.prev_alert_id,
+        )
+        if check.is_duplicate and check.original_event is not None:
+            return _DuplicateStatus(True, check.original_event, check.original_event.id)
+        if payload.prev_alert_id is not None:
+            return _DuplicateStatus(False, None, None)
+
+    if payload.alert_hash:
+        check = await check_duplicate_event(
+            payload.alert_hash,
+            session=session,
+            time_window_seconds=max(1, int(get_config_manager().retry.DEDUP_WINDOW_SECONDS)),
+            exclude_event_id=existing_event_id,
+        )
+        if check.is_duplicate:
+            return _DuplicateStatus(
+                True,
+                check.original_event,
+                check.original_event.id if check.original_event else None,
+            )
+        # A Redis reuse decision may point at a legacy original that predates
+        # dedup_key storage (and can therefore be invisible to the identity
+        # query). Preserve only explicit DUPLICATE decisions; a caller-supplied
+        # NEW decision is never allowed to bypass the database recheck above.
+        if is_duplicate and (original_event is not None or original_event_id is not None):
+            return _DuplicateStatus(True, original_event, original_event_id)
+        return _DuplicateStatus(False, None, None)
+
     if is_duplicate is not None or skip_duplicate_lookup:
         return _DuplicateStatus(bool(is_duplicate), original_event, original_event_id)
 
-    alert_hash = payload.alert_hash or generate_alert_hash(dict(payload.data), payload.source)
+    alert_hash = generate_alert_hash(dict(payload.data), payload.source)
     check = await check_duplicate_event(
         alert_hash,
         session=session,
@@ -337,7 +375,7 @@ async def save_webhook_data_in_session(session: AsyncSession, *, input: SaveWebh
         dedup_key=input.dedup_key,
         prev_alert_id=input.prev_alert_id,
     )
-    # Serialise concurrent saves for the same alert identity so the duplicate
+    # Serialise concurrent saves for the same logical alert identity so the duplicate
     # check-then-insert below stays atomic across workers. Without this, two
     # workers racing on the same alert_hash can each read "no original" and both
     # insert a fresh original, leaking a duplicate alert that gets forwarded
@@ -345,8 +383,9 @@ async def save_webhook_data_in_session(session: AsyncSession, *, input: SaveWebh
     # serialises only same-hash saves and—unlike a unique constraint—still
     # permits the legitimate creation of a new original once the dedup window
     # expires (RECHAIN).
-    if not input.skip_duplicate_lookup and payload.alert_hash:
-        await acquire_advisory_xact_lock(session, f"webhook_alert_hash:{payload.alert_hash}")
+    lock_identity = payload.dedup_key or payload.alert_hash
+    if lock_identity:
+        await acquire_advisory_xact_lock(session, f"webhook_dedup_key:{lock_identity}")
 
     request_resolution = await _resolve_request_id(
         session,
@@ -364,6 +403,7 @@ async def save_webhook_data_in_session(session: AsyncSession, *, input: SaveWebh
         original_event=input.original_event,
         original_event_id=input.original_event_id,
         skip_duplicate_lookup=request_resolution.skip_duplicate_lookup,
+        existing_event_id=existing_event_id,
     )
     if duplicate_status.is_duplicate and (duplicate_status.original_event or duplicate_status.original_event_id):
         saved = await _save_duplicate_event(

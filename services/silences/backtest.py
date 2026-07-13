@@ -35,11 +35,7 @@ async def backtest_silence_rule(
     start_time = utcnow() - timedelta(days=lookback_days)
 
     # Query historical events in range
-    stmt = (
-        select(WebhookEvent)
-        .where(WebhookEvent.timestamp >= start_time)
-        .order_by(WebhookEvent.timestamp.desc())
-    )
+    stmt = select(WebhookEvent).where(WebhookEvent.timestamp >= start_time).order_by(WebhookEvent.timestamp.desc())
     result = await session.execute(stmt)
     events = result.scalars().all()
 

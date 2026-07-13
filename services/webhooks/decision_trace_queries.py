@@ -95,9 +95,7 @@ async def get_decision_trace_quality_stats(session: AsyncSession, period: str = 
 
     route_rows = (
         await session.execute(
-            select(DecisionTrace.route, func.count(DecisionTrace.id))
-            .where(window)
-            .group_by(DecisionTrace.route)
+            select(DecisionTrace.route, func.count(DecisionTrace.id)).where(window).group_by(DecisionTrace.route)
         )
     ).all()
     route_breakdown = {(row[0] or "unknown"): row[1] for row in route_rows}
@@ -223,9 +221,15 @@ async def get_overview_stats(session: AsyncSession, period: str = "day") -> dict
 
     # Previous-period total for the growth indicator (overview card).
     prev_start = start_time - _PERIOD_DELTAS.get(period, _PERIOD_DELTAS["day"])
-    prev_total = await count_with_timeout(
-        session, select(func.count(DecisionTrace.id)).where(DecisionTrace.created_at >= prev_start, DecisionTrace.created_at < start_time)
-    ) or 0
+    prev_total = (
+        await count_with_timeout(
+            session,
+            select(func.count(DecisionTrace.id)).where(
+                DecisionTrace.created_at >= prev_start, DecisionTrace.created_at < start_time
+            ),
+        )
+        or 0
+    )
     prev_forwarded_row = await session.execute(
         select(func.count(DecisionTrace.id)).where(
             DecisionTrace.created_at >= prev_start,
@@ -255,7 +259,9 @@ async def get_overview_stats(session: AsyncSession, period: str = "day") -> dict
             "total": prev_total_val,
             "forwarded": prev_forwarded_val,
             "total_delta_pct": round((total - prev_total_val) / prev_total_val * 100, 1) if prev_total_val else None,
-            "forwarded_delta_pct": round((forwarded - prev_forwarded_val) / prev_forwarded_val * 100, 1) if prev_forwarded_val else None,
+            "forwarded_delta_pct": round((forwarded - prev_forwarded_val) / prev_forwarded_val * 100, 1)
+            if prev_forwarded_val
+            else None,
         },
     }
 

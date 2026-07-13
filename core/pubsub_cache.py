@@ -110,9 +110,7 @@ class TtlPubSubCache[T]:
                 async for message in pubsub.listen():
                     if message.get("type") == "message":
                         self.invalidate()
-                        self._log.debug(
-                            "[%s] Received cross-process cache invalidation notification", self._log_prefix
-                        )
+                        self._log.debug("[%s] Received cross-process cache invalidation notification", self._log_prefix)
             except (RedisError, OSError, RuntimeError) as e:
                 self._log.warning("[%s] Pub/Sub listener interrupted: %s", self._log_prefix, e)
             finally:

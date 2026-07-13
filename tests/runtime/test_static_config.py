@@ -12,6 +12,12 @@ def _env_keys(path: Path) -> set[str]:
     return set(re.findall(r"^(?:#\s*)?([A-Z][A-Z0-9_]+)=", path.read_text(), re.MULTILINE))
 
 
+def _env_value(path: Path, key: str) -> str:
+    match = re.search(rf"^{re.escape(key)}=(.*)$", path.read_text(), re.MULTILINE)
+    assert match is not None
+    return match.group(1).strip()
+
+
 def test_config_keys_are_derived_from_config_models() -> None:
     from core.config.manager import get_config_keys
 
@@ -40,8 +46,7 @@ def test_config_manager_no_longer_wraps_settings_sections() -> None:
     references = [
         str(path.relative_to(ROOT))
         for path in ROOT.rglob("*.py")
-        if path.parts[-2:] != ("runtime", "test_static_config.py")
-        and "UnifiedConfigManager" in path.read_text()
+        if path.parts[-2:] != ("runtime", "test_static_config.py") and "UnifiedConfigManager" in path.read_text()
     ]
     assert references == []
 
@@ -102,6 +107,12 @@ def test_minimal_env_example_stays_small() -> None:
     assert sum(1 for _ in (ROOT / ".env.example").open()) <= 130
 
 
+def test_env_examples_keep_fail_closed_defaults_aligned() -> None:
+    for path in (ROOT / ".env.example", ROOT / ".env.example.all"):
+        assert _env_value(path, "RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR") == "false"
+        assert _env_value(path, "INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR") == "false"
+
+
 def test_removed_dynamic_config_switches_are_not_config_fields() -> None:
     from core.config.manager import get_config_keys
 
@@ -124,6 +135,50 @@ def test_database_url_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
     with pytest.raises(ValidationError):
         DBConfig(_env_file=None)
+
+
+def test_numeric_config_bounds_reject_invalid_runtime_values() -> None:
+    from pydantic import ValidationError
+
+    from core.config.defaults import AIConfig, DBConfig, KBConfig, NoiseConfig
+
+    with pytest.raises(ValidationError):
+        AIConfig(AI_HTTP_TIMEOUT_SECONDS=0)
+    with pytest.raises(ValidationError):
+        DBConfig(DB_POOL_SIZE=0)
+    with pytest.raises(ValidationError):
+        KBConfig(KB_MIN_SCORE=2.0)
+    with pytest.raises(ValidationError, match="ROOT_CAUSE_MIN_CONFIDENCE"):
+        NoiseConfig(ROOT_CAUSE_MIN_CONFIDENCE=0.2, NOISE_RELATED_MIN_CONFIDENCE=0.5)
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value", "message"),
+    [
+        ("ai", "AI_HTTP_CONNECT_TIMEOUT_SECONDS", 61, "AI_HTTP_CONNECT_TIMEOUT_SECONDS"),
+        ("retry", "ANALYSIS_REUSE_WINDOW_SECONDS", 1, "ANALYSIS_REUSE_WINDOW_SECONDS"),
+        ("retry", "WEBHOOK_RETRY_INITIAL_DELAY_SECONDS", 901, "WEBHOOK_RETRY_INITIAL_DELAY_SECONDS"),
+        ("retry", "FORWARD_RETRY_INITIAL_DELAY_SECONDS", 3601, "FORWARD_RETRY_INITIAL_DELAY_SECONDS"),
+        ("tasks", "FORWARD_OUTBOX_STALE_SECONDS", 10, "FORWARD_OUTBOX_STALE_SECONDS"),
+        ("openclaw", "OPENCLAW_POLL_INITIAL_DELAY_SECONDS", 121, "OPENCLAW_POLL_INITIAL_DELAY_SECONDS"),
+        ("openclaw", "OPENCLAW_CONNECT_TIMEOUT_SECONDS", 901, "OPENCLAW_CONNECT_TIMEOUT_SECONDS"),
+        ("kb", "KB_TOP_K", 1001, "KB_TOP_K"),
+    ],
+)
+def test_cross_config_relationships_are_validated(
+    section: str,
+    field: str,
+    value: int,
+    message: str,
+) -> None:
+    from pydantic import ValidationError
+
+    from core.config.defaults import AppConfig
+
+    payload = AppConfig().model_dump()
+    payload[section][field] = value
+    with pytest.raises(ValidationError, match=message):
+        AppConfig.model_validate(payload)
 
 
 def test_production_rejects_local_default_database_url(temp_config) -> None:

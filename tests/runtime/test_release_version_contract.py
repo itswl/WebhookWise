@@ -36,6 +36,7 @@ def test_container_and_k8s_versions_match_project_version() -> None:
     kustomization = yaml.safe_load((PROJECT_ROOT / "deploy/k8s/kustomization.yaml").read_text())
     configmap = yaml.safe_load((PROJECT_ROOT / "deploy/k8s/configmap.yaml").read_text())
     env_example = (PROJECT_ROOT / ".env.example.all").read_text()
+    minimal_env_example = (PROJECT_ROOT / ".env.example").read_text()
 
     assert f"ARG APP_VERSION={version}" in dockerfile
     assert "APP_VERSION=$APP_VERSION" in dockerfile
@@ -45,6 +46,8 @@ def test_container_and_k8s_versions_match_project_version() -> None:
     assert configmap["data"]["OTEL_SERVICE_VERSION"] == version
     assert f"APP_VERSION={version}" in env_example
     assert f"OTEL_SERVICE_VERSION={version}" in env_example
+    assert f"APP_VERSION={version}" in minimal_env_example
+    assert f"OTEL_SERVICE_VERSION={version}" in minimal_env_example
 
 
 def test_release_workflow_publishes_versioned_ghcr_image() -> None:

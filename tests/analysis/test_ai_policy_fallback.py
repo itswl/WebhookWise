@@ -93,9 +93,7 @@ async def test_ai_generic_error_still_raises_when_global_degradation_disabled(
 
 
 @pytest.mark.asyncio
-async def test_future_provider_exception_type_uses_degradation(
-    monkeypatch: pytest.MonkeyPatch, temp_config
-) -> None:
+async def test_future_provider_exception_type_uses_degradation(monkeypatch: pytest.MonkeyPatch, temp_config) -> None:
     from services.analysis import ai_analyzer
 
     monkeypatch.setattr(temp_config.ai, "ENABLE_AI_ANALYSIS", True)
@@ -127,9 +125,7 @@ async def test_future_provider_exception_type_uses_degradation(
 
 
 @pytest.mark.asyncio
-async def test_unexpected_application_exception_still_raises(
-    monkeypatch: pytest.MonkeyPatch, temp_config
-) -> None:
+async def test_unexpected_application_exception_still_raises(monkeypatch: pytest.MonkeyPatch, temp_config) -> None:
     from services.analysis import ai_analyzer
 
     monkeypatch.setattr(temp_config.ai, "ENABLE_AI_ANALYSIS", True)

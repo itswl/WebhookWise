@@ -191,7 +191,10 @@ async def analyze_with_openclaw(
         headers["X-Trace-Id"] = trace_id
 
     if not hooks_token:
-        logger.warning("[%s] OpenClaw token is empty; proceeding with the request using the current configuration", platform_name.upper())
+        logger.warning(
+            "[%s] OpenClaw token is empty; proceeding with the request using the current configuration",
+            platform_name.upper(),
+        )
     logger.info(
         "[%s] Sending analysis request: target=%s session_key=%s payload_bytes=%s trace_id=%s",
         platform_name.upper(),
@@ -221,7 +224,12 @@ async def analyze_with_openclaw(
             break
         except CircuitBreakerOpenException as e:
             last_error = str(e)
-            logger.warning("[%s] Request blocked by circuit breaker target=%s error=%s", platform_name.upper(), mask_url(target_url), e)
+            logger.warning(
+                "[%s] Request blocked by circuit breaker target=%s error=%s",
+                platform_name.upper(),
+                mask_url(target_url),
+                e,
+            )
             if policy.enable_degradation:
                 return degraded_forward_result(f"{platform_name.capitalize()} request failed: {last_error}")
             raise
@@ -298,7 +306,9 @@ async def forward_to_openclaw(
     async def _do_request() -> ForwardResult:
         result = await analyze_with_openclaw(webhook_data, policy=policy, dependencies=dependencies)
         if is_analysis_degraded(result):
-            logger.warning("[Forward] OpenClaw degraded, falling back to local AI: %s", analysis_degraded_reason(result))
+            logger.warning(
+                "[Forward] OpenClaw degraded, falling back to local AI: %s", analysis_degraded_reason(result)
+            )
             local_data = webhook_data_from_mapping(
                 {
                     "source": webhook_data.get("source", "unknown"),

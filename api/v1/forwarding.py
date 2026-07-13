@@ -28,6 +28,7 @@ from services.forwarding.rules import (
     get_forward_rules,
     update_forward_rule,
 )
+from services.operations.audit_logger import add_audit
 from services.webhooks.decision_trace_queries import get_forward_rule_hit_counts
 
 logger = get_logger("api.v1.forwarding")
@@ -78,7 +79,9 @@ async def _rules_with_roi(session: AsyncSession, rules: list[Any], *, mask_targe
     response_model=ForwardRuleListResponse,
     dependencies=[Depends(verify_admin_write)],
 )
-async def get_sensitive_forward_rules_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONDict | JSONResponse:
+async def get_sensitive_forward_rules_endpoint(
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONDict | JSONResponse:
     rules = await get_forward_rules(session)
     return {"success": True, "data": await _rules_with_roi(session, rules, mask_target_url=False)}
 
@@ -98,7 +101,9 @@ async def create_forward_rule_endpoint(
     try:
         target_url = await _validated_target_url(target_type, data["target_url"])
     except UnsafeTargetUrlError as e:
-        logger.warning("[ForwardAPI] Create forward rule rejected name=%s target_type=%s error=%s", name, target_type, e)
+        logger.warning(
+            "[ForwardAPI] Create forward rule rejected name=%s target_type=%s error=%s", name, target_type, e
+        )
         return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
 
     rule = await create_forward_rule(
@@ -118,6 +123,14 @@ async def create_forward_rule_endpoint(
         target_url=target_url,
         target_name=data["target_name"],
         stop_on_match=data["stop_on_match"],
+    )
+    add_audit(
+        session,
+        "forward_rule",
+        rule.id,
+        rule.name,
+        "created",
+        f"Forward rule created: {rule.name}",
     )
     await session.commit()
     logger.info(
@@ -155,6 +168,14 @@ async def update_forward_rule_endpoint(
     rule = await update_forward_rule(session=session, rule_id=rule_id, payload=data)
     if rule is None:
         return JSONResponse(status_code=404, content={"success": False, "error": "Rule does not exist"})
+    add_audit(
+        session,
+        "forward_rule",
+        rule.id,
+        rule.name,
+        "updated",
+        f"Forward rule updated: {rule.name}",
+    )
     await session.commit()
     logger.info(
         "[ForwardAPI] Forward rule updated rule_id=%s name=%s target_type=%s enabled=%s target=%s",
@@ -175,8 +196,19 @@ async def update_forward_rule_endpoint(
 async def delete_forward_rule_endpoint(
     rule_id: int, session: AsyncSession = Depends(get_db_session)
 ) -> JSONDict | JSONResponse:
+    existing = await get_forward_rule(session=session, rule_id=rule_id)
+    if existing is None:
+        return JSONResponse(status_code=404, content={"success": False, "error": "Rule does not exist"})
     if not await delete_forward_rule(session=session, rule_id=rule_id):
         return JSONResponse(status_code=404, content={"success": False, "error": "Rule does not exist"})
+    add_audit(
+        session,
+        "forward_rule",
+        rule_id,
+        existing.name,
+        "deleted",
+        f"Forward rule deleted: {existing.name}",
+    )
     await session.commit()
     logger.info("[ForwardAPI] Forward rule deleted rule_id=%s", rule_id)
     return {"success": True, "message": "Rule deleted"}

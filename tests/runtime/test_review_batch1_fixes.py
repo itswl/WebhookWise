@@ -25,7 +25,7 @@ def test_decode_escaped_json_is_order_independent() -> None:
     # A real escaped newline (\n) still decodes to a newline.
     assert "\n" in _decode_escaped_json_text(r'{"k":"a\nb"}')
     # Escaped quote + escaped backslash combos do not cross-corrupt.
-    assert _decode_escaped_json_text(r'a\\\"b') == r'a\"b'
+    assert _decode_escaped_json_text(r"a\\\"b") == r"a\"b"
 
 
 def test_normalize_level_does_not_substring_match_ok() -> None:

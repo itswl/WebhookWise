@@ -17,6 +17,7 @@ from schemas.silences import (
     SilenceUpdateRequest,
     silence_to_dict,
 )
+from services.operations.audit_logger import add_audit
 from services.silences.backtest import backtest_silence_rule
 from services.silences.store import (
     create_silence,
@@ -82,6 +83,14 @@ async def create_silence_endpoint(
         created_by=data["created_by"],
         expires_at=naive_utc(expires_at) if expires_at is not None else None,
     )
+    add_audit(
+        session,
+        "silence",
+        silence.id,
+        silence.comment,
+        "created",
+        f"Silence created: {silence.comment or silence.id}",
+    )
     await session.commit()
     logger.info(
         "[SilenceAPI] Silence created silence_id=%s source=%s importance=%s expires_at=%s",
@@ -107,6 +116,14 @@ async def update_silence_endpoint(
     silence = await update_silence(session=session, silence_id=silence_id, payload=data)
     if silence is None:
         return JSONResponse(status_code=404, content={"success": False, "error": "Silence does not exist"})
+    add_audit(
+        session,
+        "silence",
+        silence.id,
+        silence.comment,
+        "updated",
+        f"Silence updated: {silence.comment or silence.id}",
+    )
     await session.commit()
     logger.info("[SilenceAPI] Silence updated silence_id=%s", silence_id)
     return {"success": True, "data": silence_to_dict(silence, now=utcnow()), "message": "Silence updated"}
@@ -123,6 +140,14 @@ async def lift_silence_endpoint(
     silence = await lift_silence(session=session, silence_id=silence_id)
     if silence is None:
         return JSONResponse(status_code=404, content={"success": False, "error": "Silence does not exist"})
+    add_audit(
+        session,
+        "silence",
+        silence.id,
+        silence.comment,
+        "lifted",
+        f"Silence lifted: {silence.comment or silence.id}",
+    )
     await session.commit()
     logger.info("[SilenceAPI] Silence lifted silence_id=%s", silence_id)
     return {"success": True, "data": silence_to_dict(silence, now=utcnow()), "message": "Silence lifted"}
@@ -140,6 +165,14 @@ async def delete_silence_endpoint(
     if not existing:
         return JSONResponse(status_code=404, content={"success": False, "error": "Silence does not exist"})
     await delete_silence(session=session, silence_id=silence_id)
+    add_audit(
+        session,
+        "silence",
+        silence_id,
+        existing.comment,
+        "deleted",
+        f"Silence deleted: {existing.comment or silence_id}",
+    )
     await session.commit()
     logger.info("[SilenceAPI] Silence deleted silence_id=%s", silence_id)
     return {"success": True, "message": "Silence deleted"}
@@ -173,4 +206,3 @@ async def backtest_silence_endpoint(
         lookback_days=payload.lookback_days,
     )
     return {"success": True, "data": result}
-

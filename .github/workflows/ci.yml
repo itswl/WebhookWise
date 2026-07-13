@@ -59,6 +59,7 @@ jobs:
       - run: pip install -r requirements.lock -r requirements-dev.lock
       - run: python -m compileall -q .
       - run: ruff check .
+      - run: ruff format --check .
       - run: sudo apt-get update && sudo apt-get install -y shellcheck
       - run: shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh
       - run: python scripts/check_requirements_locks.py

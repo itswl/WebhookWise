@@ -56,8 +56,9 @@ async def test_handoff_with_data(session_factory: async_sessionmaker[AsyncSessio
         e = WebhookEvent(source="volcengine", timestamp=now - timedelta(hours=1))
         s.add(e)
         await s.flush()
-        inc = Incident(title="test", status="active", source="volcengine",
-                       started_at=now - timedelta(minutes=30), alert_count=1)
+        inc = Incident(
+            title="test", status="active", source="volcengine", started_at=now - timedelta(minutes=30), alert_count=1
+        )
         s.add(inc)
         await s.commit()
         from services.operations.handoff import get_handoff_summary
@@ -116,8 +117,7 @@ async def test_rule_audit_with_data(session_factory: async_sessionmaker[AsyncSes
 
     now = utcnow()
     async for s in _s(session_factory):
-        e = WebhookEvent(source="volcengine", timestamp=now - timedelta(days=2),
-                         parsed_data={"RuleName": "test_rule"})
+        e = WebhookEvent(source="volcengine", timestamp=now - timedelta(days=2), parsed_data={"RuleName": "test_rule"})
         s.add(e)
         await s.commit()
         from services.webhooks.rule_audit import get_rule_audit
@@ -217,20 +217,18 @@ def test_incident_rule_matches_helper():
 
 @pytest.mark.asyncio
 async def test_create_incident_from_event(session_factory: async_sessionmaker[AsyncSession]) -> None:
-
     from core.datetime_utils import utcnow
     from models import WebhookEvent
     from services.incidents.grouping import _create_incident_from_event
 
     now = utcnow()
     async for s in _s(session_factory):
-        e = WebhookEvent(source="volcengine", timestamp=now,
-                         importance="high", parsed_data={"RuleName": "test"})
+        e = WebhookEvent(source="volcengine", timestamp=now, importance="high", parsed_data={"RuleName": "test"})
         s.add(e)
         await s.flush()
         inc = _create_incident_from_event(e)
     assert "test" in inc.title
-    assert inc.alert_count == 1
+    assert inc.alert_count == 0
 
 
 @pytest.mark.asyncio
@@ -248,7 +246,11 @@ async def test_add_event_to_incident(session_factory: async_sessionmaker[AsyncSe
         s.add_all([e1, e2])
         await s.flush()
         inc = _create_incident_from_event(e1)
-        _add_event_to_incident(inc, e2)
+        s.add(inc)
+        await s.flush()
+        assert _add_event_to_incident(s, inc, e1) is True
+        assert _add_event_to_incident(s, inc, e2) is True
+        await s.commit()
     assert inc.alert_count == 2
 
 
@@ -262,9 +264,13 @@ async def test_close_quiet_incidents(session_factory: async_sessionmaker[AsyncSe
 
     now = utcnow()
     async for s in _s(session_factory):
-        inc = Incident(title="old", status="active", source="x",
-                       started_at=now - timedelta(hours=2),
-                       updated_at=now - timedelta(minutes=30))
+        inc = Incident(
+            title="old",
+            status="active",
+            source="x",
+            started_at=now - timedelta(hours=2),
+            updated_at=now - timedelta(minutes=30),
+        )
         s.add(inc)
         await s.commit()
         closed = await _close_quiet_incidents(s, now)
@@ -281,13 +287,17 @@ async def test_grouping_run(session_factory: async_sessionmaker[AsyncSession]) -
     now = utcnow()
 
     class FakeScope:
-        def __init__(self, sess): self._s = sess
-        async def __aenter__(self): return self._s
-        async def __aexit__(self, *a): pass
+        def __init__(self, sess):
+            self._s = sess
+
+        async def __aenter__(self):
+            return self._s
+
+        async def __aexit__(self, *a):
+            pass
 
     async for s in _s(session_factory):
-        e = WebhookEvent(source="volcengine", timestamp=now,
-                         parsed_data={"RuleName": "gpu"})
+        e = WebhookEvent(source="volcengine", timestamp=now, parsed_data={"RuleName": "gpu"})
         s.add(e)
         await s.commit()
         with patch("services.incidents.grouping.session_scope", return_value=FakeScope(s)):
@@ -304,9 +314,12 @@ def test_build_alert_briefs():
     from models import WebhookEvent
     from services.incidents.summary import _build_alert_briefs
 
-    e = WebhookEvent(source="volcengine", importance="high",
-                     parsed_data={"RuleName": "GPU alert"},
-                     ai_analysis={"summary": "test summary"})
+    e = WebhookEvent(
+        source="volcengine",
+        importance="high",
+        parsed_data={"RuleName": "GPU alert"},
+        ai_analysis={"summary": "test summary"},
+    )
     lines = _build_alert_briefs([e])
     assert "volcengine" in lines
     assert "GPU alert" in lines
@@ -314,8 +327,19 @@ def test_build_alert_briefs():
 
 @pytest.mark.asyncio
 async def test_summarize_incident_nonexistent(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    from unittest.mock import patch
+
     from services.incidents.summary import summarize_incident
 
-    async for s in _s(session_factory):
-        result = await summarize_incident(s, 99999)
+    async with session_factory() as session:
+
+        class FakeScope:
+            async def __aenter__(self):
+                return session
+
+            async def __aexit__(self, *args):
+                return None
+
+        with patch("services.incidents.summary.session_scope", return_value=FakeScope()):
+            result = await summarize_incident(99999)
     assert result is None

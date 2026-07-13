@@ -269,7 +269,11 @@ def analyze_noise_reduction(
     if best_alert.event_id is not None and best_score >= min_confidence:
         reason = f"Highly correlated with alert #{best_alert.event_id} (confidence {best_score:.2f})"
 
-        logger.info("[Noise] Noise-reduction decision: relation=derived, confidence=%.2f, suppress=%s", best_score, suppress_derived)
+        logger.info(
+            "[Noise] Noise-reduction decision: relation=derived, confidence=%.2f, suppress=%s",
+            best_score,
+            suppress_derived,
+        )
         return NoiseReductionContext(
             relation="derived",
             root_cause_event_id=best_alert.event_id,

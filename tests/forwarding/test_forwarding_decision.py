@@ -285,7 +285,9 @@ async def test_source_filter_excludes_non_matching_source():
 class _FakeSilence:
     """Mirrors SilenceSnapshot's match attributes."""
 
-    def __init__(self, sid=1, source="", importance="", event_type="", project="", region="", environment="", payload=""):
+    def __init__(
+        self, sid=1, source="", importance="", event_type="", project="", region="", environment="", payload=""
+    ):
         self.id = sid
         self.match_source = source
         self.match_importance = importance

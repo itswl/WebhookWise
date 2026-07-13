@@ -7,8 +7,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.datetime_utils import utc_isoformat, utcnow
-from models import Incident, WebhookEvent
+from core.datetime_utils import utc_isoformat
+from models import Incident, IncidentMember, WebhookEvent
 from services.pagination import apply_cursor_window, trim_cursor_window
 
 
@@ -41,19 +41,19 @@ async def get_incident_detail(session: AsyncSession, incident_id: int) -> dict[s
 
     result = _incident_row(incident)
 
-    # Fetch member alert summaries for the timeline.
-    member_ids = incident.member_ids or []
-    if member_ids:
-        # Load the most recent 50 members for the detail view.
-        recent_ids = member_ids[-50:]
-        members = list(
-            (
-                await session.execute(
-                    select(WebhookEvent).where(WebhookEvent.id.in_(recent_ids))
-                )
-            ).scalars().all()
-        )
-        members.sort(key=lambda e: (e.timestamp is not None, getattr(e, "timestamp", utcnow())))
+    # Load only the most recent 50 members through the normalized membership
+    # table. The database supplies timeline order and enforces event integrity.
+    member_stmt = (
+        select(WebhookEvent)
+        .join(IncidentMember, IncidentMember.event_id == WebhookEvent.id)
+        .where(IncidentMember.incident_id == incident_id)
+        .order_by(IncidentMember.event_timestamp.desc(), IncidentMember.id.desc())
+        .limit(50)
+    )
+    members = list((await session.execute(member_stmt)).scalars().all())
+    members.reverse()
+    result["member_ids"] = [int(event.id) for event in members]
+    if members:
         result["members"] = [
             {
                 "id": e.id,
@@ -61,9 +61,7 @@ async def get_incident_detail(session: AsyncSession, incident_id: int) -> dict[s
                 "importance": e.importance,
                 "timestamp": utc_isoformat(e.timestamp),
                 "summary": (
-                    str(e.ai_analysis.get("summary", "") or "")[:200]
-                    if isinstance(e.ai_analysis, dict)
-                    else ""
+                    str(e.ai_analysis.get("summary", "") or "")[:200] if isinstance(e.ai_analysis, dict) else ""
                 ),
                 "is_duplicate": bool(e.is_duplicate),
                 "forward_status": e.forward_status,
@@ -97,6 +95,5 @@ def _incident_row(incident: Incident) -> dict[str, Any]:
         "ended_at": utc_isoformat(incident.ended_at),
         "alert_count": incident.alert_count,
         "top_importance": incident.top_importance,
-        "member_ids": incident.member_ids or [],
         "created_at": utc_isoformat(incident.created_at),
     }

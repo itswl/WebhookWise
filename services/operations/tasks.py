@@ -514,8 +514,8 @@ async def scheduled_forward_outbox_scan() -> None:
 async def scheduled_incident_grouping() -> None:
     from services.incidents.grouping import run_incident_grouping
 
-    # Summary generation for newly-closed incidents is triggered inside the
-    # grouping tick itself — no separate summarization scan is needed.
+    # The grouping transaction only records durable work. Post-commit summary
+    # and notification processing is driven by the grouping service.
     await _run_scheduled("incident_grouping", _background_scan_interval_seconds(), run_incident_grouping())
 
 

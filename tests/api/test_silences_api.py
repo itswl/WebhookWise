@@ -131,9 +131,7 @@ async def test_delete_silence(session: AsyncSession) -> None:
     from api.v1 import silences as api
     from schemas.silences import SilenceCreateRequest
 
-    created = await api.create_silence_endpoint(
-        SilenceCreateRequest(match_source="prometheus"), session=session
-    )
+    created = await api.create_silence_endpoint(SilenceCreateRequest(match_source="prometheus"), session=session)
     resp = await api.delete_silence_endpoint(created["data"]["id"], session=session)
     assert resp["success"] is True
     missing = await api.delete_silence_endpoint(created["data"]["id"], session=session)
@@ -196,4 +194,3 @@ async def test_silence_backtest(session: AsyncSession) -> None:
     assert res["data"]["source_counts"]["prometheus"] == 1
     assert len(res["data"]["sample_matched_events"]) == 1
     assert res["data"]["sample_matched_events"][0]["summary"] == "CPU utilization high"
-

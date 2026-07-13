@@ -117,6 +117,23 @@ def test_sensitive_read_routes_declare_local_auth_dependency() -> None:
             assert "verify_api_key" in dependency_names, path
 
 
+def test_incident_mutations_require_admin_write_permission() -> None:
+    from api.v1.incidents import incidents_router
+
+    mutation_paths = {
+        "/incidents/{incident_id}/summarize",
+        "/incidents/{incident_id}/close",
+        "/incidents/{incident_id}/reopen",
+    }
+    for path in mutation_paths:
+        route = next(route for route in incidents_router.routes if str(getattr(route, "path", "")) == path)
+        dependency_names = {
+            getattr(dependency.call, "__name__", str(dependency.call))
+            for dependency in getattr(route, "dependant", object()).dependencies
+        }
+        assert "verify_admin_write" in dependency_names, path
+
+
 def test_business_api_modules_live_under_v1_package() -> None:
     root_api = PROJECT_ROOT / "api"
     v1_api = root_api / "v1"

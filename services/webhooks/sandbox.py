@@ -57,9 +57,7 @@ def _rule_summary(rule: Any) -> dict[str, Any]:
     }
 
 
-async def test_webhook_payload(
-    session: AsyncSession, *, source: str, payload: dict[str, Any]
-) -> dict[str, Any]:
+async def test_webhook_payload(session: AsyncSession, *, source: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Dry-run a pasted payload through parse → identity → rules/silence match.
 
     Returns a structured "what WW would do" report. No enqueue, no AI call, no
@@ -100,9 +98,7 @@ async def test_webhook_payload(
         silences=silences,
     )
 
-    silenced_by = (
-        {"silence_id": decision.silence_id} if decision.skip_code == "silenced" else None
-    )
+    silenced_by = {"silence_id": decision.silence_id} if decision.skip_code == "silenced" else None
 
     return {
         "source": {

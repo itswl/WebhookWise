@@ -75,10 +75,7 @@ async def verify_api_key(
         )
 
     credentials = _token_candidates(request, auth, "x-api-key", "x-admin-key", "x-admin-write-key")
-    if not any(
-        _matches_any_configured_token(credential, api_key)
-        for credential in credentials
-    ):
+    if not any(_matches_any_configured_token(credential, api_key) for credential in credentials):
         client_ip = request.client.host if request.client else "unknown"
 
         if logger.isEnabledFor(logging.WARNING):

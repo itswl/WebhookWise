@@ -84,7 +84,9 @@ async def _reserve_processing_slot(dedup_key: str) -> _QueueSlotReservation:
     window_seconds = max(1, int(config.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS))
     queue_key = webhook_processing_queue(dedup_key)
     if not await redis_health.ensure_redis_available("alert_concurrency:reserve_processing_slot"):
-        logger.warning("[Concurrency] Redis unavailable; alert processing slot suppressed via backpressure dedup_key=%s", dedup_key)
+        logger.warning(
+            "[Concurrency] Redis unavailable; alert processing slot suppressed via backpressure dedup_key=%s", dedup_key
+        )
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
 
     try:
@@ -97,7 +99,9 @@ async def _reserve_processing_slot(dedup_key: str) -> _QueueSlotReservation:
         )
     except (RedisError, RuntimeError, TypeError, ValueError) as e:
         redis_health.mark_redis_failure("alert_concurrency:reserve_processing_slot", e)
-        logger.warning("[Concurrency] Failed to reserve alert-storm processing slot; suppressing via backpressure: %s", e)
+        logger.warning(
+            "[Concurrency] Failed to reserve alert-storm processing slot; suppressing via backpressure: %s", e
+        )
         return _QueueSlotReservation(reserved=False, queue_size=0, suppressed=True, reason="redis_unavailable")
 
     if queue_size is None:
@@ -137,7 +141,9 @@ async def _acquire_distributed_lock(dedup_key: str) -> tuple[str, str] | None:
     deadline = loop.time() + timeout_seconds
 
     if not await redis_health.ensure_redis_available("alert_concurrency:acquire_distributed_lock"):
-        logger.warning("[Concurrency] Redis unavailable; refusing to fall back to an in-process lock dedup_key=%s", dedup_key)
+        logger.warning(
+            "[Concurrency] Redis unavailable; refusing to fall back to an in-process lock dedup_key=%s", dedup_key
+        )
         return "", "redis_unavailable"
 
     while True:
@@ -146,7 +152,9 @@ async def _acquire_distributed_lock(dedup_key: str) -> tuple[str, str] | None:
                 return key, token
         except (RedisError, RuntimeError, TypeError, ValueError) as e:
             redis_health.mark_redis_failure("alert_concurrency:acquire_distributed_lock", e)
-            logger.warning("[Concurrency] Failed to acquire Redis distributed lock; suppressing as Redis-unavailable: %s", e)
+            logger.warning(
+                "[Concurrency] Failed to acquire Redis distributed lock; suppressing as Redis-unavailable: %s", e
+            )
             return "", "redis_unavailable"
 
         if loop.time() >= deadline:
@@ -214,9 +222,7 @@ async def alert_processing_gate(dedup_key: str) -> AsyncGenerator[AlertProcessin
             lock_key, lock_token = lock
             ttl_seconds = max(1, int(config.retry.PROCESSING_LOCK_TTL_SECONDS))
             lock_lost = asyncio.Event()
-            refresh_task = asyncio.create_task(
-                _refresh_distributed_lock(lock_key, lock_token, ttl_seconds, lock_lost)
-            )
+            refresh_task = asyncio.create_task(_refresh_distributed_lock(lock_key, lock_token, ttl_seconds, lock_lost))
 
         yield AlertProcessingGateResult(suppressed=False, queue_size=slot.queue_size, lock_lost=lock_lost)
     finally:

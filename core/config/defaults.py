@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.worker_identity import default_worker_id
@@ -23,24 +24,27 @@ class ServerConfig(StaticSettings):
 
     APP_ENV: str = Field(default="production")
     WORKER_ID: str = Field(default_factory=default_worker_id)
-    PORT: int = Field(default=8000)
+    PORT: int = Field(default=8000, ge=1, le=65535)
     DEBUG: bool = Field(default=False)
-    RUN_MODE: str = Field(default="api")
+    RUN_MODE: Literal["api", "worker", "scheduler", "migrate"] = Field(default="api")
     LOG_LEVEL: str = Field(default="INFO")
     THIRD_PARTY_LOG_LEVEL: str = Field(default="WARNING")
-    PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288)
-    PAYLOAD_COMPRESS_THRESHOLD_BYTES: int = Field(default=4096)
-    PAYLOAD_DECOMPRESS_ASYNC_THRESHOLD_BYTES: int = Field(default=4096)
-
+    PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = Field(default=524288, ge=0)
+    PAYLOAD_COMPRESS_THRESHOLD_BYTES: int = Field(default=4096, ge=0)
+    PAYLOAD_DECOMPRESS_ASYNC_THRESHOLD_BYTES: int = Field(default=4096, ge=0)
 
 
 class TaskConfig(StaticSettings):
     """TaskIQ worker/runtime scheduling."""
 
-    BACKGROUND_SCAN_INTERVAL_SECONDS: int = Field(default=300)
-    METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60)
-    FORWARD_OUTBOX_STALE_SECONDS: int = Field(default=300, description="Timeout in seconds after an outbox record is claimed; must be greater than FORWARD_TIMEOUT_SECONDS + the backoff ceiling, otherwise records under normal retry are wrongly treated as stale")
-    WORKER_STARTUP_JITTER_SECONDS: float = Field(default=0.0)
+    BACKGROUND_SCAN_INTERVAL_SECONDS: int = Field(default=300, gt=0)
+    METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60, gt=0)
+    FORWARD_OUTBOX_STALE_SECONDS: int = Field(
+        default=300,
+        gt=0,
+        description="Seconds before an actively processing outbox record may be reclaimed; must exceed one delivery timeout",
+    )
+    WORKER_STARTUP_JITTER_SECONDS: float = Field(default=0.0, ge=0.0)
 
 
 class MQConfig(StaticSettings):
@@ -48,10 +52,10 @@ class MQConfig(StaticSettings):
 
     WEBHOOK_MQ_QUEUE: str = Field(default="webhook:queue")
     WEBHOOK_MQ_CONSUMER_GROUP: str = Field(default="webhook-processors")
-    WEBHOOK_MQ_CONSUMER_BATCH_SIZE: int = Field(default=10)
-    WEBHOOK_MQ_CONSUMER_TIMEOUT_MS: int = Field(default=1000)
-    WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS: int = Field(default=300000)
-    WEBHOOK_MQ_STREAM_MAXLEN: int = Field(default=100000)
+    WEBHOOK_MQ_CONSUMER_BATCH_SIZE: int = Field(default=10, gt=0)
+    WEBHOOK_MQ_CONSUMER_TIMEOUT_MS: int = Field(default=1000, gt=0)
+    WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS: int = Field(default=300000, gt=0)
+    WEBHOOK_MQ_STREAM_MAXLEN: int = Field(default=100000, gt=0)
 
 
 class SecurityConfig(StaticSettings):
@@ -60,27 +64,36 @@ class SecurityConfig(StaticSettings):
     WEBHOOK_SECRET: str = Field(default="")
     API_KEY: str = Field(default="")
     ADMIN_WRITE_KEY: str = Field(default="")
-    MAX_WEBHOOK_BODY_BYTES: int = Field(default=1048576)
+    MAX_WEBHOOK_BODY_BYTES: int = Field(default=1048576, gt=0)
     HSTS_INCLUDE_SUBDOMAINS: bool = Field(default=False)
-    WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0)
-    WEBHOOK_RATE_LIMIT_BURST: int = Field(default=0)
-    WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: int = Field(default=0)
+    WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0, ge=0)
+    WEBHOOK_RATE_LIMIT_BURST: int = Field(default=0, ge=0)
+    WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: int = Field(default=0, ge=0)
     ADMIN_API_RATE_LIMIT_PER_MINUTE: int = Field(
         default=0,
+        ge=0,
         description="Per-IP per-minute rate limit for the authenticated admin/read API; 0 (default) disables it. When enabled, it throttles API Key brute force and load; must be higher than the number of requests in a single Dashboard load (which auto-refreshes every 60s)",
     )
-    RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=False, description="true: degrade to allow when Redis is unavailable; false (default): reject the request with 503. For public-facing production, false is recommended to prevent rate limiting from being bypassed")
+    RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(
+        default=False,
+        description="true: degrade to allow when Redis is unavailable; false (default): reject the request with 503. For public-facing production, false is recommended to prevent rate limiting from being bypassed",
+    )
     REQUIRE_WEBHOOK_AUTH: bool = Field(default=True)
     WEBHOOK_REPLAY_PROTECTION_ENABLED: bool = Field(
         default=False,
         description="true: enforce timestamp + nonce replay protection for signed webhooks (requires the upstream to send x-webhook-timestamp). Defaults to false to preserve backward compatibility",
     )
-    WEBHOOK_REPLAY_MAX_SKEW_SECONDS: int = Field(default=300, description="Maximum allowed clock skew for the signature timestamp (seconds)")
+    WEBHOOK_REPLAY_MAX_SKEW_SECONDS: int = Field(
+        default=300, gt=0, description="Maximum allowed clock skew for the signature timestamp (seconds)"
+    )
     TRUST_PROXY_HEADERS: bool = Field(default=False)
     TRUSTED_PROXY_CIDRS: str = Field(default="127.0.0.1/32,::1/128")
     ALLOW_PRIVATE_TARGET_URLS: bool = Field(default=False)
     FORWARD_TARGET_ALLOWLIST: str = Field(default="")
-    MCP_ENABLED: bool = Field(default=False, description="Expose the read-only MCP server at /mcp. Off by default; requires API_KEY and MCP_ALLOWED_HOSTS to be set when serving behind a reverse proxy")
+    MCP_ENABLED: bool = Field(
+        default=False,
+        description="Expose the read-only MCP server at /mcp. Off by default; requires API_KEY and MCP_ALLOWED_HOSTS to be set when serving behind a reverse proxy",
+    )
     MCP_ALLOWED_HOSTS: str = Field(
         default="",
         description="Comma-separated Host header values allowed for the /mcp endpoint (DNS-rebinding protection). localhost/127.0.0.1 are always allowed; add the public host when behind a reverse proxy, e.g. 'dejavu.example.com,dejavu.example.com:443'. Empty = loopback only",
@@ -99,12 +112,18 @@ class DBConfig(StaticSettings):
     # procs) × (DB_POOL_SIZE + DB_MAX_OVERFLOW). Size deliberately against
     # Postgres max_connections and expected per-request concurrency; consider
     # pgbouncer when scaling out. Defaults suit a small single-node deployment.
-    DB_POOL_SIZE: int = Field(default=5, description="Number of persistent connections in the per-process pool")
-    DB_MAX_OVERFLOW: int = Field(default=5, description="Number of connections the per-process pool may temporarily exceed by")
-    DB_POOL_RECYCLE_SECONDS: int = Field(default=3600)
-    DB_POOL_TIMEOUT_SECONDS: int = Field(default=30, description="Timeout (seconds) for waiting on an idle connection; requests that time out raise an error")
-    DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000)
-    DB_SYNC_COMMIT: str = Field(default="on")
+    DB_POOL_SIZE: int = Field(default=5, ge=1, description="Number of persistent connections in the per-process pool")
+    DB_MAX_OVERFLOW: int = Field(
+        default=5, ge=0, description="Number of connections the per-process pool may temporarily exceed by"
+    )
+    DB_POOL_RECYCLE_SECONDS: int = Field(default=3600, gt=0)
+    DB_POOL_TIMEOUT_SECONDS: int = Field(
+        default=30,
+        gt=0,
+        description="Timeout (seconds) for waiting on an idle connection; requests that time out raise an error",
+    )
+    DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000, gt=0)
+    DB_SYNC_COMMIT: Literal["on", "off", "local", "remote_write", "remote_apply"] = Field(default="on")
 
 
 def _db_config_factory() -> DBConfig:
@@ -115,25 +134,31 @@ class RedisConfig(StaticSettings):
     """Redis connection."""
 
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
-    REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS: int = Field(default=5)
-    REDIS_SOCKET_TIMEOUT_SECONDS: int = Field(default=10)
-    REDIS_HEALTH_CHECK_INTERVAL_SECONDS: int = Field(default=30)
+    REDIS_SOCKET_CONNECT_TIMEOUT_SECONDS: int = Field(default=5, gt=0)
+    REDIS_SOCKET_TIMEOUT_SECONDS: int = Field(default=10, gt=0)
+    REDIS_HEALTH_CHECK_INTERVAL_SECONDS: int = Field(default=30, gt=0)
 
 
 class NoiseConfig(StaticSettings):
     """Alert noise-reduction parameters."""
 
     ENABLE_ALERT_NOISE_REDUCTION: bool = Field(default=True)
-    NOISE_REDUCTION_WINDOW_MINUTES: int = Field(default=5)
-    ROOT_CAUSE_MIN_CONFIDENCE: float = Field(default=0.65)
-    NOISE_RELATED_MIN_CONFIDENCE: float = Field(default=0.35)
-    NOISE_SOURCE_WEIGHT: float = Field(default=0.15)
-    NOISE_RESOURCE_WEIGHT: float = Field(default=0.45)
-    NOISE_SEMANTIC_WEIGHT: float = Field(default=0.25)
-    NOISE_SEVERITY_WEIGHT: float = Field(default=0.10)
-    NOISE_TIME_WEIGHT: float = Field(default=0.20)
-    NOISE_SEVERITY_DOWNGRADE_SCORE: float = Field(default=0.03)
+    NOISE_REDUCTION_WINDOW_MINUTES: int = Field(default=5, gt=0)
+    ROOT_CAUSE_MIN_CONFIDENCE: float = Field(default=0.65, ge=0.0, le=1.0)
+    NOISE_RELATED_MIN_CONFIDENCE: float = Field(default=0.35, ge=0.0, le=1.0)
+    NOISE_SOURCE_WEIGHT: float = Field(default=0.15, ge=0.0, le=1.0)
+    NOISE_RESOURCE_WEIGHT: float = Field(default=0.45, ge=0.0, le=1.0)
+    NOISE_SEMANTIC_WEIGHT: float = Field(default=0.25, ge=0.0, le=1.0)
+    NOISE_SEVERITY_WEIGHT: float = Field(default=0.10, ge=0.0, le=1.0)
+    NOISE_TIME_WEIGHT: float = Field(default=0.20, ge=0.0, le=1.0)
+    NOISE_SEVERITY_DOWNGRADE_SCORE: float = Field(default=0.03, ge=0.0, le=1.0)
     SUPPRESS_DERIVED_ALERT_FORWARD: bool = Field(default=True)
+
+    @model_validator(mode="after")
+    def validate_confidence_order(self) -> NoiseConfig:
+        if self.ROOT_CAUSE_MIN_CONFIDENCE < self.NOISE_RELATED_MIN_CONFIDENCE:
+            raise ValueError("ROOT_CAUSE_MIN_CONFIDENCE must be at least NOISE_RELATED_MIN_CONFIDENCE")
+        return self
 
 
 class AIConfig(StaticSettings):
@@ -148,16 +173,18 @@ class AIConfig(StaticSettings):
     # supports it for fewer malformed outputs at the source — e.g.
     # "openrouter_structured_outputs" (OpenRouter), "tools_strict"/"json_schema"
     # (OpenAI). Unknown/unsupported names fall back to JSON at client init.
-    AI_INSTRUCTOR_MODE: str = Field(default="json", description="instructor structured-output mode name (case-insensitive)")
+    AI_INSTRUCTOR_MODE: str = Field(
+        default="json", description="instructor structured-output mode name (case-insensitive)"
+    )
     AI_SYSTEM_PROMPT: str = Field(default="你是一个专业的 DevOps 和系统运维专家...")
-    AI_HTTP_TIMEOUT_SECONDS: float = Field(default=60.0)
-    AI_HTTP_CONNECT_TIMEOUT_SECONDS: float = Field(default=10.0)
-    AI_PAYLOAD_MAX_BYTES: int = Field(default=32768)
+    AI_HTTP_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0.0)
+    AI_HTTP_CONNECT_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0.0)
+    AI_PAYLOAD_MAX_BYTES: int = Field(default=32768, gt=0)
     AI_PAYLOAD_STRIP_KEYS: str = Field(default="images,raw_trace,stacktrace,base64_data,screenshot,binary_data")
     RULE_HIGH_KEYWORDS: str = Field(default="error,failure,critical,alert,错误,失败,故障")
     RULE_WARN_KEYWORDS: str = Field(default="warning,warn,警告")
     RULE_METRIC_KEYWORDS: str = Field(default="4xxqps,5xxqps,error,cpu,memory,disk")
-    RULE_THRESHOLD_MULTIPLIER: float = Field(default=4.0)
+    RULE_THRESHOLD_MULTIPLIER: float = Field(default=4.0, gt=0.0)
 
     # Tiered AI routing: when on, alerts the rule pass judges low-value skip the
     # (paid) LLM and return the rule analysis directly, concentrating AI spend on
@@ -167,16 +194,18 @@ class AIConfig(StaticSettings):
     AI_ROUTING_SKIP_IMPORTANCE: str = Field(default="low")
 
     ENABLE_AI_DEGRADATION: bool = Field(default=False)
-    OPENAI_TEMPERATURE: float = Field(default=0.2)
+    OPENAI_TEMPERATURE: float = Field(default=0.2, ge=0.0, le=2.0)
     AI_USER_PROMPT_FILE: str = Field(default="prompts/webhook_analysis_detailed.txt")
     AI_USER_PROMPT: str = Field(default="")
     DEEP_ANALYSIS_PROMPT_FILE: str = Field(default="prompts/deep_analysis.txt")
     DEEP_ANALYSIS_PROMPT: str = Field(default="")
+    INCIDENT_SUMMARY_PROMPT_FILE: str = Field(default="prompts/incident_summary.txt")
+    INCIDENT_SUMMARY_PROMPT: str = Field(default="")
 
     CACHE_ENABLED: bool = Field(default=True)
-    ANALYSIS_CACHE_TTL_SECONDS: int = Field(default=21600)
-    AI_COST_PER_1K_INPUT_TOKENS: float = Field(default=0.003)
-    AI_COST_PER_1K_OUTPUT_TOKENS: float = Field(default=0.015)
+    ANALYSIS_CACHE_TTL_SECONDS: int = Field(default=21600, gt=0)
+    AI_COST_PER_1K_INPUT_TOKENS: float = Field(default=0.003, ge=0.0)
+    AI_COST_PER_1K_OUTPUT_TOKENS: float = Field(default=0.015, ge=0.0)
 
     DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
 
@@ -205,21 +234,22 @@ class KBConfig(StaticSettings):
     KB_EMBEDDING_MODEL: str = Field(default="text-embedding-3-small")
     # Must match the configured embedding model's output dimension (placeholder
     # uses this too). E.g. 256 placeholder / 1536 text-embedding-3-small / 4096
-    # qwen3-embedding-8b. Mismatched dims make retrieval's cosine raise.
-    KB_VECTOR_DIM: int = Field(default=256)
-    KB_TOP_K: int = Field(default=3)
-    KB_MIN_SCORE: float = Field(default=0.3)
-    KB_CHUNK_MAX_CHARS: int = Field(default=800)
-    KB_MAX_CONTEXT_CHARS: int = Field(default=2000)
-    KB_EMBEDDING_TIMEOUT_SECONDS: float = Field(default=30.0)
+    # qwen3-embedding-8b. Mismatched dimensions are treated as no match.
+    KB_VECTOR_DIM: int = Field(default=256, gt=0)
+    KB_TOP_K: int = Field(default=3, gt=0)
+    KB_MIN_SCORE: float = Field(default=0.3, ge=-1.0, le=1.0)
+    KB_MAX_CANDIDATES: int = Field(default=1000, gt=0, le=10000)
+    KB_CHUNK_MAX_CHARS: int = Field(default=800, gt=0)
+    KB_MAX_CONTEXT_CHARS: int = Field(default=2000, gt=0)
+    KB_EMBEDDING_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0)
 
 
 class NotificationConfig(StaticSettings):
     """Feishu and operational notification settings."""
 
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
-    FEISHU_WEBHOOK_TIMEOUT_SECONDS: int = Field(default=10)
-    AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600)
+    FEISHU_WEBHOOK_TIMEOUT_SECONDS: int = Field(default=10, gt=0)
+    AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600, gt=0)
 
     # Periodic alert-health digest (cost + noise report). Reads already-collected
     # AIUsageLog + webhook_events, summarizes the numbers, and pushes one card to
@@ -229,17 +259,17 @@ class NotificationConfig(StaticSettings):
     # Cron is evaluated in the container timezone (Asia/Shanghai in the image).
     WEEKLY_REPORT_ENABLED: bool = Field(default=False)
     WEEKLY_REPORT_CRON: str = Field(default="0 9 * * 1")  # Monday 09:00
-    WEEKLY_REPORT_WINDOW_DAYS: int = Field(default=7)
+    WEEKLY_REPORT_WINDOW_DAYS: int = Field(default=7, gt=0)
     WEEKLY_REPORT_FEISHU_WEBHOOK: str = Field(default="")
 
     DAILY_REPORT_ENABLED: bool = Field(default=False)
     DAILY_REPORT_CRON: str = Field(default="0 9 * * *")  # every day 09:00
-    DAILY_REPORT_WINDOW_DAYS: int = Field(default=1)
+    DAILY_REPORT_WINDOW_DAYS: int = Field(default=1, gt=0)
     DAILY_REPORT_FEISHU_WEBHOOK: str = Field(default="")
 
     MONTHLY_REPORT_ENABLED: bool = Field(default=False)
     MONTHLY_REPORT_CRON: str = Field(default="0 9 1 * *")  # 1st of month 09:00
-    MONTHLY_REPORT_WINDOW_DAYS: int = Field(default=30)
+    MONTHLY_REPORT_WINDOW_DAYS: int = Field(default=30, gt=0)
     MONTHLY_REPORT_FEISHU_WEBHOOK: str = Field(default="")
 
     # AI cost budget alert: when the current calendar month's accumulated AI
@@ -247,8 +277,8 @@ class NotificationConfig(StaticSettings):
     # push one Feishu card (checked by the daily report task, at most once per
     # month per crossing). 0 = disabled. Webhook falls back to the daily report
     # webhook, then the deep-analysis webhook.
-    AI_COST_MONTHLY_BUDGET_USD: float = Field(default=0.0)
-    AI_COST_BUDGET_ALERT_THRESHOLD: float = Field(default=0.8)  # warn at 80% of budget
+    AI_COST_MONTHLY_BUDGET_USD: float = Field(default=0.0, ge=0.0)
+    AI_COST_BUDGET_ALERT_THRESHOLD: float = Field(default=0.8, gt=0.0, le=1.0)  # warn at 80% of budget
     AI_COST_BUDGET_FEISHU_WEBHOOK: str = Field(default="")
 
 
@@ -260,18 +290,18 @@ class OpenClawConfig(StaticSettings):
     OPENCLAW_GATEWAY_TOKEN: str = Field(default="")
     OPENCLAW_HOOKS_TOKEN: str = Field(default="")
     OPENCLAW_HTTP_API_URL: str = Field(default="http://127.0.0.1:8085")
-    OPENCLAW_TIMEOUT_SECONDS: int = Field(default=900)
-    OPENCLAW_STABILITY_REQUIRED_HITS: int = Field(default=2)
-    OPENCLAW_POLL_INITIAL_DELAY_SECONDS: int = Field(default=10)
-    OPENCLAW_POLL_MAX_DELAY_SECONDS: int = Field(default=120)
-    OPENCLAW_POLL_BACKOFF_MULTIPLIER: float = Field(default=2.0)
-    OPENCLAW_MAX_CONSECUTIVE_ERRORS: int = Field(default=8)
+    OPENCLAW_TIMEOUT_SECONDS: int = Field(default=900, gt=0)
+    OPENCLAW_STABILITY_REQUIRED_HITS: int = Field(default=2, gt=0)
+    OPENCLAW_POLL_INITIAL_DELAY_SECONDS: int = Field(default=10, gt=0)
+    OPENCLAW_POLL_MAX_DELAY_SECONDS: int = Field(default=120, gt=0)
+    OPENCLAW_POLL_BACKOFF_MULTIPLIER: float = Field(default=2.0, ge=1.0)
+    OPENCLAW_MAX_CONSECUTIVE_ERRORS: int = Field(default=8, gt=0)
     OPENCLAW_ENABLE_DEGRADATION: bool = Field(default=False)
-    OPENCLAW_CONNECT_TIMEOUT_SECONDS: int = Field(default=20)
-    OPENCLAW_NONCE_TIMEOUT_SECONDS: float = Field(default=5.0)
-    OPENCLAW_POLL_TIMEOUT_SECONDS: int = Field(default=180)
-    OPENCLAW_POLL_STABILITY_TTL_SECONDS: int = Field(default=3600)
-    OPENCLAW_WS_MAX_HISTORY_FRAMES: int = Field(default=50)
+    OPENCLAW_CONNECT_TIMEOUT_SECONDS: int = Field(default=20, gt=0)
+    OPENCLAW_NONCE_TIMEOUT_SECONDS: float = Field(default=5.0, gt=0.0)
+    OPENCLAW_POLL_TIMEOUT_SECONDS: int = Field(default=180, gt=0)
+    OPENCLAW_POLL_STABILITY_TTL_SECONDS: int = Field(default=3600, gt=0)
+    OPENCLAW_WS_MAX_HISTORY_FRAMES: int = Field(default=50, gt=0)
     OPENCLAW_DEVICE_ID: str = Field(default="")
     OPENCLAW_DEVICE_PRIVATE_KEY_PEM: str = Field(default="")
     OPENCLAW_DEVICE_TOKEN: str = Field(default="")
@@ -280,57 +310,60 @@ class OpenClawConfig(StaticSettings):
 class CircuitBreakerConfig(StaticSettings):
     """Circuit breaker."""
 
-    CIRCUIT_BREAKER_FEISHU_THRESHOLD: int = Field(default=5)
-    CIRCUIT_BREAKER_FEISHU_TIMEOUT_SECONDS: float = Field(default=30.0)
-    CIRCUIT_BREAKER_OPENCLAW_THRESHOLD: int = Field(default=5)
-    CIRCUIT_BREAKER_OPENCLAW_TIMEOUT_SECONDS: float = Field(default=30.0)
-    CIRCUIT_BREAKER_FORWARD_THRESHOLD: int = Field(default=5)
-    CIRCUIT_BREAKER_FORWARD_TIMEOUT_SECONDS: float = Field(default=30.0)
+    CIRCUIT_BREAKER_FEISHU_THRESHOLD: int = Field(default=5, gt=0)
+    CIRCUIT_BREAKER_FEISHU_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0)
+    CIRCUIT_BREAKER_OPENCLAW_THRESHOLD: int = Field(default=5, gt=0)
+    CIRCUIT_BREAKER_OPENCLAW_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0)
+    CIRCUIT_BREAKER_FORWARD_THRESHOLD: int = Field(default=5, gt=0)
+    CIRCUIT_BREAKER_FORWARD_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0)
     # LLM (main AI analysis) breaker: when the provider is broadly failing, open
     # the breaker so each alert degrades to rule analysis immediately instead of
     # paying the full retry+timeout budget per webhook.
-    CIRCUIT_BREAKER_LLM_THRESHOLD: int = Field(default=5)
-    CIRCUIT_BREAKER_LLM_TIMEOUT_SECONDS: float = Field(default=30.0)
+    CIRCUIT_BREAKER_LLM_THRESHOLD: int = Field(default=5, gt=0)
+    CIRCUIT_BREAKER_LLM_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0)
 
 
 class MaintenanceConfig(StaticSettings):
     """Data cleanup / retention policy / maintenance."""
 
     ENABLE_DATA_CLEANUP: bool = Field(default=True)
-    DATA_RETENTION_DAYS_DEFAULT: int = Field(default=30)
+    DATA_RETENTION_DAYS_DEFAULT: int = Field(default=30, gt=0)
     RETENTION_POLICIES: dict[str, int] = Field(default={"high": 90, "medium": 30, "low": 7, "unknown": 3})
     SOURCE_RETENTION_POLICIES: dict[str, int] = Field(default={"prometheus": 30, "grafana": 30, "datadog": 30})
     CLEANUP_KEYWORDS: dict[str, list[str]] = Field(
         default={"summary": ["一般事件:", "测试告警"], "parsed_data": ["一般事件"]}
     )
-    MAINTENANCE_HOUR: int = Field(default=3)
+    MAINTENANCE_HOUR: int = Field(default=3, ge=0, le=23)
 
 
 class RetryConfig(StaticSettings):
     """Retries + deduplication + periodic reminders."""
 
-    DEDUP_WINDOW_SECONDS: int = Field(default=14400)
-    ANALYSIS_REUSE_WINDOW_SECONDS: int = Field(default=43200)
+    DEDUP_WINDOW_SECONDS: int = Field(default=14400, gt=0)
+    ANALYSIS_REUSE_WINDOW_SECONDS: int = Field(default=43200, gt=0)
     ENABLE_PERIODIC_REMINDER: bool = Field(default=True)
-    REMINDER_INTERVAL_HOURS: int = Field(default=6)
+    REMINDER_INTERVAL_HOURS: int = Field(default=6, gt=0)
     PROCESSING_LOCK_DISTRIBUTED_ENABLED: bool = Field(default=True)
-    PROCESSING_LOCK_TTL_SECONDS: int = Field(default=180)
-    PROCESSING_LOCK_WAIT_TIMEOUT_SECONDS: int = Field(default=15)
-    PROCESSING_LOCK_POLL_INTERVAL_MS: int = Field(default=100)
-    PROCESSING_LOCK_FAILFAST_THRESHOLD: int = Field(default=20)
-    PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS: int = Field(default=10)
-    INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(default=True, description="Whether the backpressure check allows requests when Redis is unavailable; true: degrade to allow, false: reject the request")
-    NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60)
-    WEBHOOK_RETRY_MAX_RETRIES: int = Field(default=5)
-    WEBHOOK_RETRY_INITIAL_DELAY_SECONDS: int = Field(default=30)
-    WEBHOOK_RETRY_MAX_DELAY_SECONDS: int = Field(default=900)
-    WEBHOOK_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
-    FORWARD_RETRY_MAX_RETRIES: int = Field(default=3)
-    FORWARD_RETRY_INITIAL_DELAY_SECONDS: int = Field(default=60)
-    FORWARD_RETRY_MAX_DELAY_SECONDS: int = Field(default=3600)
-    FORWARD_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0)
-    FORWARD_MAX_DELIVERY_AGE_SECONDS: int = Field(default=1800)
-    FORWARD_TIMEOUT_SECONDS: int = Field(default=10)
+    PROCESSING_LOCK_TTL_SECONDS: int = Field(default=180, gt=0)
+    PROCESSING_LOCK_WAIT_TIMEOUT_SECONDS: int = Field(default=15, ge=0)
+    PROCESSING_LOCK_POLL_INTERVAL_MS: int = Field(default=100, gt=0)
+    PROCESSING_LOCK_FAILFAST_THRESHOLD: int = Field(default=20, ge=0)
+    PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS: int = Field(default=10, gt=0)
+    INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(
+        default=False,
+        description="Whether the backpressure check allows requests when Redis is unavailable; true: degrade to allow, false: reject the request",
+    )
+    NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=60, ge=0)
+    WEBHOOK_RETRY_MAX_RETRIES: int = Field(default=5, ge=0)
+    WEBHOOK_RETRY_INITIAL_DELAY_SECONDS: int = Field(default=30, gt=0)
+    WEBHOOK_RETRY_MAX_DELAY_SECONDS: int = Field(default=900, gt=0)
+    WEBHOOK_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0, ge=1.0)
+    FORWARD_RETRY_MAX_RETRIES: int = Field(default=3, ge=0)
+    FORWARD_RETRY_INITIAL_DELAY_SECONDS: int = Field(default=60, gt=0)
+    FORWARD_RETRY_MAX_DELAY_SECONDS: int = Field(default=3600, gt=0)
+    FORWARD_RETRY_BACKOFF_MULTIPLIER: float = Field(default=2.0, ge=1.0)
+    FORWARD_MAX_DELIVERY_AGE_SECONDS: int = Field(default=1800, ge=0)
+    FORWARD_TIMEOUT_SECONDS: int = Field(default=10, gt=0)
 
 
 class AppConfig(StaticSettings):
@@ -351,6 +384,25 @@ class AppConfig(StaticSettings):
     retry: RetryConfig = Field(default_factory=RetryConfig)
     maintenance: MaintenanceConfig = Field(default_factory=MaintenanceConfig)
 
+    @model_validator(mode="after")
+    def validate_runtime_relationships(self) -> AppConfig:
+        if self.ai.AI_HTTP_CONNECT_TIMEOUT_SECONDS > self.ai.AI_HTTP_TIMEOUT_SECONDS:
+            raise ValueError("AI_HTTP_CONNECT_TIMEOUT_SECONDS must not exceed AI_HTTP_TIMEOUT_SECONDS")
+        if self.retry.ANALYSIS_REUSE_WINDOW_SECONDS < self.retry.DEDUP_WINDOW_SECONDS:
+            raise ValueError("ANALYSIS_REUSE_WINDOW_SECONDS must be at least DEDUP_WINDOW_SECONDS")
+        if self.retry.WEBHOOK_RETRY_INITIAL_DELAY_SECONDS > self.retry.WEBHOOK_RETRY_MAX_DELAY_SECONDS:
+            raise ValueError("WEBHOOK_RETRY_INITIAL_DELAY_SECONDS must not exceed WEBHOOK_RETRY_MAX_DELAY_SECONDS")
+        if self.retry.FORWARD_RETRY_INITIAL_DELAY_SECONDS > self.retry.FORWARD_RETRY_MAX_DELAY_SECONDS:
+            raise ValueError("FORWARD_RETRY_INITIAL_DELAY_SECONDS must not exceed FORWARD_RETRY_MAX_DELAY_SECONDS")
+        if self.tasks.FORWARD_OUTBOX_STALE_SECONDS <= self.retry.FORWARD_TIMEOUT_SECONDS:
+            raise ValueError("FORWARD_OUTBOX_STALE_SECONDS must exceed FORWARD_TIMEOUT_SECONDS")
+        if self.openclaw.OPENCLAW_POLL_INITIAL_DELAY_SECONDS > self.openclaw.OPENCLAW_POLL_MAX_DELAY_SECONDS:
+            raise ValueError("OPENCLAW_POLL_INITIAL_DELAY_SECONDS must not exceed OPENCLAW_POLL_MAX_DELAY_SECONDS")
+        if self.openclaw.OPENCLAW_CONNECT_TIMEOUT_SECONDS > self.openclaw.OPENCLAW_TIMEOUT_SECONDS:
+            raise ValueError("OPENCLAW_CONNECT_TIMEOUT_SECONDS must not exceed OPENCLAW_TIMEOUT_SECONDS")
+        if self.kb.KB_TOP_K > self.kb.KB_MAX_CANDIDATES:
+            raise ValueError("KB_TOP_K must not exceed KB_MAX_CANDIDATES")
+        return self
 
 
 @lru_cache

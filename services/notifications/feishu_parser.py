@@ -92,9 +92,7 @@ def extract_identity_fields(
     return [(_IDENTITY_LABELS[key], value) for key, value in values.items()]
 
 
-def format_identity_line(
-    analysis_result: dict[str, Any] | Mapping[str, Any], parsed: dict[str, Any]
-) -> str:
+def format_identity_line(analysis_result: dict[str, Any] | Mapping[str, Any], parsed: dict[str, Any]) -> str:
     """Summarize the alert identity as one readable line.
 
     Reads as a breadcrumb of the meaningful values rather than a label grid.

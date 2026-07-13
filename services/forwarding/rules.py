@@ -9,7 +9,7 @@ from core.datetime_utils import utcnow
 from core.pubsub_cache import TtlPubSubCache
 from db.session import session_scope
 from models import ForwardRule
-from services.webhooks.decisioning import ForwardRuleSnapshot
+from services.forwarding.types import ForwardRuleSnapshot
 
 _RULES_INVALIDATION_CHANNEL = "webhookwise:forward_rules:invalidate"
 

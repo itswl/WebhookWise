@@ -23,7 +23,11 @@ async def schedule_forward_outbox_many(outbox_ids: list[int]) -> None:
             FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "scheduled").inc()
         except _SCHEDULING_ERRORS as e:  # noqa: PERF203
             FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "schedule_failed").inc()
-            logger.warning("[ForwardOutbox] Immediate scheduling failed id=%s error=%s, will be picked up by the scan task", outbox_id, e)
+            logger.warning(
+                "[ForwardOutbox] Immediate scheduling failed id=%s error=%s, will be picked up by the scan task",
+                outbox_id,
+                e,
+            )
 
 
 async def schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> None:
@@ -32,4 +36,6 @@ async def schedule_forward_outbox_retry(outbox_id: int, delay_seconds: int) -> N
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_scheduled").inc()
     except _SCHEDULING_ERRORS as e:
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("unknown", "retry_schedule_failed").inc()
-        logger.warning("[ForwardOutbox] Delayed scheduling failed id=%s error=%s, will be picked up by the scan task", outbox_id, e)
+        logger.warning(
+            "[ForwardOutbox] Delayed scheduling failed id=%s error=%s, will be picked up by the scan task", outbox_id, e
+        )

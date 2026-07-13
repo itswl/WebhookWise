@@ -44,7 +44,9 @@ def test_openclaw_takes_precedence_over_feishu_url() -> None:
 
 def test_openclaw_followup_only_on_pending_result() -> None:
     ch = resolve_channel(_record(target_type="openclaw"))
-    assert ch.needs_followup_on_success(_record(target_type="openclaw"), {"status": "pending", "_pending": True}) is True
+    assert (
+        ch.needs_followup_on_success(_record(target_type="openclaw"), {"status": "pending", "_pending": True}) is True
+    )
     assert ch.needs_followup_on_success(_record(target_type="openclaw"), {"status": "success"}) is False
 
 

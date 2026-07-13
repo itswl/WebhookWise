@@ -331,7 +331,7 @@ async function saveAuthKeys() {
             await API.setWriteToken(adminWriteKey);
         }
     } catch (error) {
-        console.error('Failed to encrypt and save credentials', error);
+        console.error('Failed to load credentials into page memory', error);
         alert(error.message || t('auth.saveFailed'));
         return;
     }

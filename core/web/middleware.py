@@ -27,6 +27,16 @@ class SecurityHeadersMiddleware:
         (b"x-content-type-options", b"nosniff"),
         (b"x-frame-options", b"DENY"),
         (b"referrer-policy", b"no-referrer"),
+        (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+        (
+            b"content-security-policy",
+            b"default-src 'self'; base-uri 'self'; object-src 'none'; "
+            b"frame-ancestors 'none'; form-action 'self'; "
+            b"script-src-elem 'self' https://cdn.jsdelivr.net; "
+            b"script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            b"img-src 'self' data: https:; font-src 'self' data:; "
+            b"connect-src 'self' https: wss:",
+        ),
     ]
 
     def __init__(self, app: ASGIApp) -> None:

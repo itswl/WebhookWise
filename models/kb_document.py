@@ -44,6 +44,4 @@ class KBDocument(Base):
     tags: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow()
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow())

@@ -474,6 +474,7 @@ class TestDecideForwarding:
         assert not result.should_forward
         assert result.skip_code == "silenced"
 
+
 # ── build_final_analysis ─────────────────────────────────────────────
 
 

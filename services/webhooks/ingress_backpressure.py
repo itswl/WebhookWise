@@ -79,7 +79,9 @@ async def check_ingress_backpressure(
                     logger.warning("[IngressBackpressure] Redis unavailable, ingress degraded to allow key=%s", key)
                     return IngressBackpressureResult(False, key, 0, threshold, reason="redis_unavailable_fail_open")
                 REDIS_UNAVAILABLE_TOTAL.labels("ingress_backpressure", "suppressed").inc()
-                logger.warning("[IngressBackpressure] Redis unavailable, ingress suppressed as backpressure key=%s", key)
+                logger.warning(
+                    "[IngressBackpressure] Redis unavailable, ingress suppressed as backpressure key=%s", key
+                )
                 return IngressBackpressureResult(True, key, 0, threshold, reason="redis_unavailable")
 
             redis_eval_int_func = redis_eval_int

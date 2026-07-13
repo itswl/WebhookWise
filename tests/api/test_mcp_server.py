@@ -29,9 +29,7 @@ async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
 
 
 @pytest.fixture()
-def patch_session_scope(
-    monkeypatch: pytest.MonkeyPatch, session_factory: async_sessionmaker[AsyncSession]
-) -> None:
+def patch_session_scope(monkeypatch: pytest.MonkeyPatch, session_factory: async_sessionmaker[AsyncSession]) -> None:
     """Point the MCP tools' session_scope at the test engine."""
     from api.mcp import server
 
@@ -50,15 +48,27 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> None:
         s.add_all(
             [
                 WebhookEvent(id=1, source="grafana", importance="high", processing_status="completed"),
-                WebhookEvent(id=2, source="prometheus", importance="low", processing_status="dead_letter",
-                             failure_reason="boom", error_message="connect timeout",
-                             ai_analysis={"importance": "low", "summary": "light: brief blip"}),
+                WebhookEvent(
+                    id=2,
+                    source="prometheus",
+                    importance="low",
+                    processing_status="dead_letter",
+                    failure_reason="boom",
+                    error_message="connect timeout",
+                    ai_analysis={"importance": "low", "summary": "light: brief blip"},
+                ),
                 ForwardRule(name="busy", target_type="feishu", target_url="https://x/hook/a", enabled=True),
                 DecisionTrace(webhook_event_id=1, outcome="forwarded", skip_code="none", matched_rules=["busy"]),
-                DecisionTrace(webhook_event_id=2, outcome="skipped", skip_code="silenced", matched_rules=None,
-                              silence_id=1),
-                DeepAnalysis(id=1, webhook_event_id=1, engine="local", status="completed",
-                             analysis_result={"summary": "root cause: disk full"}),
+                DecisionTrace(
+                    webhook_event_id=2, outcome="skipped", skip_code="silenced", matched_rules=None, silence_id=1
+                ),
+                DeepAnalysis(
+                    id=1,
+                    webhook_event_id=1,
+                    engine="local",
+                    status="completed",
+                    analysis_result={"summary": "root cause: disk full"},
+                ),
                 Silence(id=1, match_source="prometheus", comment="mute prom", created_by="test"),
             ]
         )
@@ -164,9 +174,7 @@ async def test_forward_rule_roi_and_dead_letters(
 
 
 @pytest.mark.asyncio
-async def test_get_ai_analysis(
-    patch_session_scope: None, session_factory: async_sessionmaker[AsyncSession]
-) -> None:
+async def test_get_ai_analysis(patch_session_scope: None, session_factory: async_sessionmaker[AsyncSession]) -> None:
     from api.mcp import server
 
     await _seed(session_factory)
@@ -346,7 +354,11 @@ async def test_mounted_at_mcp_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "initialize",
-                "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}},
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "t", "version": "1"},
+                },
             }
             accept = "application/json, text/event-stream"
             authed = await client.post(

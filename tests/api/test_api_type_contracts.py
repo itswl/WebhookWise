@@ -57,6 +57,7 @@ def test_webhook_event_serializers_use_schema_from_attributes():
 
 def test_model_datetime_defaults_do_not_use_local_clock_or_database_timezone():
     import re
+
     offenders = []
     for path in (PROJECT_ROOT / "models").glob("*.py"):
         text = path.read_text()

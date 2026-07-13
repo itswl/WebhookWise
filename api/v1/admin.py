@@ -41,6 +41,10 @@ from services.analysis.ai_analyzer import (
     reload_deep_analysis_prompt_template,
     reload_user_prompt_template,
 )
+from services.analysis.ai_prompt import (
+    load_incident_summary_prompt_template,
+    reload_incident_summary_prompt_template,
+)
 from services.forwarding.outbox import requeue_forward_outbox
 from services.operations.tasks import process_webhook_task
 from services.webhooks.query_service import count_dead_letters, get_dead_letter_detail, list_dead_letters
@@ -49,7 +53,7 @@ from services.webhooks.repository import count_suppressed_records, list_suppress
 logger = get_logger("api.v1.admin")
 
 admin_router = APIRouter()
-PromptKind = Literal["user", "deep_analysis"]
+PromptKind = Literal["user", "deep_analysis", "incident_summary"]
 _ADMIN_RUNTIME_ERRORS = (OSError, RuntimeError, SQLAlchemyError, TimeoutError)
 
 
@@ -59,16 +63,22 @@ def _normalize_prompt_kind(kind: str) -> PromptKind:
         return "user"
     if normalized in ("deep_analysis", "deep"):
         return "deep_analysis"
+    if normalized in ("incident_summary", "incident"):
+        return "incident_summary"
     raise ValueError("unsupported prompt kind")
 
 
 async def _load_prompt_by_kind(kind: PromptKind) -> str:
+    if kind == "incident_summary":
+        return await load_incident_summary_prompt_template()
     if kind == "deep_analysis":
         return await load_deep_analysis_prompt_template()
     return await load_user_prompt_template()
 
 
 async def _reload_prompt_by_kind(kind: PromptKind) -> str:
+    if kind == "incident_summary":
+        return await reload_incident_summary_prompt_template()
     if kind == "deep_analysis":
         return await reload_deep_analysis_prompt_template()
     return await reload_user_prompt_template()
@@ -296,7 +306,9 @@ async def ingest_kb_document_endpoint(
             tags=request.tags,
         )
         await session.commit()
-        logger.info("[Admin] KB ingest title=%s chunks=%d model=%s", result.title, result.chunks, result.embedding_model)
+        logger.info(
+            "[Admin] KB ingest title=%s chunks=%d model=%s", result.title, result.chunks, result.embedding_model
+        )
         return ok_response(
             http_status=200,
             message="document ingested",
@@ -331,7 +343,9 @@ async def replay_single_dead_letter(event_id: int, session: AsyncSession = Depen
     try:
         event = await session.get(WebhookEvent, event_id)
         if not event or event.processing_status != "dead_letter":
-            logger.warning("[Admin] dead_letter replay failed, status mismatch or event does not exist event_id=%s", event_id)
+            logger.warning(
+                "[Admin] dead_letter replay failed, status mismatch or event does not exist event_id=%s", event_id
+            )
             return fail_response(f"Event {event_id} does not exist or its status is not dead_letter", 404)
         await _enqueue_dead_letter_event(event)
         logger.info("[Admin] dead_letter replayed event_id=%s", event_id)
