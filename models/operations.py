@@ -23,9 +23,7 @@ class OperationalNote(Base):
     actor: Mapped[str] = mapped_column(String(100), default="operator", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow(), nullable=False)
 
-    __table_args__ = (
-        Index("ix_operational_notes_resource", "resource_type", "resource_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_operational_notes_resource", "resource_type", "resource_id", "created_at"),)
 
 
 class AnalysisFeedback(Base):

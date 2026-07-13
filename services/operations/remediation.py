@@ -58,9 +58,7 @@ async def _replay_events(session: AsyncSession, *, action: str, batch_size: int)
             WebhookEvent.updated_at < utcnow() - timedelta(minutes=15),
         )
     events = list(
-        (
-            await session.execute(query.order_by(WebhookEvent.updated_at, WebhookEvent.id).limit(batch_size))
-        )
+        (await session.execute(query.order_by(WebhookEvent.updated_at, WebhookEvent.id).limit(batch_size)))
         .scalars()
         .all()
     )
