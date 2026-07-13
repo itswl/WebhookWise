@@ -28,7 +28,8 @@ async def get_handoff_summary(session: AsyncSession, *, hours: int = 8) -> dict[
             select(func.count(WebhookEvent.id)).where(
                 WebhookEvent.timestamp >= start, WebhookEvent.importance == "high"
             )
-        ) or 0
+        )
+        or 0
     )
     top_sources: list[Any] = list(
         (
@@ -88,8 +89,7 @@ async def get_handoff_summary(session: AsyncSession, *, hours: int = 8) -> dict[
         "active_incidents": len(active_incidents),
         "quiet_incidents": len(quiet_rows),
         "active_incident_list": [
-            {"id": row[0], "title": row[1], "alert_count": row[2], "importance": row[3]}
-            for row in active_incidents
+            {"id": row[0], "title": row[1], "alert_count": row[2], "importance": row[3]} for row in active_incidents
         ],
         "top_sources": [{"source": row[0] or "unknown", "count": row[1]} for row in top_sources],
         "summary_text": "\n".join(lines),

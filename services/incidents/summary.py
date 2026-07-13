@@ -1,176 +1,181 @@
-"""Incident summarization — one LLM call per incident to produce a structured
-post-incident narrative.
-
-Uses the same OpenAI client / model / key as the main AI analyzer so it
-inherits the existing config without new knobs. Summarization is best-effort:
-failures are logged but never block incident closure.
-"""
+"""Durable, post-commit incident summarization."""
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import or_, select
 
-from core.app_context import get_config_manager
-from core.json import JSONDecodeError, loads
+from core.datetime_utils import utcnow
 from core.logger import get_logger
-from models import Incident, WebhookEvent
+from db.session import session_scope
+from models import Incident, IncidentMember, WebhookEvent
+from schemas.analysis import IncidentSummaryResult
+from services.analysis.analysis_policies import AIProviderPolicy
 
 logger = get_logger("incidents.summary")
 
-_INCIDENT_SUMMARY_PROMPT = """You are an SRE analyzing an operational incident. Below are the alerts
-that fired during this incident, ordered chronologically.
-
-If you recognize a known failure pattern (e.g. MySQL connection pool exhaustion,
-Kafka consumer lag, GPU OOM, disk full), reference the relevant runbook or
-troubleshooting step in the recommendations.
-
-Produce a JSON object with these fields:
-- "summary": a 2-3 sentence plain-English overview of what happened.
-- "root_cause": the most likely root cause based on the alert pattern.
-- "impact": the blast radius and severity assessment.
-- "timeline_summary": a chronological bullet description of the key events.
-- "recommendations": a list of 1-3 concrete prevention steps.
-- "confidence": a float 0-1 representing your confidence in this analysis.
-
-Only output the JSON object. Do not include markdown fences or commentary.
-
-ALERTS:
-{alert_briefs}
-"""
+_SUMMARY_BATCH_SIZE = 5
+_SUMMARY_MAX_ATTEMPTS = 5
+_SUMMARY_LEASE_SECONDS = 180
 
 
-async def summarize_incident(session: AsyncSession, incident_id: int) -> dict[str, Any] | None:
-    """Generate an LLM summary for an incident. Returns the summary dict or None.
+async def _load_summary_input(incident_id: int) -> tuple[str, str] | None:
+    async with session_scope() as session:
+        incident = await session.get(Incident, incident_id)
+        if incident is None:
+            return None
+        stmt = (
+            select(WebhookEvent)
+            .join(IncidentMember, IncidentMember.event_id == WebhookEvent.id)
+            .where(IncidentMember.incident_id == incident_id)
+            .order_by(IncidentMember.event_timestamp.desc(), IncidentMember.id.desc())
+            .limit(30)
+        )
+        members = list((await session.execute(stmt)).scalars().all())
+        members.reverse()
+        alert_briefs = _build_alert_briefs(members)
+        if not alert_briefs:
+            return None
+        return incident.title, alert_briefs
 
-    The result is persisted on the incident row so subsequent reads don't re-call
-    the LLM.
-    """
-    incident = await session.get(Incident, incident_id)
-    if incident is None:
+
+async def summarize_incident(incident_id: int) -> dict[str, Any] | None:
+    """Call the LLM without holding a DB transaction, then persist atomically."""
+    loaded = await _load_summary_input(incident_id)
+    if loaded is None:
         return None
+    title, alert_briefs = loaded
 
-    member_ids = incident.member_ids or []
-    if not member_ids:
+    from services.analysis.ai_llm_client import create_structured_completion
+    from services.analysis.ai_prompt import load_incident_summary_prompt_template
+    from services.analysis.ai_usage import log_ai_usage
+
+    policy = AIProviderPolicy.from_config()
+    if not policy.available:
+        logger.info("[Incidents] AI provider unavailable; summary remains pending id=%s", incident_id)
         return None
-
-    # Load up to 30 most recent member alerts for the prompt.
-    recent_ids = member_ids[-30:]
-    members = list(
-        (
-            await session.execute(
-                select(WebhookEvent).where(WebhookEvent.id.in_(recent_ids))
-            )
-        ).scalars().all()
+    template = await load_incident_summary_prompt_template()
+    prompt = template.format(alert_briefs=alert_briefs)
+    result, tokens_in, tokens_out = await create_structured_completion(
+        response_model=IncidentSummaryResult,
+        user_prompt=prompt,
+        source="incident_summary",
+        policy=policy,
     )
-    members.sort(key=lambda e: getattr(e, "timestamp", 0) or 0)
+    summary_data = result.model_dump(mode="json")
 
-    alert_briefs = _build_alert_briefs(members)
-    if not alert_briefs:
-        return None
+    async with session_scope() as session:
+        incident = await session.get(Incident, incident_id)
+        if incident is None:
+            return None
+        incident.summary_analysis = summary_data
+        incident.summary_status = "completed"
+        incident.summary_next_attempt_at = None
+        incident.summary_last_error = None
+        incident.updated_at = utcnow()
 
-    prompt = _INCIDENT_SUMMARY_PROMPT.format(alert_briefs=alert_briefs)
-
-    summary_data = await _call_llm_for_summary(prompt)
-    if summary_data is None:
-        return None
-
-    incident.summary_analysis = dict(summary_data)
-    await session.flush()
-    logger.info("[Incidents] Summary persisted incident_id=%s title=%s", incident_id, incident.title[:80])
+    await log_ai_usage(
+        route_type="incident_summary",
+        alert_hash=f"incident:{incident_id}",
+        source="incident",
+        model=policy.model,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        policy=policy,
+    )
+    logger.info("[Incidents] Summary persisted incident_id=%s title=%s", incident_id, title[:80])
     return {"id": incident_id, "summary_analysis": summary_data}
 
 
-async def _call_llm_for_summary(prompt: str) -> dict[str, Any] | None:
-    """Call the OpenAI-compatible LLM with a plain-text prompt, return parsed JSON.
+async def _claim_pending_summaries() -> list[int]:
+    now = utcnow()
+    lease_until = now + timedelta(seconds=_SUMMARY_LEASE_SECONDS)
+    async with session_scope() as session:
+        stmt = (
+            select(Incident)
+            .where(
+                Incident.status.in_(["quiet", "closed"]),
+                Incident.summary_analysis.is_(None),
+                Incident.summary_status.in_(["pending", "retrying", "processing"]),
+                or_(
+                    Incident.summary_next_attempt_at.is_(None),
+                    Incident.summary_next_attempt_at <= now,
+                ),
+                Incident.summary_attempts < _SUMMARY_MAX_ATTEMPTS,
+            )
+            .order_by(Incident.summary_next_attempt_at.asc(), Incident.id.asc())
+            .limit(_SUMMARY_BATCH_SIZE)
+            .with_for_update(skip_locked=True)
+        )
+        incidents = list((await session.execute(stmt)).scalars().all())
+        for incident in incidents:
+            incident.summary_status = "processing"
+            incident.summary_attempts += 1
+            incident.summary_next_attempt_at = lease_until
+        return [int(incident.id) for incident in incidents]
 
-    Does NOT use instructor structured output — the incident summary schema is
-    simple enough for a plain JSON completion, and using the same OpenAI client
-    as the main analyzer ensures config (model, key, URL) is shared.
-    """
 
-    import httpx
+async def _mark_summary_retry(incident_id: int, error: BaseException | str) -> None:
+    async with session_scope() as session:
+        incident = await session.get(Incident, incident_id)
+        if incident is None or incident.summary_analysis is not None:
+            return
+        message = str(error)[:1000]
+        incident.summary_last_error = message
+        if incident.summary_attempts >= _SUMMARY_MAX_ATTEMPTS:
+            incident.summary_status = "failed"
+            incident.summary_next_attempt_at = None
+            return
+        delay = min(3600, 30 * (2 ** max(0, incident.summary_attempts - 1)))
+        incident.summary_status = "retrying"
+        incident.summary_next_attempt_at = utcnow() + timedelta(seconds=delay)
 
-    from core.observability.tracing import get_current_trace_id
 
-    cfg = get_config_manager().ai
-    if not cfg.OPENAI_API_KEY:
-        logger.warning("[Incidents] No API key configured; skipping LLM summary")
-        return None
-
-    headers: dict[str, str] = {
-        "Authorization": f"Bearer {cfg.OPENAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    trace_id = get_current_trace_id()
-    if trace_id:
-        headers["x-trace-id"] = trace_id
-
-    body: dict[str, Any] = {
-        "model": str(cfg.OPENAI_MODEL),
-        "messages": [
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.3,
-        "max_tokens": 1024,
-    }
-
-    url = (str(cfg.OPENAI_API_URL).rstrip("/")) + "/chat/completions"
-
-    try:
-        async with httpx.AsyncClient(timeout=float(cfg.AI_HTTP_TIMEOUT_SECONDS)) as client:
-            resp = await client.post(url, headers=headers, json=body)
-            resp.raise_for_status()
-            data = resp.json()
-    except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
-        logger.warning("[Incidents] LLM call failed: %s", e)
-        return None
-
-    try:
-        content = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as e:
-        logger.warning("[Incidents] Unexpected LLM response shape: %s", e)
-        return None
-
-    text = str(content or "").strip()
-    # Strip markdown fences if the model wraps the output.
-    if text.startswith("```"):
-        text = text.split("\n", 1)[-1] if "\n" in text else text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-    text = text.strip()
-
-    try:
-        parsed = loads(text)
-    except (TypeError, JSONDecodeError):
-        logger.warning("[Incidents] LLM returned non-JSON: %s...", text[:200])
-        return None
-
-    return parsed if isinstance(parsed, dict) else None
+async def run_pending_incident_summaries() -> dict[str, int]:
+    """Process one claimed batch; durable state retries crashes and failures."""
+    if not AIProviderPolicy.from_config().available:
+        return {"claimed": 0, "completed": 0, "failed": 0}
+    incident_ids = await _claim_pending_summaries()
+    completed = 0
+    failed = 0
+    for incident_id in incident_ids:
+        try:
+            result = await summarize_incident(incident_id)
+            if result is None:
+                await _mark_summary_retry(incident_id, "summary input unavailable")
+                failed += 1
+            else:
+                completed += 1
+        except Exception as exc:  # noqa: BLE001 - background boundary must persist retry state
+            logger.warning(
+                "[Incidents] Summary generation failed incident_id=%s error=%s",
+                incident_id,
+                exc,
+            )
+            await _mark_summary_retry(incident_id, exc)
+            failed += 1
+    return {"claimed": len(incident_ids), "completed": completed, "failed": failed}
 
 
 def _build_alert_briefs(members: list[WebhookEvent]) -> str:
-    """Build a compact text representation of each alert for the LLM prompt."""
     briefs: list[str] = []
-    for e in members:
-        ts = getattr(e, "timestamp", None)
-        ts_str = ts.isoformat() if ts is not None else "?"
-        source = e.source or "unknown"
-        importance = e.importance or "?"
+    for event in members:
+        timestamp = event.timestamp
+        timestamp_text = timestamp.isoformat() if timestamp is not None else "?"
+        parsed = event.parsed_data or {}
         rule_name = ""
-        parsed = e.parsed_data or {}
         if isinstance(parsed, dict):
-            rule_name = str(
-                parsed.get("RuleName") or parsed.get("AlertName") or parsed.get("alert_name") or ""
-            )[:100]
+            rule_name = str(parsed.get("RuleName") or parsed.get("AlertName") or parsed.get("alert_name") or "")[:100]
         summary = ""
-        if isinstance(e.ai_analysis, dict):
-            summary = str(e.ai_analysis.get("summary", "") or "")[:200]
-        dup = " [duplicate]" if e.is_duplicate else ""
-        line = f"[{ts_str}] {source} | {importance} | {rule_name}{dup}"
+        if isinstance(event.ai_analysis, dict):
+            summary = str(event.ai_analysis.get("summary", "") or "")[:200]
+        duplicate = " [duplicate]" if event.is_duplicate else ""
+        line = (
+            f"[{timestamp_text}] {event.source or 'unknown'} | " f"{event.importance or '?'} | {rule_name}{duplicate}"
+        )
         if summary:
             line += f"\n  {summary}"
         briefs.append(line.strip())
-    return "\n\n".join(briefs)
+    return "\n".join(briefs)

@@ -1,4 +1,4 @@
-"""Team audit log — records who did what (silences, rules, incidents)."""
+"""Team activity log — records who changed silences, rules, and incidents."""
 
 from __future__ import annotations
 
@@ -12,11 +12,10 @@ from db.session import Base
 
 
 class AuditLog(Base):
-    """Immutable record of a state-changing operation.
+    """Transactional record of a state-changing operation.
 
-    Written at the point of the change (same transaction where possible) so
-    the log is never out of sync. Read-heavy: only the dashboard's audit view
-    reads it, so no hot-path concern.
+    Written in the same transaction as the business change so the activity view
+    cannot claim an operation committed when it did not.
     """
 
     __tablename__ = "audit_log"
@@ -37,8 +36,6 @@ class AuditLog(Base):
     # Who did it — captured from the dashboard's auth context.
     actor: Mapped[str | None] = mapped_column(String(100))
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=lambda: utcnow(), index=True
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow(), index=True)
 
     __table_args__ = (Index("ix_audit_log_type_created", "resource_type", "created_at"),)

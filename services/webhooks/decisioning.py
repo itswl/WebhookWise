@@ -9,6 +9,7 @@ from core.app_context import get_config_manager
 from core.collections_utils import scalar_text_or_empty
 from core.datetime_utils import utcnow
 from core.text import split_csv_lower
+from services.forwarding.types import ForwardRuleSnapshot
 from services.webhooks.types import (
     AnalysisResult,
     NoiseReductionContext,
@@ -28,24 +29,6 @@ class ForwardDecision:
     # Set only when skip_code == "silenced": the active silence that muted this
     # alert, so the decision trace can link the skip to its silence.
     silence_id: int | None = None
-
-
-@dataclass(frozen=True)
-class ForwardRuleSnapshot:
-    id: int | None
-    name: str
-    match_event_type: str
-    match_importance: str
-    match_source: str
-    match_duplicate: str
-    match_payload: str
-    target_type: str
-    target_url: str
-    stop_on_match: bool
-    target_name: str = ""
-    match_project: str = ""
-    match_region: str = ""
-    match_environment: str = ""
 
 
 @dataclass(frozen=True)
@@ -509,21 +492,25 @@ def decide_forwarding(
     silences: list[SilenceSnapshot] | None = None,
 ) -> ForwardDecision:
     if noise and noise.suppress_forward:
-        return ForwardDecision(False, f"Smart noise reduction suppressed forwarding: {noise.reason}", False, skip_code="noise_suppressed")
+        return ForwardDecision(
+            False, f"Smart noise reduction suppressed forwarding: {noise.reason}", False, skip_code="noise_suppressed"
+        )
 
     # An active manual silence mutes forwarding for matching alerts. Checked
     # after noise (both are suppressors) and before rule routing. The identity is
     # computed once and reused by both the silence check and rule selection.
     identity = extract_forward_match_fields(parsed_data)
-    if silences and (silenced := _first_matching_silence(
-        silences,
-        event_type=event_type,
-        importance=importance,
-        source=source,
-        is_duplicate=is_duplicate,
-        parsed_data=parsed_data,
-        identity=identity,
-    )):
+    if silences and (
+        silenced := _first_matching_silence(
+            silences,
+            event_type=event_type,
+            importance=importance,
+            source=source,
+            is_duplicate=is_duplicate,
+            parsed_data=parsed_data,
+            identity=identity,
+        )
+    ):
         return ForwardDecision(
             False, f"Silenced (id={silenced.id})", False, skip_code="silenced", silence_id=silenced.id
         )

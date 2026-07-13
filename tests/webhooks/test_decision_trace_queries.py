@@ -172,8 +172,7 @@ async def _seed_quality(factory: async_sessionmaker[AsyncSession]) -> None:
                 _trace(3, "skipped", "no_match", route="ai", importance="low", source="grafana"),
                 # A reuse and a degradation — excluded from AI-only signals.
                 _trace(4, "forwarded", "none", route="redis_reuse", importance="high"),
-                _trace(5, "skipped", "no_match", route="rule", importance="medium",
-                       degraded_reason="ai_error: boom"),
+                _trace(5, "skipped", "no_match", route="rule", importance="medium", degraded_reason="ai_error: boom"),
             ]
         )
 
@@ -204,9 +203,9 @@ async def test_list_attaches_delivery_status(session_factory: async_sessionmaker
     async with session_factory.begin() as session:
         session.add_all(
             [
-                _trace(10, "forwarded", "none"),   # delivered
-                _trace(11, "forwarded", "none"),   # failed
-                _trace(12, "forwarded", "none"),   # no outbox row (e.g. pre-feature)
+                _trace(10, "forwarded", "none"),  # delivered
+                _trace(11, "forwarded", "none"),  # failed
+                _trace(12, "forwarded", "none"),  # no outbox row (e.g. pre-feature)
                 _trace(13, "skipped", "silenced"),  # skipped → never gets a delivery badge
             ]
         )
@@ -291,8 +290,8 @@ async def test_list_delivery_failed_filter(session_factory: async_sessionmaker[A
     async with session_factory.begin() as session:
         session.add_all(
             [
-                _trace(30, "forwarded", "none"),   # delivered OK
-                _trace(31, "forwarded", "none"),   # exhausted → failed
+                _trace(30, "forwarded", "none"),  # delivered OK
+                _trace(31, "forwarded", "none"),  # exhausted → failed
                 _trace(32, "skipped", "silenced"),  # skipped (no delivery)
             ]
         )
@@ -321,8 +320,8 @@ async def test_silence_suppression_counts_group_by_rule(
                 _trace(40, "skipped", "silenced", silence_id=5),
                 _trace(41, "skipped", "silenced", silence_id=5),
                 _trace(42, "skipped", "silenced", silence_id=6),
-                _trace(43, "skipped", "cooldown"),       # not a silence
-                _trace(44, "forwarded", "none"),          # not skipped
+                _trace(43, "skipped", "cooldown"),  # not a silence
+                _trace(44, "forwarded", "none"),  # not skipped
             ]
         )
     async with session_factory() as session:
@@ -348,8 +347,8 @@ async def test_forward_rule_hit_counts_group_by_rule_name(
                 _trace(60, "forwarded", "none", matched_rules=["feishu"]),
                 _trace(61, "forwarded", "none", matched_rules=["feishu", "openclaw"]),
                 _trace(62, "forwarded", "none", matched_rules=["feishu"]),
-                _trace(63, "skipped", "no_match", matched_rules=[]),        # nothing matched
-                _trace(64, "skipped", "silenced", silence_id=5),             # skipped, not forwarded
+                _trace(63, "skipped", "no_match", matched_rules=[]),  # nothing matched
+                _trace(64, "skipped", "silenced", silence_id=5),  # skipped, not forwarded
             ]
         )
     async with session_factory() as session:

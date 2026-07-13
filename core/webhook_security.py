@@ -72,9 +72,7 @@ class ReplayError(Exception):
     """Webhook replay protection rejected the request (stale or reused)."""
 
 
-async def enforce_replay_protection(
-    headers: Mapping[str, str], raw_body: bytes, *, security: SecurityConfig
-) -> None:
+async def enforce_replay_protection(headers: Mapping[str, str], raw_body: bytes, *, security: SecurityConfig) -> None:
     """Reject stale or replayed signed webhooks when replay protection is on.
 
     Backward compatible: only enforced when WEBHOOK_REPLAY_PROTECTION_ENABLED is

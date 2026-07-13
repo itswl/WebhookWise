@@ -160,9 +160,7 @@ class TestClosedStateCache:
         fake_state.set_kv(breaker._open_until_key, str(time.time() + 999))
         assert await breaker._check_state_async() == CircuitState.CLOSED
 
-    async def test_failure_invalidates_closed_cache(
-        self, breaker: CircuitBreaker, fake_state: _FakeRedisState
-    ) -> None:
+    async def test_failure_invalidates_closed_cache(self, breaker: CircuitBreaker, fake_state: _FakeRedisState) -> None:
         assert await breaker._check_state_async() == CircuitState.CLOSED
         assert breaker._closed_cache_until > 0.0
         await breaker._record_failure()
@@ -217,7 +215,6 @@ class TestOpeningCircuit:
     async def test_redis_state_check_failure_allows_call(
         self, breaker: CircuitBreaker, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-
         executed = False
 
         async def unavailable(*_: object) -> str:

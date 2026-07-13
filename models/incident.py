@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,10 +20,8 @@ class Incident(Base):
     arriving; after a configurable quiet window it transitions to *quiet* and a
     one-shot LLM summary is generated.
 
-    ``member_ids`` is a JSONB integer array of ``webhook_events.id`` values —
-    kept in the same row for cheap "show me the incident timeline" reads without
-    a join table. The count is denormalized into ``alert_count`` so the list
-    page doesn't unpack the array.
+    Membership is normalized in ``incident_members``. ``alert_count`` remains
+    denormalized so list queries do not need an aggregate on every request.
     """
 
     __tablename__ = "incidents"
@@ -42,16 +40,20 @@ class Incident(Base):
     alert_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     top_importance: Mapped[str | None] = mapped_column(String(20))
 
-    # Ordered list of webhook_event ids that belong to this incident (newest last).
-    member_ids: Mapped[list[int] | None] = mapped_column(JSONB)
-
     # LLM-generated summary when the incident closes (null while active).
     summary_analysis: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    summary_status: Mapped[str | None] = mapped_column(String(20))
+    summary_attempts: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default=text("0"),
+        nullable=False,
+    )
+    summary_next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime)
+    summary_last_error: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow())
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow()
-    )
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow())
 
     __table_args__ = (
         Index("ix_incidents_status_started", "status", "started_at"),
@@ -60,4 +62,35 @@ class Incident(Base):
             "status",
             postgresql_where=text("status = 'active'"),
         ),
+        Index(
+            "ix_incidents_summary_pending",
+            "summary_next_attempt_at",
+            postgresql_where=text("summary_status IN ('pending', 'retrying', 'processing')"),
+        ),
+    )
+
+
+class IncidentMember(Base):
+    """One alert's durable, referentially intact incident membership."""
+
+    __tablename__ = "incident_members"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    event_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("webhook_events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow())
+
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_incident_members_event_id"),
+        Index("ix_incident_members_incident_timestamp", "incident_id", "event_timestamp"),
     )

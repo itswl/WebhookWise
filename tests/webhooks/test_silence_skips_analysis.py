@@ -84,9 +84,15 @@ async def test_non_silenced_alert_runs_fresh_analysis() -> None:
     fresh = AsyncMock(return_value={"importance": "medium", "summary": "x"})
     with (
         patch.object(pipeline_stages, "resolve_dedup", AsyncMock(return_value=_new_dedup())),
-        patch.object(pipeline_stages, "get_cached_active_silences", AsyncMock(return_value=[_silence(source="grafana")])),
+        patch.object(
+            pipeline_stages, "get_cached_active_silences", AsyncMock(return_value=[_silence(source="grafana")])
+        ),
         patch.object(pipeline_stages, "_run_fresh_analysis", fresh),
-        patch.object(pipeline_stages, "compute_noise", AsyncMock(return_value=pipeline_stages.NoiseReductionContext("standalone", None, 0.0, False, "", 0, ()))),
+        patch.object(
+            pipeline_stages,
+            "compute_noise",
+            AsyncMock(return_value=pipeline_stages.NoiseReductionContext("standalone", None, 0.0, False, "", 0, ())),
+        ),
     ):
         analysis, _noise, _dedup = await pipeline_stages.resolve_noise_context(_ctx(), _Deps())
 
@@ -101,7 +107,11 @@ async def test_silence_load_failure_falls_back_to_analysis() -> None:
         patch.object(pipeline_stages, "resolve_dedup", AsyncMock(return_value=_new_dedup())),
         patch.object(pipeline_stages, "get_cached_active_silences", AsyncMock(side_effect=RuntimeError("redis down"))),
         patch.object(pipeline_stages, "_run_fresh_analysis", fresh),
-        patch.object(pipeline_stages, "compute_noise", AsyncMock(return_value=pipeline_stages.NoiseReductionContext("standalone", None, 0.0, False, "", 0, ()))),
+        patch.object(
+            pipeline_stages,
+            "compute_noise",
+            AsyncMock(return_value=pipeline_stages.NoiseReductionContext("standalone", None, 0.0, False, "", 0, ())),
+        ),
     ):
         analysis, _noise, _dedup = await pipeline_stages.resolve_noise_context(_ctx(), _Deps())
 
@@ -119,7 +129,11 @@ async def test_reuse_path_unaffected_by_silence_skip() -> None:
         patch.object(
             pipeline_stages,
             "resolve_dedup",
-            AsyncMock(return_value=DedupResult(action=DedupAction.REUSE, analysis={"importance": "high", "summary": "s"}, original_event_id=5)),
+            AsyncMock(
+                return_value=DedupResult(
+                    action=DedupAction.REUSE, analysis={"importance": "high", "summary": "s"}, original_event_id=5
+                )
+            ),
         ),
         patch.object(pipeline_stages, "get_cached_active_silences", silences),
         patch.object(pipeline_stages, "log_ai_usage", AsyncMock()),

@@ -135,9 +135,7 @@ def test_dashboard_uses_recording_rules_without_raw_metric_fallbacks() -> None:
     assert "SLO Burn Rate (Error Budget)" in titles
     assert "Alert Firing Status (Prometheus Alerts)" in titles
     assert "Webhook / Pipeline Deep Dive" not in titles
-    assert "Webhook / Pipeline Deep Dive" in {
-        panel["title"] for panel in diagnostics["panels"]
-    }
+    assert "Webhook / Pipeline Deep Dive" in {panel["title"] for panel in diagnostics["panels"]}
 
     expressions = "\n".join(
         target["expr"]

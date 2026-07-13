@@ -13,7 +13,7 @@ from core.logger import get_logger
 from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
 from models import ForwardOutbox
 from services.forwarding.policies import ForwardDeliveryPolicy
-from services.webhooks.decisioning import ForwardRuleSnapshot
+from services.forwarding.types import ForwardRuleSnapshot
 from services.webhooks.types import (
     AnalysisResult,
     ForwardOutboxStatus,

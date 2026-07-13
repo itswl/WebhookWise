@@ -87,29 +87,36 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
     window_days = max(1, int(window_days))
     start = utcnow() - timedelta(days=window_days)
 
-    total_events = int(await session.scalar(
-        select(func.count(WebhookEvent.id)).where(WebhookEvent.timestamp >= start)
-    ) or 0)
-    duplicate_events = int(await session.scalar(
-        select(func.count(WebhookEvent.id)).where(
-            WebhookEvent.timestamp >= start, WebhookEvent.is_duplicate.is_(True)
+    total_events = int(
+        await session.scalar(select(func.count(WebhookEvent.id)).where(WebhookEvent.timestamp >= start)) or 0
+    )
+    duplicate_events = int(
+        await session.scalar(
+            select(func.count(WebhookEvent.id)).where(
+                WebhookEvent.timestamp >= start, WebhookEvent.is_duplicate.is_(True)
+            )
         )
-    ) or 0)
+        or 0
+    )
 
-    importance_rows = (await session.execute(
-        select(WebhookEvent.importance, func.count(WebhookEvent.id))
-        .where(WebhookEvent.timestamp >= start)
-        .group_by(WebhookEvent.importance)
-    )).all()
+    importance_rows = (
+        await session.execute(
+            select(WebhookEvent.importance, func.count(WebhookEvent.id))
+            .where(WebhookEvent.timestamp >= start)
+            .group_by(WebhookEvent.importance)
+        )
+    ).all()
     importance_breakdown = {(r[0] or "unknown"): int(r[1]) for r in importance_rows}
 
-    source_rows = (await session.execute(
-        select(WebhookEvent.source, func.count(WebhookEvent.id))
-        .where(WebhookEvent.timestamp >= start)
-        .group_by(WebhookEvent.source)
-        .order_by(func.count(WebhookEvent.id).desc())
-        .limit(_TOP_SOURCES)
-    )).all()
+    source_rows = (
+        await session.execute(
+            select(WebhookEvent.source, func.count(WebhookEvent.id))
+            .where(WebhookEvent.timestamp >= start)
+            .group_by(WebhookEvent.source)
+            .order_by(func.count(WebhookEvent.id).desc())
+            .limit(_TOP_SOURCES)
+        )
+    ).all()
     top_sources = [{"source": r[0] or "unknown", "count": int(r[1])} for r in source_rows]
 
     # "source" is just the adapter (e.g. volcengine) — too coarse. Break the
@@ -125,51 +132,54 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
             WebhookEvent.parsed_data["MetricName"].astext,
             WebhookEvent.parsed_data["Type"].astext,
         )
-        rule_rows = (await session.execute(
-            select(rule_expr, func.count(WebhookEvent.id))
-            .where(WebhookEvent.timestamp >= start, WebhookEvent.source == noisiest)
-            .group_by(rule_expr)
-            .order_by(func.count(WebhookEvent.id).desc())
-            .limit(_TOP_RULES)
-        )).all()
-        top_rules = [
-            {"source": noisiest, "rule": r[0] or "unknown", "count": int(r[1])} for r in rule_rows
-        ]
+        rule_rows = (
+            await session.execute(
+                select(rule_expr, func.count(WebhookEvent.id))
+                .where(WebhookEvent.timestamp >= start, WebhookEvent.source == noisiest)
+                .group_by(rule_expr)
+                .order_by(func.count(WebhookEvent.id).desc())
+                .limit(_TOP_RULES)
+            )
+        ).all()
+        top_rules = [{"source": noisiest, "rule": r[0] or "unknown", "count": int(r[1])} for r in rule_rows]
 
-    cost_row = (await session.execute(
-        select(
-            func.coalesce(func.sum(AIUsageLog.cost_estimate), 0.0),
-            func.coalesce(func.sum(AIUsageLog.tokens_in), 0),
-            func.coalesce(func.sum(AIUsageLog.tokens_out), 0),
-            func.count(AIUsageLog.id),
-        ).where(AIUsageLog.timestamp >= start)
-    )).first()
+    cost_row = (
+        await session.execute(
+            select(
+                func.coalesce(func.sum(AIUsageLog.cost_estimate), 0.0),
+                func.coalesce(func.sum(AIUsageLog.tokens_in), 0),
+                func.coalesce(func.sum(AIUsageLog.tokens_out), 0),
+                func.count(AIUsageLog.id),
+            ).where(AIUsageLog.timestamp >= start)
+        )
+    ).first()
     ai_cost = float(cost_row[0]) if cost_row else 0.0
     ai_calls = int(cost_row[3]) if cost_row else 0
 
-    cache_hits = int(await session.scalar(
-        select(func.count(AIUsageLog.id)).where(
-            AIUsageLog.timestamp >= start, AIUsageLog.cache_hit.is_(True)
+    cache_hits = int(
+        await session.scalar(
+            select(func.count(AIUsageLog.id)).where(AIUsageLog.timestamp >= start, AIUsageLog.cache_hit.is_(True))
         )
-    ) or 0)
+        or 0
+    )
 
     noise_pct = round(100.0 * duplicate_events / total_events, 1) if total_events else 0.0
     cache_pct = round(100.0 * cache_hits / ai_calls, 1) if ai_calls else 0.0
 
     # Incident stats for the same window.
-    incident_total = int(await session.scalar(
-        select(func.count(Incident.id)).where(Incident.started_at >= start)
-    ) or 0)
-    incident_active = int(await session.scalar(
-        select(func.count(Incident.id)).where(
-            Incident.started_at >= start, Incident.status == "active"
+    incident_total = int(await session.scalar(select(func.count(Incident.id)).where(Incident.started_at >= start)) or 0)
+    incident_active = int(
+        await session.scalar(
+            select(func.count(Incident.id)).where(Incident.started_at >= start, Incident.status == "active")
         )
-    ) or 0)
-    incident_quiet = int(await session.scalar(
-        select(func.count(Incident.id)).where(
-            Incident.started_at >= start, Incident.status == "quiet"
+        or 0
+    )
+    incident_quiet = int(
+        await session.scalar(
+            select(func.count(Incident.id)).where(Incident.started_at >= start, Incident.status == "quiet")
         )
-    ) or 0)
+        or 0
+    )
 
     return {
         "window_days": window_days,
@@ -356,9 +366,7 @@ async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None 
         return {"skipped": "disabled"}
 
     webhook_url = (
-        getattr(notif, period.webhook_attr)
-        or notif.WEEKLY_REPORT_FEISHU_WEBHOOK
-        or notif.DEEP_ANALYSIS_FEISHU_WEBHOOK
+        getattr(notif, period.webhook_attr) or notif.WEEKLY_REPORT_FEISHU_WEBHOOK or notif.DEEP_ANALYSIS_FEISHU_WEBHOOK
     )
     if not webhook_url:
         logger.warning(
@@ -405,9 +413,7 @@ async def _claim_budget_tier(month_key: str, tier: str) -> bool:
     from core.redis_health import ai_cost_budget_alert_claim
 
     with suppress(RedisError, RuntimeError, TypeError, ValueError):
-        return await redis_set_nx_ex(
-            ai_cost_budget_alert_claim(month_key, tier), utcnow().isoformat(), 40 * 24 * 3600
-        )
+        return await redis_set_nx_ex(ai_cost_budget_alert_claim(month_key, tier), utcnow().isoformat(), 40 * 24 * 3600)
     return False
 
 
@@ -446,9 +452,7 @@ async def check_ai_cost_budget() -> dict[str, Any]:
     month_start = _month_start(now)
     async with session_scope() as session:
         spend = await session.scalar(
-            select(func.coalesce(func.sum(AIUsageLog.cost_estimate), 0.0)).where(
-                AIUsageLog.timestamp >= month_start
-            )
+            select(func.coalesce(func.sum(AIUsageLog.cost_estimate), 0.0)).where(AIUsageLog.timestamp >= month_start)
         )
     spent = float(spend or 0.0)
     warn_threshold = budget * float(notif.AI_COST_BUDGET_ALERT_THRESHOLD or 0.8)
@@ -480,9 +484,7 @@ async def check_ai_cost_budget() -> dict[str, Any]:
     return {"alerted": True, "tier": tier, "spent": spent, "budget": budget, "pct": pct, "status": result.get("status")}
 
 
-def _build_ai_cost_budget_card(
-    *, spent: float, budget: float, pct: float, month_key: str, tier: str
-) -> dict[str, Any]:
+def _build_ai_cost_budget_card(*, spent: float, budget: float, pct: float, month_key: str, tier: str) -> dict[str, Any]:
     over = tier == "critical"
     header = "🔴 WebhookWise AI 成本超预算" if over else "⚠️ WebhookWise AI 成本预算预警"
     body = (
@@ -531,9 +533,7 @@ async def run_report_catchup() -> dict[str, str]:
         if not await _claim_catchup(period_key, fire):
             outcomes[period_key] = "claimed_elsewhere"
             continue
-        logger.info(
-            "[PeriodicReport] catch-up: %s missed its %s fire; sending now", period.key, fire.isoformat()
-        )
+        logger.info("[PeriodicReport] catch-up: %s missed its %s fire; sending now", period.key, fire.isoformat())
         result = await generate_and_send_report(period_key, fire_ts=fire)
         outcomes[period_key] = "skipped" if "skipped" in result else "sent"
     return outcomes

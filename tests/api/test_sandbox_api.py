@@ -24,7 +24,13 @@ async def test_sandbox_endpoint_returns_dry_run(monkeypatch: pytest.MonkeyPatch)
         "metrics": [],
         "match_fields": {"project": "p", "region": "r", "environment": ""},
         "rule_based_analysis": {"importance": "high", "event_type": "x", "summary": None, "note": "no AI"},
-        "forwarding": {"should_forward": True, "skip_code": "none", "skip_reason": None, "matched_rules": [], "silenced_by": None},
+        "forwarding": {
+            "should_forward": True,
+            "skip_code": "none",
+            "skip_reason": None,
+            "matched_rules": [],
+            "silenced_by": None,
+        },
         "dedup_note": "n/a",
     }
 

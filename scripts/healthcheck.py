@@ -1,6 +1,22 @@
 import asyncio
 import http.client
 import os
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _expected_migration_heads() -> set[str]:
+    """Return the Alembic heads shipped in this exact application image."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config(str(PROJECT_ROOT / "alembic.ini"))
+    return set(ScriptDirectory.from_config(config).get_heads())
+
+
+def _migration_heads_match(database_heads: set[str], expected_heads: set[str]) -> bool:
+    return bool(expected_heads) and database_heads == expected_heads
 
 
 async def _check_background_process() -> None:
@@ -30,8 +46,10 @@ async def _check_migration_completed() -> None:
         if engine is None:
             raise SystemExit(1)
         async with engine.connect() as conn:
-            result = await conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
-            if result.scalar_one_or_none() is None:
+            result = await conn.execute(text("SELECT version_num FROM alembic_version"))
+            database_heads = {str(value) for value in result.scalars().all() if value}
+            expected_heads = _expected_migration_heads()
+            if not _migration_heads_match(database_heads, expected_heads):
                 raise SystemExit(1)
     finally:
         await dispose_engine()

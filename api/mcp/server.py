@@ -122,12 +122,16 @@ async def _attach_deep_analysis_markers(session: AsyncSession, items: list[dict[
     if not event_ids:
         return
     rows = (
-        await session.execute(
-            select(DeepAnalysis)
-            .where(DeepAnalysis.webhook_event_id.in_(event_ids))
-            .order_by(DeepAnalysis.id.desc())
+        (
+            await session.execute(
+                select(DeepAnalysis)
+                .where(DeepAnalysis.webhook_event_id.in_(event_ids))
+                .order_by(DeepAnalysis.id.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     # First row per event id is the newest (ordered desc).
     latest: dict[int, DeepAnalysis] = {}
@@ -241,9 +245,7 @@ async def get_dead_letter_alert(event_id: int) -> dict[str, Any] | None:
 )
 async def get_ai_analysis(webhook_event_id: int, limit: int = 10) -> dict[str, Any]:
     async with session_scope() as session:
-        records = await get_deep_analyses_for_webhook(
-            session, webhook_event_id, limit=min(max(limit, 1), 50)
-        )
+        records = await get_deep_analyses_for_webhook(session, webhook_event_id, limit=min(max(limit, 1), 50))
         if records:
             return {"analysis_level": "deep", "items": [deep_analysis_to_dict(r) for r in records]}
 

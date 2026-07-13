@@ -268,7 +268,9 @@ def _norm_pagerduty(data: JsonObject) -> WebhookData:
     evt = data.get("event", {})
     alert_id = inc.get("id") or evt.get("data", {}).get("id")
     service = inc.get("service", {}).get("summary") or evt.get("data", {}).get("service", {}).get("summary")
-    title = _pick_first(inc.get("title"), evt.get("data", {}).get("title"), data.get("description"), "pagerduty_incident")
+    title = _pick_first(
+        inc.get("title"), evt.get("data", {}).get("title"), data.get("description"), "pagerduty_incident"
+    )
     res = dict(data)
     res.update(
         {

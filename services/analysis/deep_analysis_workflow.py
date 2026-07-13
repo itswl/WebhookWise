@@ -90,7 +90,9 @@ async def run_openclaw_deep_analysis(
     except (OSError, RuntimeError, TimeoutError, ValueError) as e:
         raise DeepAnalysisExecutionError("OpenClaw analysis failed") from e
     if is_analysis_degraded(result):
-        logger.warning("[DeepAnalysis] OpenClaw degraded, falling back to local AI: %s", analysis_degraded_reason(result))
+        logger.warning(
+            "[DeepAnalysis] OpenClaw degraded, falling back to local AI: %s", analysis_degraded_reason(result)
+        )
         try:
             return await analyze_webhook_with_ai(webhook_data), "local (fallback)"
         except (OSError, RuntimeError, TimeoutError, ValueError) as e:
@@ -174,7 +176,9 @@ async def retry_deep_analysis_record(session: AsyncSession, analysis_id: int) ->
         raise DeepAnalysisWorkflowError("Analysis record does not exist", status_code=404)
 
     if record.status not in RETRYABLE_DEEP_ANALYSIS_STATUSES:
-        logger.warning("[DeepAnalysis] Retry failed, status is not retryable analysis_id=%s status=%s", analysis_id, record.status)
+        logger.warning(
+            "[DeepAnalysis] Retry failed, status is not retryable analysis_id=%s status=%s", analysis_id, record.status
+        )
         raise DeepAnalysisWorkflowError(f"Current status is not retryable: {record.status}", status_code=400)
 
     if not record.openclaw_session_key:
@@ -203,7 +207,9 @@ async def retry_deep_analysis_record(session: AsyncSession, analysis_id: int) ->
             await session.commit()
             if poll_delay is not None:
                 await taskiq_retry_scheduler.schedule_openclaw_poll_best_effort(record.id, poll_delay)
-            logger.info("[DeepAnalysis] Re-initiated background analysis analysis_id=%s poll_delay=%s", record.id, poll_delay)
+            logger.info(
+                "[DeepAnalysis] Re-initiated background analysis analysis_id=%s poll_delay=%s", record.id, poll_delay
+            )
             return DeepAnalysisRetryOutcome(message="Analysis task re-initiated, please wait for the result")
 
         record.status = DeepAnalysisStatus.COMPLETED
@@ -213,7 +219,9 @@ async def retry_deep_analysis_record(session: AsyncSession, analysis_id: int) ->
         await session.flush()
         await notify_completed_deep_analysis_best_effort(session, record)
         await session.commit()
-        logger.info("[DeepAnalysis] Synchronous completion after retry analysis_id=%s engine=%s", record.id, engine_name)
+        logger.info(
+            "[DeepAnalysis] Synchronous completion after retry analysis_id=%s engine=%s", record.id, engine_name
+        )
         return DeepAnalysisRetryOutcome(message="Analysis complete")
 
     reset_deep_analysis_for_background_poll(record, utcnow())
@@ -221,8 +229,12 @@ async def retry_deep_analysis_record(session: AsyncSession, analysis_id: int) ->
     await session.commit()
     await clear_openclaw_poll_state_best_effort(int(record.id))
     await taskiq_retry_scheduler.schedule_openclaw_poll_best_effort(int(record.id), 0)
-    logger.info("[DeepAnalysis] Background fetch submitted analysis_id=%s webhook_id=%s", record.id, record.webhook_event_id)
-    return DeepAnalysisRetryOutcome(message="Background fetch submitted, please refresh later to view the result", record=record)
+    logger.info(
+        "[DeepAnalysis] Background fetch submitted analysis_id=%s webhook_id=%s", record.id, record.webhook_event_id
+    )
+    return DeepAnalysisRetryOutcome(
+        message="Background fetch submitted, please refresh later to view the result", record=record
+    )
 
 
 async def forward_deep_analysis_record(
@@ -246,7 +258,11 @@ async def forward_deep_analysis_record(
         logger.warning("[DeepAnalysis] Manual forward failed, record does not exist analysis_id=%s", analysis_id)
         raise DeepAnalysisWorkflowError("Analysis record does not exist", status_code=404)
     if analysis.status != DeepAnalysisStatus.COMPLETED:
-        logger.warning("[DeepAnalysis] Manual forward failed, analysis not complete analysis_id=%s status=%s", analysis_id, analysis.status)
+        logger.warning(
+            "[DeepAnalysis] Manual forward failed, analysis not complete analysis_id=%s status=%s",
+            analysis_id,
+            analysis.status,
+        )
         raise DeepAnalysisWorkflowError("Analysis is not yet complete", status_code=400)
 
     source = "unknown"

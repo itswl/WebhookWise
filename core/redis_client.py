@@ -47,6 +47,7 @@ async def _eval_script(script: str, numkeys: int, args: tuple[RedisEvalArg, ...]
     except NoScriptError:
         return await client.eval(script, int(numkeys), *args)
 
+
 if TYPE_CHECKING:
     type RedisClient = redis.Redis[Any]  # type: ignore[type-arg, unused-ignore]
 else:

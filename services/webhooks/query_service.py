@@ -19,6 +19,7 @@ def window_to_time_from(window: str) -> datetime | None:
     delta = _WINDOW_DELTAS.get(window)
     return (utcnow() - delta) if delta else None
 
+
 _PrevEvent = WebhookEvent.__table__.alias("prev_evt")
 _prev_ts_subq = (
     select(_PrevEvent.c.timestamp)
@@ -106,7 +107,15 @@ async def _apply_outbox_forward_statuses(session: AsyncSession, items: list[dict
         item["forward_status"] = _merge_forward_status(item.get("forward_status"), status_by_event_id.get(event_id))
 
 
-def _apply_summary_filters(query: Any, *, importance: str, source: str, processing_status: str = "", time_from: datetime | None, search: str = "") -> Any:
+def _apply_summary_filters(
+    query: Any,
+    *,
+    importance: str,
+    source: str,
+    processing_status: str = "",
+    time_from: datetime | None,
+    search: str = "",
+) -> Any:
     if importance:
         query = query.where(WebhookEvent.importance == importance)
     if source:

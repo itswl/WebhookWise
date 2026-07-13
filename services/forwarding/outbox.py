@@ -42,9 +42,10 @@ from services.forwarding import rules as forwarding_rules
 from services.forwarding.channels import resolve_channel
 from services.forwarding.outbox_records import create_outbox_records, outbox_result
 from services.forwarding.policies import ForwardDeliveryPolicy
+from services.forwarding.types import ForwardRuleSnapshot
 from services.notifications import feishu
 from services.operations import taskiq_retry_scheduler
-from services.webhooks.decisioning import ForwardDecision, ForwardRuleSnapshot, select_forward_rules
+from services.webhooks.decisioning import ForwardDecision, select_forward_rules
 from services.webhooks.types import (
     AnalysisResult,
     DeepAnalysisStatus,
@@ -393,9 +394,7 @@ async def _expire_outbox_if_old(
     return True
 
 
-async def _claim_outbox(
-    outbox_id: int, *, policy: ForwardDeliveryPolicy | None = None
-) -> ForwardOutbox | None:
+async def _claim_outbox(outbox_id: int, *, policy: ForwardDeliveryPolicy | None = None) -> ForwardOutbox | None:
     if not isinstance(policy, ForwardDeliveryPolicy):
         policy = ForwardDeliveryPolicy.from_config()
 

@@ -273,7 +273,13 @@ async def receive_webhook(
             return result
     except (HTTPException, OSError, RuntimeError, TypeError, ValueError) as exc:
         ingress_outcome = "error"
-        logger.warning("[Webhook] Ingest request exception request_id=%s source=%s error=%s", request_id, source_hint, exc, exc_info=True)
+        logger.warning(
+            "[Webhook] Ingest request exception request_id=%s source=%s error=%s",
+            request_id,
+            source_hint,
+            exc,
+            exc_info=True,
+        )
         raise
     finally:
         WEBHOOK_INGRESS_REQUESTS_TOTAL.labels(metric_source, ingress_outcome).inc()
@@ -289,14 +295,14 @@ async def receive_webhook(
     response_model=WebhookListResponse,
 )
 async def get_webhooks_endpoint(
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=1000),
     page_size: int = Query(20, ge=1, le=500),
     cursor: int | None = Query(None),
     importance: str = Query(""),
     source: str = Query(""),
     processing_status: str = Query(""),
     window: str = Query("", pattern="^(today|7d|30d|all|)$"),
-    search: str = Query("", max_length=200),
+    search: str = Query("", max_length=200, pattern=r"^(?:|.{2,200})$"),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict | JSONResponse:
     """Get the summary list of all webhook events."""
@@ -403,9 +409,9 @@ async def replay_dry_run_endpoint(
     anything — useful for answering "would this alert be forwarded today?".
     """
     from services.forwarding.rules import get_cached_forward_rules
+    from services.forwarding.types import ForwardRuleSnapshot
     from services.silences.store import get_cached_active_silences
     from services.webhooks.decisioning import (
-        ForwardRuleSnapshot,
         SilenceSnapshot,
         decide_forwarding,
         forwarding_policy_from_config,

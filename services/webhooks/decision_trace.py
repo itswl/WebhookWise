@@ -46,6 +46,7 @@ def _degraded_reason_column(final_analysis: AnalysisResult) -> str | None:
     reason = analysis_degraded_reason(final_analysis)
     return reason[:200] if reason else None
 
+
 logger = get_logger("webhooks.decision_trace")
 
 
@@ -128,9 +129,7 @@ def build_decision_trace(
         # (which silence suppressed how many) can GROUP BY an indexed column.
         silence_id=decision.silence_id if decision.skip_code == "silenced" else None,
         matched_rules=[rule.name for rule in decision.matched_rules],
-        steps=build_trace_steps(
-            dedup=dedup, final_analysis=final_analysis, noise=noise, decision=decision
-        ),
+        steps=build_trace_steps(dedup=dedup, final_analysis=final_analysis, noise=noise, decision=decision),
     )
 
 

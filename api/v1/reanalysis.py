@@ -118,7 +118,10 @@ async def manual_forward_webhook(
             http_status = 400 if status == "skipped" else 502
             return JSONResponse(
                 status_code=http_status,
-                content={"success": False, "error": "Forwarding skipped" if status == "skipped" else DELIVERY_ERROR_MESSAGE},
+                content={
+                    "success": False,
+                    "error": "Forwarding skipped" if status == "skipped" else DELIVERY_ERROR_MESSAGE,
+                },
             )
 
         logger.info("[Reanalysis] Manual forward complete webhook_id=%s result=%s", webhook_id, fwd_res.get("status"))

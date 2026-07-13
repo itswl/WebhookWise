@@ -28,7 +28,9 @@ def looks_like_default_database_url(value: str) -> bool:
 def validate_startup_security(config: AppConfig, *, app_env: str | None = None) -> None:
     env = app_env or config.server.APP_ENV
     if env == "production" and looks_like_default_database_url(config.db.DATABASE_URL):
-        raise RuntimeError("DATABASE_URL is still the local default connection string; please configure a production database connection")
+        raise RuntimeError(
+            "DATABASE_URL is still the local default connection string; please configure a production database connection"
+        )
     if not config.security.API_KEY:
         raise RuntimeError("API_KEY is not configured; please set API_KEY")
     if not config.security.ADMIN_WRITE_KEY:
@@ -36,18 +38,26 @@ def validate_startup_security(config: AppConfig, *, app_env: str | None = None) 
     if env == "production" and looks_like_placeholder_secret(config.security.API_KEY):
         raise RuntimeError("API_KEY is still an example placeholder value; please replace it with a real random key")
     if env == "production" and looks_like_placeholder_secret(config.security.ADMIN_WRITE_KEY):
-        raise RuntimeError("ADMIN_WRITE_KEY is still an example placeholder value; please replace it with a real random key")
+        raise RuntimeError(
+            "ADMIN_WRITE_KEY is still an example placeholder value; please replace it with a real random key"
+        )
     if env == "production":
         _warn_if_short_secret("API_KEY", config.security.API_KEY)
         _warn_if_short_secret("ADMIN_WRITE_KEY", config.security.ADMIN_WRITE_KEY)
     if env == "production" and not config.security.REQUIRE_WEBHOOK_AUTH:
-        raise RuntimeError("Webhook authentication is not enabled in production. Please set REQUIRE_WEBHOOK_AUTH=true and WEBHOOK_SECRET")
+        raise RuntimeError(
+            "Webhook authentication is not enabled in production. Please set REQUIRE_WEBHOOK_AUTH=true and WEBHOOK_SECRET"
+        )
     if env == "production" and config.security.REQUIRE_WEBHOOK_AUTH:
         webhook_secret = config.security.WEBHOOK_SECRET.strip()
         if not webhook_secret:
-            raise RuntimeError("Webhook authentication is enabled but WEBHOOK_SECRET is empty; please set WEBHOOK_SECRET")
+            raise RuntimeError(
+                "Webhook authentication is enabled but WEBHOOK_SECRET is empty; please set WEBHOOK_SECRET"
+            )
         if looks_like_placeholder_secret(config.security.WEBHOOK_SECRET):
-            raise RuntimeError("WEBHOOK_SECRET is still an example placeholder value; please replace it with a real random key")
+            raise RuntimeError(
+                "WEBHOOK_SECRET is still an example placeholder value; please replace it with a real random key"
+            )
         _warn_if_short_secret("WEBHOOK_SECRET", webhook_secret)
 
 

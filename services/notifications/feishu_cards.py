@@ -62,7 +62,7 @@ def _strip_redundant_prefix(text: str, *labels: str) -> str:
         for colon in ("：", ":"):
             prefix = f"{label}{colon}"
             if stripped.startswith(prefix):
-                return stripped[len(prefix):].lstrip()
+                return stripped[len(prefix) :].lstrip()
     return text
 
 
@@ -338,7 +338,10 @@ def build_delivery_exhausted_card(outbox: Any) -> JsonObject:
                 {"tag": "hr"},
                 {
                     "tag": "div",
-                    "text": {"tag": "lark_md", "content": f"**🔗 目标地址**\n{mask_url(target_url) if target_url else '—'}"},
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**🔗 目标地址**\n{mask_url(target_url) if target_url else '—'}",
+                    },
                 },
                 {"tag": "div", "text": {"tag": "lark_md", "content": f"**⚠️ 最后错误**\n{last_error or '—'}"}},
             ],

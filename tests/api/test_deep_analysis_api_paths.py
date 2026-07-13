@@ -299,7 +299,9 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
     async def clear_openclaw_poll_state(analysis_id: int) -> None:
         cleared.append(analysis_id)
 
-    monkeypatch.setattr("services.analysis.deep_analysis_workflow.build_deep_analysis_context", build_deep_analysis_context)
+    monkeypatch.setattr(
+        "services.analysis.deep_analysis_workflow.build_deep_analysis_context", build_deep_analysis_context
+    )
     monkeypatch.setattr(
         "services.analysis.deep_analysis_workflow.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort",
         schedule_openclaw_poll_best_effort,

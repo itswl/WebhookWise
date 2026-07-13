@@ -58,8 +58,12 @@ def main() -> None:
         raise SystemExit(f"requirements-dev.lock is missing direct dev requirements: {sorted(dev_missing)}")
 
     _assert_contains(PROJECT_ROOT / "Dockerfile", "pip install --no-cache-dir -r requirements.lock")
-    _assert_contains(PROJECT_ROOT / ".github/workflows/ci.yml", "pip install -r requirements.lock -r requirements-dev.lock")
-    _assert_contains(PROJECT_ROOT / ".github/workflows/ci.yml", "pip-audit -r requirements.lock -r requirements-dev.lock")
+    _assert_contains(
+        PROJECT_ROOT / ".github/workflows/ci.yml", "pip install -r requirements.lock -r requirements-dev.lock"
+    )
+    _assert_contains(
+        PROJECT_ROOT / ".github/workflows/ci.yml", "pip-audit -r requirements.lock -r requirements-dev.lock"
+    )
 
     pyproject = (PROJECT_ROOT / "pyproject.toml").read_text()
     has_project_metadata = "\n[project]\n" in f"\n{pyproject}\n"

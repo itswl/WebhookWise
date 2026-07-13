@@ -6,9 +6,7 @@ from core.sensitive_data import mask_webhook_url
 
 
 def test_masks_feishu_hook_token_keeps_version_and_tail() -> None:
-    masked = mask_webhook_url(
-        "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-    )
+    masked = mask_webhook_url("https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
     assert masked == "https://open.feishu.cn/open-apis/bot/v2/hook/****f805"
     # The full token must not survive.
     assert "cf37791b" not in masked

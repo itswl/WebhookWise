@@ -8,7 +8,7 @@ from models.analysis import AIUsageLog, DeepAnalysis
 from models.audit_log import AuditLog
 from models.decision_trace import DecisionTrace
 from models.forwarding import ForwardOutbox, ForwardRule
-from models.incident import Incident
+from models.incident import Incident, IncidentMember
 from models.kb_document import KBDocument
 from models.silence import Silence
 from models.suppressed_record import SuppressedRecord
@@ -27,5 +27,6 @@ __all__ = [
     "DecisionTrace",
     "KBDocument",
     "Incident",
+    "IncidentMember",
     "AuditLog",
 ]
