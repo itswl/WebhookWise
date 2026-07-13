@@ -136,6 +136,8 @@ async def close_incident_endpoint(incident_id: int, session: AsyncSession = Depe
         if incident is None:
             return fail_response(f"Incident {incident_id} not found", 404)
         incident.status = "closed"
+        incident.workflow_status = "resolved"
+        incident.resolved_at = utcnow()
         incident.ended_at = incident.ended_at or utcnow()
         if incident.summary_analysis is None and incident.alert_count >= 2:
             incident.summary_status = "pending"
@@ -177,6 +179,8 @@ async def reopen_incident_endpoint(incident_id: int, session: AsyncSession = Dep
         if incident is None:
             return fail_response(f"Incident {incident_id} not found", 404)
         incident.status = "active"
+        incident.workflow_status = "open"
+        incident.resolved_at = None
         incident.ended_at = None
         if incident.summary_analysis is None:
             incident.summary_status = None

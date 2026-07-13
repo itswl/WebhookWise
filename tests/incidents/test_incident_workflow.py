@@ -267,3 +267,36 @@ async def test_summary_persists_after_external_call_returns(
     assert persisted is not None
     assert persisted.summary_status == "completed"
     assert persisted.summary_analysis["confidence"] == 0.8
+
+
+def test_cross_source_service_identity_and_recovery_detection() -> None:
+    from models import WebhookEvent
+    from services.incidents.grouping import _event_pair_score, _is_recovery_event
+
+    now = utcnow()
+    prometheus = WebhookEvent(
+        source="prometheus",
+        timestamp=now,
+        parsed_data={"RuleName": "HighLatency", "labels": {"service": "checkout", "environment": "prod"}},
+    )
+    grafana = WebhookEvent(
+        source="grafana",
+        timestamp=now,
+        parsed_data={"AlertName": "CheckoutErrors", "service": "checkout", "env": "prod"},
+    )
+    recovered = WebhookEvent(
+        source="prometheus",
+        timestamp=now,
+        parsed_data={"RuleName": "HighLatency", "status": "resolved"},
+    )
+    broken = WebhookEvent(source="prometheus", timestamp=now, parsed_data={"status": "broken"})
+
+    assert _event_pair_score(prometheus, grafana) >= 0.9
+    stage = WebhookEvent(
+        source="prometheus",
+        timestamp=now,
+        parsed_data={"RuleName": "HighLatency", "labels": {"service": "checkout", "environment": "stage"}},
+    )
+    assert _event_pair_score(prometheus, stage) == 0.0
+    assert _is_recovery_event(recovered) is True
+    assert _is_recovery_event(broken) is False

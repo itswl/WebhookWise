@@ -74,6 +74,7 @@ const IncidentsModule = (function () {
             html += '<div style="display:flex; align-items:center; gap:0.5rem;">';
             html += '<span style="font-weight:600; font-size:1rem; color:var(--text-main);">' + escapeHtml(row.title) + '</span>';
             html += '<span class="badge ' + badge.cls + '" style="font-size:0.65rem;">' + badge.label + '</span>';
+            html += '<span class="badge badge-outline" style="font-size:0.65rem;">' + escapeHtml((row.workflow_status || 'open').replace('_', ' ')) + '</span>';
             html += '</div>';
             html += '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">';
             html += '<span>' + escapeHtml(row.source || '') + '</span> · ';
@@ -82,6 +83,10 @@ const IncidentsModule = (function () {
             if (row.top_importance) {
                 html += ' · <span>' + (row.top_importance === 'high' ? '🔴 high' : row.top_importance === 'medium' ? '🟠 medium' : '🟢 low') + '</span>';
             }
+            if (row.assignee || row.team) {
+                html += ' · <span>👤 ' + escapeHtml(row.assignee || 'Unassigned') + (row.team ? ' / ' + escapeHtml(row.team) : '') + '</span>';
+            }
+            if (row.sla_due_at) html += ' · <span>⏰ ' + escapeHtml(row.sla_due_at.slice(0, 16).replace('T', ' ')) + '</span>';
             html += '</div>';
             html += '</div>';
             // Action buttons: close / reopen (stop propagation so they don't toggle the card)
@@ -154,6 +159,29 @@ const IncidentsModule = (function () {
         var impEmoji = { high: '🔴', medium: '🟠', low: '🟢' };
         var members = data.members || [];
         var html = '';
+
+        html += '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:0.75rem; margin-bottom:1rem; background:var(--bg-base); border-radius:6px;">';
+        html += '<strong>Workflow: ' + escapeHtml((data.workflow_status || 'open').replace('_', ' ')) + '</strong>';
+        html += '<span style="font-size:0.8rem; color:var(--text-muted);">Owner: ' + escapeHtml(data.assignee || 'Unassigned') + (data.team ? ' / ' + escapeHtml(data.team) : '') + '</span>';
+        html += '<span style="font-size:0.8rem; color:var(--text-muted);">SLA: ' + escapeHtml(data.sla_due_at ? data.sla_due_at.replace('T', ' ').slice(0, 19) : 'Not set') + '</span>';
+        if ((data.workflow_status || 'open') === 'open') html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.updateWorkflow(' + data.id + ',\'acknowledged\')">👋 Acknowledge</button>';
+        if (data.workflow_status !== 'resolved' && data.workflow_status !== 'ignored') html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.updateWorkflow(' + data.id + ',\'resolved\')">✅ Resolve</button>';
+        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.assign(' + data.id + ')">👤 Assign / SLA</button>';
+        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.addNote(' + data.id + ')">📝 Add note</button>';
+        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.feedback(' + data.id + ',\'correct\')">👍 AI correct</button>';
+        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.feedback(' + data.id + ',\'grouping_wrong\')">👎 Grouping wrong</button>';
+        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.merge(' + data.id + ')">🔗 Merge</button>';
+        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.split(' + data.id + ')">✂️ Split</button>';
+        html += '</div>';
+
+        var notes = data.notes || [];
+        if (notes.length) {
+            html += '<div style="margin-bottom:1rem;"><strong style="font-size:0.8rem;">Operator notes</strong>';
+            notes.forEach(function (note) {
+                html += '<div style="font-size:0.78rem; padding:5px 0; border-bottom:1px solid var(--border-light);"><span style="color:var(--text-muted);">' + escapeHtml(note.actor) + ':</span> ' + escapeHtml(note.body) + '</div>';
+            });
+            html += '</div>';
+        }
 
         // Summary analysis section
         var summary = data.summary_analysis || {};
@@ -298,6 +326,90 @@ const IncidentsModule = (function () {
         }
     }
 
+    async function updateWorkflow(id, status) {
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/workflow', {
+                method: 'PUT', body: JSON.stringify({ workflow_status: status })
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            delete _detailCache[id];
+            await load();
+        } catch (e) {
+            alert('Workflow update failed: ' + (e.message || e));
+        }
+    }
+
+    async function assign(id) {
+        var data = _detailCache[id] || {};
+        var assignee = prompt('Assignee (leave empty to unassign)', data.assignee || '');
+        if (assignee === null) return;
+        var team = prompt('Team (leave empty to clear)', data.team || '');
+        if (team === null) return;
+        var sla = prompt('SLA in minutes (leave empty to keep current SLA)', '');
+        if (sla === null) return;
+        var body = { assignee: assignee, team: team };
+        if (sla.trim()) body.sla_minutes = Number(sla);
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/workflow', { method: 'PUT', body: JSON.stringify(body) });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            delete _detailCache[id];
+            await load();
+        } catch (e) { alert('Assignment failed: ' + (e.message || e)); }
+    }
+
+    async function addNote(id) {
+        var body = prompt('Operator note', '');
+        if (!body || !body.trim()) return;
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/notes', {
+                method: 'POST', body: JSON.stringify({ body: body.trim(), actor: 'dashboard' })
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            delete _detailCache[id];
+            var detail = document.getElementById('incident-detail-' + id);
+            if (detail) detail.style.display = 'none';
+            await toggle(id);
+        } catch (e) { alert('Adding note failed: ' + (e.message || e)); }
+    }
+
+    async function feedback(id, verdict) {
+        var comment = verdict === 'correct' ? '' : prompt('What should be corrected?', '');
+        if (comment === null) return;
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/feedback', {
+                method: 'POST', body: JSON.stringify({ verdict: verdict, comment: comment || null, actor: 'dashboard' })
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            alert('Feedback recorded');
+        } catch (e) { alert('Feedback failed: ' + (e.message || e)); }
+    }
+
+    async function merge(id) {
+        var value = prompt('Incident IDs to merge into #' + id + ' (comma separated)', '');
+        if (!value) return;
+        var ids = value.split(',').map(function (item) { return Number(item.trim()); }).filter(Number.isInteger);
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/merge', {
+                method: 'POST', body: JSON.stringify({ source_incident_ids: ids })
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            await load();
+        } catch (e) { alert('Merge failed: ' + (e.message || e)); }
+    }
+
+    async function split(id) {
+        var value = prompt('Alert IDs to split into a new incident (comma separated)', '');
+        if (!value) return;
+        var ids = value.split(',').map(function (item) { return Number(item.trim()); }).filter(Number.isInteger);
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/split', {
+                method: 'POST', body: JSON.stringify({ event_ids: ids })
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            await load();
+        } catch (e) { alert('Split failed: ' + (e.message || e)); }
+    }
+
     function search() {
         var term = (document.getElementById('incidentSearchInput') || {}).value || '';
         term = term.trim().toLowerCase();
@@ -331,6 +443,7 @@ const IncidentsModule = (function () {
         h += '<div style="display:flex; align-items:center; gap:0.5rem;">';
         h += '<span style="font-weight:600; font-size:1rem; color:var(--text-main);">' + escapeHtml(row.title) + '</span>';
         h += '<span class="badge ' + badge.cls + '" style="font-size:0.65rem;">' + badge.label + '</span>';
+        h += '<span class="badge badge-outline" style="font-size:0.65rem;">' + escapeHtml((row.workflow_status || 'open').replace('_', ' ')) + '</span>';
         h += '</div>';
         h += '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">';
         h += '<span>' + escapeHtml(row.source || '') + '</span> · ';
@@ -359,6 +472,12 @@ const IncidentsModule = (function () {
         toggleStatus: toggleStatus,
         closeIncident: closeIncident,
         reopenIncident: reopenIncident,
+        updateWorkflow: updateWorkflow,
+        assign: assign,
+        addNote: addNote,
+        feedback: feedback,
+        merge: merge,
+        split: split,
         silenceIncidentSources: silenceIncidentSources
     };
 })();
