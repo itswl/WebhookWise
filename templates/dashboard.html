@@ -34,6 +34,9 @@
                 <button class="nav-tab" data-tab="routing" type="button" data-i18n-aria-label="nav.aria.routing" aria-label="Switch to Routing">
                     <span>⚙️</span> <span data-i18n="nav.tab.routing">Routing</span>
                 </button>
+                <button class="nav-tab" data-tab="noise-center" type="button" data-i18n-aria-label="nav.aria.noise" aria-label="Switch to Noise Center">
+                    <span>🔇</span> <span data-i18n="nav.tab.noise">Noise Center</span>
+                </button>
                 <button class="nav-tab" data-tab="action-center" type="button" data-i18n-aria-label="nav.aria.actions" aria-label="Switch to Action Center">
                     <span>🛠️</span> <span data-i18n="nav.tab.actions">Action Center</span>
                 </button>
@@ -417,6 +420,41 @@
             </div>
         </div>
 
+        <!-- Noise Center Tab -->
+        <div id="noiseCenterTab" class="tab-content" style="display: none;">
+            <div style="padding:20px 0;">
+                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap;">
+                    <div>
+                        <div class="section-title" data-i18n="noise.title">Noise Center</div>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size:0.85rem;" data-i18n="noise.subtitle">Measure alert noise, review safe recommendations, and apply reversible optimizations.</p>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <select id="noiseWindowDays" class="form-input" style="width:auto; padding:6px 12px;" onchange="NoiseCenterModule.load()">
+                            <option value="7" data-i18n="noise.window.7d">7 days</option>
+                            <option value="30" data-i18n="noise.window.30d">30 days</option>
+                            <option value="90" data-i18n="noise.window.90d">90 days</option>
+                        </select>
+                        <button class="btn" onclick="NoiseCenterModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                    </div>
+                </div>
+                <div id="noiseCenterSummary" class="stats-grid" style="margin-bottom:24px;"></div>
+                <div style="display:grid; grid-template-columns:minmax(0, 2fr) minmax(280px, 1fr); gap:20px; align-items:start;" class="noise-center-grid">
+                    <div style="min-width:0;">
+                        <div class="section-title" style="font-size:1rem; margin-bottom:12px;" data-i18n="noise.suggestions.title">Recommended optimizations</div>
+                        <div id="noiseSuggestions"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
+                    </div>
+                    <div style="border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; background:var(--bg-surface);">
+                        <div class="section-title" style="font-size:1rem; margin-bottom:8px;" data-i18n="noise.actions.title">Recent optimizations</div>
+                        <div id="noiseRecentActions"></div>
+                    </div>
+                </div>
+                <div style="margin-top:24px; border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; background:var(--bg-surface);">
+                    <div class="section-title" style="font-size:1rem; margin-bottom:12px;" data-i18n="noise.sources.title">Noisiest sources</div>
+                    <div id="noiseSources"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Action Center Tab -->
         <div id="actionCenterTab" class="tab-content" style="display: none;">
             <div style="padding:20px 0;">
@@ -736,6 +774,7 @@
     <script src="/static/js/deep-analyses.js?v=20260617-noack"></script>
     <script src="/static/js/decision-trace.js?v=20260709-v2"></script>
     <script src="/static/js/action-center.js?v=20260713-product-loop"></script>
-    <script src="/static/js/dashboard.js?v=20260709-v2"></script>
+    <script src="/static/js/noise-center.js?v=20260713-noise-center"></script>
+    <script src="/static/js/dashboard.js?v=20260713-noise-center"></script>
 </body>
 </html>

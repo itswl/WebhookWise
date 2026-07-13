@@ -17,11 +17,14 @@ from schemas.operations import (
     IncidentSplitRequest,
     IntegrationSetupRequest,
     IntegrationTestRequest,
+    NoiseActionUndoRequest,
+    NoiseSuggestionApplyRequest,
     NoteCreateRequest,
     RemediationRequest,
     WorkflowUpdateRequest,
 )
 from services.operations.integration_catalog import install_integration, integration_catalog, test_integration
+from services.operations.noise_center import apply_noise_suggestion, get_noise_center, undo_noise_action
 from services.operations.remediation import run_remediation
 from services.operations.workflow import (
     add_feedback,
@@ -152,6 +155,55 @@ async def feedback_summary_endpoint(
         return ok_response(data=await feedback_summary(session, days=days), http_status=200)
     except _OPERATION_ERRORS as error:
         logger.error("Failed to summarize feedback: %s", error, exc_info=True)
+        return internal_error_response()
+
+
+@operations_router.get("/noise-center")
+async def noise_center_endpoint(
+    days: int = Query(7, ge=1, le=90),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    try:
+        return ok_response(data=await get_noise_center(session, window_days=days), http_status=200)
+    except _OPERATION_ERRORS as error:
+        logger.error("Failed to build noise center: %s", error, exc_info=True)
+        return internal_error_response()
+
+
+@operations_router.post(
+    "/noise-center/actions",
+    dependencies=[Depends(verify_admin_write)],
+)
+async def apply_noise_suggestion_endpoint(
+    payload: NoiseSuggestionApplyRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    try:
+        data = await apply_noise_suggestion(session, **payload.model_dump())
+        if not data.get("changed"):
+            return fail_response(str(data.get("reason") or "Suggestion could not be applied"), 409)
+        return ok_response(data=data, message="Noise-reduction suggestion applied", http_status=200)
+    except _OPERATION_ERRORS as error:
+        logger.error("Failed to apply noise-reduction suggestion: %s", error, exc_info=True)
+        return internal_error_response()
+
+
+@operations_router.post(
+    "/noise-center/actions/{action_id}/undo",
+    dependencies=[Depends(verify_admin_write)],
+)
+async def undo_noise_action_endpoint(
+    action_id: int,
+    payload: NoiseActionUndoRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    try:
+        data = await undo_noise_action(session, action_id=action_id, actor=payload.actor)
+        if not data.get("changed"):
+            return fail_response(str(data.get("reason") or "Action could not be undone"), 409)
+        return ok_response(data=data, message="Noise-reduction action undone", http_status=200)
+    except _OPERATION_ERRORS as error:
+        logger.error("Failed to undo noise-reduction action id=%s: %s", action_id, error, exc_info=True)
         return internal_error_response()
 
 

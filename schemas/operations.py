@@ -109,6 +109,24 @@ class RemediationRequest(BaseModel):
         return self
 
 
+class NoiseSuggestionApplyRequest(BaseModel):
+    """Apply a currently valid noise-reduction recommendation."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    suggestion_id: str = Field(min_length=1, max_length=160)
+    window_days: int = Field(default=7, ge=1, le=90)
+    actor: str = Field(default="operator", min_length=1, max_length=100)
+
+
+class NoiseActionUndoRequest(BaseModel):
+    """Undo a previously applied noise-reduction action."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    actor: str = Field(default="operator", min_length=1, max_length=100)
+
+
 IntegrationTemplate = Literal["feishu", "generic_webhook", "openclaw"]
 
 
