@@ -562,19 +562,21 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     assert "this.getWriteToken()" in api_js
     assert "Admin write permission required" in api_js
     assert "API key is insufficient for this endpoint" in api_js
-    assert "this._tokenCache.read = String(token || '')" in api_js
-    assert "this._tokenCache.write = String(token || '')" in api_js
-    assert "localStorage.setItem" not in api_js
-    assert "localStorage.getItem" not in api_js
+    assert "this._tokenCache.read = value" in api_js
+    assert "this._tokenCache.write = value" in api_js
+    assert "webhookwise_dashboard_api_key" in api_js
+    assert "webhookwise_dashboard_admin_write_key" in api_js
+    assert "storage?.getItem" in api_js
+    assert "storage.setItem" in api_js
     assert "window.indexedDB?.deleteDatabase('webhookwise_auth_crypto')" in api_js
 
     assert 'id="authModal"' in dashboard_html
     assert 'id="authApiKey"' in dashboard_html
     assert 'id="authAdminWriteKey"' in dashboard_html
-    assert "kept only in this page's memory" in dashboard_html
+    assert "restarting the browser" in dashboard_html
 
 
-def test_dashboard_tokens_remain_in_memory_only() -> None:
+def test_dashboard_tokens_persist_in_local_storage() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for dashboard crypto behavior test")
@@ -590,10 +592,11 @@ const context = {{
 }};
 context.window = context;
 const removed = [];
+const localValues = new Map();
 context.localStorage = {{
-  getItem() {{ throw new Error('credential storage must not be read'); }},
-  setItem() {{ throw new Error('credential storage must not be written'); }},
-  removeItem(key) {{ removed.push(key); }}
+  getItem(key) {{ return localValues.has(key) ? localValues.get(key) : null; }},
+  setItem(key, value) {{ localValues.set(key, String(value)); }},
+  removeItem(key) {{ removed.push(key); localValues.delete(key); }}
 }};
 context.indexedDB = {{ deleteDatabase(name) {{ removed.push(name); }} }};
 
@@ -605,8 +608,24 @@ vm.runInNewContext(source + '\\nthis.__API = API;', context, {{ filename: 'api.j
   await api.setWriteToken('write-token');
   if (api.getReadToken() !== 'secret-token') throw new Error('read token cache mismatch');
   if (api.getWriteToken() !== 'write-token') throw new Error('write token cache mismatch');
+  if (localValues.get('webhookwise_dashboard_api_key') !== 'secret-token') {{
+    throw new Error('read token was not saved in local storage');
+  }}
+  if (localValues.get('webhookwise_dashboard_admin_write_key') !== 'write-token') {{
+    throw new Error('write token was not saved in local storage');
+  }}
+
+  api._tokenCache.read = '';
+  api._tokenCache.write = '';
+  api._authStorageInitialized = false;
+  await api.initAuthStorage();
+  if (api.getReadToken() !== 'secret-token' || api.getWriteToken() !== 'write-token') {{
+    throw new Error('tokens were not restored from local storage');
+  }}
+
   await api.clearTokens();
   if (api.getReadToken() || api.getWriteToken()) throw new Error('tokens were not cleared');
+  if (localValues.size !== 0) throw new Error('local storage credentials were not cleared');
   if (!removed.includes('webhook_api_key') || !removed.includes('webhook_admin_write_key')) {{
     throw new Error('legacy persisted tokens were not removed');
   }}

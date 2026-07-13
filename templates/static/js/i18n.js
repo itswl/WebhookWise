@@ -230,12 +230,12 @@
             'auth.adminKeyPlaceholder': 'Used for POST / PUT / DELETE; leave blank to keep unchanged',
             'auth.adminKeyHelp': 'Used for write requests such as re-analysis, manual forwarding, retries, and saving/deleting forward rules.',
             'auth.readNotSaved': 'API_KEY: not loaded',
-            'auth.readSaved': 'API_KEY: loaded for this page',
+            'auth.readSaved': 'API_KEY: saved in this browser',
             'auth.writeNotSaved': 'ADMIN_WRITE_KEY: not loaded',
-            'auth.writeSaved': 'ADMIN_WRITE_KEY: loaded for this page',
-            'auth.storageNote': "Credentials are kept only in this page's memory and are cleared when the page reloads or closes. They are never persisted in browser storage or written to server config.",
+            'auth.writeSaved': 'ADMIN_WRITE_KEY: saved in this browser',
+            'auth.storageNote': 'Credentials are saved in this browser and remain available after refreshes, closing tabs, or restarting the browser. Use “Clear credentials” to remove them. They are never written to server config.',
             'auth.clear': 'Clear credentials',
-            'auth.saveFailed': 'Failed to load credentials into page memory.',
+            'auth.saveFailed': 'Failed to save credentials in this browser.',
 
             // ── Forward modal ──
             'forward.title': 'Forward Alert',
@@ -1023,12 +1023,12 @@
             'auth.adminKeyPlaceholder': '用于 POST / PUT / DELETE；留空则保持不变',
             'auth.adminKeyHelp': '用于写请求，如重新分析、手动转发、重试，以及保存/删除转发规则。',
             'auth.readNotSaved': 'API_KEY：未载入',
-            'auth.readSaved': 'API_KEY：已载入当前页面',
+            'auth.readSaved': 'API_KEY：已保存至此浏览器',
             'auth.writeNotSaved': 'ADMIN_WRITE_KEY：未载入',
-            'auth.writeSaved': 'ADMIN_WRITE_KEY：已载入当前页面',
-            'auth.storageNote': '凭证仅保留在当前页面内存中，刷新或关闭页面即清除；不会持久化到浏览器存储，也不会写入服务端配置。',
+            'auth.writeSaved': 'ADMIN_WRITE_KEY：已保存至此浏览器',
+            'auth.storageNote': '凭证将保存在此浏览器中，刷新页面、关闭标签页或重启浏览器后仍然有效；点击“清除凭证”即可删除。凭证不会写入服务端配置。',
             'auth.clear': '清除凭证',
-            'auth.saveFailed': '无法将凭证载入当前页面内存。',
+            'auth.saveFailed': '无法将凭证保存至此浏览器。',
 
             // ── Forward modal ──
             'forward.title': '转发告警',

@@ -8,6 +8,11 @@ const API = {
         read: '',
         write: ''
     },
+    _localStorageKeys: {
+        read: 'webhookwise_dashboard_api_key',
+        write: 'webhookwise_dashboard_admin_write_key'
+    },
+    _authStorageInitialized: false,
     _legacyStorageCleared: false,
     /**
      * Get the read-only API Token
@@ -25,16 +30,25 @@ const API = {
     },
 
     async setReadToken(token) {
-        this._tokenCache.read = String(token || '');
+        await this.initAuthStorage();
+        const value = String(token || '');
+        this._tokenCache.read = value;
+        this.persistLocalToken(this._localStorageKeys.read, value);
     },
 
     async setWriteToken(token) {
-        this._tokenCache.write = String(token || '');
+        await this.initAuthStorage();
+        const value = String(token || '');
+        this._tokenCache.write = value;
+        this.persistLocalToken(this._localStorageKeys.write, value);
     },
 
     async clearTokens() {
+        await this.initAuthStorage();
         this._tokenCache.read = '';
         this._tokenCache.write = '';
+        this.persistLocalToken(this._localStorageKeys.read, '');
+        this.persistLocalToken(this._localStorageKeys.write, '');
         this.clearLegacyPersistedTokens();
     },
 
@@ -46,10 +60,34 @@ const API = {
     },
 
     async initAuthStorage() {
-        // Credentials intentionally live only in page memory. Persisting both
-        // ciphertext and its decrypting key under one origin does not protect
-        // against same-origin script compromise.
+        if (this._authStorageInitialized) return;
+
         this.clearLegacyPersistedTokens();
+        try {
+            const storage = window.localStorage;
+            this._tokenCache.read = storage?.getItem(this._localStorageKeys.read) || '';
+            this._tokenCache.write = storage?.getItem(this._localStorageKeys.write) || '';
+        } catch (error) {
+            // Fall back to page memory when browser privacy settings block local storage.
+            console.warn('Browser local storage is unavailable; credentials will not survive a reload', error);
+        } finally {
+            this._authStorageInitialized = true;
+        }
+    },
+
+    persistLocalToken(key, value) {
+        try {
+            const storage = window.localStorage;
+            if (!storage) return;
+            if (value) {
+                storage.setItem(key, value);
+            } else {
+                storage.removeItem(key);
+            }
+        } catch (error) {
+            // Keep the in-memory token usable even if local storage is unavailable.
+            console.warn('Failed to update browser credentials', error);
+        }
     },
 
     clearLegacyPersistedTokens() {
@@ -143,7 +181,7 @@ const API = {
                                     updateAuthButtonState();
                                 }
                             } catch (error) {
-                                console.error('Failed to load credentials into page memory', error);
+                                console.error('Failed to save credentials in the browser', error);
                                 resolve(null);
                                 this._authPromises[authMode] = null;
                                 return;
