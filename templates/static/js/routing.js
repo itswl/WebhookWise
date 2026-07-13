@@ -15,7 +15,8 @@ const RoutingModule = (function () {
         rules: 'routingViewRules',
         silences: 'routingViewSilences',
         sandbox: 'routingViewSandbox',
-        audit: 'routingViewAudit'
+        audit: 'routingViewAudit',
+        integrations: 'routingViewIntegrations'
     };
 
     function loadView(view) {
@@ -28,6 +29,8 @@ const RoutingModule = (function () {
             if (typeof SandboxModule !== 'undefined') SandboxModule.load();
         } else if (view === 'audit') {
             if (typeof RuleAuditModule !== 'undefined') RuleAuditModule.load();
+        } else if (view === 'integrations') {
+            if (typeof IntegrationsModule !== 'undefined') IntegrationsModule.load();
         }
     }
 

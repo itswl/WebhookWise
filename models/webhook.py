@@ -91,6 +91,13 @@ class WebhookEvent(Base):
     duplicate_count: Mapped[int] = mapped_column(Integer, default=1)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
 
+    workflow_status: Mapped[str] = mapped_column(String(20), default="open", server_default="open", nullable=False)
+    assignee: Mapped[str | None] = mapped_column(String(100))
+    team: Mapped[str | None] = mapped_column(String(100))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    sla_due_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow(), server_default=func.now()
@@ -176,6 +183,13 @@ class ArchivedWebhookEvent(Base):
     duplicate_of: Mapped[int | None] = mapped_column(Integer)
     duplicate_count: Mapped[int | None] = mapped_column(Integer)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    workflow_status: Mapped[str | None] = mapped_column(String(20))
+    assignee: Mapped[str | None] = mapped_column(String(100))
+    team: Mapped[str | None] = mapped_column(String(100))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    sla_due_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)

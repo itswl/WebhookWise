@@ -113,6 +113,48 @@ async def test_collect_report_stats_excludes_events_outside_window(session: Asyn
 
 
 @pytest.mark.asyncio
+async def test_report_includes_previous_window_and_operator_health(session: AsyncSession) -> None:
+    from datetime import timedelta
+
+    from models import AnalysisFeedback, DecisionTrace, ForwardOutbox, Incident
+    from services.operations.periodic_report import collect_report_stats
+
+    now = utcnow()
+    session.add(WebhookEvent(source="current", timestamp=now, is_duplicate=True))
+    session.add(WebhookEvent(source="previous", timestamp=now - timedelta(days=8), is_duplicate=False))
+    session.add(
+        Incident(
+            title="open incident",
+            status="active",
+            workflow_status="open",
+            source="current",
+            started_at=now,
+            alert_count=2,
+            sla_due_at=now - timedelta(minutes=1),
+        )
+    )
+    session.add(DecisionTrace(webhook_event_id=1, created_at=now, outcome="forwarded", degraded_reason="timeout"))
+    session.add(AnalysisFeedback(resource_type="webhook_event", resource_id=1, verdict="correct", actor="tester"))
+    session.add(
+        ForwardOutbox(
+            idempotency_key="report-test",
+            target_type="webhook",
+            status="sent",
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    await session.commit()
+
+    stats = await collect_report_stats(session, window_days=7)
+    assert stats["previous_total_events"] == 1
+    assert stats["delivery_success_rate"] == 100.0
+    assert stats["ai_degraded"] == 1
+    assert stats["sla_breaches"] == 1
+    assert stats["feedback_agreement_pct"] == 100.0
+
+
+@pytest.mark.asyncio
 async def test_weekly_report_no_op_when_disabled(temp_config) -> None:
     from services.operations.periodic_report import generate_and_send_report
 

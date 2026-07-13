@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
 from core.logger import mask_url
-from models import AuditLog, ForwardOutbox, ForwardRule, Incident, WebhookEvent
+from models import AnalysisFeedback, AuditLog, ForwardOutbox, ForwardRule, Incident, WebhookEvent
 from services.webhooks.types import ForwardOutboxStatus, WebhookProcessingStatus
 
 _URL_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
@@ -36,6 +36,7 @@ def _item(
     resource_type: str = "",
     resource_id: int | None = None,
     view: str = "",
+    actions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "id": item_id,
@@ -48,6 +49,7 @@ def _item(
         "resource_type": resource_type,
         "resource_id": resource_id,
         "view": view,
+        "actions": actions or [],
     }
 
 
@@ -90,6 +92,7 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 resource_type="forward_rule",
                 resource_id=rule.id,
                 view="routing",
+                actions=[{"action": "test_enable_rule", "label": "Test and enable", "resource_id": rule.id}],
             )
         )
 
@@ -134,6 +137,7 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 resource_type="outbox",
                 resource_id=record.id,
                 view="decision-trace",
+                actions=[{"action": "retry_outbox", "label": "Retry delivery", "resource_id": record.id}],
             )
         )
 
@@ -167,6 +171,7 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 resource_type="webhook_event",
                 resource_id=latest_dead_letter.id if latest_dead_letter else None,
                 view="alerts",
+                actions=[{"action": "retry_dead_letters", "label": "Replay batch"}],
             )
         )
 
@@ -200,6 +205,7 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 occurred_at=now,
                 resource_type="webhook_event",
                 view="alerts",
+                actions=[{"action": "retry_stuck_events", "label": "Retry stuck events"}],
             )
         )
 
@@ -266,14 +272,105 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 resource_type="incident",
                 resource_id=latest_summary_failure.id if latest_summary_failure else None,
                 view="incidents",
+                actions=[{"action": "retry_incident_summaries", "label": "Retry summaries"}],
             )
         )
+
+    overdue_incidents = list(
+        (
+            await session.execute(
+                select(Incident)
+                .where(
+                    Incident.sla_due_at.isnot(None),
+                    Incident.sla_due_at <= now,
+                    Incident.workflow_status.notin_(["resolved", "ignored"]),
+                )
+                .order_by(Incident.sla_due_at, Incident.id)
+                .limit(10)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    overdue_events = list(
+        (
+            await session.execute(
+                select(WebhookEvent)
+                .where(
+                    WebhookEvent.sla_due_at.isnot(None),
+                    WebhookEvent.sla_due_at <= now,
+                    WebhookEvent.workflow_status.notin_(["resolved", "ignored"]),
+                )
+                .order_by(WebhookEvent.sla_due_at, WebhookEvent.id)
+                .limit(10)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    items.extend(
+        [
+            _item(
+                item_id=f"incident-sla:{incident.id}",
+                kind="sla_breached",
+                severity="critical",
+                title=f"Incident SLA breached: {incident.title}",
+                detail=f"Due at {utc_isoformat(incident.sla_due_at)}; status is {incident.workflow_status}",
+                occurred_at=incident.sla_due_at,
+                resource_type="incident",
+                resource_id=incident.id,
+                view="incidents",
+                actions=[
+                    {
+                        "action": "acknowledge",
+                        "label": "Acknowledge",
+                        "resource_id": incident.id,
+                        "resource_type": "incident",
+                    }
+                ],
+            )
+            for incident in overdue_incidents
+        ]
+    )
+    items.extend(
+        [
+            _item(
+                item_id=f"event-sla:{event.id}",
+                kind="sla_breached",
+                severity="critical",
+                title=f"Alert SLA breached: #{event.id}",
+                detail=f"Due at {utc_isoformat(event.sla_due_at)}; status is {event.workflow_status}",
+                occurred_at=event.sla_due_at,
+                resource_type="webhook_event",
+                resource_id=event.id,
+                view="alerts",
+                actions=[
+                    {
+                        "action": "acknowledge",
+                        "label": "Acknowledge",
+                        "resource_id": event.id,
+                        "resource_type": "webhook_event",
+                    }
+                ],
+            )
+            for event in overdue_events
+        ]
+    )
 
     severity_order = {"critical": 0, "warning": 1, "info": 2}
     items.sort(key=lambda item: str(item["occurred_at"] or ""), reverse=True)
     items.sort(key=lambda item: severity_order.get(str(item["severity"]), 3))
     critical = sum(1 for item in items if item["severity"] == "critical")
     warning = sum(1 for item in items if item["severity"] == "warning")
+    feedback_rows = (
+        await session.execute(
+            select(AnalysisFeedback.verdict, func.count(AnalysisFeedback.id))
+            .where(AnalysisFeedback.created_at >= now - timedelta(days=30))
+            .group_by(AnalysisFeedback.verdict)
+        )
+    ).all()
+    feedback_breakdown = {str(verdict): int(count) for verdict, count in feedback_rows}
+    feedback_total = sum(feedback_breakdown.values())
     return {
         "summary": {
             "total": len(items),
@@ -283,6 +380,13 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
             "dead_letters": dead_letter_count,
             "stuck_events": stuck_count,
             "delayed_deliveries": stale_outbox_count,
+            "sla_breaches": len(overdue_incidents) + len(overdue_events),
+            "feedback_total_30d": feedback_total,
+            "feedback_agreement_pct": (
+                round(100.0 * feedback_breakdown.get("correct", 0) / feedback_total, 1)
+                if feedback_total
+                else None
+            ),
         },
         "items": items[:30],
         "generated_at": utc_isoformat(now),

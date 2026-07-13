@@ -250,6 +250,7 @@ class NotificationConfig(StaticSettings):
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
     FEISHU_WEBHOOK_TIMEOUT_SECONDS: int = Field(default=10, gt=0)
     AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600, gt=0)
+    DASHBOARD_PUBLIC_URL: str = Field(default="")
 
     # Periodic alert-health digest (cost + noise report). Reads already-collected
     # AIUsageLog + webhook_events, summarizes the numbers, and pushes one card to
