@@ -498,7 +498,7 @@
                     <span id="authWriteStatus" data-i18n="auth.writeNotSaved">ADMIN_WRITE_KEY: not saved</span>
                 </div>
                 <p style="margin: 14px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="auth.storageNote">
-                    Credentials are kept only in this page's memory and are cleared when the page reloads or closes. They are never persisted in browser storage or written to server config.
+                    Credentials are saved in this browser and remain available after refreshes, closing tabs, or restarting the browser. Use “Clear credentials” to remove them. They are never written to server config.
                 </p>
             </div>
             <div class="modal-footer">
@@ -757,10 +757,10 @@
     </div>
 
     <!-- External scripts (loaded in dependency order) -->
-    <script src="/static/js/i18n.js?v=20260713-alert-card"></script>
+    <script src="/static/js/i18n.js?v=20260713-persistent-credentials"></script>
     <script src="/static/js/faro.js"></script>
     <script src="/static/js/utils.js?v=20260617-noack"></script>
-    <script src="/static/js/api.js?v=20260713-alert-card"></script>
+    <script src="/static/js/api.js?v=20260713-persistent-credentials"></script>
     <script src="/static/js/overview.js?v=20260709-v2"></script>
     <script src="/static/js/alerts.js?v=20260713-alert-card"></script>
     <script src="/static/js/ai-cost.js?v=20260622-batchb"></script>
