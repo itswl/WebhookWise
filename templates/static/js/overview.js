@@ -142,7 +142,7 @@ const OverviewModule = {
             var impEmoji = { high: '🔴', medium: '🟠', low: '🟢' };
             for (var i = 0; i < Math.min(incidents.length, 5); i++) {
                 var inc = incidents[i];
-                html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="document.querySelector(\'[data-tab=incidents]\').click()">';
+                html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="openInboxIncidents()">';
                 html += '<span style="font-size:1.2rem;">🔥</span>';
                 html += '<div style="flex:1; min-width:0;">';
                 html += '<div style="font-weight:500; font-size:0.9rem;">' + this.escapeHtml(inc.title) + '</div>';

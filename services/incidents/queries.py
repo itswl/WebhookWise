@@ -19,9 +19,10 @@ async def list_incidents(
     status: str = "",
     page: int = 1,
     page_size: int = 20,
+    min_alert_count: int = 2,
 ) -> tuple[list[dict[str, Any]], bool, int | None]:
     """Cursor-paginated incident list, newest first."""
-    query = select(Incident)
+    query = select(Incident).where(Incident.alert_count >= max(1, min_alert_count))
     if status:
         query = query.where(Incident.status == status)
     query = query.order_by(Incident.id.desc())
@@ -40,6 +41,8 @@ async def get_incident_detail(session: AsyncSession, incident_id: int) -> dict[s
         return None
 
     result = _incident_row(incident)
+    result["summary_analysis"] = incident.summary_analysis or {}
+    result["summary_status"] = incident.summary_status
 
     # Load only the most recent 50 members through the normalized membership
     # table. The database supplies timeline order and enforces event integrity.
@@ -95,5 +98,6 @@ def _incident_row(incident: Incident) -> dict[str, Any]:
         "ended_at": utc_isoformat(incident.ended_at),
         "alert_count": incident.alert_count,
         "top_importance": incident.top_importance,
+        "summary_status": incident.summary_status,
         "created_at": utc_isoformat(incident.created_at),
     }

@@ -1,23 +1,93 @@
-"""Forwarding rule CRUD."""
+"""Forwarding rule CRUD and delivery-health read models."""
 
+import re
 from collections.abc import Mapping
+from datetime import timedelta
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
+from core.logger import mask_url
 from core.pubsub_cache import TtlPubSubCache
 from db.session import session_scope
-from models import ForwardRule
+from models import ForwardOutbox, ForwardRule
 from services.forwarding.types import ForwardRuleSnapshot
 
 _RULES_INVALIDATION_CHANNEL = "webhookwise:forward_rules:invalidate"
+_URL_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
+
+
+def _safe_delivery_error(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return _URL_PATTERN.sub(lambda match: mask_url(match.group(0)), text)[:200]
 
 
 async def get_forward_rules(session: AsyncSession) -> list[ForwardRule]:
     stmt = select(ForwardRule).order_by(ForwardRule.priority.desc())
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def get_forward_rule_delivery_health(
+    session: AsyncSession,
+    rule_ids: list[int],
+) -> dict[int, dict[str, Any]]:
+    """Return one latest-delivery snapshot plus the recent failure count per rule."""
+    if not rule_ids:
+        return {}
+
+    ranked = (
+        select(
+            ForwardOutbox.forward_rule_id.label("rule_id"),
+            ForwardOutbox.status,
+            ForwardOutbox.last_error,
+            ForwardOutbox.updated_at,
+            func.row_number()
+            .over(
+                partition_by=ForwardOutbox.forward_rule_id,
+                order_by=(ForwardOutbox.updated_at.desc(), ForwardOutbox.id.desc()),
+            )
+            .label("row_number"),
+        )
+        .where(ForwardOutbox.forward_rule_id.in_(rule_ids))
+        .subquery()
+    )
+    latest_rows = (
+        await session.execute(
+            select(
+                ranked.c.rule_id,
+                ranked.c.status,
+                ranked.c.last_error,
+                ranked.c.updated_at,
+            ).where(ranked.c.row_number == 1)
+        )
+    ).all()
+    failure_rows = (
+        await session.execute(
+            select(ForwardOutbox.forward_rule_id, func.count())
+            .where(
+                ForwardOutbox.forward_rule_id.in_(rule_ids),
+                ForwardOutbox.status == "exhausted",
+                ForwardOutbox.updated_at >= utcnow() - timedelta(hours=24),
+            )
+            .group_by(ForwardOutbox.forward_rule_id)
+        )
+    ).all()
+    failure_counts = {int(rule_id): int(count) for rule_id, count in failure_rows if rule_id is not None}
+    return {
+        int(row.rule_id): {
+            "delivery_status": str(row.status or "unknown"),
+            "delivery_failure_count_24h": failure_counts.get(int(row.rule_id), 0),
+            "last_delivery_at": row.updated_at,
+            "last_delivery_error": _safe_delivery_error(row.last_error),
+        }
+        for row in latest_rows
+        if row.rule_id is not None
+    }
 
 
 async def create_forward_rule(

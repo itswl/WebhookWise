@@ -1,5 +1,7 @@
 """Incident read-side API — list, detail, and summary."""
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
@@ -33,12 +35,18 @@ async def list_incidents_endpoint(
     status: str = Query(""),
     page: int = Query(1, ge=1, le=1000),
     page_size: int = Query(30, ge=1, le=200),
+    min_alert_count: Annotated[int, Query(ge=1, le=200)] = 2,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """List incidents, newest first. Filter by status (active/quiet/closed)."""
     try:
         rows, has_more, next_cursor = await list_incidents(
-            session, cursor=cursor, status=status, page=page, page_size=page_size
+            session,
+            cursor=cursor,
+            status=status,
+            page=page,
+            page_size=page_size,
+            min_alert_count=min_alert_count,
         )
         return ok_response(
             data=rows,
@@ -129,11 +137,15 @@ async def close_incident_endpoint(incident_id: int, session: AsyncSession = Depe
             return fail_response(f"Incident {incident_id} not found", 404)
         incident.status = "closed"
         incident.ended_at = incident.ended_at or utcnow()
-        if incident.summary_analysis is None:
+        if incident.summary_analysis is None and incident.alert_count >= 2:
             incident.summary_status = "pending"
             incident.summary_attempts = 0
             incident.summary_next_attempt_at = utcnow()
             incident.summary_last_error = None
+        elif incident.summary_analysis is None:
+            incident.summary_status = "skipped"
+            incident.summary_next_attempt_at = None
+            incident.summary_last_error = "singleton incidents are not summarized"
         add_audit(
             session,
             "incident",

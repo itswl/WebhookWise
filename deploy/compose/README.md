@@ -35,8 +35,16 @@ docker compose -p webhookwise --env-file .env -f deploy/compose/docker-compose.y
 
 ## Local Observability Stack
 
+The default stack keeps only Alloy, Prometheus, Alertmanager, Loki, and Grafana running:
+
 ```bash
 docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d --build
+```
+
+Enable the diagnostics profile temporarily when traces, continuous profiles, or eBPF signals are needed. It adds Tempo, Pyroscope, and Beyla:
+
+```bash
+docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile diagnostics up -d --build
 ```
 
 Check the observability stack status:

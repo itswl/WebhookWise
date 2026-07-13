@@ -111,6 +111,9 @@ def test_local_observability_images_are_pinned_and_alerts_have_receiver() -> Non
     assert compose["name"] == "webhookwise-observability"
     assert not {"webhook-service", "worker", "scheduler", "migrate"} & set(compose["services"])
     assert compose["services"]["beyla"]["pid"] == "container:webhook-receiver"
+    assert compose["services"]["beyla"]["profiles"] == ["diagnostics"]
+    assert compose["services"]["tempo"]["profiles"] == ["diagnostics"]
+    assert compose["services"]["pyroscope"]["profiles"] == ["diagnostics"]
     assert compose["networks"]["webhook_net"] == {
         "name": "webhookwise_webhook_net",
         "external": True,

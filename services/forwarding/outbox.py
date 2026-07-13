@@ -36,7 +36,7 @@ from core.observability.metrics import (
 )
 from core.observability.tracing import otel_span, set_span_error
 from db.session import session_scope
-from models import DeepAnalysis, ForwardOutbox, WebhookEvent
+from models import DeepAnalysis, ForwardOutbox, ForwardRule, WebhookEvent
 from services.forwarding import outbox_queries, outbox_records, outbox_scheduling
 from services.forwarding import rules as forwarding_rules
 from services.forwarding.channels import resolve_channel
@@ -299,7 +299,11 @@ async def _deliver_one(outbox_id: int, *, policy: ForwardDeliveryPolicy) -> Forw
         await _finalize_outbox_success(record, result)
     else:
         await _finalize_outbox_failure(
-            outbox_id, f"status={result.get('status')}: {result.get('message', '')}", policy=policy
+            outbox_id,
+            f"status={result.get('status')}: {result.get('message', '')}",
+            policy=policy,
+            permanent=result.get("retryable") is False,
+            quarantine_rule=result.get("disable_rule") is True,
         )
     return {**result, "outbox_id": outbox_id}
 
@@ -337,7 +341,10 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
             else:
                 status = "failed"
                 await _finalize_outbox_failure(
-                    record.id, f"forward status={result.get('status')}: {result.get('message', '')}"
+                    record.id,
+                    f"forward status={result.get('status')}: {result.get('message', '')}",
+                    permanent=result.get("retryable") is False,
+                    quarantine_rule=result.get("disable_rule") is True,
                 )
             if outbox_span is not None:
                 outbox_span.set_attribute("forward.status", status)
@@ -483,12 +490,18 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
 
 
 async def _finalize_outbox_failure(
-    outbox_id: int, error_msg: str, *, policy: ForwardDeliveryPolicy | None = None
+    outbox_id: int,
+    error_msg: str,
+    *,
+    policy: ForwardDeliveryPolicy | None = None,
+    permanent: bool = False,
+    quarantine_rule: bool = False,
 ) -> None:
     now = utcnow()
     retry_outbox_id: int | None = None
     retry_delay: int | None = None
     exhausted_record: ForwardOutbox | None = None
+    quarantined_rule = False
 
     if policy is None:
         policy = ForwardDeliveryPolicy.from_config()
@@ -499,14 +512,15 @@ async def _finalize_outbox_failure(
             return
         record.last_error = error_msg[:2000]
         record.updated_at = now
-        if record.attempts >= record.max_attempts:
+        if permanent or record.attempts >= record.max_attempts:
             record.status = ForwardOutboxStatus.EXHAUSTED
             record.next_attempt_at = None
             _state_logger.warning(
-                "[ForwardOutbox] Forward exhausted id=%s attempts=%s/%s error=%s",
+                "[ForwardOutbox] Forward exhausted id=%s attempts=%s/%s permanent=%s error=%s",
                 record.id,
                 record.attempts,
                 record.max_attempts,
+                permanent,
                 error_msg,
             )
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "exhausted").inc()
@@ -516,6 +530,29 @@ async def _finalize_outbox_failure(
                 await session.execute(
                     update(WebhookEvent).where(WebhookEvent.id.in_(evt_ids)).values(forward_status="failed")
                 )
+            if quarantine_rule and record.forward_rule_id is not None:
+                rule = await session.get(ForwardRule, record.forward_rule_id)
+                if rule is not None and rule.enabled:
+                    from services.operations.audit_logger import add_audit
+
+                    rule.enabled = False
+                    rule.updated_at = now
+                    add_audit(
+                        session,
+                        "forward_rule",
+                        rule.id,
+                        rule.name,
+                        "auto_disabled",
+                        f"Forward rule auto-disabled after permanent delivery failure: {error_msg[:300]}",
+                        actor="system",
+                    )
+                    quarantined_rule = True
+                    _state_logger.error(
+                        "[ForwardOutbox] Forward rule auto-disabled rule_id=%s name=%s outbox_id=%s",
+                        rule.id,
+                        rule.name,
+                        record.id,
+                    )
         else:
             delay = policy.delay_for_attempt(record.attempts)
             record.status = ForwardOutboxStatus.RETRYING
@@ -524,6 +561,10 @@ async def _finalize_outbox_failure(
             retry_delay = delay
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(record.target_type or "unknown"), "retrying").inc()
             _state_logger.info("[ForwardOutbox] Forward failed id=%s delay=%ss error=%s", record.id, delay, error_msg)
+
+    if quarantined_rule:
+        forwarding_rules.invalidate_forward_rules_cache()
+        await forwarding_rules.publish_rules_invalidation()
 
     if exhausted_record is not None:
         try:

@@ -64,22 +64,32 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
     # labelled "Overview"); Forward Rules / Silences / Sandbox are sub-views of the
     # Routing tab. So the standalone overview / ai-cost / outbox / forward-rules /
     # silences / sandbox tabs no longer exist.
-    assert {"alerts", "incidents", "deep-analyses", "decision-trace", "routing"} <= tabs
+    assert {"alerts", "decision-trace", "routing", "action-center"} <= tabs
     assert {
         "alertsTab",
-        "incidentsTab",
-        "deepAnalysesTab",
         "decisionTraceTab",
         "routingTab",
+        "actionCenterTab",
     } <= panels
-    assert {"overview", "ai-cost", "outbox", "forward-rules", "silences", "sandbox"}.isdisjoint(tabs)
+    assert {
+        "overview",
+        "ai-cost",
+        "outbox",
+        "forward-rules",
+        "silences",
+        "sandbox",
+        "incidents",
+        "deep-analyses",
+    }.isdisjoint(tabs)
     assert {"overviewTab", "aiCostTab", "outboxTab", "forwardRulesTab", "silencesTab", "sandboxTab"}.isdisjoint(panels)
     # The landing tab's forwarding-analytics sub-views (Overview | Decision Trace | AI Cost).
     dt_views = set(re.findall(r'data-dt-view="([^"]+)"', html))
     assert {"overview", "trace", "cost"} <= dt_views
-    # The three Routing sub-views are present.
+    inbox_views = set(re.findall(r'data-inbox-view="([^"]+)"', html))
+    assert {"alerts", "incidents", "investigations"} <= inbox_views
+    # Sandbox and Audit remain secondary tools opened from the Rules view.
     routing_views = set(re.findall(r'data-routing-view="([^"]+)"', html))
-    assert {"rules", "silences", "sandbox"} <= routing_views
+    assert {"rules", "silences"} <= routing_views
 
 
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:

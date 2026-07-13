@@ -27,18 +27,15 @@
                 <button class="nav-tab active" data-tab="decision-trace" type="button" data-i18n-aria-label="nav.aria.overview" aria-label="Switch to Overview">
                     <span>📊</span> <span data-i18n="nav.tab.overview">Overview</span>
                 </button>
-                <button class="nav-tab" data-tab="alerts" type="button" data-i18n-aria-label="nav.aria.alerts" aria-label="Switch to Alerts">
-                    <span>🔔</span> <span data-i18n="nav.tab.alerts">Alerts</span>
-                </button>
-                <button class="nav-tab" data-tab="incidents" type="button" data-i18n-aria-label="nav.aria.incidents" aria-label="Switch to Incidents" style="position:relative;">
-                    <span>🚨</span> <span data-i18n="nav.tab.incidents">Incidents</span>
+                <button class="nav-tab" data-tab="alerts" type="button" data-i18n-aria-label="nav.aria.alerts" aria-label="Switch to Inbox" style="position:relative;">
+                    <span>🔔</span> <span data-i18n="nav.tab.inbox">Inbox</span>
                     <span id="incidentsBadge" style="display:none; position:absolute; top:-4px; right:-8px; background:var(--danger,#ef4444); color:#fff; border-radius:10px; padding:0 5px; font-size:0.6rem; font-weight:700; min-width:16px; text-align:center; line-height:16px;"></span>
-                </button>
-                <button class="nav-tab" data-tab="deep-analyses" type="button" data-i18n-aria-label="nav.aria.deep" aria-label="Switch to Deep Analysis">
-                    <span>🔬</span> <span data-i18n="nav.tab.deep">Deep Analysis</span>
                 </button>
                 <button class="nav-tab" data-tab="routing" type="button" data-i18n-aria-label="nav.aria.routing" aria-label="Switch to Routing">
                     <span>⚙️</span> <span data-i18n="nav.tab.routing">Routing</span>
+                </button>
+                <button class="nav-tab" data-tab="action-center" type="button" data-i18n-aria-label="nav.aria.actions" aria-label="Switch to Action Center">
+                    <span>🛠️</span> <span data-i18n="nav.tab.actions">Action Center</span>
                 </button>
             </div>
             <div class="nav-actions">
@@ -64,8 +61,16 @@
 
     <!-- Main container -->
     <div class="container">
-        <!-- Alerts Tab -->
+        <!-- Inbox Tab: Alerts | Incidents | Investigations -->
         <div id="alertsTab" class="tab-content" style="display: none;">
+            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; margin:20px 0; flex-wrap:wrap; gap:12px;">
+                <div class="inbox-view-switch" style="display:flex; gap:8px; align-items:center;">
+                    <button class="btn inbox-view-btn active" data-inbox-view="alerts" data-i18n="inbox.view.alerts">Alerts</button>
+                    <button class="btn inbox-view-btn" data-inbox-view="incidents" data-i18n="inbox.view.incidents">Incidents</button>
+                    <button class="btn inbox-view-btn" data-inbox-view="investigations" data-i18n="inbox.view.investigations">Investigations</button>
+                </div>
+            </div>
+            <div id="inboxViewAlerts">
             <!-- Stat cards -->
             <div class="stats-section">
                 <div class="section-title" data-i18n="alerts.stats.title">Live Statistics</div>
@@ -175,10 +180,10 @@
                     <option value="50" data-i18n="alerts.page.perPage50">50 / page</option>
                 </select>
             </div>
-        </div>
+            </div>
 
-        <!-- Incidents Tab -->
-        <div id="incidentsTab" class="tab-content" style="display: none;">
+        <!-- Inbox: Incidents view -->
+        <div id="inboxViewIncidents" style="display: none;">
             <div class="incidents-section" style="padding: 20px 0;">
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <div>
@@ -187,7 +192,7 @@
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
                         <input type="text" id="incidentSearchInput" placeholder="Search incidents..." oninput="IncidentsModule.search()" style="width:180px; padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.82rem;" data-i18n-placeholder="incidents.searchPlaceholder">
-                        <select id="incidentStatusFilter" onchange="IncidentsModule.load()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.82rem;">
+                        <select id="incidentStatusFilter" onchange="IncidentsModule.toggleStatus()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.82rem;">
                             <option value="">All</option>
                             <option value="active">🔥 Active</option>
                             <option value="quiet">🔇 Quiet</option>
@@ -202,8 +207,8 @@
             </div>
         </div>
 
-        <!-- Deep Analysis Tab -->
-        <div id="deepAnalysesTab" class="tab-content" style="display: none;">
+        <!-- Inbox: Investigations view -->
+        <div id="inboxViewInvestigations" style="display: none;">
             <div class="deep-analyses-section">
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <div class="section-title" data-i18n="deep.title">Deep Analysis Records</div>
@@ -217,7 +222,6 @@
                         <select id="daEngineFilter" class="form-input" style="width: auto; padding: 6px 12px;">
                             <option value="" data-i18n="deep.engine.all">All engines</option>
                             <option value="openclaw" data-i18n="deep.engine.openclaw">OpenClaw</option>
-                            <option value="local" data-i18n="deep.engine.local">Local AI</option>
                         </select>
                         <button class="btn" onclick="DeepAnalysesModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
@@ -227,6 +231,7 @@
                 </div>
                 <div id="deepAnalysesPagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;"></div>
             </div>
+        </div>
         </div>
 
         <!-- Overview landing tab: Overview | Decision Trace | AI Cost sub-views.
@@ -304,8 +309,6 @@
                     <div class="routing-view-switch" style="display: flex; gap: 8px; align-items: center;">
                         <button class="btn routing-view-btn active" data-routing-view="rules" data-i18n="routing.view.rules">Forward Rules</button>
                         <button class="btn routing-view-btn" data-routing-view="silences" data-i18n="routing.view.silences">Silences</button>
-                        <button class="btn routing-view-btn" data-routing-view="sandbox" data-i18n="routing.view.sandbox">Sandbox</button>
-                        <button class="btn routing-view-btn" data-routing-view="audit" data-i18n="routing.view.audit">Audit</button>
                     </div>
                 </div>
 
@@ -313,9 +316,11 @@
                 <div id="routingViewRules" class="forward-rules-section">
                     <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <div class="section-title" data-i18n="rules.title">Forward Rule Configuration</div>
-                        <button class="btn btn-primary" onclick="showRuleForm()">
-                            <span>➕</span> <span data-i18n="rules.add">Add Rule</span>
-                        </button>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button class="btn" onclick="RoutingModule.setView('sandbox')">🧪 <span data-i18n="routing.view.sandbox">Test Payload</span></button>
+                            <button class="btn" onclick="RoutingModule.setView('audit')">📋 <span data-i18n="routing.view.audit">Audit</span></button>
+                            <button class="btn btn-primary" onclick="showRuleForm()"><span>➕</span> <span data-i18n="rules.add">Add Rule</span></button>
+                        </div>
                     </div>
                     <div id="forwardRulesList">
                         <div class="loading">
@@ -347,7 +352,10 @@
                 <!-- View: Sandbox -->
                 <div id="routingViewSandbox" class="sandbox-section" style="display: none;">
                     <div class="section-header" style="margin-bottom: 20px;">
-                        <div class="section-title" data-i18n="sandbox.title">Payload Sandbox</div>
+                        <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
+                            <div class="section-title" data-i18n="sandbox.title">Payload Sandbox</div>
+                            <button class="btn" onclick="RoutingModule.setView('rules')">← <span data-i18n="routing.view.rules">Forward Rules</span></button>
+                        </div>
                         <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="sandbox.subtitle">Paste a raw alert payload and see what WebhookWise would extract and decide — which adapter parses it, the alert identity, and which rules/silences would match. Nothing is queued, analyzed by AI, or saved.</p>
                     </div>
                     <div class="sandbox-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start;">
@@ -388,12 +396,28 @@
                                 <option value="180">180 days</option>
                             </select>
                             <button class="btn" onclick="RuleAuditModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                            <button class="btn" onclick="RoutingModule.setView('rules')">← <span data-i18n="routing.view.rules">Forward Rules</span></button>
                         </div>
                     </div>
                     <div id="ruleAuditResult">
                         <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Action Center Tab -->
+        <div id="actionCenterTab" class="tab-content" style="display: none;">
+            <div style="padding:20px 0;">
+                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px;">
+                    <div>
+                        <div class="section-title" data-i18n="action.title">Action Center</div>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size:0.85rem;" data-i18n="action.subtitle">Delivery, processing, and AI problems that need operator attention.</p>
+                    </div>
+                    <button class="btn" onclick="ActionCenterModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                </div>
+                <div id="actionCenterSummary" class="stats-grid" style="margin-bottom:20px;"></div>
+                <div id="actionCenterList"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
             </div>
         </div>
 
@@ -699,6 +723,7 @@
     <script src="/static/js/routing.js?v=20260622-routing"></script>
     <script src="/static/js/deep-analyses.js?v=20260617-noack"></script>
     <script src="/static/js/decision-trace.js?v=20260709-v2"></script>
+    <script src="/static/js/action-center.js?v=20260713-product"></script>
     <script src="/static/js/dashboard.js?v=20260709-v2"></script>
 </body>
 </html>
