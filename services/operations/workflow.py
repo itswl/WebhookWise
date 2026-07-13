@@ -257,9 +257,7 @@ async def merge_incidents(
     if destination is None or destination_id in source_ids:
         return None
     sources = list(
-        (
-            await session.execute(select(Incident).where(Incident.id.in_(source_ids)).order_by(Incident.id))
-        )
+        (await session.execute(select(Incident).where(Incident.id.in_(source_ids)).order_by(Incident.id)))
         .scalars()
         .all()
     )
@@ -267,9 +265,7 @@ async def merge_incidents(
         return None
 
     await session.execute(
-        update(IncidentMember)
-        .where(IncidentMember.incident_id.in_(source_ids))
-        .values(incident_id=destination_id)
+        update(IncidentMember).where(IncidentMember.incident_id.in_(source_ids)).values(incident_id=destination_id)
     )
     now = utcnow()
     for source in sources:
