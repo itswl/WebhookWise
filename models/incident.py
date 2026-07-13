@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,6 +40,26 @@ class Incident(Base):
     alert_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     top_importance: Mapped[str | None] = mapped_column(String(20))
 
+    workflow_status: Mapped[str] = mapped_column(String(20), default="open", server_default="open", nullable=False)
+    assignee: Mapped[str | None] = mapped_column(String(100))
+    team: Mapped[str | None] = mapped_column(String(100))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    sla_due_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+
+    correlation_dimensions: Mapped[dict[str, object]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'"),
+        nullable=False,
+    )
+    correlation_confidence: Mapped[float] = mapped_column(
+        Float,
+        default=0.0,
+        server_default=text("0"),
+        nullable=False,
+    )
+
     # LLM-generated summary when the incident closes (null while active).
     summary_analysis: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     summary_status: Mapped[str | None] = mapped_column(String(20))
@@ -66,6 +86,11 @@ class Incident(Base):
             "ix_incidents_summary_pending",
             "summary_next_attempt_at",
             postgresql_where=text("summary_status IN ('pending', 'retrying', 'processing')"),
+        ),
+        Index(
+            "ix_incidents_sla_open",
+            "sla_due_at",
+            postgresql_where=text("workflow_status NOT IN ('resolved', 'ignored')"),
         ),
     )
 

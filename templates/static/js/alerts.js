@@ -107,6 +107,18 @@ const AlertsModule = {
                 this.quickSilence(id);
             } else if (action === 'replay-dry') {
                 this.replayDryRun(id);
+            } else if (action === 'acknowledge') {
+                this.updateWorkflow(id, { workflow_status: 'acknowledged' });
+            } else if (action === 'resolve') {
+                this.updateWorkflow(id, { workflow_status: 'resolved' });
+            } else if (action === 'assign') {
+                this.assignWorkflow(id);
+            } else if (action === 'notes') {
+                this.manageNotes(id);
+            } else if (action === 'feedback-correct') {
+                this.sendFeedback(id, 'correct');
+            } else if (action === 'feedback-incorrect') {
+                this.sendFeedback(id, 'incorrect');
             }
             return;
         }
@@ -407,6 +419,9 @@ const AlertsModule = {
                 var fwdClass = (webhook.forward_status === 'sent' || webhook.forward_status === 'success' || webhook.forward_status === 'forwarded') ? 'badge-low' : ((webhook.forward_status === 'failed') ? 'badge-high' : 'badge-medium');
                 html += '<span class="badge ' + fwdClass + '" title="' + t('alerts.fwd.statusTitle') + '">📤 ' + escapeHtml(fwdLabels[webhook.forward_status] || webhook.forward_status) + '</span>';
             }
+            var workflowStatus = webhook.workflow_status || 'open';
+            var workflowClass = workflowStatus === 'resolved' || workflowStatus === 'ignored' ? 'badge-low' : (workflowStatus === 'open' ? 'badge-high' : 'badge-medium');
+            html += '<span class="badge ' + workflowClass + '">' + escapeHtml(workflowStatus.replace('_', ' ')) + '</span>';
             html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
             html += '<div class="alert-actions">';
             html += '<button class="btn btn-sm" data-action="reanalyze" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.reanalyze') + '</button>';
@@ -414,6 +429,16 @@ const AlertsModule = {
             html += '<button class="btn btn-sm btn-primary" data-action="forward" data-id="' + escapeHtml(String(webhook.id)) + '">🚀 ' + t('alerts.action.forward') + '</button>';
             html += '<button class="btn btn-sm btn-warn" data-action="quick-silence" data-id="' + escapeHtml(String(webhook.id)) + '" title="' + t('alerts.action.quickSilenceTitle') + '">🔕 ' + t('alerts.action.quickSilence') + '</button>';
             html += '<button class="btn btn-sm" data-action="replay-dry" data-id="' + escapeHtml(String(webhook.id)) + '" title="' + t('alerts.action.replayDryTitle') + '">🔁 ' + t('alerts.action.replayDry') + '</button>';
+            if (workflowStatus === 'open') {
+                html += '<button class="btn btn-sm" data-action="acknowledge" data-id="' + webhook.id + '">👋 Acknowledge</button>';
+            }
+            if (workflowStatus !== 'resolved' && workflowStatus !== 'ignored') {
+                html += '<button class="btn btn-sm" data-action="resolve" data-id="' + webhook.id + '">✅ Resolve</button>';
+            }
+            html += '<button class="btn btn-sm" data-action="assign" data-id="' + webhook.id + '">👤 Assign / SLA</button>';
+            html += '<button class="btn btn-sm" data-action="notes" data-id="' + webhook.id + '">📝 Notes</button>';
+            html += '<button class="btn btn-sm" data-action="feedback-correct" data-id="' + webhook.id + '" title="Analysis was correct">👍</button>';
+            html += '<button class="btn btn-sm" data-action="feedback-incorrect" data-id="' + webhook.id + '" title="Analysis needs correction">👎</button>';
             if (webhook.processing_status === 'dead_letter') {
                 html += '<button class="btn btn-sm btn-danger" data-action="replay-dl" data-id="' + escapeHtml(String(webhook.id)) + '">🔄 ' + t('alerts.action.replayDeadLetter') + '</button>';
             }
@@ -511,6 +536,9 @@ const AlertsModule = {
         const statusMap = { received: t('alerts.status.received'), analyzing: t('alerts.status.analyzing'), completed: t('alerts.status.completed'), failed: t('alerts.status.failed'), dead_letter: t('alerts.status.deadLetter') };
         const statusText = statusMap[webhook.processing_status] || String(webhook.processing_status || '-');
         html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.processingStatus') + '</div><div class="info-value">' + escapeHtml(statusText) + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">Workflow</div><div class="info-value">' + escapeHtml(String(webhook.workflow_status || 'open')) + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">Owner</div><div class="info-value">' + escapeHtml(String(webhook.assignee || 'Unassigned')) + (webhook.team ? ' · ' + escapeHtml(String(webhook.team)) : '') + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">SLA due</div><div class="info-value">' + escapeHtml(webhook.sla_due_at ? new Date(webhook.sla_due_at).toLocaleString() : 'Not set') + '</div></div>';
         if (webhook.updated_at) {
             html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.lastUpdated') + '</div><div class="info-value">' + new Date(webhook.updated_at).toLocaleString('zh-CN') + '</div></div>';
         }
@@ -1363,5 +1391,70 @@ const AlertsModule = {
             notification.style.animation = 'slideOut 0.3s ease-in forwards';
             setTimeout(() => notification.remove(), 300);
         }, 4000);
+    },
+
+    async updateWorkflow(id, patch) {
+        try {
+            const response = await API.authenticatedFetch('/v1/webhooks/' + id + '/workflow', {
+                method: 'PUT', body: JSON.stringify(patch)
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload.success) throw new Error(payload.error || 'HTTP ' + response.status);
+            const target = this.alerts.find(function (item) { return String(item.id) === String(id); });
+            if (target) Object.assign(target, payload.data || {});
+            this.filterAlerts(false);
+        } catch (error) {
+            alert('Workflow update failed: ' + (error.message || String(error)));
+        }
+    },
+
+    async assignWorkflow(id) {
+        const target = this.alerts.find(function (item) { return String(item.id) === String(id); }) || {};
+        const assignee = prompt('Assignee (leave empty to unassign)', target.assignee || '');
+        if (assignee === null) return;
+        const team = prompt('Team (leave empty to clear)', target.team || '');
+        if (team === null) return;
+        const sla = prompt('SLA in minutes (leave empty to keep current SLA)', '');
+        if (sla === null) return;
+        const patch = { assignee: assignee, team: team };
+        if (sla.trim()) patch.sla_minutes = Number(sla);
+        await this.updateWorkflow(id, patch);
+    },
+
+    async manageNotes(id) {
+        try {
+            const response = await API.authenticatedFetch('/v1/webhooks/' + id + '/notes');
+            const payload = await response.json();
+            if (!response.ok || !payload.success) throw new Error(payload.error || 'HTTP ' + response.status);
+            const history = (payload.data || []).map(function (note) {
+                return '[' + note.actor + '] ' + note.body;
+            }).join('\n');
+            const body = prompt((history ? 'Existing notes:\n' + history + '\n\n' : '') + 'Add a note (Cancel to close)', '');
+            if (!body || !body.trim()) return;
+            const createResponse = await API.authenticatedFetch('/v1/webhooks/' + id + '/notes', {
+                method: 'POST', body: JSON.stringify({ body: body.trim(), actor: 'dashboard' })
+            });
+            if (!createResponse.ok) throw new Error('HTTP ' + createResponse.status);
+        } catch (error) {
+            alert('Notes failed: ' + (error.message || String(error)));
+        }
+    },
+
+    async sendFeedback(id, verdict) {
+        let comment = '';
+        if (verdict !== 'correct') {
+            const value = prompt('What should be corrected?', '');
+            if (value === null) return;
+            comment = value;
+        }
+        try {
+            const response = await API.authenticatedFetch('/v1/webhooks/' + id + '/feedback', {
+                method: 'POST', body: JSON.stringify({ verdict: verdict, comment: comment || null, actor: 'dashboard' })
+            });
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            alert('Feedback recorded');
+        } catch (error) {
+            alert('Feedback failed: ' + (error.message || String(error)));
+        }
     }
 };

@@ -10,6 +10,7 @@ from models.decision_trace import DecisionTrace
 from models.forwarding import ForwardOutbox, ForwardRule
 from models.incident import Incident, IncidentMember
 from models.kb_document import KBDocument
+from models.operations import AnalysisFeedback, OperationalNote
 from models.silence import Silence
 from models.suppressed_record import SuppressedRecord
 from models.webhook import ArchivedWebhookEvent, WebhookEvent, WebhookEventInput
@@ -29,4 +30,6 @@ __all__ = [
     "Incident",
     "IncidentMember",
     "AuditLog",
+    "OperationalNote",
+    "AnalysisFeedback",
 ]

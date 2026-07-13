@@ -9,6 +9,7 @@ from api.v1.decision_trace import decision_trace_router
 from api.v1.deep_analysis import deep_analysis_router
 from api.v1.forwarding import forwarding_router
 from api.v1.incidents import incidents_router
+from api.v1.operations import operations_router
 from api.v1.reanalysis import reanalysis_router
 from api.v1.sandbox import sandbox_router
 from api.v1.silences import silences_router
@@ -32,5 +33,6 @@ v1_router.include_router(silences_router, dependencies=_admin_api_deps)
 v1_router.include_router(sandbox_router, dependencies=_admin_api_deps)
 v1_router.include_router(incidents_router, dependencies=_admin_api_deps)
 v1_router.include_router(activity_router, dependencies=_admin_api_deps)
+v1_router.include_router(operations_router, dependencies=_admin_api_deps)
 v1_router.include_router(admin_router, dependencies=_admin_api_deps)
 v1_router.include_router(webhook_router)

@@ -36,11 +36,30 @@ class WebhookEventSummary(BaseModel):
     prev_alert_id: int | None = None
     prev_alert_timestamp: str | None = None
     is_within_window: bool = False
+    workflow_status: str = "open"
+    assignee: str | None = None
+    team: str | None = None
+    acknowledged_at: str | None = None
+    resolved_at: str | None = None
+    sla_due_at: str | None = None
 
-    @field_validator("timestamp", "created_at", "prev_alert_timestamp", mode="before")
+    @field_validator(
+        "timestamp",
+        "created_at",
+        "prev_alert_timestamp",
+        "acknowledged_at",
+        "resolved_at",
+        "sla_due_at",
+        mode="before",
+    )
     @classmethod
     def _serialize_datetime(cls, value: object) -> object:
         return utc_isoformat(value) if isinstance(value, datetime) else value
+
+    @field_validator("workflow_status", mode="before")
+    @classmethod
+    def _default_workflow_status(cls, value: object) -> object:
+        return value or "open"
 
     @model_validator(mode="after")
     def _derive_fields(self) -> WebhookEventSummary:

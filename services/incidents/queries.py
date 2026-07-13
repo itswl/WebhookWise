@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat
 from models import Incident, IncidentMember, WebhookEvent
+from services.operations.workflow import list_notes
 from services.pagination import apply_cursor_window, trim_cursor_window
 
 
@@ -43,6 +44,7 @@ async def get_incident_detail(session: AsyncSession, incident_id: int) -> dict[s
     result = _incident_row(incident)
     result["summary_analysis"] = incident.summary_analysis or {}
     result["summary_status"] = incident.summary_status
+    result["notes"] = await list_notes(session, resource_type="incident", resource_id=incident_id) or []
 
     # Load only the most recent 50 members through the normalized membership
     # table. The database supplies timeline order and enforces event integrity.
@@ -98,6 +100,14 @@ def _incident_row(incident: Incident) -> dict[str, Any]:
         "ended_at": utc_isoformat(incident.ended_at),
         "alert_count": incident.alert_count,
         "top_importance": incident.top_importance,
+        "workflow_status": incident.workflow_status,
+        "assignee": incident.assignee,
+        "team": incident.team,
+        "acknowledged_at": utc_isoformat(incident.acknowledged_at),
+        "resolved_at": utc_isoformat(incident.resolved_at),
+        "sla_due_at": utc_isoformat(incident.sla_due_at),
+        "correlation_dimensions": incident.correlation_dimensions or {},
+        "correlation_confidence": incident.correlation_confidence,
         "summary_status": incident.summary_status,
         "created_at": utc_isoformat(incident.created_at),
     }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
 
@@ -20,6 +21,13 @@ _INCIDENT_QUIET_MINUTES = 10
 _SCAN_LOOKBACK_MINUTES = 4320  # 72 h initial/backfill safety window
 _MAX_MEMBERS_PER_INCIDENT = 200
 _MAX_INCIDENTS_PER_SCAN = 200
+_RECOVERY_VALUES = {"resolved", "recovered", "recovery", "ok", "normal", "healthy", "inactive", "恢复"}
+_DIMENSION_ALIASES: dict[str, tuple[str, ...]] = {
+    "service": ("service", "service_name", "servicename", "application", "app"),
+    "project": ("project", "project_name", "projectname"),
+    "environment": ("environment", "env", "cluster"),
+    "region": ("region", "region_id", "regionid"),
+}
 
 
 def _event_rule_name(event: WebhookEvent) -> str:
@@ -28,6 +36,112 @@ def _event_rule_name(event: WebhookEvent) -> str:
     if isinstance(parsed, dict):
         return str(parsed.get("RuleName") or parsed.get("AlertName") or parsed.get("alert_name") or "").strip()[:200]
     return ""
+
+
+def _flatten_payload(payload: dict[str, object]) -> dict[str, object]:
+    flattened: dict[str, object] = {}
+    queue: list[dict[str, object]] = [payload]
+    while queue and len(flattened) < 100:
+        current = queue.pop(0)
+        for key, value in current.items():
+            normalized = str(key).replace("-", "_").lower()
+            flattened.setdefault(normalized, value)
+            if isinstance(value, dict) and normalized in {
+                "labels",
+                "commonlabels",
+                "common_labels",
+                "metadata",
+                "dimensions",
+                "tags",
+            }:
+                queue.append(value)
+            elif normalized == "alerts" and isinstance(value, list):
+                queue.extend(item for item in value[:5] if isinstance(item, dict))
+    return flattened
+
+
+def _correlation_dimensions(event: WebhookEvent) -> dict[str, str]:
+    """Extract stable service identity without depending on one vendor payload."""
+    parsed = event.parsed_data or {}
+    if not isinstance(parsed, dict):
+        return {}
+    flattened = _flatten_payload(parsed)
+    dimensions: dict[str, str] = {}
+    for dimension, aliases in _DIMENSION_ALIASES.items():
+        for alias in aliases:
+            value = flattened.get(alias)
+            if value is None or isinstance(value, (dict, list)):
+                continue
+            normalized = str(value).strip().lower()
+            if normalized:
+                dimensions[dimension] = normalized[:200]
+                break
+    return dimensions
+
+
+def _is_recovery_event(event: WebhookEvent) -> bool:
+    parsed = event.parsed_data or {}
+    flattened = _flatten_payload(parsed) if isinstance(parsed, dict) else {}
+    for key in ("status", "state", "alert_status", "event_status", "phase"):
+        value = str(flattened.get(key) or "").strip().lower()
+        if value in _RECOVERY_VALUES or "恢复" in value:
+            return True
+    analysis = event.ai_analysis or {}
+    if isinstance(analysis, dict):
+        event_type = str(analysis.get("event_type") or analysis.get("type") or "").strip().lower()
+        if event_type in _RECOVERY_VALUES or "恢复" in event_type:
+            return True
+    return False
+
+
+def _dimension_score(left: Mapping[str, str], right: Mapping[str, object]) -> float:
+    shared = {key for key, value in left.items() if value and str(right.get(key) or "") == value}
+    if "service" in shared and ("project" in shared or "environment" in shared):
+        return 0.9
+    if {"service", "region"}.issubset(shared):
+        return 0.85
+    if {"project", "environment"}.issubset(shared):
+        return 0.8
+    if "service" in shared:
+        return 0.72
+    return 0.0
+
+
+def _dimensions_conflict(left: Mapping[str, str], right: Mapping[str, object]) -> bool:
+    identity_keys = {"service", "project", "environment", "region"}
+    return any(key in left and right.get(key) and str(right[key]) != left[key] for key in identity_keys)
+
+
+def _event_pair_score(left: WebhookEvent, right: WebhookEvent) -> float:
+    same_source = str(left.source or "") == str(right.source or "")
+    left_rule = _event_rule_name(left)
+    right_rule = _event_rule_name(right)
+    left_dimensions = _correlation_dimensions(left)
+    right_dimensions = _correlation_dimensions(right)
+    if _dimensions_conflict(left_dimensions, right_dimensions):
+        return 0.0
+    if same_source and left_rule == right_rule:
+        return 1.0
+    dimension_score = _dimension_score(left_dimensions, right_dimensions)
+    if dimension_score and (same_source or dimension_score >= 0.8):
+        return dimension_score
+    if same_source and (not left_rule or not right_rule):
+        return 0.65
+    return 0.0
+
+
+def _incident_correlation_score(event: WebhookEvent, incident: Incident) -> float:
+    same_source = str(event.source or "") == str(incident.source or "")
+    event_dimensions = _correlation_dimensions(event)
+    incident_dimensions = incident.correlation_dimensions or {}
+    if _dimensions_conflict(event_dimensions, incident_dimensions):
+        return 0.0
+    if same_source and _incident_rule_matches(_event_rule_name(event), incident):
+        return 1.0
+    dimension_score = _dimension_score(event_dimensions, incident_dimensions)
+    if dimension_score and (same_source or dimension_score >= 0.8):
+        return dimension_score
+    return 0.65 if same_source and not _event_rule_name(event) else 0.0
 
 
 async def run_incident_grouping() -> dict[str, Any]:
@@ -71,11 +185,33 @@ async def run_incident_grouping() -> dict[str, Any]:
             .scalars()
             .all()
         )
+        recoverable_incidents = list(
+            (
+                await session.execute(
+                    select(Incident)
+                    .where(
+                        Incident.status.in_(["active", "quiet"]),
+                        Incident.started_at >= lookback_cutoff,
+                    )
+                    .order_by(Incident.started_at.desc())
+                    .limit(_MAX_INCIDENTS_PER_SCAN)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
         created_incidents: list[Incident] = []
         candidates: list[WebhookEvent] = []
         updated = 0
+        recovered = 0
         for event in unassigned:
+            if _is_recovery_event(event):
+                match = _find_recovery_incident(event, recoverable_incidents)
+                if match is not None and _add_event_to_incident(session, match, event):
+                    _resolve_incident_from_recovery(match, event)
+                    recovered += 1
+                continue
             match = _find_matching_incident(event, active_incidents)
             if match is None:
                 candidate = _find_matching_candidate(event, candidates)
@@ -87,6 +223,7 @@ async def run_incident_grouping() -> dict[str, Any]:
                 session.add(match)
                 await session.flush()
                 active_incidents.append(match)
+                recoverable_incidents.append(match)
                 created_incidents.append(match)
                 _add_event_to_incident(session, match, candidate)
 
@@ -101,6 +238,10 @@ async def run_incident_grouping() -> dict[str, Any]:
             # Preserve the prior anti-spam behavior while making each selected
             # notification durable in the forwarding outbox transaction.
             outbox_ids = await queue_incident_notifications(session, created_incidents[:3])
+
+        from services.incidents.notifications import queue_sla_breach_notifications
+
+        outbox_ids.extend(await queue_sla_breach_notifications(session, now))
 
         stats = {
             "scanned": len(unassigned),
@@ -119,13 +260,14 @@ async def run_incident_grouping() -> dict[str, Any]:
 
     await run_pending_incident_summaries()
 
-    if any(stats[key] for key in ("created", "updated", "closed")):
+    if recovered or any(stats[key] for key in ("created", "updated", "closed")):
         logger.info(
-            "[Incidents] Grouping tick: scanned=%d created=%d updated=%d closed=%d",
+            "[Incidents] Grouping tick: scanned=%d created=%d updated=%d closed=%d recovered=%d",
             stats["scanned"],
             stats["created"],
             stats["updated"],
             stats["closed"],
+            recovered,
         )
     return stats
 
@@ -135,39 +277,57 @@ def _find_matching_incident(
     incidents: list[Incident],
 ) -> Incident | None:
     """Return the oldest compatible, non-full active incident."""
-    event_source = str(event.source or "")
-    event_rule = _event_rule_name(event)
     event_timestamp = event.timestamp or utcnow()
     window_start = event_timestamp - timedelta(minutes=_INCIDENT_WINDOW_MINUTES)
     window_end = event_timestamp + timedelta(minutes=_INCIDENT_WINDOW_MINUTES)
+    best: tuple[float, Incident] | None = None
     for incident in incidents:
         if incident.status != "active" or incident.alert_count >= _MAX_MEMBERS_PER_INCIDENT:
-            continue
-        if str(incident.source or "") != event_source:
-            continue
-        if not _incident_rule_matches(event_rule, incident):
             continue
         last_ts = incident.updated_at or incident.started_at
         if last_ts is not None and not window_start <= last_ts <= window_end:
             continue
-        return incident
-    return None
+        score = _incident_correlation_score(event, incident)
+        if score >= 0.65 and (best is None or score > best[0]):
+            best = (score, incident)
+    return best[1] if best else None
 
 
 def _find_matching_candidate(event: WebhookEvent, candidates: list[WebhookEvent]) -> WebhookEvent | None:
     """Return an earlier compatible unassigned alert without persisting a singleton incident."""
-    event_source = str(event.source or "")
-    event_rule = _event_rule_name(event)
     event_timestamp = event.timestamp or utcnow()
+    best: tuple[float, WebhookEvent] | None = None
     for candidate in reversed(candidates):
-        if str(candidate.source or "") != event_source:
-            continue
-        if _event_rule_name(candidate) != event_rule:
-            continue
         candidate_timestamp = candidate.timestamp or event_timestamp
-        if abs((event_timestamp - candidate_timestamp).total_seconds()) <= _INCIDENT_WINDOW_MINUTES * 60:
-            return candidate
-    return None
+        if abs((event_timestamp - candidate_timestamp).total_seconds()) > _INCIDENT_WINDOW_MINUTES * 60:
+            continue
+        score = _event_pair_score(event, candidate)
+        if score >= 0.65 and (best is None or score > best[0]):
+            best = (score, candidate)
+    return best[1] if best else None
+
+
+def _find_recovery_incident(event: WebhookEvent, incidents: list[Incident]) -> Incident | None:
+    """Match recovery signals against recent active or quiet incidents."""
+    event_timestamp = event.timestamp or utcnow()
+    event_rule = _event_rule_name(event)
+    event_dimensions = _correlation_dimensions(event)
+    if not event_rule and not event_dimensions:
+        return None
+    best: tuple[float, Incident] | None = None
+    for incident in incidents:
+        if incident.status not in {"active", "quiet"} or incident.alert_count >= _MAX_MEMBERS_PER_INCIDENT:
+            continue
+        if incident.started_at > event_timestamp:
+            continue
+        score = (
+            _incident_correlation_score(event, incident)
+            if event_rule
+            else _dimension_score(event_dimensions, incident.correlation_dimensions or {})
+        )
+        if score >= 0.8 and (best is None or score > best[0]):
+            best = (score, incident)
+    return best[1] if best else None
 
 
 def _incident_rule_matches(event_rule: str, incident: Incident) -> bool:
@@ -194,6 +354,9 @@ def _create_incident_from_event(event: WebhookEvent) -> Incident:
         updated_at=timestamp,
         alert_count=0,
         top_importance=event.importance,
+        workflow_status="open",
+        correlation_dimensions=_correlation_dimensions(event),
+        correlation_confidence=1.0,
     )
 
 
@@ -205,6 +368,7 @@ def _add_event_to_incident(
     """Add one member and return whether the membership was accepted."""
     if incident.alert_count >= _MAX_MEMBERS_PER_INCIDENT or incident.id is None or event.id is None:
         return False
+    score = _incident_correlation_score(event, incident)
     timestamp = event.timestamp or utcnow()
     session.add(
         IncidentMember(
@@ -214,10 +378,32 @@ def _add_event_to_incident(
         )
     )
     incident.alert_count += 1
+    if score:
+        incident.correlation_confidence = min(incident.correlation_confidence or score, score)
     incident.updated_at = max(incident.updated_at or timestamp, timestamp)
     if event.importance == "high" or incident.top_importance != "high":
         incident.top_importance = event.importance
+    dimensions = dict(incident.correlation_dimensions or {})
+    for key, value in _correlation_dimensions(event).items():
+        dimensions.setdefault(key, value)
+    incident.correlation_dimensions = dimensions
+    if incident.source and incident.source != event.source:
+        incident.source = "multiple"
     return True
+
+
+def _resolve_incident_from_recovery(incident: Incident, event: WebhookEvent) -> None:
+    timestamp = event.timestamp or utcnow()
+    incident.status = "closed"
+    incident.workflow_status = "resolved"
+    incident.resolved_at = timestamp
+    incident.ended_at = timestamp
+    incident.updated_at = timestamp
+    if incident.summary_analysis is None and incident.alert_count >= 2:
+        incident.summary_status = "pending"
+        incident.summary_attempts = 0
+        incident.summary_next_attempt_at = timestamp
+        incident.summary_last_error = None
 
 
 async def _close_quiet_incidents(session: AsyncSession, now: Any) -> int:

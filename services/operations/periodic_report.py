@@ -22,8 +22,8 @@ from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
 from core.logger import get_logger
 from db.session import session_scope
-from models import AIUsageLog, Incident, WebhookEvent
-from services.webhooks.types import ForwardResult
+from models import AIUsageLog, AnalysisFeedback, DecisionTrace, ForwardOutbox, Incident, WebhookEvent
+from services.webhooks.types import ForwardOutboxStatus, ForwardResult
 
 logger = get_logger("periodic_report")
 
@@ -86,6 +86,7 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
     """Aggregate alert-health numbers over the trailing window. Pure reads."""
     window_days = max(1, int(window_days))
     start = utcnow() - timedelta(days=window_days)
+    previous_start = start - timedelta(days=window_days)
 
     total_events = int(
         await session.scalar(select(func.count(WebhookEvent.id)).where(WebhookEvent.timestamp >= start)) or 0
@@ -94,6 +95,25 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         await session.scalar(
             select(func.count(WebhookEvent.id)).where(
                 WebhookEvent.timestamp >= start, WebhookEvent.is_duplicate.is_(True)
+            )
+        )
+        or 0
+    )
+    previous_total = int(
+        await session.scalar(
+            select(func.count(WebhookEvent.id)).where(
+                WebhookEvent.timestamp >= previous_start,
+                WebhookEvent.timestamp < start,
+            )
+        )
+        or 0
+    )
+    previous_duplicates = int(
+        await session.scalar(
+            select(func.count(WebhookEvent.id)).where(
+                WebhookEvent.timestamp >= previous_start,
+                WebhookEvent.timestamp < start,
+                WebhookEvent.is_duplicate.is_(True),
             )
         )
         or 0
@@ -181,6 +201,100 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         or 0
     )
 
+    unresolved_incidents = int(
+        await session.scalar(
+            select(func.count(Incident.id)).where(Incident.workflow_status.notin_(["resolved", "ignored"]))
+        )
+        or 0
+    )
+    sla_breaches = int(
+        await session.scalar(
+            select(func.count(Incident.id)).where(
+                Incident.sla_due_at.isnot(None),
+                Incident.sla_due_at <= utcnow(),
+                Incident.workflow_status.notin_(["resolved", "ignored"]),
+            )
+        )
+        or 0
+    )
+    sla_breaches += int(
+        await session.scalar(
+            select(func.count(WebhookEvent.id)).where(
+                WebhookEvent.sla_due_at.isnot(None),
+                WebhookEvent.sla_due_at <= utcnow(),
+                WebhookEvent.workflow_status.notin_(["resolved", "ignored"]),
+            )
+        )
+        or 0
+    )
+
+    delivery_rows = (
+        await session.execute(
+            select(ForwardOutbox.status, func.count(ForwardOutbox.id))
+            .where(ForwardOutbox.created_at >= start)
+            .group_by(ForwardOutbox.status)
+        )
+    ).all()
+    delivery_breakdown = {str(status): int(count) for status, count in delivery_rows}
+    delivery_terminal = sum(
+        delivery_breakdown.get(status, 0)
+        for status in (
+            ForwardOutboxStatus.SENT,
+            ForwardOutboxStatus.EXHAUSTED,
+            ForwardOutboxStatus.EXPIRED,
+        )
+    )
+    delivery_success_rate = (
+        round(100.0 * delivery_breakdown.get(ForwardOutboxStatus.SENT, 0) / delivery_terminal, 1)
+        if delivery_terminal
+        else None
+    )
+    ai_degraded = int(
+        await session.scalar(
+            select(func.count(DecisionTrace.id)).where(
+                DecisionTrace.created_at >= start,
+                DecisionTrace.degraded_reason.isnot(None),
+            )
+        )
+        or 0
+    )
+
+    feedback_rows = (
+        await session.execute(
+            select(AnalysisFeedback.verdict, func.count(AnalysisFeedback.id))
+            .where(AnalysisFeedback.created_at >= start)
+            .group_by(AnalysisFeedback.verdict)
+        )
+    ).all()
+    feedback_breakdown = {str(verdict): int(count) for verdict, count in feedback_rows}
+    feedback_total = sum(feedback_breakdown.values())
+    feedback_correct = feedback_breakdown.get("correct", 0)
+
+    unhealthy_rule_rows = (
+        await session.execute(
+            select(ForwardOutbox.rule_name, func.count(ForwardOutbox.id))
+            .where(
+                ForwardOutbox.updated_at >= start,
+                ForwardOutbox.status == ForwardOutboxStatus.EXHAUSTED,
+            )
+            .group_by(ForwardOutbox.rule_name)
+            .order_by(func.count(ForwardOutbox.id).desc())
+            .limit(_TOP_RULES)
+        )
+    ).all()
+    unhealthy_rules = [
+        {"rule": str(rule_name or "unknown"), "failures": int(count)}
+        for rule_name, count in unhealthy_rule_rows
+    ]
+
+    from services.operations.action_center import get_action_center
+
+    action_center = await get_action_center(session)
+    previous_noise_pct = round(100.0 * previous_duplicates / previous_total, 1) if previous_total else 0.0
+    volume_change_pct = (
+        round(100.0 * (total_events - previous_total) / previous_total, 1) if previous_total else None
+    )
+
     return {
         "window_days": window_days,
         "total_events": total_events,
@@ -195,6 +309,19 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         "incident_total": incident_total,
         "incident_active": incident_active,
         "incident_quiet": incident_quiet,
+        "previous_total_events": previous_total,
+        "previous_noise_pct": previous_noise_pct,
+        "volume_change_pct": volume_change_pct,
+        "noise_change_pp": round(noise_pct - previous_noise_pct, 1),
+        "delivery_success_rate": delivery_success_rate,
+        "delivery_breakdown": delivery_breakdown,
+        "ai_degraded": ai_degraded,
+        "unresolved_incidents": unresolved_incidents,
+        "sla_breaches": sla_breaches,
+        "action_center_total": int(action_center["summary"]["total"]),
+        "feedback_total": feedback_total,
+        "feedback_agreement_pct": round(100.0 * feedback_correct / feedback_total, 1) if feedback_total else None,
+        "unhealthy_rules": unhealthy_rules,
     }
 
 
@@ -220,15 +347,47 @@ def _build_summary(stats: dict[str, Any]) -> str:
     lines.append(
         f"AI: {stats['ai_calls']} calls, cache hit rate {stats['cache_hit_pct']}%, cost ${stats['ai_cost_usd']}."
     )
+    if stats.get("volume_change_pct") is not None:
+        lines.append(
+            f"Compared with the previous window: alert volume {stats['volume_change_pct']:+.1f}%, "
+            f"noise rate {stats.get('noise_change_pp', 0):+.1f} percentage points."
+        )
+    if stats.get("delivery_success_rate") is not None:
+        lines.append(f"Delivery success rate: {stats['delivery_success_rate']}% of terminal deliveries.")
+    if stats.get("ai_degraded"):
+        lines.append(f"AI degraded to fallback analysis for {stats['ai_degraded']} alert(s).")
     if stats.get("incident_total"):
         lines.append(
             f"Incidents: {stats['incident_total']} total ({stats['incident_active']} active / {stats['incident_quiet']} quiet)."
         )
+    if stats.get("unresolved_incidents") or stats.get("sla_breaches") or stats.get("action_center_total"):
+        lines.append(
+            f"Operator queue: {stats.get('unresolved_incidents', 0)} unresolved incidents, "
+            f"{stats.get('sla_breaches', 0)} SLA breaches, "
+            f"{stats.get('action_center_total', 0)} Action Center items."
+        )
+    if stats.get("feedback_total"):
+        lines.append(
+            f"Human feedback: {stats['feedback_total']} review(s), "
+            f"{stats.get('feedback_agreement_pct')}% agreed with the analysis."
+        )
+    unhealthy_rules = stats.get("unhealthy_rules") or []
+    if unhealthy_rules:
+        lines.append(
+            "Unhealthy delivery rules:\n"
+            + "\n".join(f"  · {row['rule']}: {row['failures']} exhausted" for row in unhealthy_rules)
+        )
     return "\n".join(lines)
 
 
-def _build_card(stats: dict[str, Any], title: str = "📊 WebhookWise Alert Health Weekly Report") -> dict[str, Any]:
+def _build_card(
+    stats: dict[str, Any],
+    title: str = "📊 WebhookWise Alert Health Weekly Report",
+    dashboard_url: str = "",
+) -> dict[str, Any]:
     body = _build_summary(stats)
+    if dashboard_url:
+        body += f"\n\n[Open WebhookWise dashboard]({dashboard_url})"
     return {
         "msg_type": "interactive",
         "card": {
@@ -379,7 +538,7 @@ async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None 
     async with session_scope() as session:
         stats = await collect_report_stats(session, getattr(notif, period.window_attr))
 
-    card = _build_card(stats, period.title)
+    card = _build_card(stats, period.title, str(notif.DASHBOARD_PUBLIC_URL or "").strip())
 
     result = await _send_report_with_retry(webhook_url, card, period.key)
     # Record a tz-aware UTC marker (matches _most_recent_fire's basis so catch-up

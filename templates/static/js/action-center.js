@@ -16,7 +16,9 @@ const ActionCenterModule = (function () {
             statCard(t('action.summary.total'), summary.total, 'var(--text-main)') +
             statCard(t('action.summary.critical'), summary.critical, 'var(--danger)') +
             statCard(t('action.summary.warning'), summary.warning, 'var(--warning)') +
-            statCard(t('action.summary.deadLetters'), summary.dead_letters, 'var(--primary)');
+            statCard(t('action.summary.deadLetters'), summary.dead_letters, 'var(--primary)') +
+            statCard(t('action.summary.sla'), summary.sla_breaches, 'var(--danger)') +
+            statCard(t('action.summary.aiAgreement'), summary.feedback_agreement_pct == null ? '–' : summary.feedback_agreement_pct + '%', 'var(--success)');
 
         const items = Array.isArray(data.items) ? data.items : [];
         if (!items.length) {
@@ -32,22 +34,30 @@ const ActionCenterModule = (function () {
             const color = critical ? 'var(--danger)' : 'var(--warning)';
             const icon = critical ? '🚨' : '⚠️';
             const when = item.occurred_at && typeof formatTime === 'function' ? formatTime(item.occurred_at) : '';
-            return '<button type="button" class="action-center-item" data-action-view="' +
+            const actionButtons = (item.actions || []).map(function (action) {
+                return '<button type="button" class="btn btn-sm btn-primary" data-remediation="' +
+                    escapeHtml(action.action || '') + '" data-resource-id="' +
+                    escapeHtml(String(action.resource_id || '')) + '" data-resource-type="' +
+                    escapeHtml(action.resource_type || '') + '">' + escapeHtml(action.label || 'Run') + '</button>';
+            }).join('');
+            return '<div class="action-center-item" data-action-view-target="' +
                 escapeHtml(item.view || '') + '" style="text-align:left; width:100%; background:var(--bg-surface);' +
                 ' border:1px solid var(--border); border-left:4px solid ' + color + '; border-radius:var(--radius-lg);' +
-                ' padding:16px; cursor:pointer; color:inherit;">' +
+                ' padding:16px; color:inherit;">' +
                 '<div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start;">' +
                 '<div><div style="font-weight:700; margin-bottom:6px;">' + icon + ' ' + escapeHtml(item.title || '') +
                 (Number(item.count || 1) > 1 ? ' <span class="badge">×' + escapeHtml(String(item.count)) + '</span>' : '') +
                 '</div><div style="font-size:0.85rem; color:var(--text-secondary); overflow-wrap:anywhere;">' +
                 escapeHtml(item.detail || '') + '</div></div>' +
                 '<span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">' + escapeHtml(when) +
-                '</span></div></button>';
+                '</span></div>' +
+                '<div style="display:flex; gap:8px; margin-top:12px; align-items:center;">' + actionButtons +
+                '<button type="button" class="btn btn-sm" data-open-action-view>' + escapeHtml(t('action.openDetails')) + '</button></div></div>';
         }).join('') + '</div>';
 
-        listEl.querySelectorAll('[data-action-view]').forEach(function (button) {
+        listEl.querySelectorAll('[data-open-action-view]').forEach(function (button) {
             button.addEventListener('click', function () {
-                const view = button.getAttribute('data-action-view');
+                const view = button.closest('[data-action-view-target]').getAttribute('data-action-view-target');
                 if (view === 'routing') {
                     switchMainTab('routing');
                     if (typeof RoutingModule !== 'undefined') RoutingModule.setView('rules');
@@ -66,6 +76,40 @@ const ActionCenterModule = (function () {
                 }
             });
         });
+        listEl.querySelectorAll('[data-remediation]').forEach(function (button) {
+            button.addEventListener('click', async function () {
+                await remediate(button);
+            });
+        });
+    }
+
+    async function remediate(button) {
+        const payload = {
+            action: button.getAttribute('data-remediation'),
+            batch_size: 50
+        };
+        const resourceId = button.getAttribute('data-resource-id');
+        const resourceType = button.getAttribute('data-resource-type');
+        if (resourceId) payload.resource_id = Number(resourceId);
+        if (resourceType) payload.resource_type = resourceType;
+        button.disabled = true;
+        try {
+            const response = await API.authenticatedFetch('/v1/action-center/actions', {
+                method: 'POST', body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || 'HTTP ' + response.status);
+            const undo = result.data && result.data.undo;
+            if (undo && window.confirm('Action completed. Undo it now?')) {
+                await API.authenticatedFetch('/v1/action-center/actions', {
+                    method: 'POST', body: JSON.stringify({ ...undo, batch_size: 50 })
+                });
+            }
+            await load();
+        } catch (error) {
+            alert('Action failed: ' + (error.message || String(error)));
+            button.disabled = false;
+        }
     }
 
     async function load() {
