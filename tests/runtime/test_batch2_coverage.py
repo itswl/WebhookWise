@@ -279,6 +279,7 @@ async def test_close_quiet_incidents(session_factory: async_sessionmaker[AsyncSe
 
 @pytest.mark.asyncio
 async def test_grouping_run(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    from datetime import timedelta
     from unittest.mock import patch
 
     from core.datetime_utils import utcnow
@@ -296,11 +297,22 @@ async def test_grouping_run(session_factory: async_sessionmaker[AsyncSession]) -
         async def __aexit__(self, *a):
             pass
 
+    async def skip_summaries():
+        return {"claimed": 0, "completed": 0, "failed": 0}
+
     async for s in _s(session_factory):
-        e = WebhookEvent(source="volcengine", timestamp=now, parsed_data={"RuleName": "gpu"})
-        s.add(e)
+        first = WebhookEvent(source="volcengine", timestamp=now, parsed_data={"RuleName": "gpu"})
+        second = WebhookEvent(
+            source="volcengine",
+            timestamp=now + timedelta(seconds=1),
+            parsed_data={"RuleName": "gpu"},
+        )
+        s.add_all([first, second])
         await s.commit()
-        with patch("services.incidents.grouping.session_scope", return_value=FakeScope(s)):
+        with (
+            patch("services.incidents.grouping.session_scope", return_value=FakeScope(s)),
+            patch("services.incidents.summary.run_pending_incident_summaries", new=skip_summaries),
+        ):
             from services.incidents.grouping import run_incident_grouping
 
             stats = await run_incident_grouping()

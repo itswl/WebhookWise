@@ -16,6 +16,10 @@ from services.webhooks.types import AnalysisResult, ForwardResult
 
 logger = get_logger("forwarding.remote")
 
+_RETRYABLE_HTTP_STATUS_CODES = {408, 409, 425, 429}
+_DISABLE_RULE_HTTP_STATUS_CODES = {401, 403, 404, 410}
+_DISABLE_RULE_FEISHU_ERROR_CODES = {"19001"}
+
 
 def _feishu_business_error(response: httpx.Response) -> str:
     try:
@@ -30,6 +34,33 @@ def _feishu_business_error(response: httpx.Response) -> str:
         return ""
     message = body.get("StatusMessage") or body.get("msg") or body.get("message") or "unknown error"
     return f"feishu business error code={code}: {message}"
+
+
+def _feishu_business_failure(response: httpx.Response) -> ForwardResult | None:
+    """Classify a Feishu business error without leaking the webhook URL.
+
+    Feishu returns HTTP 200 for many business failures. Invalid webhook tokens
+    are permanent and must not consume the retry budget. Unknown business
+    errors remain retryable because a payload-specific failure must not disable
+    an otherwise healthy integration.
+    """
+    message = _feishu_business_error(response)
+    if not message:
+        return None
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    raw_code = body.get("StatusCode", body.get("code")) if isinstance(body, dict) else None
+    error_code = str(raw_code or "unknown")
+    return {
+        "status": "failed",
+        "status_code": response.status_code,
+        "message": message,
+        "error_code": error_code,
+        "retryable": error_code not in _DISABLE_RULE_FEISHU_ERROR_CODES,
+        "disable_rule": error_code in _DISABLE_RULE_FEISHU_ERROR_CODES,
+    }
 
 
 async def send_forward_rule_test(*, rule_name: str, target_url: str, target_type: str | None) -> ForwardResult:
@@ -93,7 +124,13 @@ async def post_json_to_remote(
             status = "invalid_target"
             FORWARD_DELIVERY_TOTAL.labels(target_type_label, status).inc()
             FORWARD_DELIVERY_DURATION_SECONDS.labels(target_type_label, status).observe(time.perf_counter() - started)
-            return {"status": "invalid_target", "message": str(e)}
+            return {
+                "status": "invalid_target",
+                "message": str(e),
+                "error_code": "unsafe_target",
+                "retryable": False,
+                "disable_rule": True,
+            }
 
     headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
 
@@ -112,17 +149,15 @@ async def post_json_to_remote(
     try:
         response = await dependencies.circuit_breaker.call_async(_do_post)
         if target_type_label == "feishu":
-            business_error = _feishu_business_error(response)
-            if business_error:
+            business_failure = _feishu_business_failure(response)
+            if business_failure:
                 logger.warning(
-                    "[Forward] Feishu business response failed target=%s error=%s", mask_url(url), business_error
+                    "[Forward] Feishu business response failed target=%s error=%s",
+                    mask_url(url),
+                    business_failure.get("message"),
                 )
                 status = "failed"
-                return {
-                    "status": "failed",
-                    "status_code": response.status_code,
-                    "message": business_error,
-                }
+                return business_failure
         logger.info(
             "[Forward] raw-json forward completed target=%s status_code=%s", mask_url(url), response.status_code
         )
@@ -133,17 +168,46 @@ async def post_json_to_remote(
             "[Forward] Target URL security validation failed before sending target=%s error=%s", mask_url(url), e
         )
         status = "invalid_target"
-        return {"status": "invalid_target", "message": str(e)}
+        return {
+            "status": "invalid_target",
+            "message": str(e),
+            "error_code": "unsafe_target",
+            "retryable": False,
+            "disable_rule": True,
+        }
     except CircuitBreakerOpenException:
         logger.warning("[Forward] Circuit breaker is open, forward intercepted target=%s", mask_url(url))
         status = "circuit_broken"
-        return {"status": "circuit_broken", "message": "circuit breaker is open"}
+        return {
+            "status": "circuit_broken",
+            "message": "circuit breaker is open",
+            "error_code": "circuit_open",
+            "retryable": True,
+        }
+    except httpx.HTTPStatusError as e:
+        status_code = e.response.status_code
+        retryable = status_code in _RETRYABLE_HTTP_STATUS_CODES or status_code >= 500
+        logger.warning(
+            "[Forward] Remote returned HTTP error target=%s status_code=%s retryable=%s",
+            mask_url(url),
+            status_code,
+            retryable,
+        )
+        status = "failed"
+        return {
+            "status": "failed",
+            "status_code": status_code,
+            "message": f"remote returned HTTP {status_code}",
+            "error_code": f"http_{status_code}",
+            "retryable": retryable,
+            "disable_rule": status_code in _DISABLE_RULE_HTTP_STATUS_CODES,
+        }
     except (httpx.RequestError, OSError, TimeoutError, ValueError) as e:
         logger.error(
             "[Forward] raw-json forward failed target=%s error_type=%s error=%s", mask_url(url), type(e).__name__, e
         )
         status = "failed"
-        return {"status": "failed", "message": str(e)}
+        return {"status": "failed", "message": str(e), "retryable": True}
     finally:
         FORWARD_DELIVERY_TOTAL.labels(target_type_label, status).inc()
         FORWARD_DELIVERY_DURATION_SECONDS.labels(target_type_label, status).observe(time.perf_counter() - started)

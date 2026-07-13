@@ -45,10 +45,14 @@ async def run_incident_grouping() -> dict[str, Any]:
             select(WebhookEvent)
             .where(WebhookEvent.timestamp >= lookback_cutoff)
             .where(~exists(select(IncidentMember.id).where(IncidentMember.event_id == WebhookEvent.id)))
-            .order_by(WebhookEvent.timestamp.asc(), WebhookEvent.id.asc())
+            # Read the newest bounded window so old singleton candidates cannot
+            # permanently starve newer pairs. Reverse below for chronological
+            # processing within the selected window.
+            .order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
             .limit(_MAX_INCIDENTS_PER_SCAN)
         )
         unassigned = list((await session.execute(unassigned_stmt)).scalars().all())
+        unassigned.reverse()
 
         active_incidents = list(
             (
@@ -69,15 +73,22 @@ async def run_incident_grouping() -> dict[str, Any]:
         )
 
         created_incidents: list[Incident] = []
+        candidates: list[WebhookEvent] = []
         updated = 0
         for event in unassigned:
             match = _find_matching_incident(event, active_incidents)
             if match is None:
-                match = _create_incident_from_event(event)
+                candidate = _find_matching_candidate(event, candidates)
+                if candidate is None:
+                    candidates.append(event)
+                    continue
+                candidates.remove(candidate)
+                match = _create_incident_from_event(candidate)
                 session.add(match)
                 await session.flush()
                 active_incidents.append(match)
                 created_incidents.append(match)
+                _add_event_to_incident(session, match, candidate)
 
             if _add_event_to_incident(session, match, event) and match not in created_incidents:
                 updated += 1
@@ -140,6 +151,22 @@ def _find_matching_incident(
         if last_ts is not None and not window_start <= last_ts <= window_end:
             continue
         return incident
+    return None
+
+
+def _find_matching_candidate(event: WebhookEvent, candidates: list[WebhookEvent]) -> WebhookEvent | None:
+    """Return an earlier compatible unassigned alert without persisting a singleton incident."""
+    event_source = str(event.source or "")
+    event_rule = _event_rule_name(event)
+    event_timestamp = event.timestamp or utcnow()
+    for candidate in reversed(candidates):
+        if str(candidate.source or "") != event_source:
+            continue
+        if _event_rule_name(candidate) != event_rule:
+            continue
+        candidate_timestamp = candidate.timestamp or event_timestamp
+        if abs((event_timestamp - candidate_timestamp).total_seconds()) <= _INCIDENT_WINDOW_MINUTES * 60:
+            return candidate
     return None
 
 
@@ -216,11 +243,15 @@ async def _close_quiet_incidents(session: AsyncSession, now: Any) -> int:
         incident.status = "quiet"
         incident.ended_at = now
         incident.updated_at = now
-        if incident.summary_analysis is None:
+        if incident.summary_analysis is None and incident.alert_count >= 2:
             incident.summary_status = "pending"
             incident.summary_attempts = 0
             incident.summary_next_attempt_at = now
             incident.summary_last_error = None
+        elif incident.summary_analysis is None:
+            incident.summary_status = "skipped"
+            incident.summary_next_attempt_at = None
+            incident.summary_last_error = "singleton incidents are not summarized"
         logger.info(
             "[Incidents] Incident quieted id=%s title=%s alerts=%d",
             incident.id,

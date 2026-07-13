@@ -25,6 +25,7 @@ from services.forwarding.rules import (
     create_forward_rule,
     delete_forward_rule,
     get_forward_rule,
+    get_forward_rule_delivery_health,
     get_forward_rules,
     update_forward_rule,
 )
@@ -47,6 +48,37 @@ async def _validated_target_url(target_type: str, target_url: object) -> str:
     return await validate_outbound_url(target_url)
 
 
+async def _validate_enabled_delivery_target(
+    *,
+    rule_name: str,
+    target_type: str,
+    target_url: str,
+    enabled: bool,
+) -> bool:
+    """Probe an HTTP target before it is allowed into the enabled rule set."""
+    if not enabled or target_type == "openclaw":
+        return True
+
+    from services.forwarding.remote import send_forward_rule_test
+
+    result = await send_forward_rule_test(
+        rule_name=rule_name,
+        target_url=target_url,
+        target_type=target_type,
+    )
+    delivered = result.get("status") == "success"
+    if not delivered:
+        logger.warning(
+            "[ForwardAPI] Enabled target validation failed name=%s target_type=%s target=%s status=%s error_code=%s",
+            rule_name,
+            target_type,
+            mask_url(target_url),
+            result.get("status"),
+            result.get("error_code"),
+        )
+    return delivered
+
+
 # ── Forwarding Rules ─────────────────────────────────────────────────────────
 
 
@@ -64,12 +96,14 @@ async def _rules_with_roi(session: AsyncSession, rules: list[Any], *, mask_targe
     """Annotate each rule with its hit count (ROI): how many alerts it matched,
     and when it last did. A zero count on an enabled rule is a zombie rule."""
     hits = await get_forward_rule_hit_counts(session, rule_names=[r.name for r in rules])
+    delivery_health = await get_forward_rule_delivery_health(session, [int(r.id) for r in rules])
     data: list[JSONDict] = []
     for rule in rules:
         item = forward_rule_to_dict(rule, mask_target_url=mask_target_url)
         stat = hits.get(rule.name)
         item["hit_count"] = stat["count"] if stat else 0
         item["last_matched_at"] = stat["last_matched_at"] if stat else None
+        item.update(delivery_health.get(int(rule.id), {}))
         data.append(item)
     return data
 
@@ -105,6 +139,25 @@ async def create_forward_rule_endpoint(
             "[ForwardAPI] Create forward rule rejected name=%s target_type=%s error=%s", name, target_type, e
         )
         return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
+
+    try:
+        target_healthy = await _validate_enabled_delivery_target(
+            rule_name=name,
+            target_type=target_type,
+            target_url=target_url,
+            enabled=data["enabled"],
+        )
+    except _FORWARDING_RUNTIME_ERRORS as e:
+        logger.warning("[ForwardAPI] Create target validation failed name=%s error=%s", name, e)
+        target_healthy = False
+    if not target_healthy:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "error": "The forwarding target test failed; the rule was not enabled",
+            },
+        )
 
     rule = await create_forward_rule(
         session=session,
@@ -165,6 +218,28 @@ async def update_forward_rule_endpoint(
                 "[ForwardAPI] Update forward rule rejected rule_id=%s target_type=%s error=%s", rule_id, target_type, e
             )
             return JSONResponse(status_code=400, content={"success": False, "error": TARGET_URL_UNAVAILABLE_MESSAGE})
+    resulting_enabled = bool(data.get("enabled", existing.enabled))
+    target_changed = "target_url" in data or "target_type" in data
+    enabling_rule = "enabled" in data and resulting_enabled and not existing.enabled
+    if resulting_enabled and (target_changed or enabling_rule):
+        try:
+            target_healthy = await _validate_enabled_delivery_target(
+                rule_name=str(data.get("name", existing.name)),
+                target_type=str(target_type),
+                target_url=str(data.get("target_url", existing.target_url) or ""),
+                enabled=True,
+            )
+        except _FORWARDING_RUNTIME_ERRORS as e:
+            logger.warning("[ForwardAPI] Update target validation failed rule_id=%s error=%s", rule_id, e)
+            target_healthy = False
+        if not target_healthy:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "success": False,
+                    "error": "The forwarding target test failed; the rule remains unchanged",
+                },
+            )
     rule = await update_forward_rule(session=session, rule_id=rule_id, payload=data)
     if rule is None:
         return JSONResponse(status_code=404, content={"success": False, "error": "Rule does not exist"})

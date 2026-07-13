@@ -428,6 +428,9 @@ async def test_forward_rule_create_and_update_endpoints_use_validated_models(
     async def validate_target(_target_type: str, target_url: object) -> str:
         return f"{target_url}/validated"
 
+    async def validate_enabled_target(**_: object) -> bool:
+        return True
+
     async def create_forward_rule(**kwargs: object) -> SimpleNamespace:
         created_rules.append(dict(kwargs))
         return rule(target_url=kwargs["target_url"])
@@ -441,6 +444,11 @@ async def test_forward_rule_create_and_update_endpoints_use_validated_models(
         return rule(name=payload["name"], target_url=payload["target_url"])
 
     monkeypatch.setattr(forwarding, "_validated_target_url", validate_target)
+    monkeypatch.setattr(
+        forwarding,
+        "_validate_enabled_delivery_target",
+        validate_enabled_target,
+    )
     monkeypatch.setattr(forwarding, "create_forward_rule", create_forward_rule)
     monkeypatch.setattr(forwarding, "get_forward_rule", get_forward_rule)
     monkeypatch.setattr(forwarding, "update_forward_rule", update_forward_rule)

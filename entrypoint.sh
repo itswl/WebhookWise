@@ -15,7 +15,7 @@ if [ -n "$JEMALLOC_PATH" ]; then
     fi
 fi
 
-export API_WORKERS="${API_WORKERS:-4}"
+export API_WORKERS="${API_WORKERS:-2}"
 
 case "${RUN_MODE:-api}" in
     migrate)

@@ -92,9 +92,31 @@ function renderRuleCard(rule) {
     const targetTypeText = escapeHtml(formatTargetType(rule.target_type));
 
     const isEnabled = rule.enabled;
-    const cardBorder = isEnabled ? 'border-left: 4px solid var(--primary);' : 'border-left: 4px solid #cbd5e1;';
+    const deliveryStatus = String(rule.delivery_status || 'unknown');
+    const deliveryFailures = Number(rule.delivery_failure_count_24h || 0);
+    const deliveryUnhealthy = deliveryStatus === 'exhausted' || deliveryFailures > 0;
+    const deliveryRetrying = deliveryStatus === 'retrying' || deliveryStatus === 'processing';
+    const cardBorder = deliveryUnhealthy
+        ? 'border-left: 4px solid var(--danger);'
+        : (isEnabled ? 'border-left: 4px solid var(--primary);' : 'border-left: 4px solid #cbd5e1;');
     const cardOpacity = isEnabled ? 'opacity: 1;' : 'opacity: 0.65; background: #f8fafc;';
     const titleColor = isEnabled ? 'color: var(--text-main);' : 'color: var(--text-muted); text-decoration: line-through;';
+    const deliveryBadge = deliveryUnhealthy
+        ? '<span class="badge badge-danger">🚨 ' + t('rules.health.failed', { count: deliveryFailures || 1 }) + '</span>'
+        : (deliveryRetrying
+            ? '<span class="badge" style="background:var(--warning-bg); color:var(--warning);">⏳ ' + t('rules.health.retrying') + '</span>'
+            : (deliveryStatus === 'sent'
+                ? '<span class="badge badge-success">✅ ' + t('rules.health.healthy') + '</span>'
+                : ''));
+    const deliveryDetail = rule.last_delivery_at
+        ? '<div style="margin-top:0.75rem; font-size:0.82rem; color:' +
+            (deliveryUnhealthy ? 'var(--danger)' : 'var(--text-muted)') + ';">' +
+            escapeHtml(t('rules.health.lastDelivery', {
+                time: (typeof formatTime === 'function' ? formatTime(rule.last_delivery_at) : rule.last_delivery_at)
+            })) +
+            (rule.last_delivery_error ? '<div style="margin-top:0.35rem; overflow-wrap:anywhere;">' +
+                escapeHtml(rule.last_delivery_error) + '</div>' : '') + '</div>'
+        : '';
 
     // ROI: how many alerts this rule has matched. A high count = it's carrying
     // load; an enabled rule with zero matches is a "zombie" rule worth reviewing.
@@ -153,6 +175,7 @@ function renderRuleCard(rule) {
                     <span style="font-weight: 600; font-size: 1.15rem; ${titleColor}">${escapeHtml(rule.name)}</span>
                     ${!isEnabled ? '<span class="badge" style="background: var(--bg-subtle); color: var(--text-muted); font-size: 0.75rem; border: 1px solid var(--border);">' + t('rules.card.disabled') + '</span>' : ''}
                     ${hitBadge}
+                    ${deliveryBadge}
                 </div>
                 <span style="
                     background: var(--bg-subtle);
@@ -190,6 +213,7 @@ function renderRuleCard(rule) {
                         ${escapeHtml(rule.target_url || '-')}
                     </div>
                     ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: var(--warning); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span>🛑</span> ' + t('rules.card.stopOnMatch') + '</div>' : ''}
+                    ${deliveryDetail}
                 </div>
             </div>
 

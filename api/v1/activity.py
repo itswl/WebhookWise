@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import internal_error_response, ok_response
@@ -17,7 +18,22 @@ from services.operations.handoff import get_handoff_summary
 logger = get_logger("api.v1.activity")
 
 activity_router = APIRouter()
-_ACTIVITY_ERRORS = (OSError, RuntimeError, ValueError, TimeoutError)
+_ACTIVITY_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError, TimeoutError)
+
+
+@activity_router.get(
+    "/action-center",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
+)
+async def action_center_endpoint(session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
+    """Current delivery, processing, and AI problems that need operator action."""
+    from services.operations.action_center import get_action_center
+
+    try:
+        return ok_response(http_status=200, data=await get_action_center(session))
+    except _ACTIVITY_ERRORS as e:
+        logger.error("Failed to build action center: %s", e, exc_info=True)
+        return internal_error_response()
 
 
 @activity_router.get(
