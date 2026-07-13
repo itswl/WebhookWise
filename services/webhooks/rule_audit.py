@@ -24,7 +24,13 @@ _RULE_NAME_EXPR = func.coalesce(
 )
 
 
-async def get_rule_audit(session: AsyncSession, *, window_days: int = 30, min_events: int = 3) -> list[dict[str, Any]]:
+async def get_rule_audit(
+    session: AsyncSession,
+    *,
+    window_days: int = 30,
+    min_events: int = 3,
+    include_forward_counts: bool = True,
+) -> list[dict[str, Any]]:
     """Aggregate alert-rule health over *window_days*.
 
     Each row represents one (source, rule_name) pair. ``flags`` is a list of
@@ -69,7 +75,7 @@ async def get_rule_audit(session: AsyncSession, *, window_days: int = 30, min_ev
     rule_names = sorted({(r[0] or "").strip() for r in rows if r[0]})
     forwarded_by_rule: dict[str, int] = {}
     skipped_by_rule: dict[str, int] = {}
-    if rule_names:
+    if rule_names and include_forward_counts:
         traces = await _trace_forward_counts(session, start, rule_names)
         forwarded_by_rule, skipped_by_rule = traces
 
@@ -86,7 +92,7 @@ async def get_rule_audit(session: AsyncSession, *, window_days: int = 30, min_ev
         flags: list[str] = []
         if last_seen is not None and (utcnow() - last_seen).days >= max(1, window_days // 2):
             flags.append("zombie")
-        if forwarded == 0 and total > 0:
+        if include_forward_counts and forwarded == 0 and total > 0:
             flags.append("pure_noise")
         if first_seen is not None and last_seen is not None and first_seen != last_seen:
             days_active = max(1, (last_seen - first_seen).days)
