@@ -98,6 +98,25 @@ def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
     assert "DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("deep-analyses.js")
 
 
+def test_alert_cards_prioritize_summary_and_protect_action_controls() -> None:
+    html = _dashboard_html()
+    alerts_js = _static_js("alerts.js")
+    api_js = _static_js("api.js")
+    css = _static_css("components.css")
+
+    assert "alert-card-top" in alerts_js
+    assert "alerts.summaryUnavailable" in alerts_js
+    assert "alert-action-menu" in alerts_js
+    assert "alert-secondary-actions" in alerts_js
+    assert "_pendingActions: new Set()" in alerts_js
+    assert "button.classList.add('is-busy')" in alerts_js
+    assert "parseJsonResponse(response)" in api_js
+    assert ".alert-card-top" in css
+    assert "grid-template-columns: minmax(0, 1fr)" in css
+    assert ".alert-action-menu[open]" in css
+    assert 'id="confirmForwardBtn"' in html
+
+
 @pytest.mark.asyncio
 async def test_dashboard_html_is_served_with_no_cache() -> None:
     # The HTML is the cache-busting entry point (it carries the ?v= asset refs),

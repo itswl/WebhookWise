@@ -73,6 +73,8 @@ At a minimum you need to replace:
 | `WEBHOOK_SECRET` | Webhook HMAC-SHA256 signing key. |
 | `OPENAI_API_KEY` | Optional; fill in when enabling AI analysis. |
 
+The management API is limited to 300 requests per IP per minute by default. Expensive per-alert actions also have a 60-second distributed cooldown, with a five-minute minimum for starting deep analysis; the base values are configurable through `ADMIN_API_RATE_LIMIT_PER_MINUTE` and `ADMIN_ACTION_COOLDOWN_SECONDS`.
+
 For the complete configuration, see [.env.example.all](.env.example.all). Configuration is read only at process startup; after changes you must restart the process or perform a rolling release.
 
 ### 2. Start the full local stack

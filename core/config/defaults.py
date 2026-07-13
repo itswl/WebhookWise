@@ -70,9 +70,14 @@ class SecurityConfig(StaticSettings):
     WEBHOOK_RATE_LIMIT_BURST: int = Field(default=0, ge=0)
     WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE: int = Field(default=0, ge=0)
     ADMIN_API_RATE_LIMIT_PER_MINUTE: int = Field(
-        default=0,
+        default=300,
         ge=0,
-        description="Per-IP per-minute rate limit for the authenticated admin/read API; 0 (default) disables it. When enabled, it throttles API Key brute force and load; must be higher than the number of requests in a single Dashboard load (which auto-refreshes every 60s)",
+        description="Per-IP per-minute rate limit for the authenticated admin/read API; 0 disables it. It throttles API Key brute force and load and must remain higher than the number of requests in a single Dashboard load",
+    )
+    ADMIN_ACTION_COOLDOWN_SECONDS: int = Field(
+        default=60,
+        ge=0,
+        description="Per-resource cooldown for expensive operator actions such as re-analysis, manual forwarding, and dead-letter replay; 0 disables it",
     )
     RATE_LIMIT_FAIL_OPEN_ON_REDIS_ERROR: bool = Field(
         default=False,

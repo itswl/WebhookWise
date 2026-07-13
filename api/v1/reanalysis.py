@@ -10,6 +10,7 @@ from api.v1.webhook import JSONDict
 from core.auth import verify_admin_write
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
+from core.webhook_security import operator_action_guard
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas.analysis import ReanalysisResponse
@@ -27,7 +28,10 @@ _REANALYSIS_RUNTIME_ERRORS = (OSError, RuntimeError, SQLAlchemyError, TimeoutErr
 @reanalysis_router.post(
     "/reanalyze/{webhook_id}",
     response_model=ReanalysisResponse,
-    dependencies=[Depends(verify_admin_write)],
+    dependencies=[
+        Depends(verify_admin_write),
+        Depends(operator_action_guard("reanalyze", "webhook_id")),
+    ],
 )
 async def reanalyze_webhook(
     webhook_id: int, session: AsyncSession = Depends(get_db_session)
@@ -61,7 +65,10 @@ async def reanalyze_webhook(
 @reanalysis_router.post(
     "/forward/{webhook_id}",
     response_model=None,
-    dependencies=[Depends(verify_admin_write)],
+    dependencies=[
+        Depends(verify_admin_write),
+        Depends(operator_action_guard("manual_forward", "webhook_id")),
+    ],
 )
 async def manual_forward_webhook(
     webhook_id: int, data: dict[str, Any] | None = None, session: AsyncSession = Depends(get_db_session)

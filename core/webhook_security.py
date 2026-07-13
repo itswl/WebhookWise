@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import math
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, Request, Response
@@ -316,8 +316,8 @@ async def check_admin_rate_limit_dep(
 ) -> None:
     """FastAPI Depends: per-IP rate limit for the authenticated admin/read API.
 
-    Opt-in (ADMIN_API_RATE_LIMIT_PER_MINUTE > 0). Throttles API-key brute force
-    and load on the management surface, which is otherwise unlimited. Ordered
+    Enabled by default and disabled only when ADMIN_API_RATE_LIMIT_PER_MINUTE is
+    zero. Throttles API-key brute force and load on the management surface. Ordered
     BEFORE verify_api_key on the router so failed-auth attempts are counted too
     (auth would otherwise reject them before the limiter runs).
 
@@ -367,3 +367,77 @@ async def check_admin_rate_limit_dep(
     response.headers["X-RateLimit-Remaining"] = str(max(remaining or 0, 0))
     response.headers["X-RateLimit-Reset"] = str(int(reset_at))
     SECURITY_CHECKS_TOTAL.labels("admin_api", "allowed").inc()
+
+
+async def enforce_operator_action_cooldown(
+    action: str,
+    resource_id: str,
+    *,
+    security_config: SecurityConfig | None = None,
+    minimum_seconds: int = 0,
+) -> None:
+    """Claim a distributed cooldown for one expensive operator action.
+
+    Authentication remains the security boundary. This guard limits accidental
+    double-clicks and authenticated automation loops across every API process.
+    Unlike the broad read-API limiter, it fails closed when Redis is unavailable
+    because repeating a costly side effect is less safe than asking the operator
+    to retry later.
+    """
+    security = security_config or get_config_manager().security
+    cooldown_seconds = max(int(security.ADMIN_ACTION_COOLDOWN_SECONDS), int(minimum_seconds))
+    if cooldown_seconds <= 0:
+        return
+
+    from core.redis_client import redis_set_nx_ex
+    from core.redis_health import ensure_redis_available, mark_redis_failure, operator_action_lock
+
+    try:
+        if not await ensure_redis_available("webhook_security:operator_action"):
+            SECURITY_CHECKS_TOTAL.labels("operator_action", "redis_unavailable_rejected").inc()
+            raise HTTPException(status_code=503, detail="Operator action guard unavailable; retry later")
+        claimed = await redis_set_nx_ex(
+            operator_action_lock(action, resource_id),
+            "1",
+            cooldown_seconds,
+        )
+    except HTTPException:
+        raise
+    except (RuntimeError, TypeError, ValueError, RedisError) as error:
+        mark_redis_failure("webhook_security:operator_action", error)
+        logger.error("Operator action guard failed action=%s: %s", action, error, exc_info=True)
+        SECURITY_CHECKS_TOTAL.labels("operator_action", "error_rejected").inc()
+        raise HTTPException(status_code=503, detail="Operator action guard unavailable; retry later") from None
+
+    if not claimed:
+        SECURITY_CHECKS_TOTAL.labels("operator_action", "cooldown_rejected").inc()
+        raise HTTPException(
+            status_code=429,
+            detail=f"This action was already requested; retry after {cooldown_seconds} seconds",
+            headers={"Retry-After": str(cooldown_seconds)},
+        )
+    SECURITY_CHECKS_TOTAL.labels("operator_action", "allowed").inc()
+
+
+def operator_action_guard(
+    action: str,
+    path_parameter: str | None = None,
+    *,
+    minimum_seconds: int = 0,
+) -> Callable[..., object]:
+    """Build a FastAPI dependency for a route-specific operator cooldown."""
+
+    async def _guard(
+        request: Request,
+        config: AppConfig = _CONFIG_DEPENDENCY,
+    ) -> None:
+        resource_id = str(request.path_params.get(path_parameter, "global")) if path_parameter else "global"
+        await enforce_operator_action_cooldown(
+            action,
+            resource_id,
+            security_config=config.security,
+            minimum_seconds=minimum_seconds,
+        )
+
+    _guard.__name__ = f"operator_action_guard_{action}"
+    return _guard

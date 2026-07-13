@@ -7,7 +7,7 @@
 
     <!-- External stylesheets -->
     <link rel="stylesheet" href="/static/css/dashboard.css?v=20260616-navbar">
-    <link rel="stylesheet" href="/static/css/components.css?v=20260622-batchb">
+    <link rel="stylesheet" href="/static/css/components.css?v=20260713-alert-card">
 
     <!-- Chart.js for beautiful analytics trend lines -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
@@ -523,7 +523,7 @@
             </div>
             <div class="modal-footer">
                 <button class="btn" onclick="closeForwardModal()" data-i18n="common.cancel">Cancel</button>
-                <button class="btn btn-primary" onclick="confirmForward()" data-i18n="forward.confirm">Confirm Forward</button>
+                <button class="btn btn-primary" id="confirmForwardBtn" onclick="confirmForward()" data-i18n="forward.confirm">Confirm Forward</button>
             </div>
         </div>
     </div>
@@ -757,12 +757,12 @@
     </div>
 
     <!-- External scripts (loaded in dependency order) -->
-    <script src="/static/js/i18n.js?v=20260713-product-loop"></script>
+    <script src="/static/js/i18n.js?v=20260713-alert-card"></script>
     <script src="/static/js/faro.js"></script>
     <script src="/static/js/utils.js?v=20260617-noack"></script>
-    <script src="/static/js/api.js?v=20260709-v2"></script>
+    <script src="/static/js/api.js?v=20260713-alert-card"></script>
     <script src="/static/js/overview.js?v=20260709-v2"></script>
-    <script src="/static/js/alerts.js?v=20260713-product-loop"></script>
+    <script src="/static/js/alerts.js?v=20260713-alert-card"></script>
     <script src="/static/js/ai-cost.js?v=20260622-batchb"></script>
     <script src="/static/js/forward-rules.js?v=20260703-ruleroi"></script>
     <script src="/static/js/silences.js?v=20260709-v2"></script>
