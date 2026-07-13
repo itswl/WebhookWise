@@ -179,6 +179,7 @@ function switchMainTab(tabId) {
         'alerts': 'alertsTab',
         'decision-trace': 'decisionTraceTab',
         'routing': 'routingTab',
+        'noise-center': 'noiseCenterTab',
         'action-center': 'actionCenterTab'
     };
 
@@ -218,6 +219,14 @@ function switchMainTab(tabId) {
             }
             if (typeof ActionCenterModule !== 'undefined') {
                 ActionCenterModule.load();
+            }
+            break;
+        case 'noise-center':
+            if (typeof DeepAnalysesModule !== 'undefined') {
+                DeepAnalysesModule.stopAutoRefresh();
+            }
+            if (typeof NoiseCenterModule !== 'undefined') {
+                NoiseCenterModule.load();
             }
             break;
     }
@@ -268,6 +277,11 @@ function refreshCurrentTab() {
         case 'action-center':
             if (typeof ActionCenterModule !== 'undefined') {
                 ActionCenterModule.load();
+            }
+            break;
+        case 'noise-center':
+            if (typeof NoiseCenterModule !== 'undefined') {
+                NoiseCenterModule.load();
             }
             break;
         case 'alerts':

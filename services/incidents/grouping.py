@@ -79,19 +79,27 @@ def _correlation_dimensions(event: WebhookEvent) -> dict[str, str]:
     return dimensions
 
 
-def _is_recovery_event(event: WebhookEvent) -> bool:
-    parsed = event.parsed_data or {}
+def is_recovery_payload(
+    parsed_data: Mapping[str, object] | None,
+    ai_analysis: Mapping[str, object] | None,
+) -> bool:
+    """Return whether normalized alert data represents a recovery signal."""
+    parsed = parsed_data or {}
     flattened = _flatten_payload(parsed) if isinstance(parsed, dict) else {}
     for key in ("status", "state", "alert_status", "event_status", "phase"):
         value = str(flattened.get(key) or "").strip().lower()
         if value in _RECOVERY_VALUES or "恢复" in value:
             return True
-    analysis = event.ai_analysis or {}
+    analysis = ai_analysis or {}
     if isinstance(analysis, dict):
         event_type = str(analysis.get("event_type") or analysis.get("type") or "").strip().lower()
         if event_type in _RECOVERY_VALUES or "恢复" in event_type:
             return True
     return False
+
+
+def _is_recovery_event(event: WebhookEvent) -> bool:
+    return is_recovery_payload(event.parsed_data, event.ai_analysis)
 
 
 def _dimension_score(left: Mapping[str, str], right: Mapping[str, object]) -> float:

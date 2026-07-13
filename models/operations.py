@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import DateTime, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.datetime_utils import utcnow
@@ -45,3 +46,24 @@ class AnalysisFeedback(Base):
         Index("ix_analysis_feedback_resource", "resource_type", "resource_id", "created_at"),
         Index("ix_analysis_feedback_verdict_created", "verdict", "created_at"),
     )
+
+
+class NoiseReductionAction(Base):
+    """A durable, reversible optimization applied from the noise center."""
+
+    __tablename__ = "noise_reduction_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    suggestion_id: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    action_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    resource_id: Mapped[int | None] = mapped_column(Integer)
+    before_state: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=False)
+    after_state: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=False)
+    estimated_notifications: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="applied", nullable=False)
+    actor: Mapped[str] = mapped_column(String(100), default="operator", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow(), nullable=False)
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    __table_args__ = (Index("ix_noise_reduction_actions_status_created", "status", "created_at"),)

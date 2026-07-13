@@ -59,16 +59,17 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
     tabs = set(re.findall(r'data-tab="([^"]+)"', html))
     panels = set(re.findall(r'id="([^"]+Tab)"', html))
 
-    # The navbar is down to 4 tabs. Forwarding analytics (Overview / Decision
+    # The navbar is down to 5 tabs. Forwarding analytics (Overview / Decision
     # Trace / AI Cost) are sub-views of the landing tab (data-tab="decision-trace",
     # labelled "Overview"); Forward Rules / Silences / Sandbox are sub-views of the
     # Routing tab. So the standalone overview / ai-cost / outbox / forward-rules /
     # silences / sandbox tabs no longer exist.
-    assert {"alerts", "decision-trace", "routing", "action-center"} <= tabs
+    assert {"alerts", "decision-trace", "routing", "noise-center", "action-center"} <= tabs
     assert {
         "alertsTab",
         "decisionTraceTab",
         "routingTab",
+        "noiseCenterTab",
         "actionCenterTab",
     } <= panels
     assert {
