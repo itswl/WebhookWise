@@ -1,12 +1,33 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from typing import Any
+
 from tests.helpers.paths import PROJECT_ROOT
+
+
+def _iter_effective_routes(app: Any) -> Iterator[Any]:
+    """Yield every route with its full mounted path and dependant.
+
+    FastAPI >= 0.139 includes routers lazily: app.routes holds _IncludedRouter
+    entries whose effective_route_contexts() yields the flattened per-route
+    view (full prefixed path + dependant). Older versions flatten eagerly, in
+    which case the routes are yielded as-is.
+    """
+    from api.app import app as _  # noqa: F401  (ensure app import side effects ran)
+
+    for route in app.routes:
+        contexts = getattr(route, "effective_route_contexts", None)
+        if callable(contexts):
+            yield from contexts()
+        else:
+            yield route
 
 
 def _route_paths() -> set[str]:
     from api.app import app
 
-    return {str(getattr(route, "path", "")) for route in app.routes}
+    return {str(getattr(route, "path", "")) for route in _iter_effective_routes(app)}
 
 
 def test_business_api_routes_are_v1_only() -> None:
@@ -62,10 +83,12 @@ def test_v1_routes_have_explicit_auth_contract() -> None:
 
     webhook_ingest_paths = {"/v1/webhook", "/v1/webhook/{source}"}
 
-    for route in app.routes:
+    seen_v1 = 0
+    for route in _iter_effective_routes(app):
         path = str(getattr(route, "path", ""))
         if not path.startswith("/v1/"):
             continue
+        seen_v1 += 1
         ordered_dependency_names = [
             getattr(dependency.call, "__name__", str(dependency.call))
             for dependency in getattr(route, "dependant", object()).dependencies
@@ -81,6 +104,9 @@ def test_v1_routes_have_explicit_auth_contract() -> None:
             assert ordered_dependency_names.index("check_admin_rate_limit_dep") < ordered_dependency_names.index(
                 "verify_api_key"
             ), path
+    # Guard against vacuous passes: if route flattening ever breaks again, the
+    # loop must not silently check nothing.
+    assert seen_v1 > 0
 
 
 def test_sensitive_read_routes_declare_local_auth_dependency() -> None:

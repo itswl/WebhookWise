@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from contracts.webhook_payload import webhook_data_from_mapping
 from core.datetime_utils import utcnow
 from core.logger import get_logger
+from db.session import dml_rowcount
 from models import WebhookEvent
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
 from services.forwarding.outbox import resolve_and_forward, schedule_forward_outbox_many
@@ -74,7 +75,7 @@ async def reanalyze_webhook_event(session: AsyncSession, webhook_id: int) -> Rea
             .where(WebhookEvent.duplicate_of == webhook_id)
             .values(ai_analysis=dict(res), importance=new_imp, processing_status="completed", updated_at=utcnow())
         )
-        updated_dups = dups_res.rowcount or 0
+        updated_dups = dml_rowcount(dups_res)
 
     fwd_ctx = await build_webhook_context(event)
     decision = await resolve_forward_decision(

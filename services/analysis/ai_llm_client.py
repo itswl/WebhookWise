@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import httpx
 import yaml
@@ -42,7 +42,6 @@ if TYPE_CHECKING:
 _openai_client_lock = asyncio.Lock()
 _openai_client: AsyncOpenAI | None = None
 _instructor_client: instructor.Instructor | None = None
-_StructuredResultT = TypeVar("_StructuredResultT", bound=BaseModel)
 
 
 class _CompletionUsage(Protocol):
@@ -153,14 +152,14 @@ async def _create_with_completion(
     )
 
 
-async def create_structured_completion(
+async def create_structured_completion[StructuredResultT: BaseModel](
     *,
-    response_model: type[_StructuredResultT],
+    response_model: type[StructuredResultT],
     user_prompt: str,
     source: str,
     system_prompt: str | None = None,
     policy: AIProviderPolicy | None = None,
-) -> tuple[_StructuredResultT, int, int]:
+) -> tuple[StructuredResultT, int, int]:
     """Run a typed completion through the shared client, breaker and metrics."""
     policy = policy or AIProviderPolicy.from_config()
     if not policy.available:
@@ -169,10 +168,10 @@ async def create_structured_completion(
     metric_source = sanitize_source(source)
     started = time.time()
 
-    async def invoke() -> tuple[_StructuredResultT, _Completion]:
+    async def invoke() -> tuple[StructuredResultT, _Completion]:
         typed = cast(Any, client)
         return cast(
-            tuple[_StructuredResultT, _Completion],
+            tuple[StructuredResultT, _Completion],
             await typed.chat.completions.create_with_completion(
                 model=policy.model,
                 response_model=response_model,
