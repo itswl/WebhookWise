@@ -6,17 +6,21 @@ metadata:
     app.kubernetes.io/name: webhookwise
 data:
   APP_ENV: production
-  APP_VERSION: "3.0.0"
+  APP_VERSION: "3.1.0"
   HOST: 0.0.0.0
   PORT: "8000"
   LOG_LEVEL: INFO
   REQUIRE_WEBHOOK_AUTH: "true"
   REDIS_URL: redis://webhookwise-redis:6379/0
-  OTEL_ENABLED: "true"
+  # Leaving OTEL_ENABLED "true" with a blank OTEL_EXPORTER_OTLP_ENDPOINT makes
+  # telemetry a silent no-op (dashboards stay empty), so it defaults to "false"
+  # to match the compose stack. Set both this to "true" and the endpoint to your
+  # cluster collector before rollout.
+  OTEL_ENABLED: "false"
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
   OTEL_EXPORTER_OTLP_PROTOCOL: grpc
   OTEL_SERVICE_NAMESPACE: webhookwise
-  OTEL_SERVICE_VERSION: "3.0.0"
+  OTEL_SERVICE_VERSION: "3.1.0"
   OTEL_SCHEMA_URL: https://opentelemetry.io/schemas/1.41.0
   OTEL_SEMCONV_VERSION: "1.41.0"
   OTEL_SEMCONV_STABILITY_OPT_IN: http

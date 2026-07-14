@@ -48,7 +48,7 @@ aligned with the production traffic budget.
 
 ## Image Promotion
 
-The default application image is pinned to `ghcr.io/itswl/webhookwise:3.0.0`. Override it per release:
+The default application image is pinned to `ghcr.io/itswl/webhookwise:3.1.0`. Override it per release:
 
 ```bash
 kubectl -n webhookwise set image deploy/webhookwise-api webhookwise-api=ghcr.io/itswl/webhookwise:<release-tag>
@@ -57,3 +57,16 @@ kubectl -n webhookwise set image deploy/webhookwise-scheduler webhookwise-schedu
 ```
 
 Avoid `latest`; every deployed image should be a reproducible release tag or digest.
+
+## Private registry pulls
+
+`ghcr.io/itswl/webhookwise` is published to GHCR, whose packages are private by
+default. If the package is not public, pods (and the `wait-for-migrations`
+initContainers) fail with `ImagePullBackOff`. Either make the package public, or
+create an image pull secret and attach it to the `webhookwise` ServiceAccount
+(`serviceaccount.yaml`) via `imagePullSecrets` so every pod inherits it:
+
+```bash
+kubectl -n webhookwise create secret docker-registry ghcr-pull \
+  --docker-server=ghcr.io --docker-username=<user> --docker-password=<token>
+```

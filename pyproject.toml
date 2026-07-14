@@ -1,6 +1,6 @@
 [project]
 name = "webhookwise"
-version = "3.0.0"
+version = "3.1.0"
 description = "Webhook ingestion, analysis, forwarding, and observability service."
 requires-python = ">=3.12"
 

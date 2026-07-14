@@ -20,5 +20,9 @@ resources:
   - hpa-worker.yaml
   - networkpolicy.yaml
 images:
+  # newTag is the single source of truth for the deployed image tag (the
+  # hard-coded image: refs in the deployment/job manifests are placeholders this
+  # transformer overrides). A matching v3.1.0 release tag must be cut so CI
+  # publishes ghcr.io/itswl/webhookwise:3.1.0 before this is applied.
   - name: ghcr.io/itswl/webhookwise
-    newTag: 3.0.0
+    newTag: 3.1.0
