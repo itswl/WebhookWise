@@ -30,10 +30,13 @@ const AlertsModule = {
     },
 
     /**
-     * Initialize the alert module
+     * Initialize the alert module.
+     *
+     * Bind-only: the Inbox tab is hidden on the Overview landing page, so the
+     * alert list is loaded lazily on first Inbox open (setInboxView -> loadAlerts),
+     * mirroring the other tab modules and saving a fetch + render per page load.
      */
     init() {
-        this.loadAlerts();
         this.bindEvents();
     },
 
@@ -94,7 +97,6 @@ const AlertsModule = {
             e.stopPropagation();
             const action = btn.getAttribute('data-action');
             const id = btn.getAttribute('data-id');
-            console.log('Button click:', action, id);
             const handlers = {
                 'reanalyze': () => this.reanalyzeAlert(id),
                 'deep-analyze': () => this.deepAnalyzeAlert(id),
@@ -229,7 +231,6 @@ const AlertsModule = {
             // Real server-side total for the active window (null when unknown).
             this.totalCount = (result.pagination && result.pagination.total != null) ? result.pagination.total : null;
 
-            console.log('✅ Data loaded:', this.alerts.length, 'items (total', this.totalCount, 'items)');
 
             this.updateStats();
             this.currentPage = 1;
@@ -338,7 +339,6 @@ const AlertsModule = {
             return matchImportance && matchSource && matchDuplicate && matchProcessingStatus;
         });
 
-        console.log('Filter results:', this.filteredAlerts.length, 'items (of', this.alerts.length, 'items)');
 
         if (resetPage) {
             this.currentPage = 1;
@@ -366,9 +366,6 @@ const AlertsModule = {
         const endIndex = Math.min(startIndex + this.pageSize, totalFiltered);
         const currentPageData = this.filteredAlerts.slice(startIndex, endIndex);
 
-        console.log('📄 Showing page', this.currentPage, 'of', totalPagesFiltered, 'pages');
-        console.log('📊 Data range:', startIndex, '-', endIndex, ', showing', currentPageData.length, 'items');
-        console.log('📈 Total after filtering:', totalFiltered, 'items (original data', this.alerts.length, 'items)');
 
         // Update pagination info
         this.updatePagination(totalFiltered, totalPagesFiltered);
@@ -741,10 +738,6 @@ const AlertsModule = {
     async goToPage(page) {
         const totalPagesFiltered = Math.ceil(this.filteredAlerts.length / this.pageSize);
 
-        console.log('🔄 Requested jump to page', page);
-        console.log('   Current filtered data:', this.filteredAlerts.length, 'items');
-        console.log('   Per page:', this.pageSize, 'items');
-        console.log('   Total pages:', totalPagesFiltered, 'pages');
 
         if (page < 1) {
             console.warn('❌ Page number less than 1, ignoring');
@@ -766,7 +759,6 @@ const AlertsModule = {
         }
 
         this.currentPage = page;
-        console.log('✅ Jumped to page', page);
         this.displayCurrentPage();
     },
 
@@ -854,7 +846,6 @@ const AlertsModule = {
      * Load the full data for a single alert
      */
     async loadFullAlertData(webhookId, alertItem) {
-        console.log('🔄 Loading full data:', webhookId);
 
         // Show loading state
         const dataTab = alertItem.querySelector('[data-tab-content="data"]');
@@ -918,7 +909,6 @@ const AlertsModule = {
                     aiTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">' + t('alerts.ai.noData') + '</div>';
                 }
 
-                console.log('✅ Full data loaded successfully');
             } else {
                 throw new Error(result.error || t('alerts.error.loadFailed'));
             }
@@ -934,7 +924,6 @@ const AlertsModule = {
      * Replay a dead letter
      */
     async replayDeadLetter(id) {
-        console.log('Starting replay of dead letter:', id);
 
         if (!confirm(t('alerts.confirm.replayDeadLetter'))) {
             return;
@@ -942,7 +931,6 @@ const AlertsModule = {
 
         try {
             const result = await API.replayDeadLetter(id);
-            console.log('Replay result:', result);
             if (result.success) {
                 showToast(t('alerts.success.replayStarted'));
                 setTimeout(() => this.loadAlerts(), 1500);
@@ -1002,7 +990,6 @@ const AlertsModule = {
      * Reanalyze an alert
      */
     async reanalyzeAlert(id) {
-        console.log('Starting reanalysis of webhook:', id);
 
         if (!confirm(t('alerts.confirm.reanalyze'))) {
             return;
@@ -1011,7 +998,6 @@ const AlertsModule = {
         try {
             const result = await API.reanalyze(id);
 
-            console.log('Reanalysis result:', result);
 
             if (result.success) {
                 alert('✅ ' + t('alerts.msg.reanalyzeSuccess'));
@@ -1029,7 +1015,6 @@ const AlertsModule = {
      * Open the forward modal
      */
     openForwardModal(id) {
-        console.log('Opening forward modal, webhook ID:', id);
         this.currentForwardId = id;
 
         const forwardUrlInput = document.getElementById('forwardUrl');
@@ -1040,7 +1025,6 @@ const AlertsModule = {
         const modal = document.getElementById('forwardModal');
         if (modal) {
             modal.classList.add('active');
-            console.log('Forward modal opened');
         } else {
             console.error('Forward modal element not found');
         }
