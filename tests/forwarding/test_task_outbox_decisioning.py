@@ -15,9 +15,7 @@ def test_taskiq_schedule_redis_url_isolated_from_result_database() -> None:
     assert derive_schedule_redis_url("rediss://user:pass@redis:6380/4?ssl=true") == (
         "rediss://user:pass@redis:6380/5?ssl=true"
     )
-    assert derive_schedule_redis_url("redis://redis:6379/0", "redis://schedule:6379/9") == (
-        "redis://schedule:6379/9"
-    )
+    assert derive_schedule_redis_url("redis://redis:6379/0", "redis://schedule:6379/9") == ("redis://schedule:6379/9")
 
 
 @pytest.mark.asyncio
