@@ -126,7 +126,7 @@ jiter==0.13.0
     # via
     #   instructor
     #   openai
-json-repair==0.39.1
+json-repair==0.60.1
     # via -r requirements.txt
 jsonschema==4.26.0
     # via mcp
