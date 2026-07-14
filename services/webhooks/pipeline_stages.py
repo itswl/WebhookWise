@@ -27,6 +27,7 @@ from services.silences.store import get_cached_active_silences
 from services.webhooks import pipeline_runtime
 from services.webhooks.decisioning import (
     build_final_analysis,
+    ensure_forward_match_identity,
     match_active_silence,
     normalize_importance,
 )
@@ -121,6 +122,9 @@ async def _resolve_silence_skip(ctx: WebhookProcessContext) -> object | None:
         source=ctx.req_ctx.source,
         is_duplicate=False,
         parsed_data=dict(ctx.req_ctx.parsed_data),
+        # Cache the extracted identity on the context; the forward decision
+        # later in the pipeline reuses it instead of re-walking the payload.
+        identity=ensure_forward_match_identity(ctx),
     )
 
 

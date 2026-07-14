@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Row, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
@@ -303,10 +303,16 @@ async def get_silence_suppression_counts(
     }
 
 
+# Hit counts scan raw trace rows (see get_forward_rule_hit_counts); the window
+# keeps that scan bounded as trace history grows. 90 days is wide enough for
+# zombie-rule detection ("no hits in a quarter") while capping the row count.
+_HIT_COUNT_WINDOW = timedelta(days=90)
+
+
 async def get_forward_rule_hit_counts(
-    session: AsyncSession, *, rule_names: list[str] | None = None
+    session: AsyncSession, *, rule_names: list[str] | None = None, window: timedelta | None = _HIT_COUNT_WINDOW
 ) -> dict[str, dict[str, Any]]:
-    """How many alerts each forward rule has matched (lifetime) + recency.
+    """How many alerts each forward rule has matched recently + recency.
 
     The symmetric counterpart to ``get_silence_suppression_counts`` for the
     Forward-rule ROI panel: answers "which rule is carrying the load, which is a
@@ -320,13 +326,16 @@ async def get_forward_rule_hit_counts(
 
     Aggregation is done in Python rather than via ``jsonb_array_elements`` so it
     behaves identically on Postgres (prod) and SQLite (tests) — no dialect
-    branch. Bounded by the forwarded-trace count (only forwarded rows carry a
-    non-empty ``matched_rules``); we select just the two needed columns.
+    branch. Because that means shipping raw rows to Python, the scan is bounded
+    to ``window`` (index-backed ``created_at`` filter; pass ``None`` for the
+    full history) so it does not grow without bound with trace retention.
     """
     stmt = select(DecisionTrace.matched_rules, DecisionTrace.created_at).where(
         DecisionTrace.outcome == "forwarded",
         DecisionTrace.matched_rules.isnot(None),
     )
+    if window is not None:
+        stmt = stmt.where(DecisionTrace.created_at >= utcnow() - window)
     rows = (await session.execute(stmt)).all()
 
     wanted = set(rule_names) if rule_names else None
@@ -376,6 +385,27 @@ def _row_to_trace_dict(trace: DecisionTrace) -> dict[str, Any]:
 _DELIVERY_PENDING = {"pending", "processing", "retrying"}
 _DELIVERY_FAILED = {"exhausted", "expired"}
 
+# Scalar columns needed to render delivery state; deliberately excludes the four
+# large JSONB payload columns (forward_data / analysis_result / formatted_payload
+# / response_data), which this view never reads.
+_DELIVERY_COLUMNS = (
+    ForwardOutbox.id,
+    ForwardOutbox.webhook_event_id,
+    ForwardOutbox.target_type,
+    ForwardOutbox.target_name,
+    ForwardOutbox.target_url,
+    ForwardOutbox.rule_name,
+    ForwardOutbox.event_type,
+    ForwardOutbox.is_periodic_reminder,
+    ForwardOutbox.status,
+    ForwardOutbox.attempts,
+    ForwardOutbox.max_attempts,
+    ForwardOutbox.last_error,
+    ForwardOutbox.sent_at,
+    ForwardOutbox.next_attempt_at,
+    ForwardOutbox.created_at,
+)
+
 
 def _delivery_state(statuses: list[str]) -> str:
     if any(s in _DELIVERY_FAILED for s in statuses):
@@ -404,10 +434,13 @@ async def _attach_delivery_status(session: AsyncSession, items: list[dict[str, A
     if not event_ids:
         return
 
-    stmt = select(ForwardOutbox).where(ForwardOutbox.webhook_event_id.in_(event_ids))
-    rows = list((await session.execute(stmt)).scalars().all())
+    # Project the scalar columns only: loading full ForwardOutbox entities would
+    # drag 4 large JSONB payload columns per row that this view never renders
+    # (outbox_queries.list_outbox_records applies the same discipline).
+    stmt = select(*_DELIVERY_COLUMNS).where(ForwardOutbox.webhook_event_id.in_(event_ids))
+    rows = list((await session.execute(stmt)).all())
 
-    by_event: dict[int, list[ForwardOutbox]] = {}
+    by_event: dict[int, list[Row[Any]]] = {}
     for row in rows:
         if row.webhook_event_id is not None:
             by_event.setdefault(int(row.webhook_event_id), []).append(row)
@@ -434,7 +467,7 @@ async def _attach_delivery_status(session: AsyncSession, items: list[dict[str, A
         }
 
 
-def _outbox_target_dict(row: ForwardOutbox) -> dict[str, Any]:
+def _outbox_target_dict(row: Row[Any]) -> dict[str, Any]:
     return {
         "outbox_id": row.id,
         "target_type": row.target_type,

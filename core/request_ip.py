@@ -58,10 +58,6 @@ def _first_valid_header_ip(value: str) -> str | None:
     return None
 
 
-def _trusted_proxy_cidrs(security: object) -> tuple[str, ...]:
-    return tuple(item for item, _ in _parse_proxy_cidrs(str(getattr(security, "TRUSTED_PROXY_CIDRS", ""))))
-
-
 def _is_trusted_proxy(client_host: str | None, *, security: object | None = None) -> bool:
     security = security or get_config_manager().security
     if not client_host or not getattr(security, "TRUST_PROXY_HEADERS", False):

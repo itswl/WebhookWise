@@ -68,4 +68,7 @@ class DecisionTrace(Base):
             "silence_id",
             postgresql_where=text("silence_id IS NOT NULL"),
         ),
+        # Source aggregates (overview/quality GROUP BY source over a created_at
+        # window) and the source-filtered trace list (migration 0014).
+        Index("ix_decision_trace_source_created_at", "source", "created_at"),
     )

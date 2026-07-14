@@ -371,6 +371,10 @@ async def _handle_error_poll_result(
             DEEP_ANALYSIS_TOTAL.labels(status="degraded", engine=rec.get("engine", "openclaw")).inc()
             return _poll_update(
                 record_id,
+                # A degraded completion is still a completion the operator is
+                # waiting on — without this flag the record turns COMPLETED but
+                # the success card is silently never sent.
+                **{OPENCLAW_NEED_SUCCESS_NOTIFY: True},
                 status=DeepAnalysisStatus.COMPLETED,
                 analysis_result=build_analysis_result_from_openclaw_text(text, str(rec["openclaw_run_id"] or "")),
             )

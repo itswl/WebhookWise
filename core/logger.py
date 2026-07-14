@@ -164,17 +164,22 @@ class JsonFormatter(logging.Formatter):
 def setup_logger(config: AppConfig | None = None) -> logging.Logger:
     """Initialize the global logging system."""
     global _log_listener, _logger_pid
+    logger = logging.getLogger("webhook_service")
+
+    # Fast path: already configured for this PID. get_logger() funnels every
+    # module-level logger through here (~70 calls at import alone), so the
+    # config read and apply_log_levels' ~25 setLevel calls must only run when
+    # something actually needs (re)configuring.
+    if logger.handlers and _logger_pid == os.getpid():
+        return logger
+
     if config is None:
         from core.app_context import get_config_manager
 
         config = get_config_manager()
     apply_log_levels(config.server.LOG_LEVEL, config.server.THIRD_PARTY_LOG_LEVEL)
-    logger = logging.getLogger("webhook_service")
 
     if logger.handlers:
-        current_pid = os.getpid()
-        if _logger_pid == current_pid:
-            return logger
         # TaskIQ/worker child processes inherit the parent's QueueHandler, but the
         # QueueListener thread does not survive a fork. We must reinstall the
         # handler/listener under the current PID, otherwise webhook_service.*

@@ -138,10 +138,25 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
         )
         for item in events
     )
-    for resource_type, resource_id, title, status, due_at in resources:
-        key = f"sla-breached:{resource_type}:{resource_id}:{due_at.isoformat()}"
-        existing = await session.scalar(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
-        if existing is not None:
+    # One batched existence check instead of a point-SELECT per breached
+    # resource: a breach stays in this result set until resolved, so the scan
+    # re-runs every tick and the per-key queries would repeat indefinitely.
+    keys_by_resource = [
+        (resource, f"sla-breached:{resource[0]}:{resource[1]}:{resource[4].isoformat()}") for resource in resources
+    ]
+    already_queued: set[str] = set()
+    if keys_by_resource:
+        already_queued = set(
+            (
+                await session.execute(
+                    select(ForwardOutbox.idempotency_key).where(
+                        ForwardOutbox.idempotency_key.in_([key for _, key in keys_by_resource])
+                    )
+                )
+            ).scalars()
+        )
+    for (resource_type, resource_id, title, status, due_at), key in keys_by_resource:
+        if key in already_queued:
             continue
         card = {
             "msg_type": "interactive",

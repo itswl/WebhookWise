@@ -21,6 +21,26 @@ _SUMMARY_MAX_ATTEMPTS = 5
 _SUMMARY_LEASE_SECONDS = 180
 
 
+def queue_summary_if_needed(incident: Incident, now: Any) -> None:
+    """Set the durable summary-work state for an incident entering a quiet/closed state.
+
+    Single owner of the eligibility rule (multi-alert incidents get a summary,
+    singletons are marked skipped) so the reset fields cannot drift between the
+    quiet-scan, recovery-close, and workflow-resolve paths that all queue it.
+    """
+    if incident.summary_analysis is not None:
+        return
+    if incident.alert_count >= 2:
+        incident.summary_status = "pending"
+        incident.summary_attempts = 0
+        incident.summary_next_attempt_at = now
+        incident.summary_last_error = None
+    else:
+        incident.summary_status = "skipped"
+        incident.summary_next_attempt_at = None
+        incident.summary_last_error = "singleton incidents are not summarized"
+
+
 async def _load_summary_input(incident_id: int) -> tuple[str, str] | None:
     async with session_scope() as session:
         incident = await session.get(Incident, incident_id)

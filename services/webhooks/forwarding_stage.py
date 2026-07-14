@@ -25,6 +25,7 @@ from services.webhooks.decisioning import (
     ForwardingPolicy,
     SilenceSnapshot,
     decide_forwarding,
+    ensure_forward_match_identity,
     forwarding_policy_from_config,
     normalize_importance,
 )
@@ -54,6 +55,7 @@ async def resolve_forward_decision(
     session: AsyncSession | None = None,
     policy: ForwardingPolicy | None = None,
     event_type: str = "webhook_forward",
+    identity: dict[str, str] | None = None,
 ) -> ForwardDecision:
     """Resolve forwarding policy and matching rules for a processed webhook."""
     rules: list[ForwardRuleSnapshot] = []
@@ -79,6 +81,7 @@ async def resolve_forward_decision(
         policy=policy or forwarding_policy_from_config(),
         parsed_data=parsed_data,
         silences=silences,
+        identity=identity,
     )
 
     if decision.should_forward:
@@ -165,6 +168,10 @@ async def finalize_analysis_transaction(
                 parsed_data=dict(ctx.req_ctx.parsed_data),
                 session=session,
                 policy=forwarding_policy,
+                # Reuse the identity extracted for the analysis-skip silence
+                # check (or extract it now, once) instead of re-walking the
+                # payload inside decide_forwarding.
+                identity=ensure_forward_match_identity(ctx),
             )
 
             # Update the forward status of the alert event

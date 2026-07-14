@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api import ok_response
 from api.v1.webhook import JSONDict
 from db.session import get_db_session
 from schemas.decision_trace import (
@@ -94,7 +95,7 @@ async def list_decision_traces_endpoint(
     source: str = Query("", max_length=100),
     delivery: str = Query("", pattern="^(failed|)$"),
     session: AsyncSession = Depends(get_db_session),
-) -> JSONDict:
+) -> JSONResponse:
     """List decision traces (newest first), each with its full chain inline."""
     items, has_more, next_cursor = await list_decision_traces(
         session,
@@ -106,11 +107,14 @@ async def list_decision_traces_endpoint(
         page=page,
         page_size=page_size,
     )
-    return {
-        "success": True,
-        "data": items,
-        "pagination": {"next_cursor": next_cursor, "has_more": has_more, "page_size": page_size},
-    }
+    # Return a Response directly: the rows (with nested steps/delivery) are
+    # already JSON-ready, and re-validating up to 200 of them through
+    # DecisionTraceItem per request is pure overhead. response_model stays
+    # declared for the OpenAPI contract; "total" mirrors the schema default.
+    return ok_response(
+        data=items,
+        pagination={"next_cursor": next_cursor, "has_more": has_more, "page_size": page_size, "total": None},
+    )
 
 
 @decision_trace_router.get("/decision-traces/by-event/{webhook_id}", response_model=None)

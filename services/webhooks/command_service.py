@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from contracts.webhook_payload import WebhookData
 from core.app_context import get_config_manager
-from core.compression import compress_payload
+from core.compression import compress_payload_async
 from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.sensitive_data import redact_headers
@@ -85,11 +85,14 @@ def _resolve_analysis_for_duplicate(
     return final_analysis, final_importance
 
 
-def _stored_raw_payload(raw_payload: bytes | None) -> bytes | None:
+async def _stored_raw_payload(raw_payload: bytes | None) -> bytes | None:
+    # Compression is offloaded to a thread above the size threshold: the
+    # payloads worth compressing are exactly the ones whose zstd pass would
+    # stall the worker event loop (mirrors the async decompress path).
     if raw_payload is None:
         return None
     try:
-        return compress_payload(raw_payload.decode("utf-8"))
+        return await compress_payload_async(raw_payload.decode("utf-8"))
     except UnicodeDecodeError:
         return raw_payload
 
@@ -365,7 +368,7 @@ async def save_webhook_data_in_session(session: AsyncSession, *, input: SaveWebh
     payload = SaveWebhookInput(
         data=input.data,
         source=input.source,
-        raw_payload=_stored_raw_payload(input.raw_payload),
+        raw_payload=await _stored_raw_payload(input.raw_payload),
         headers=redact_headers(input.headers),
         client_ip=input.client_ip,
         request_id=input.request_id,

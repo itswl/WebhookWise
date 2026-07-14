@@ -115,6 +115,13 @@ async def post_json_to_remote(
             circuit_breaker=dependencies.circuit_breaker,
             validate_url=dependencies.validate_url,
         )
+    # URL security validation runs exactly once, before the breaker gate: an
+    # unsafe target is a configuration error that must classify as
+    # invalid_target (and disable the rule) even while the shared breaker is
+    # open. The old second validation inside the post body only duplicated the
+    # forced DNS lookup — connect-time protection against DNS rebinding is
+    # owned by the pinned-DNS transport, which re-validates the resolved IP at
+    # the socket connect itself.
     url = target_url
     if validate_target:
         try:
@@ -135,13 +142,10 @@ async def post_json_to_remote(
     headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
 
     async def _do_post() -> httpx.Response:
-        final_url = await dependencies.validate_url(url) if validate_target else url
-        logger.info("[Forward] Starting raw-json forward target=%s", mask_url(final_url))
+        logger.info("[Forward] Starting raw-json forward target=%s", mask_url(url))
         resp = cast(
             httpx.Response,
-            await dependencies.http_client.post(
-                final_url, json=payload, timeout=policy.timeout_seconds, headers=headers
-            ),
+            await dependencies.http_client.post(url, json=payload, timeout=policy.timeout_seconds, headers=headers),
         )
         resp.raise_for_status()
         return resp
