@@ -75,7 +75,7 @@ async def _run(args: argparse.Namespace) -> int:
             apply=args.apply,
         )
     finally:
-        await redis.close()
+        await redis.aclose()
     mode = "applied" if args.apply else "dry-run"
     print(f"mode={mode} matched={matched} changed={changed} ttl_seconds={args.ttl_seconds}")
     return 0

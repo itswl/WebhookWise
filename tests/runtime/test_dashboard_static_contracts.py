@@ -96,6 +96,14 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
     assert {"actions", "noise"} <= operations_views
 
 
+def test_changed_dashboard_assets_use_current_cache_version() -> None:
+    html = _dashboard_html()
+
+    assert "/static/css/components.css?v=20260714-operations" in html
+    assert "/static/js/i18n.js?v=20260714-operations" in html
+    assert "/static/js/dashboard.js?v=20260714-operations" in html
+
+
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
     assert "DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("dashboard.js")
     assert "DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("deep-analyses.js")
