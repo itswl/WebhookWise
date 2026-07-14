@@ -132,9 +132,18 @@
             if (norm) { applyStaticTranslations(); }
             return;
         }
-        // Lazy-load the target language's dictionary before switching so the
-        // first toggle never renders raw keys.
+        // Lazy-load the target language's dictionary before switching. ensureDict
+        // resolves even when the script fails to load, so commit the switch only
+        // once the dictionary is actually populated — otherwise keep the current
+        // language rather than rendering raw keys. The currentLang re-check keeps
+        // rapid double-toggles safe (a concurrent toggle may have already
+        // committed the switch).
         ensureDict(norm).then(function () {
+            if (!DICT[norm]) {
+                console.error('i18n: keeping "' + currentLang + '"; dictionary for "' + norm + '" failed to load');
+                return;
+            }
+            if (norm === currentLang) return;
             currentLang = norm;
             try { localStorage.setItem(STORAGE_KEY, norm); } catch (e) { /* ignore */ }
             document.documentElement.setAttribute('lang', norm === 'zh' ? 'zh-CN' : 'en');
@@ -161,8 +170,13 @@
         toggleLang: toggleLang,
         onChange: onChange,
         apply: applyStaticTranslations,
-        // Resolves once the active language's dictionary has loaded.
-        ready: ready
+        // Resolves once the active language's dictionary load settles (whether
+        // it succeeded or failed). Pair with isReady() to tell which.
+        ready: ready,
+        // True once the active language's dictionary is actually populated
+        // (false if its load failed), so callers can decide whether applying
+        // translations / re-rendering would change anything.
+        isReady: function () { return !!DICT[currentLang]; }
     };
     // Convenience global so module code can call t('key') directly.
     window.t = t;
