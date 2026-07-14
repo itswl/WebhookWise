@@ -8,6 +8,11 @@ from tests.helpers.paths import PROJECT_ROOT
 pytest.importorskip("fastapi")
 
 
+@pytest.fixture
+def session(db_session):
+    return db_session
+
+
 def test_utc_isoformat_marks_naive_datetimes_as_utc():
     from core.datetime_utils import utc_isoformat
 
@@ -128,25 +133,6 @@ def test_feishu_card_shows_ai_event_type_and_alert_identity():
     # The main alert card never carries deep-analysis recommendations.
     assert "处理建议" not in rendered
     assert "这条建议不展示在 Feishu 主通知里" not in rendered
-
-
-@pytest.fixture()
-async def session(monkeypatch):
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-    # Import models to register them with Base.metadata
-    import models  # noqa: F401
-    from db.session import Base
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    Session = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-
-    async with Session() as s:
-        yield s
-        await s.rollback()
-    await engine.dispose()
 
 
 async def test_webhooks_cursor_prev_alert_timestamp(session):

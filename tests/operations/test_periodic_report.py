@@ -4,28 +4,21 @@ import contextlib
 from collections.abc import AsyncIterator
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
-from db.session import Base
 from models import AIUsageLog, WebhookEvent
+
+
+@pytest.fixture
+def session(db_session):
+    return db_session
 
 
 @contextlib.asynccontextmanager
 async def _noop_session_scope() -> AsyncIterator[None]:
     """Stand-in for db.session_scope so report tests don't open a real engine."""
     yield None
-
-
-@pytest.fixture()
-async def session() -> AsyncIterator[AsyncSession]:
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    Session = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    async with Session() as s:
-        yield s
-    await engine.dispose()
 
 
 @pytest.mark.asyncio

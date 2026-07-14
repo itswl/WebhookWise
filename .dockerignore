@@ -22,4 +22,21 @@ webhooks_data/
 .git/
 .gitignore
 *.md
+# The root-level *.md rule above only matches top-level files (Docker's '*' does
+# not cross '/'), so the knowledge-base seed corpus already ships. This explicit
+# re-include documents that intent and guards against the rule later being
+# broadened to nested paths, which would otherwise break `scripts.kb_seed`.
+!knowledge_base/seed/*.md
 test_webhook.py
+
+# Local virtualenv, tool caches, coverage output, and agent tooling state: never
+# needed at runtime. Excluding them keeps the build context small and prevents
+# host-only directories from being copied into the image by `COPY . .`.
+.venv/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.claude/
+.codex/

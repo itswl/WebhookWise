@@ -3,26 +3,19 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.datetime_utils import utcnow
 
 
 @pytest.fixture
-async def session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    from db.session import Base
-
-    engine = create_async_engine("sqlite+aiosqlite://", connect_args={"check_same_thread": False})
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    yield async_sessionmaker(engine, expire_on_commit=False)
-    await engine.dispose()
+def session_factory(db_session_factory):
+    return db_session_factory
 
 
 class _AutoScope:

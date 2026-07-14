@@ -96,12 +96,80 @@ def test_dashboard_tabs_have_matching_content_panels() -> None:
     assert {"actions", "noise"} <= operations_views
 
 
-def test_changed_dashboard_assets_use_current_cache_version() -> None:
-    html = _dashboard_html()
+@pytest.mark.asyncio
+async def test_static_assets_are_content_hash_versioned() -> None:
+    # Cache-busting versions are content hashes injected at render time (not
+    # hand-edited date strings). Every /static reference in the rendered page
+    # must carry ?v=<hash> matching the file's actual content hash, so a changed
+    # asset always gets a fresh URL under the immutable cache policy and no
+    # manual version bump (or matching test edit) is ever needed again.
+    import json
 
-    assert "/static/css/components.css?v=20260714-operations" in html
-    assert "/static/js/i18n.js?v=20260714-operations" in html
-    assert "/static/js/dashboard.js?v=20260714-operations" in html
+    import httpx
+
+    from api.app import app
+    from api.dashboard import _asset_version
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/")
+        assert response.status_code == 200
+        html = response.text
+
+    refs = re.findall(r'/static/[^"?\s]+\?v=[0-9a-f]+', html)
+    assert refs, "expected content-hash-versioned /static references in the rendered dashboard"
+    for ref in refs:
+        path, _, version = ref.partition("?v=")
+        assert version == _asset_version(path), f"version for {path} does not match its content hash"
+
+    # faro.js previously shipped with no ?v=; it must now be versioned like the rest.
+    assert any(ref.startswith("/static/js/faro.js?v=") for ref in refs)
+
+    # Runtime-loaded dictionaries are versioned via the <body> data attribute
+    # (a CSP-safe manifest the i18n loader reads).
+    manifest_match = re.search(r"data-asset-versions='([^']+)'", html)
+    assert manifest_match, "expected a data-asset-versions manifest on <body>"
+    manifest = json.loads(manifest_match.group(1))
+    assert manifest["i18n.en.js"] == _asset_version("/static/js/i18n.en.js")
+    assert manifest["i18n.zh.js"] == _asset_version("/static/js/i18n.zh.js")
+
+
+@pytest.mark.asyncio
+async def test_static_assets_are_served_immutable() -> None:
+    # The ?v=<hash> scheme makes it safe to cache asset bytes hard; without a
+    # long-lived immutable Cache-Control the query strings buy nothing (every
+    # navigation revalidates). Lock the immutable policy on the /static mount.
+    import httpx
+
+    from api.app import app
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/static/js/i18n.js")
+        assert response.status_code == 200
+        assert response.headers.get("cache-control") == "public, max-age=31536000, immutable"
+
+
+def test_i18n_dictionaries_are_split_per_language() -> None:
+    # The dictionaries live in per-language files so the dashboard downloads only
+    # the active language on first paint; the core reads the shared global they
+    # register onto and lazy-loads the other on toggle.
+    core = _static_js("i18n.js")
+    en = _static_js("i18n.en.js")
+    zh = _static_js("i18n.zh.js")
+
+    assert "var DICT = (window.__WW_I18N_DICT__" in core
+    assert "function ensureDict(" in core
+    assert "ready: ready" in core
+    # The core must no longer inline the dictionaries.
+    assert "\n        en: {" not in core
+    assert "\n        zh: {" not in core
+
+    assert "DICT.en = {" in en
+    assert "DICT.zh = {" in zh
+    # Representative keys survive the split byte-identically in each language.
+    assert "'nav.title': 'Webhook Monitor'" in en
+    assert "'nav.title': 'Webhook 监控'" in zh
 
 
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:

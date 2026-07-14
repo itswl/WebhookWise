@@ -7,31 +7,21 @@ from typing import Any
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.datetime_utils import utcnow
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.types import DeepAnalysisStatus, ForwardOutboxStatus, WebhookProcessingStatus
 
 
-@pytest.fixture()
-async def session_factory(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    import models  # noqa: F401
-    from core.app_context import AppContext, set_default_app_context
-    from db.session import Base
-
-    engine = create_async_engine(
-        "sqlite+aiosqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    context = AppContext(db_engine=engine, session_factory=factory)
-    set_default_app_context(context)
+@pytest.fixture
+async def session_factory(
+    db_app_context_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    # Reuse the shared engine + default-AppContext wiring, then additionally point
+    # each module's session_scope at a transaction-wrapped scope over that factory.
+    factory = db_app_context_session_factory
 
     @asynccontextmanager
     async def scope() -> AsyncIterator[AsyncSession]:
@@ -46,11 +36,7 @@ async def session_factory(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[asyn
     monkeypatch.setattr(data_maintenance, "session_scope", scope)
     monkeypatch.setattr(command_service, "session_scope", scope)
     monkeypatch.setattr(repository, "session_scope", scope)
-    try:
-        yield factory
-    finally:
-        set_default_app_context(None)
-        await engine.dispose()
+    yield factory
 
 
 def _policy(**overrides: object) -> ForwardDeliveryPolicy:
@@ -202,7 +188,7 @@ async def test_command_service_new_duplicate_existing_and_raw_payload_paths(
     from models import WebhookEvent
     from services.webhooks import command_service
 
-    assert command_service._stored_raw_payload(b"\xff") == b"\xff"
+    assert await command_service._stored_raw_payload(b"\xff") == b"\xff"
 
     async with session_factory.begin() as session:
         original = await _insert_event(

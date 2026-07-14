@@ -193,7 +193,7 @@ async def test_forward_success_accepts_non_json_response(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
-async def test_forward_revalidates_target_immediately_before_post() -> None:
+async def test_forward_validates_target_once_before_send() -> None:
     from core.url_security import UnsafeTargetUrlError
     from services.forwarding.circuit_breakers import RemoteForwardDependencies
     from services.forwarding.policies import ForwardDeliveryPolicy
@@ -202,12 +202,14 @@ async def test_forward_revalidates_target_immediately_before_post() -> None:
     validate_calls = 0
     posted_urls: list[str] = []
 
+    # Validation runs exactly once, before the breaker gate (so unsafe targets
+    # classify as invalid_target even when the breaker is open); connect-time
+    # rebinding protection is owned by the pinned-DNS transport. When it
+    # rejects the target, the HTTP post must never happen.
     async def validate_url(url: str, **kwargs: Any) -> str:
         nonlocal validate_calls
         validate_calls += 1
-        if validate_calls == 2:
-            raise UnsafeTargetUrlError("target host resolves to a non-public IP")
-        return url
+        raise UnsafeTargetUrlError("target host resolves to a non-public IP")
 
     class Client:
         async def post(self, url: str, **_: Any) -> object:
@@ -234,7 +236,8 @@ async def test_forward_revalidates_target_immediately_before_post() -> None:
     )
 
     assert result["status"] == "invalid_target"
-    assert validate_calls == 2
+    assert result.get("disable_rule") is True
+    assert validate_calls == 1
     assert posted_urls == []
 
 

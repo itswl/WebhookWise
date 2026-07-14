@@ -2,27 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
-from db.session import Base
 from models import DecisionTrace, ForwardRule, NoiseReductionAction, Silence, WebhookEvent
 
 
-@pytest.fixture()
-async def session() -> AsyncIterator[AsyncSession]:
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with factory() as db_session:
-        yield db_session
-    await engine.dispose()
+@pytest.fixture
+def session(db_session):
+    return db_session
 
 
 async def _seed_noise(session: AsyncSession) -> ForwardRule:
