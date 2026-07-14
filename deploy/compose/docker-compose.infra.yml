@@ -12,6 +12,9 @@ services:
     image: postgres:15-alpine
     container_name: webhook-postgres
     restart: unless-stopped
+    # Preload pg_stat_statements for slow-query visibility; the extension itself
+    # is created operationally (CREATE EXTENSION) once the library is loaded here.
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
     deploy:
       resources:
         limits:
@@ -40,7 +43,10 @@ services:
     image: redis:7-alpine
     container_name: webhook-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    # AOF (everysec) bounds crash loss to ~1s of writes. maxmemory is capped
+    # below the 256MB container limit and noeviction makes writes fail loudly
+    # instead of silently evicting queued Stream entries or being OOM-killed.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "192mb", "--maxmemory-policy", "noeviction"]
     deploy:
       resources:
         limits:

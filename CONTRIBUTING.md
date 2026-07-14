@@ -16,7 +16,7 @@ cp .env.example .env
 For local services:
 
 ```bash
-docker-compose up -d postgres redis
+docker compose up -d postgres redis
 python -m scripts.run_migrations
 ```
 
@@ -49,5 +49,5 @@ tests/e2e/run_webhook_to_feishu.sh
 
 - API docs: [docs/reference/api.md](docs/reference/api.md)
 - Architecture boundaries: [docs/architecture/boundaries.md](docs/architecture/boundaries.md)
-- Observability: [docs/architecture/observability.md](docs/architecture/observability.md)
+- Observability: [docs/operations/observability/overview.md](docs/operations/observability/overview.md)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)

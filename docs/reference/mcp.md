@@ -103,7 +103,9 @@ AI usage / cost over a window.
 ### Routing & silences
 
 #### `get_forward_rule_roi`
-Per-forward-rule lifetime match counts + recency (zombie-rule detection).
+Per-forward-rule match counts over a rolling 90-day window + recency (zombie-rule
+detection). Note the asymmetry with `get_silence_roi`, whose counts are lifetime:
+a forward rule that last matched over 90 days ago reports `count: 0`.
 - **Input**: none
 - **Returns**: `{ "<rule_name>": { count, last_matched_at } }`
 

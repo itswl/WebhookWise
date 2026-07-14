@@ -12,6 +12,7 @@ name: webhookwise-observability
 services:
   alloy:
     image: ${ALLOY_IMAGE:-grafana/alloy:v1.16.1}
+    restart: unless-stopped
     user: "0:0"
     command:
       - run
@@ -36,6 +37,7 @@ services:
 
   prometheus:
     image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.11.3}
+    restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -52,6 +54,7 @@ services:
 
   alertmanager:
     image: ${ALERTMANAGER_IMAGE:-prom/alertmanager:v0.32.1}
+    restart: unless-stopped
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
@@ -65,6 +68,7 @@ services:
 
   beyla:
     image: ${BEYLA_IMAGE:-grafana/beyla:3.15.0}
+    restart: unless-stopped
     profiles:
       - diagnostics
     command: ["-config", "/etc/beyla/config.yml"]
@@ -102,6 +106,7 @@ services:
 
   pyroscope:
     image: ${PYROSCOPE_IMAGE:-grafana/pyroscope:2.0.2}
+    restart: unless-stopped
     profiles:
       - diagnostics
     command: ["server"]
@@ -114,6 +119,7 @@ services:
 
   tempo:
     image: ${TEMPO_IMAGE:-grafana/tempo:2.10.5}
+    restart: unless-stopped
     profiles:
       - diagnostics
     user: "0:0"
@@ -128,6 +134,7 @@ services:
 
   loki:
     image: ${LOKI_IMAGE:-grafana/loki:3.7.2}
+    restart: unless-stopped
     command: ["-config.file=/etc/loki/local-config.yml"]
     volumes:
       - ../../deploy/observability/loki/loki.yml:/etc/loki/local-config.yml:ro
@@ -139,6 +146,7 @@ services:
 
   grafana:
     image: ${GRAFANA_IMAGE:-grafana/grafana:13.0.1}
+    restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
