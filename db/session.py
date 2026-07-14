@@ -139,6 +139,16 @@ async def session_scope(existing_session: AsyncSession | None = None) -> AsyncIt
         DB_SESSION_DURATION_SECONDS.labels(operation, status).observe(time.perf_counter() - start)
 
 
+def dml_rowcount(result: Any) -> int:
+    """Rows affected by an executed DML statement.
+
+    session.execute() is typed as returning Result, whose stub no longer
+    exposes rowcount (it lives on CursorResult, which DML actually returns at
+    runtime); this narrows in one place instead of casting at every call site.
+    """
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
 def _is_query_timeout(exc: BaseException) -> bool:
     """True only for a statement_timeout / query cancellation, not arbitrary errors."""
     import asyncio

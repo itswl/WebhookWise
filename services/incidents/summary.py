@@ -9,7 +9,7 @@ from sqlalchemy import or_, select, update
 
 from core.datetime_utils import utcnow
 from core.logger import get_logger
-from db.session import session_scope
+from db.session import dml_rowcount, session_scope
 from models import Incident, IncidentMember, WebhookEvent
 from schemas.analysis import IncidentSummaryResult
 from services.analysis.analysis_policies import AIProviderPolicy
@@ -205,7 +205,7 @@ async def _skip_ineligible_summaries() -> int:
                 updated_at=utcnow(),
             )
         )
-        return int(result.rowcount or 0)
+        return dml_rowcount(result)
 
 
 def _build_alert_briefs(members: list[WebhookEvent]) -> str:
@@ -221,9 +221,7 @@ def _build_alert_briefs(members: list[WebhookEvent]) -> str:
         if isinstance(event.ai_analysis, dict):
             summary = str(event.ai_analysis.get("summary", "") or "")[:200]
         duplicate = " [duplicate]" if event.is_duplicate else ""
-        line = (
-            f"[{timestamp_text}] {event.source or 'unknown'} | " f"{event.importance or '?'} | {rule_name}{duplicate}"
-        )
+        line = f"[{timestamp_text}] {event.source or 'unknown'} | {event.importance or '?'} | {rule_name}{duplicate}"
         if summary:
             line += f"\n  {summary}"
         briefs.append(line.strip())

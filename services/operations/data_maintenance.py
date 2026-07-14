@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from core.datetime_utils import utcnow
 from core.logger import get_logger
-from db.session import session_scope
+from db.session import dml_rowcount, session_scope
 from models import AIUsageLog, ArchivedWebhookEvent, ForwardOutbox, Incident, WebhookEvent
 from services.operations.policies import DataMaintenancePolicy
 from services.webhooks.types import ForwardOutboxStatus
@@ -243,10 +243,10 @@ async def cleanup_expired_operational_data(*, policy: DataMaintenancePolicy | No
         )
 
     result = {
-        "archives": max(0, int(archives.rowcount or 0)),
-        "outboxes": max(0, int(outboxes.rowcount or 0)),
-        "ai_usage": max(0, int(ai_usage.rowcount or 0)),
-        "incidents_closed": max(0, int(incidents.rowcount or 0)),
+        "archives": max(0, dml_rowcount(archives)),
+        "outboxes": max(0, dml_rowcount(outboxes)),
+        "ai_usage": max(0, dml_rowcount(ai_usage)),
+        "incidents_closed": max(0, dml_rowcount(incidents)),
     }
     if any(result.values()):
         logger.info("[Maintenance] Secondary retention completed counts=%s", result)

@@ -51,7 +51,7 @@ async def test_action_center_surfaces_current_operator_work_without_leaking_targ
                     status="exhausted",
                     attempts=1,
                     max_attempts=3,
-                    last_error=("request failed at " "https://open.feishu.cn/open-apis/bot/v2/hook/very-secret-token"),
+                    last_error=("request failed at https://open.feishu.cn/open-apis/bot/v2/hook/very-secret-token"),
                     response_data={"error_code": "19001", "retryable": False},
                     created_at=now,
                     updated_at=now,
