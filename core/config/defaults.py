@@ -46,7 +46,12 @@ class TaskConfig(StaticSettings):
     )
     WORKER_STARTUP_JITTER_SECONDS: float = Field(default=0.0, ge=0.0)
     TASKIQ_RESULT_TTL_SECONDS: int = Field(
-        default=86400,
+        # Almost every task here is fire-and-forget (webhook processing, outbox
+        # delivery, periodic scans) — nothing awaits the stored result, so a
+        # long retention only accumulates dead keys and AOF volume (observed:
+        # ~139k result keys under the previous 24h default). One hour keeps
+        # results inspectable for debugging without the buildup.
+        default=3600,
         gt=0,
         description="Seconds to retain TaskIQ task results in Redis before automatic expiry",
     )

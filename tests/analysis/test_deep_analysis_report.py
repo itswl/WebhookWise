@@ -88,6 +88,19 @@ def test_plain_text_result_has_stable_empty_sections() -> None:
     assert report["sections"] == []
 
 
+def test_top_level_json_text_string_is_classified_and_parsed() -> None:
+    from contracts.deep_analysis_report import normalize_deep_analysis_report
+
+    # A bare JSON string (no wrapping mapping) is the case where the top-level
+    # parse is shared across source-format detection and candidate collection;
+    # it must still classify as json_text and extract the fields.
+    report = normalize_deep_analysis_report('{"summary": "disk full", "root_cause": "bad disk"}').to_dict()
+
+    assert report["source_format"] == "json_text"
+    assert report["summary"] == "disk full"
+    assert report["root_cause"] == "bad disk"
+
+
 def test_repairs_unescaped_quotes_inside_upstream_json_string() -> None:
     from contracts.deep_analysis_report import normalize_deep_analysis_report
 
