@@ -11,7 +11,6 @@ let silences = [];
  * Load the list of silences
  */
 async function loadSilences() {
-    console.log('🔕 Loading silences...');
     const container = document.getElementById('silencesList');
 
     try {
@@ -27,7 +26,6 @@ async function loadSilences() {
         if (result.success) {
             silences = result.data || [];
             renderSilences(silences);
-            console.log('✅ Loaded', silences.length, 'silences');
         } else {
             container.innerHTML = `
                 <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
@@ -341,10 +339,8 @@ async function saveSilence() {
     try {
         let result;
         if (silenceId) {
-            console.log('📝 Updating silence:', silenceId, silenceData);
             result = await API.updateSilence(silenceId, silenceData);
         } else {
-            console.log('➕ Creating silence:', silenceData);
             result = await API.createSilence(silenceData);
         }
 
@@ -370,7 +366,6 @@ async function liftSilence(id) {
         return;
     }
     try {
-        console.log('🔔 Lifting silence:', id);
         const result = await API.liftSilence(id);
         if (result.success) {
             loadSilences();
@@ -392,7 +387,6 @@ async function deleteSilence(id) {
         return;
     }
     try {
-        console.log('🗑️ Deleting silence:', id);
         const result = await API.deleteSilence(id);
         if (result.success) {
             alert('✅ ' + t('silences.alert.deleteSuccess'));
@@ -447,7 +441,6 @@ async function backtestSilenceRule() {
     `;
 
     try {
-        console.log('🧪 Running silence backtest...', silenceData);
         const result = await API.backtestSilence(silenceData);
         if (!result.success || !result.data) {
             container.innerHTML = `<div style="color: var(--danger); font-size: 0.85rem;">⚠️ Error: ${escapeHtml(result.error || 'Unknown error')}</div>`;
@@ -518,7 +511,6 @@ async function backtestSilenceRule() {
 // Export the module (used by dashboard.js for initialization detection)
 const SilencesModule = {
     init: function() {
-        console.log('🔕 Silence module initialized');
     },
     loadSilences: loadSilences
 };

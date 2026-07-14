@@ -3,11 +3,11 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from adapters.ecosystem_adapters import initialize_adapters
 from api import internal_error_response
-from api.dashboard import dashboard_router
+from api.dashboard import ImmutableStaticFiles, dashboard_router
 from api.health import health_router
 from api.v1.router import v1_router
 from core.app_context import AppContext, get_default_app_context, init_default_app_context, set_default_app_context
@@ -76,6 +76,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             yield
         finally:
             logger.info("[App] Shutting down worker_id=%s", _WORKER_ID)
+            # Buffered AI-usage rows must land before the DB engine goes away.
+            from services.analysis.ai_usage import flush_ai_usage
+
+            await flush_ai_usage()
             await stop_runtime_services(
                 config,
                 context=context,
@@ -100,9 +104,14 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 setup_observability(app)
-app.mount("/static", StaticFiles(directory="templates/static"), name="static")
+app.mount("/static", ImmutableStaticFiles(directory="templates/static"), name="static")
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Compress text responses (HTML/CSS/JS/JSON). minimum_size avoids the overhead
+# on tiny payloads. Added after SecurityHeadersMiddleware so it compresses the
+# fully-headed response; static assets are compressed on the fly too.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 app.add_middleware(
     RequestBodyLimitMiddleware,
