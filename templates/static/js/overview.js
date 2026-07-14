@@ -207,7 +207,13 @@ const OverviewModule = {
             const script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js';
             script.onload = () => resolve();
-            script.onerror = () => reject(new Error('Chart.js failed to load'));
+            script.onerror = () => {
+                // Don't memoize the failure — clear the cached promise (and drop
+                // the dead <script>) so a later render can re-attempt the load.
+                this._chartLibPromise = null;
+                script.remove();
+                reject(new Error('Chart.js failed to load'));
+            };
             document.head.appendChild(script);
         });
         return this._chartLibPromise;

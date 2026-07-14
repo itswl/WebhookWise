@@ -27,20 +27,23 @@ async function initDashboard() {
     // Initialize theme settings
     initTheme();
 
-    // Apply static translations to the markup and re-render the active tab on
-    // language change so dynamically-rendered content also switches language.
+    // Register the language re-render hook up front. Do NOT block startup on the
+    // dictionary fetch: a slow or stalled dict must never gate module init, event
+    // binding, or the first render — that would leave a dead, unclickable shell.
+    // Static translations are applied now if the dictionary is already loaded,
+    // otherwise once it settles (see the landing-tab load below); either way the
+    // shell is fully interactive immediately.
+    const i18nReadyAtStart = (typeof I18N === 'undefined')
+        || (typeof I18N.isReady === 'function' && I18N.isReady());
     if (typeof I18N !== 'undefined') {
-        // Wait for the active language's dictionary to load before applying, so
-        // the first paint is never a flash of raw i18n keys.
-        if (I18N.ready && typeof I18N.ready.then === 'function') {
-            await I18N.ready;
-        }
-        I18N.apply();
         I18N.onChange(() => {
             updateAuthButtonState();
             updateAutoRefreshLabel();
             refreshCurrentTab();
         });
+        if (i18nReadyAtStart) {
+            I18N.apply();
+        }
     }
 
     if (typeof API !== 'undefined') {
@@ -59,11 +62,9 @@ async function initDashboard() {
         // Set a global reference for use by onclick callbacks
         window.alertsModule = AlertsModule;
     }
-    // The Overview landing tab (data-tab="decision-trace") loads its default
-    // (Overview) sub-view on startup.
-    if (typeof DecisionTraceModule !== 'undefined') {
-        DecisionTraceModule.load();
-    }
+    // The Overview landing tab (data-tab="decision-trace") is loaded further
+    // below, gated on the active language dictionary, so its first (and only)
+    // render is translated without a second re-render pass.
     // AICostModule is no longer eagerly initialized: the AI Cost view is now a
     // sub-view of the Decision Trace tab and is loaded on demand by
     // DecisionTraceModule.setView('cost'). Its renderer (loadStats) is reused.
@@ -85,6 +86,26 @@ async function initDashboard() {
 
     // Start auto-refresh
     startAutoRefresh();
+
+    // Load the Overview landing tab. If the active dictionary is already loaded,
+    // render now; otherwise wait for it to settle so the first (and only) render
+    // is translated — the shell above is already interactive regardless. On a
+    // dict load failure we still render (English/key fallbacks) rather than
+    // leaving the landing tab stuck on its spinner. Single render = no race.
+    const loadLandingTab = () => {
+        if (typeof DecisionTraceModule !== 'undefined') DecisionTraceModule.load();
+    };
+    if (typeof I18N === 'undefined' || i18nReadyAtStart) {
+        loadLandingTab();
+    } else if (I18N.ready && typeof I18N.ready.then === 'function') {
+        I18N.ready.finally(() => {
+            if (I18N.isReady()) I18N.apply();
+            loadLandingTab();
+        });
+    } else {
+        I18N.apply();
+        loadLandingTab();
+    }
 
     // Force-clear the search box (to prevent browser autofill)
     const searchInput = document.getElementById('searchInput');
