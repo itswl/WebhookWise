@@ -24,7 +24,10 @@ redis_data/
 # Temporary and backup files
 *.sh~
 *.bak
+.env.bak*
 *.tmp
+backups/
+deploy/compose/backups/
 .coverage
 coverage.xml
 htmlcov/
