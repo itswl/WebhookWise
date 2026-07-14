@@ -239,7 +239,7 @@ Understanding the durability boundaries of this path is what lets you correctly 
 
 - **Receive → enqueue: accepted (not a durability promise).** The API returns `200 OK` as soon as the request is written to the Redis Stream (`XADD`); DB persistence happens on the Worker side. So `200 OK` means "accepted and enqueued", not "persisted". When the Redis `XADD` fails, the API returns 5xx and the upstream should retry.
 - **`WEBHOOK_MQ_STREAM_MAXLEN` is a data-loss knob, not just a memory knob.** The stream is trimmed by an approximate cap (`MAXLEN ~`): when sustained bursts exceed the Worker consumption rate and the backlog exceeds that cap, the oldest *un-acked* entries are trimmed, and the corresponding webhooks that already returned `200` are silently lost. During capacity planning, set this value based on peak backlog and pair it with queue backlog alerts (`queue.pending` / `queue.lag`).
-- **Redis persistence determines the crash boundary.** The repository does not configure AOF/fsync by default; a Redis crash loses in-flight Stream entries (already `200` but not yet consumed). When you need stronger guarantees, enable AOF for Redis or use a managed instance.
+- **Redis persistence determines the crash boundary.** The bundled Redis runs with AOF enabled (`--appendonly yes --appendfsync everysec`) on a durable named volume (see `deploy/compose/docker-compose.infra.yml`; the Kubernetes StatefulSet matches), so a Redis crash loses at most ~1 second of writes — the in-flight Stream entries not yet fsynced by the last `everysec` flush. For a stricter boundary set `--appendfsync always` (fsync every write, higher latency) or use a managed Redis with synchronous replication.
 - **After enqueue: at-least-once.** Failed Worker processing retries with backoff and goes to dead-letter once exhausted; forwarding is delivered through the transactional Outbox, and stale-recovery plus retries may deliver duplicates. Downstream should deduplicate based on the `Idempotency-Key` request header (see [services/forwarding](services/forwarding)).
 
 When you need "zero loss at ingress", you should add retries/acknowledgements upstream or place a durable queue in front of the API; the current implementation trades this off for low ingress latency.
@@ -247,7 +247,7 @@ When you need "zero loss at ingress", you should add retries/acknowledgements up
 ## Runtime Contract
 
 - The API receive layer does not do long-running analysis and does not directly execute external forwarding side effects.
-- The receive layer is at-most-once-until-consumed: `200 OK` means accepted (enqueued), not persisted; `WEBHOOK_MQ_STREAM_MAXLEN` and Redis persistence together determine the loss boundary (see [Delivery Semantics](#delivery-semantics)).
+- The receive layer is at-most-once-until-consumed: `200 OK` means accepted (enqueued), not persisted; `WEBHOOK_MQ_STREAM_MAXLEN` and Redis's AOF fsync cadence together determine the loss boundary (see [Delivery Semantics](#delivery-semantics)).
 - The Worker is the main execution surface of the business pipeline; the Scheduler only dispatches periodic tasks.
 - The Forward Outbox is the audit boundary for external delivery; retries and expired states must be persisted to the database.
 - Configuration is static process configuration and is not dynamically overridden from the database or Redis.

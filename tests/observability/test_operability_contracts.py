@@ -165,7 +165,9 @@ def test_k8s_manifests_cover_runtime_and_avoid_latest_images() -> None:
     assert not [image for image in images if _image_is_latest(image)]
 
     config = by_kind_name[("ConfigMap", "webhookwise-config")]["data"]
-    assert config["OTEL_ENABLED"] == "true"
+    # Defaults to "false": OTEL_ENABLED "true" with a blank OTEL_EXPORTER_OTLP_ENDPOINT
+    # is a silent no-op, so the k8s baseline stays off until a collector endpoint is set.
+    assert config["OTEL_ENABLED"] == "false"
     assert config["OTEL_LOGS_ENABLED"] == "true"
     assert config["OTEL_SERVICE_NAMESPACE"] == "webhookwise"
     assert config["OTEL_SCHEMA_URL"] == "https://opentelemetry.io/schemas/1.41.0"

@@ -6,7 +6,9 @@ metadata:
     app.kubernetes.io/name: webhookwise
     app.kubernetes.io/component: worker
 spec:
-  replicas: 2
+  # No replicas here: the HPA (hpa-worker.yaml) owns the worker replica count.
+  # Pinning it would fight the HPA on every `kubectl apply -k` (reset to this
+  # value, clobbering any scale-out) until the HPA re-reconciles.
   selector:
     matchLabels:
       app.kubernetes.io/name: webhookwise

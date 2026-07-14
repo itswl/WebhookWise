@@ -19,7 +19,7 @@ x-app-observability-env: &app-observability-env
   OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
   OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
   OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-webhookwise}
-  OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-3.0.0}
+  OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-3.1.0}
   OTEL_SEMCONV_VERSION: ${OTEL_SEMCONV_VERSION:-1.41.0}
   OTEL_SCHEMA_URL: ${OTEL_SCHEMA_URL:-https://opentelemetry.io/schemas/1.41.0}
   OTEL_METRICS_EXEMPLAR_FILTER: ${OTEL_METRICS_EXEMPLAR_FILTER:-trace_based}
@@ -41,7 +41,7 @@ services:
     environment:
       RUN_MODE: migrate
       APP_ENV: ${COMPOSE_APP_ENV:-development}
-      APP_VERSION: ${APP_VERSION:-3.0.0}
+      APP_VERSION: ${APP_VERSION:-3.1.0}
       PYTHONPATH: /app
       OTEL_ENABLED: "false"
       OTEL_CONSOLE_EXPORTER: "false"
@@ -90,7 +90,7 @@ services:
       RUN_MODE: api
       PORT: ${PORT:-8000}
       APP_ENV: ${COMPOSE_APP_ENV:-development}
-      APP_VERSION: ${APP_VERSION:-3.0.0}
+      APP_VERSION: ${APP_VERSION:-3.1.0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       API_KEY: ${API_KEY}
@@ -158,6 +158,17 @@ services:
       DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
       OTEL_SERVICE_NAME: webhookwise-worker
       PYROSCOPE_APPLICATION_NAME: webhookwise-worker
+    healthcheck:
+      # The worker exposes no HTTP port; scripts.healthcheck branches on
+      # RUN_MODE=worker to a DB connect + redis.ping() liveness check. Without
+      # this, a wedged-but-alive worker (lost consumer / deadlock) is neither
+      # restarted nor shown unhealthy — restart: unless-stopped only fires on
+      # process exit.
+      test: ["CMD", "python3", "-m", "scripts.healthcheck"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 40s
     volumes:
       - ../../.env:/app/.env
     depends_on:
@@ -246,8 +257,8 @@ services:
     volumes:
       - ../../.env:/app/.env
       - ${BACKUP_HOST_DIR:-./backups}:/backups
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # No depends_on: postgres here — backup connects via DATABASE_URL, so this
+    # service stays valid when the app-only compose file is run without infra
+    # (a cloud DB, per deploy/compose/README.md). backup_db retries on startup.
     networks:
       - webhook_net
