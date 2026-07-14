@@ -47,7 +47,13 @@ class AlertIdentity:
 def with_alert_identity(data: Mapping[str, Any], identity: AlertIdentity) -> WebhookData:
     normalized = dict(data)
     normalized[IDENTITY_FIELD] = identity.to_payload()
-    return webhook_data_from_mapping(normalized, strict=False)
+    # copy=False: adapters normalize freshly-parsed request bodies (json.loads
+    # yields a strict tree with a single owner), so the boundary validation
+    # runs in full while the recursive container rebuild — the dominant
+    # normalization cost per alert, paid on the synchronous ingress path too —
+    # is skipped. The one caller that re-normalizes ORM-loaded JSONB guards
+    # itself with a deep copy (services/webhooks/event_context.py).
+    return webhook_data_from_mapping(normalized, strict=False, copy=False)
 
 
 def extract_alert_identity(data: Mapping[str, Any]) -> dict[str, str] | None:

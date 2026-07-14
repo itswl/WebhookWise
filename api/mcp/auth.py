@@ -43,6 +43,20 @@ def _extract_tokens(headers: dict[bytes, bytes]) -> list[str]:
     return tokens
 
 
+def _token_matches(candidate: str, expected: str) -> bool:
+    """Constant-time compare a header token against the configured key on bytes.
+
+    Candidate tokens are latin-1-decoded header values and may carry non-ASCII
+    code points; ``hmac.compare_digest`` raises ``TypeError`` for a non-ASCII
+    ``str``, which would turn a garbage ``Authorization`` header into a 500
+    instead of a clean 401. Encoding both sides sidesteps that: latin-1
+    round-trips the candidate back to the exact header bytes, and the configured
+    key is compared as UTF-8 (identical to latin-1 for the ASCII keys used in
+    practice).
+    """
+    return hmac.compare_digest(candidate.encode("latin-1"), expected.encode("utf-8"))
+
+
 class MCPAuthMiddleware:
     """Reject MCP requests that do not carry a valid management API key."""
 
@@ -58,7 +72,7 @@ class MCPAuthMiddleware:
         headers = dict(scope.get("headers") or [])
         tokens = _extract_tokens(headers)
 
-        authorized = bool(api_key) and any(hmac.compare_digest(t, api_key) for t in tokens)
+        authorized = bool(api_key) and any(_token_matches(t, api_key) for t in tokens)
         if not authorized:
             await self._reject(scope, send, reason="missing API_KEY config" if not api_key else "invalid token")
             return

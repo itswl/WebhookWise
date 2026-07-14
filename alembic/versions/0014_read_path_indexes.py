@@ -8,7 +8,8 @@ Adds indexes flagged by review as unindexed hot read paths:
   panel partitions a row_number() window by rule and counts recent failures
   per rule over an otherwise unindexed FK column.
 - decision_trace (source, created_at): overview/quality endpoints GROUP BY
-  source over a created_at window and the trace list filters by source.
+  source over a created_at window (the id-ordered trace list is NOT served by
+  this index; it paginates via the primary key).
 
 Revision ID: 0014_read_path_indexes
 Revises: 0013_noise_reduction_actions

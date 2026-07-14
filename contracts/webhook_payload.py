@@ -128,34 +128,64 @@ def _copy_json_compatible(value: Any, *, path: str) -> Any:
     raise ValueError(f"{path} contains non-JSON value: {type(value).__name__}")
 
 
-def _copy_mapping_field(value: Any, *, field_name: str) -> JsonObject:
+def _validate_json_compatible(value: Any, *, path: str) -> Any:
+    """Walk-only twin of _copy_json_compatible: identical checks and error
+    messages, but returns the original containers instead of rebuilding them.
+
+    Safe whenever the caller owns the input tree (json.loads output is a strict
+    tree with no shared references), where rebuilding it is pure per-alert CPU.
+    """
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError(f"{path} contains non-string key: {key!r}")
+            _validate_json_compatible(item, path=f"{path}.{key}")
+        return value
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        for item in value:
+            _validate_json_compatible(item, path=f"{path}[]")
+        return value
+    raise ValueError(f"{path} contains non-JSON value: {type(value).__name__}")
+
+
+def _copy_mapping_field(value: Any, *, field_name: str, copy: bool = True) -> JsonObject:
     if not isinstance(value, Mapping):
         raise ValueError(f"WebhookData.{field_name} must be an object")
-    return cast(JsonObject, _copy_json_compatible(value, path=f"WebhookData.{field_name}"))
+    transform = _copy_json_compatible if copy else _validate_json_compatible
+    return cast(JsonObject, transform(value, path=f"WebhookData.{field_name}"))
 
 
-def _copy_list_of_mappings(value: Any, *, field_name: str) -> list[JsonObject]:
+def _copy_list_of_mappings(value: Any, *, field_name: str, copy: bool = True) -> list[JsonObject]:
     if not isinstance(value, list):
         raise ValueError(f"WebhookData.{field_name} must be a list")
+    transform = _copy_json_compatible if copy else _validate_json_compatible
     copied: list[JsonObject] = []
     for index, item in enumerate(value):
         if not isinstance(item, Mapping):
             raise ValueError(f"WebhookData.{field_name}[{index}] must be an object")
-        copied.append(cast(JsonObject, _copy_json_compatible(item, path=f"WebhookData.{field_name}[{index}]")))
-    return copied
+        copied.append(cast(JsonObject, transform(item, path=f"WebhookData.{field_name}[{index}]")))
+    return copied if copy else cast("list[JsonObject]", value)
 
 
-def webhook_data_from_mapping(data: Mapping[str, Any], *, strict: bool = True) -> WebhookData:
+def webhook_data_from_mapping(data: Mapping[str, Any], *, strict: bool = True, copy: bool = True) -> WebhookData:
     """Validate and copy data into the declared WebhookData boundary.
 
     Adapter ingress can opt into ``strict=False`` when preserving source-native
     fields for downstream analysis. All other call sites reject undeclared keys
     by default so internal contracts fail fast instead of drifting silently.
+
+    ``copy=False`` performs the identical validation walk (same checks, same
+    error messages) but shares the input's containers instead of rebuilding
+    them. Only for callers that exclusively own the input tree — json.loads
+    output qualifies; ORM-loaded JSONB does not (see adapters/normalized.py).
     """
 
     if not isinstance(data, Mapping):
         raise TypeError("WebhookData input must be a mapping")
 
+    json_transform = _copy_json_compatible if copy else _validate_json_compatible
     normalized: dict[str, Any] = {}
     for key, value in data.items():
         if not isinstance(key, str):
@@ -169,9 +199,9 @@ def webhook_data_from_mapping(data: Mapping[str, Any], *, strict: bool = True) -
                 raise ValueError(f"WebhookData.{key} must be a string or null")
             normalized[key] = value
         elif key in _MAPPING_WEBHOOK_FIELDS:
-            normalized[key] = _copy_mapping_field(value, field_name=key)
+            normalized[key] = _copy_mapping_field(value, field_name=key, copy=copy)
         elif key in _LIST_MAPPING_WEBHOOK_FIELDS:
-            normalized[key] = _copy_list_of_mappings(value, field_name=key)
+            normalized[key] = _copy_list_of_mappings(value, field_name=key, copy=copy)
         elif key in _INT_WEBHOOK_FIELDS:
             if not isinstance(value, int) or isinstance(value, bool):
                 raise ValueError(f"WebhookData.{key} must be an integer")
@@ -190,14 +220,12 @@ def webhook_data_from_mapping(data: Mapping[str, Any], *, strict: bool = True) -
             normalized[key] = [float(item) for item in value]
         elif key in _DATETIME_WEBHOOK_FIELDS:
             normalized[key] = (
-                value
-                if isinstance(value, (datetime, date))
-                else _copy_json_compatible(value, path=f"WebhookData.{key}")
+                value if isinstance(value, (datetime, date)) else json_transform(value, path=f"WebhookData.{key}")
             )
         elif key in _JSON_WEBHOOK_FIELDS:
-            normalized[key] = _copy_json_compatible(value, path=f"WebhookData.{key}")
+            normalized[key] = json_transform(value, path=f"WebhookData.{key}")
         else:
             if strict:
                 raise ValueError(f"WebhookData.{key} is not declared")
-            normalized[key] = _copy_json_compatible(value, path=f"WebhookData.{key}")
+            normalized[key] = json_transform(value, path=f"WebhookData.{key}")
     return cast(WebhookData, normalized)

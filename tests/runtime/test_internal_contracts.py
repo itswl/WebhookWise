@@ -140,6 +140,72 @@ def test_webhook_data_from_mapping_validates_runtime_boundary() -> None:
         raise AssertionError("non-string keys should be rejected")
 
 
+def test_webhook_data_validate_only_mode_matches_copy_mode() -> None:
+    """copy=False must validate identically to copy=True, minus the rebuild."""
+    payload = {
+        "source": "prometheus",
+        "parsed_data": {"alert": "disk", "nested": {"deep": [1, 2, {"k": "v"}]}},
+        "Resources": [{"InstanceId": "i-1", "Dimensions": [{"Name": "Host", "Value": "h1"}]}],
+        "body": ["raw", {"x": 1}],
+        "source_native_field": {"still": "json"},
+    }
+
+    copied = webhook_payload.webhook_data_from_mapping(payload, strict=False)
+    shared = webhook_payload.webhook_data_from_mapping(payload, strict=False, copy=False)
+
+    # Identical content either way.
+    assert dict(copied) == dict(shared)
+    # copy=True rebuilds containers; copy=False shares the caller's tree.
+    assert copied["parsed_data"] is not payload["parsed_data"]
+    assert shared["parsed_data"] is payload["parsed_data"]
+    assert shared["Resources"] is payload["Resources"]
+
+    # Validation behaviour and error messages are identical in both modes.
+    for bad in (
+        {"parsed_data": "not-an-object"},
+        {"source": "x", "weird": {"k": object()}},
+        {"source": "x", "raw": {1: "bad-key"}},
+    ):
+        errors: list[str] = []
+        for copy_mode in (True, False):
+            try:
+                webhook_payload.webhook_data_from_mapping(bad, strict=False, copy=copy_mode)  # type: ignore[arg-type]
+            except ValueError as exc:
+                errors.append(str(exc))
+            else:
+                errors.append("<no error>")
+        assert errors[0] == errors[1]
+        assert errors[0] != "<no error>"
+
+
+def test_adapter_normalization_hash_is_stable_across_repeated_runs() -> None:
+    """The ingress backpressure hash and the worker hash must agree: both run
+    the adapter normalizer over the same body, so repeated normalization of one
+    payload must produce identical alert/dedup keys."""
+    import json as stdlib_json
+
+    from adapters.ecosystem_adapters import normalize_webhook_event
+    from services.dedup import generate_event_keys
+
+    raw_body = stdlib_json.dumps(
+        {
+            "Namespace": "VCM_ECS",
+            "RuleName": "HighCPU",
+            "Level": "critical",
+            "Resources": [{"InstanceId": "i-abc123", "Dimensions": [{"Name": "Host", "Value": "prod-1"}]}],
+        }
+    ).encode()
+
+    keys: list[tuple[str, str]] = []
+    for _ in range(2):  # ingress pass + worker pass
+        payload = stdlib_json.loads(raw_body)
+        normalized = normalize_webhook_event(payload, "volcengine")
+        keys.append(generate_event_keys(dict(normalized.data), normalized.source))
+
+    assert keys[0] == keys[1]
+    assert keys[0][0]  # non-empty alert hash
+
+
 def test_noise_reduction_context_stores_related_ids_as_tuple() -> None:
     ctx = webhook_types.NoiseReductionContext("derived", 1, 0.9, True, "test", 2, [1, 2])
 

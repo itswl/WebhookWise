@@ -66,7 +66,10 @@ class WebhookEvent(Base):
     headers: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     parsed_data: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 
-    alert_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    # No single-column index: idx_hash_timestamp's leading column serves every
+    # alert_hash lookup (dropped in migration 0015 — live stats showed the
+    # single-column duplicate only taxed inserts).
+    alert_hash: Mapped[str | None] = mapped_column(String(64))
     dedup_key: Mapped[str | None] = mapped_column(String(64), index=True)
 
     ai_analysis: Mapped[dict[str, object] | None] = mapped_column(JSONB)

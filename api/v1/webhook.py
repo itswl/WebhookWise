@@ -336,6 +336,8 @@ async def get_webhooks_endpoint(
     # optimization. response_model stays declared for the OpenAPI contract.
     return ok_response(
         data=items,
+        # "status" is a BODY field here (WebhookListResponse declares it), NOT
+        # the HTTP status — that is ok_response's http_status parameter.
         status=200,
         pagination={
             "next_cursor": next_cursor,

@@ -68,7 +68,9 @@ class DecisionTrace(Base):
             "silence_id",
             postgresql_where=text("silence_id IS NOT NULL"),
         ),
-        # Source aggregates (overview/quality GROUP BY source over a created_at
-        # window) and the source-filtered trace list (migration 0014).
+        # Source aggregates: overview/quality GROUP BY source over a created_at
+        # window (migration 0014). NOTE: this does NOT serve the source-filtered
+        # trace *list* — that paginates by id DESC, which (source, created_at)
+        # cannot satisfy; add (source, id) only if that filter proves hot.
         Index("ix_decision_trace_source_created_at", "source", "created_at"),
     )

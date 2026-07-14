@@ -13,6 +13,10 @@ from services.pagination import apply_cursor_window, trim_cursor_window
 # Time-window presets for the alert list filter. "all" (or unknown) → no bound.
 _WINDOW_DELTAS = {"today": timedelta(days=1), "7d": timedelta(days=7), "30d": timedelta(days=30)}
 
+# Below this row count the unfiltered total uses an exact COUNT instead of the
+# pg_class.reltuples planner estimate (see count_webhook_summaries).
+_COUNT_ESTIMATE_MIN_ROWS = 10_000
+
 
 def window_to_time_from(window: str) -> datetime | None:
     """Map a window preset (today / 7d / 30d / all) to a lower time bound."""
@@ -229,9 +233,12 @@ async def count_webhook_summaries(
                 {"table": WebhookEvent.__tablename__},
             )
         ).scalar()
-        # reltuples is -1 until the first ANALYZE; fall through to the exact
-        # count in that case (the table is young, so it is cheap anyway).
-        if estimate is not None and estimate >= 0:
+        # reltuples is -1 until the first ANALYZE; and below the threshold the
+        # planner statistic is both least accurate in relative terms (an
+        # ANALYZE-lag of a few hundred rows can contradict what the page shows,
+        # e.g. "Total: 0" over visible rows) and cheapest to replace with the
+        # exact count — so small tables fall through to the real COUNT.
+        if estimate is not None and estimate >= _COUNT_ESTIMATE_MIN_ROWS:
             return int(estimate)
 
     stmt = _apply_summary_filters(

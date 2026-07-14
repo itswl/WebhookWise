@@ -172,6 +172,30 @@ def test_i18n_dictionaries_are_split_per_language() -> None:
     assert "'nav.title': 'Webhook 监控'" in zh
 
 
+def test_dashboard_startup_is_resilient_to_i18n_dictionary_stalls() -> None:
+    # A slow or failed per-language dictionary fetch must not gate the shell.
+    dashboard = _static_js("dashboard.js")
+    i18n = _static_js("i18n.js")
+    overview = _static_js("overview.js")
+
+    # Init no longer blocks on the dictionary; the landing-tab load is gated on
+    # it instead, and the readiness check is exposed for that decision.
+    assert "await I18N.ready" not in dashboard
+    assert "loadLandingTab" in dashboard
+    assert "isReady" in i18n
+    # setLang commits the switch only once the target dictionary populated
+    # (ensureDict resolves even on load failure).
+    assert "if (!DICT[norm])" in i18n
+    # A failed Chart.js load is not memoized forever — a later render can retry.
+    assert "this._chartLibPromise = null;" in overview
+
+
+def test_forward_rule_hits_badge_reads_as_rolling_90_day_window() -> None:
+    # The backend hit count is a rolling 90-day window; both dictionaries say so.
+    assert "'rules.roi.hits': '{count} matched (90d)'" in _static_js("i18n.en.js")
+    assert "'rules.roi.hits': '近 90 天命中 {count} 次'" in _static_js("i18n.zh.js")
+
+
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
     assert "DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("dashboard.js")
     assert "DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("deep-analyses.js")

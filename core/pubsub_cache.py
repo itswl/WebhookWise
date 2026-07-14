@@ -57,6 +57,7 @@ class TtlPubSubCache[T]:
         self._ttl = ttl_seconds
         self._value: T | None = None
         self._loaded_at: float = 0.0
+        self._invalidation_epoch = 0
         # Single-flight guard for reloads (see get()).
         self._reload_lock = asyncio.Lock()
         # Strong reference to the listener task: the event loop only keeps a
@@ -68,6 +69,10 @@ class TtlPubSubCache[T]:
         """Drop the local cached value; the next get reloads it."""
         self._value = None
         self._loaded_at = 0.0
+        # Epoch guard: an invalidation that lands while a loader is in flight
+        # must not be clobbered by that (already-stale) load result committing
+        # itself to the cache afterwards.
+        self._invalidation_epoch += 1
 
     async def get(self, session: AsyncSession | None = None) -> T:
         """Return the cached value, reloading via ``loader`` when stale/empty.
@@ -84,9 +89,15 @@ class TtlPubSubCache[T]:
         async with self._reload_lock:
             if self._value is not None and (time.monotonic() - self._loaded_at) < self._ttl:
                 return self._value
+            epoch_before = self._invalidation_epoch
             value = await self._loader(session)
-            self._value = value
-            self._loaded_at = time.monotonic()
+            # Commit to the cache only if no invalidation arrived while the
+            # loader was running — otherwise this value may already be stale,
+            # so return it to the caller but leave the cache empty for the
+            # next get() to reload fresh.
+            if self._invalidation_epoch == epoch_before:
+                self._value = value
+                self._loaded_at = time.monotonic()
             return value
 
     async def publish_invalidation(self) -> None:
@@ -127,7 +138,9 @@ class TtlPubSubCache[T]:
             finally:
                 with contextlib.suppress(Exception):
                     await pubsub.unsubscribe(self._channel)
-                    await pubsub.close()
+                    # redis-py 8 deprecates PubSub.close() in favour of aclose().
+                    # types-redis stubs still describe redis 4.x, hence the ignore.
+                    await pubsub.aclose()  # type: ignore[attr-defined]
 
         def _on_listener_done(task: asyncio.Task[None]) -> None:
             if self._listener_task is task:

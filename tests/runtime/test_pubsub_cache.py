@@ -90,6 +90,31 @@ async def test_concurrent_misses_are_single_flight() -> None:
 
 
 @pytest.mark.asyncio
+async def test_invalidation_during_inflight_load_is_not_clobbered() -> None:
+    calls: list[int] = []
+    release = asyncio.Event()
+
+    async def slow_loader(session):
+        calls.append(1)
+        await release.wait()
+        return f"load-{len(calls)}"
+
+    cache: TtlPubSubCache[str] = TtlPubSubCache(channel="ch", loader=slow_loader, log_prefix="Test")
+
+    task = asyncio.create_task(cache.get())
+    await asyncio.sleep(0)  # loader is now in flight
+    cache.invalidate()  # cross-worker invalidation lands mid-load
+    release.set()
+    assert await task == "load-1"
+
+    # The mid-load invalidation must not be swallowed: the stale result was
+    # returned to its caller but NOT cached, so the next get() reloads fresh.
+    release.set()
+    assert await cache.get() == "load-2"
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
 async def test_start_listener_retains_task_reference(monkeypatch) -> None:
     started = asyncio.Event()
 
