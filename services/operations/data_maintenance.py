@@ -3,14 +3,15 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import and_, delete, not_, or_, select, true
+from sqlalchemy import and_, delete, not_, or_, select, true, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from core.datetime_utils import utcnow
 from core.logger import get_logger
 from db.session import session_scope
-from models import ArchivedWebhookEvent, WebhookEvent
+from models import AIUsageLog, ArchivedWebhookEvent, ForwardOutbox, Incident, WebhookEvent
 from services.operations.policies import DataMaintenancePolicy
+from services.webhooks.types import ForwardOutboxStatus
 
 logger = get_logger("maintenance")
 
@@ -200,3 +201,61 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
     except (RuntimeError, SQLAlchemyError, ValueError, TypeError) as e:
         logger.error("[Maintenance] Cleanup task failed: %s", e, exc_info=True)
         return total_archived
+
+
+async def cleanup_expired_operational_data(*, policy: DataMaintenancePolicy | None = None) -> dict[str, int]:
+    """Bound secondary tables and close quiet incidents that no longer need attention."""
+    policy = policy or DataMaintenancePolicy.from_config()
+    if not policy.enabled:
+        return {"archives": 0, "outboxes": 0, "ai_usage": 0, "incidents_closed": 0}
+
+    now = utcnow()
+    async with session_scope() as session:
+        archives = await session.execute(
+            delete(ArchivedWebhookEvent).where(
+                ArchivedWebhookEvent.archived_at < _days_threshold(now, policy.archive_retention_days)
+            )
+        )
+        outboxes = await session.execute(
+            delete(ForwardOutbox).where(
+                ForwardOutbox.status.in_(
+                    [ForwardOutboxStatus.SENT, ForwardOutboxStatus.EXHAUSTED, ForwardOutboxStatus.EXPIRED]
+                ),
+                ForwardOutbox.updated_at < _days_threshold(now, policy.terminal_outbox_retention_days),
+            )
+        )
+        ai_usage = await session.execute(
+            delete(AIUsageLog).where(AIUsageLog.timestamp < _days_threshold(now, policy.ai_usage_retention_days))
+        )
+        incidents = await session.execute(
+            update(Incident)
+            .where(
+                Incident.status == "quiet",
+                Incident.updated_at < _days_threshold(now, policy.incident_auto_close_days),
+            )
+            .values(
+                status="closed",
+                workflow_status="resolved",
+                resolved_at=now,
+                ended_at=now,
+                updated_at=now,
+            )
+        )
+
+    result = {
+        "archives": max(0, int(archives.rowcount or 0)),
+        "outboxes": max(0, int(outboxes.rowcount or 0)),
+        "ai_usage": max(0, int(ai_usage.rowcount or 0)),
+        "incidents_closed": max(0, int(incidents.rowcount or 0)),
+    }
+    if any(result.values()):
+        logger.info("[Maintenance] Secondary retention completed counts=%s", result)
+    return result
+
+
+async def run_data_maintenance(*, policy: DataMaintenancePolicy | None = None) -> dict[str, object]:
+    """Run live-event archival and secondary retention as one scheduled job."""
+    policy = policy or DataMaintenancePolicy.from_config()
+    archived = await cleanup_old_data_by_policy(policy=policy)
+    secondary = await cleanup_expired_operational_data(policy=policy)
+    return {"events_archived": archived, **secondary}

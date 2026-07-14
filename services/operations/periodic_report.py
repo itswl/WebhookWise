@@ -480,8 +480,14 @@ async def _send_report_with_retry(webhook_url: str, card: dict[str, Any], period
             if attempt > 1:
                 logger.info("[PeriodicReport] %s send succeeded on attempt %d", period_label, attempt)
             return result
-        if status == "invalid_target":
-            # Misconfigured URL — retrying cannot help.
+        if status == "invalid_target" or result.get("retryable") is False:
+            # Permanent target/business errors cannot recover during this run.
+            logger.warning(
+                "[PeriodicReport] %s send stopped after permanent failure status=%s code=%s",
+                period_label,
+                status,
+                result.get("error_code"),
+            )
             return result
         if attempt < _REPORT_SEND_MAX_ATTEMPTS:
             delay = _REPORT_SEND_BACKOFF_SECONDS[min(attempt - 1, len(_REPORT_SEND_BACKOFF_SECONDS) - 1)]
@@ -535,6 +541,18 @@ async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None 
     async with session_scope() as session:
         stats = await collect_report_stats(session, getattr(notif, period.window_attr))
 
+    if (
+        period_key == "daily"
+        and notif.DAILY_REPORT_ONLY_ON_ACTIVITY
+        and stats.get("action_center_total") is not None
+        and not stats["total_events"]
+        and not stats["ai_calls"]
+        and not stats.get("action_center_total")
+    ):
+        await _record_report_sent(period_key, fire_ts or utcnow().replace(tzinfo=UTC))
+        logger.info("[PeriodicReport] daily report skipped because the window had no activity")
+        return {"skipped": "no_activity", **stats}
+
     card = _build_card(stats, period.title, str(notif.DASHBOARD_PUBLIC_URL or "").strip())
 
     result = await _send_report_with_retry(webhook_url, card, period.key)
@@ -542,7 +560,7 @@ async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None 
     # comparisons never mix naive/aware datetimes).
     await _record_report_sent(period_key, fire_ts or utcnow().replace(tzinfo=UTC))
     logger.info(
-        "[PeriodicReport] %s sent events=%s noise=%s%% ai_cost=$%s status=%s",
+        "[PeriodicReport] %s completed events=%s noise=%s%% ai_cost=$%s status=%s",
         period.key,
         stats["total_events"],
         stats["noise_pct"],

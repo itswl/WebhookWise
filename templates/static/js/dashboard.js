@@ -7,6 +7,7 @@
 let autoRefreshInterval = null;
 let currentTab = 'decision-trace';  // the Overview landing tab (hosts Overview|Decision Trace|AI Cost sub-views)
 let currentInboxView = 'alerts';
+let currentOperationsView = 'actions';
 const DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000;
 
 /**
@@ -117,6 +118,14 @@ function bindGlobalEvents() {
         });
     });
 
+    document.querySelectorAll('[data-operations-view]').forEach(button => {
+        button.addEventListener('click', (e) => {
+            const target = e.target.closest('[data-operations-view]');
+            const view = target ? target.getAttribute('data-operations-view') : null;
+            if (view) setOperationsView(view);
+        });
+    });
+
     // Auto-refresh button
     const autoRefreshBtn = document.getElementById('autoRefreshBtn');
     if (autoRefreshBtn) {
@@ -179,8 +188,7 @@ function switchMainTab(tabId) {
         'alerts': 'alertsTab',
         'decision-trace': 'decisionTraceTab',
         'routing': 'routingTab',
-        'noise-center': 'noiseCenterTab',
-        'action-center': 'actionCenterTab'
+        'operations': 'operationsTab'
     };
 
     Object.entries(tabContents).forEach(([id, elementId]) => {
@@ -213,21 +221,11 @@ function switchMainTab(tabId) {
                 RoutingModule.load();
             }
             break;
-        case 'action-center':
+        case 'operations':
             if (typeof DeepAnalysesModule !== 'undefined') {
                 DeepAnalysesModule.stopAutoRefresh();
             }
-            if (typeof ActionCenterModule !== 'undefined') {
-                ActionCenterModule.load();
-            }
-            break;
-        case 'noise-center':
-            if (typeof DeepAnalysesModule !== 'undefined') {
-                DeepAnalysesModule.stopAutoRefresh();
-            }
-            if (typeof NoiseCenterModule !== 'undefined') {
-                NoiseCenterModule.load();
-            }
+            setOperationsView(currentOperationsView);
             break;
     }
 }
@@ -262,6 +260,22 @@ function openInboxIncidents() {
     setInboxView('incidents');
 }
 
+function setOperationsView(view) {
+    currentOperationsView = view === 'noise' ? 'noise' : 'actions';
+    const actionView = document.getElementById('actionCenterTab');
+    const noiseView = document.getElementById('noiseCenterTab');
+    if (actionView) actionView.style.display = currentOperationsView === 'actions' ? 'block' : 'none';
+    if (noiseView) noiseView.style.display = currentOperationsView === 'noise' ? 'block' : 'none';
+    document.querySelectorAll('[data-operations-view]').forEach(function (button) {
+        button.classList.toggle('active', button.getAttribute('data-operations-view') === currentOperationsView);
+    });
+    if (currentOperationsView === 'noise' && typeof NoiseCenterModule !== 'undefined') {
+        NoiseCenterModule.load();
+    } else if (typeof ActionCenterModule !== 'undefined') {
+        ActionCenterModule.load();
+    }
+}
+
 function refreshCurrentTab() {
     switch (currentTab) {
         case 'decision-trace':
@@ -274,15 +288,8 @@ function refreshCurrentTab() {
                 RoutingModule.refresh();
             }
             break;
-        case 'action-center':
-            if (typeof ActionCenterModule !== 'undefined') {
-                ActionCenterModule.load();
-            }
-            break;
-        case 'noise-center':
-            if (typeof NoiseCenterModule !== 'undefined') {
-                NoiseCenterModule.load();
-            }
+        case 'operations':
+            setOperationsView(currentOperationsView);
             break;
         case 'alerts':
         default:

@@ -8,8 +8,21 @@ import pytest
 from tests.helpers.metric_helpers import MetricCall, StubMetric
 
 
+def test_taskiq_schedule_redis_url_isolated_from_result_database() -> None:
+    from core.taskiq_broker import derive_schedule_redis_url
+
+    assert derive_schedule_redis_url("redis://redis:6379/0") == "redis://redis:6379/1"
+    assert derive_schedule_redis_url("rediss://user:pass@redis:6380/4?ssl=true") == (
+        "rediss://user:pass@redis:6380/5?ssl=true"
+    )
+    assert derive_schedule_redis_url("redis://redis:6379/0", "redis://schedule:6379/9") == (
+        "redis://schedule:6379/9"
+    )
+
+
 @pytest.mark.asyncio
 async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.web import startup_checks
     from services.operations import taskiq_wiring
 
     startup_calls: list[dict[str, object]] = []
@@ -51,9 +64,7 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
     monkeypatch.setattr("core.app_context.init_default_app_context", init_context)
     monkeypatch.setattr("core.app_context.get_default_app_context", lambda: contexts[0])
     monkeypatch.setattr(taskiq_wiring, "get_settings", lambda: scheduler_config)
-    monkeypatch.setattr(
-        "core.web.startup_checks.validate_startup_security", lambda config: validated_configs.append(config)
-    )
+    monkeypatch.setattr(startup_checks, "validate_startup_security", lambda config: validated_configs.append(config))
     lifecycle = ModuleType("core.service_lifecycle")
     lifecycle.start_runtime_services = start_services
     lifecycle.stop_runtime_services = stop_services

@@ -59,6 +59,20 @@ async def test_action_center_surfaces_current_operator_work_without_leaking_targ
                     attempts=1,
                     max_attempts=3,
                     last_error=("request failed at " "https://open.feishu.cn/open-apis/bot/v2/hook/very-secret-token"),
+                    response_data={"error_code": "19001", "retryable": False},
+                    created_at=now,
+                    updated_at=now,
+                ),
+                ForwardOutbox(
+                    idempotency_key="action-center-exhausted-duplicate",
+                    target_type="feishu",
+                    target_url="https://open.feishu.cn/open-apis/bot/v2/hook/very-secret-token",
+                    rule_name="secondary",
+                    status="exhausted",
+                    attempts=1,
+                    max_attempts=3,
+                    last_error="feishu business error code=19001: invalid token",
+                    response_data={"error_code": "19001", "retryable": False},
                     created_at=now,
                     updated_at=now,
                 ),
@@ -111,6 +125,11 @@ async def test_action_center_surfaces_current_operator_work_without_leaking_targ
     } <= kinds
     assert result["summary"]["critical"] >= 3
     assert result["summary"]["dead_letters"] == 1
+    delivery_items = [item for item in result["items"] if item["kind"] == "delivery_exhausted"]
+    assert len(delivery_items) == 1
+    assert delivery_items[0]["count"] == 2
+    assert delivery_items[0]["actions"] == []
+    assert delivery_items[0]["title"] == "Permanent delivery fault: secondary"
     serialized = str(result)
     assert "very-secret-token" not in serialized
     assert "disabled-secret" not in serialized

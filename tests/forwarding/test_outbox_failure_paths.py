@@ -219,6 +219,13 @@ class TestFinalizeOutboxFailure:
             "forward status=failed: feishu business error code=19001: invalid token",
             permanent=True,
             quarantine_rule=True,
+            failure_data={
+                "status": "failed",
+                "message": "feishu business error code=19001: invalid token",
+                "error_code": "19001",
+                "retryable": False,
+                "disable_rule": True,
+            },
         )
 
         async with session_factory() as session:
@@ -227,6 +234,13 @@ class TestFinalizeOutboxFailure:
             audit = (await session.execute(select(AuditLog))).scalar_one()
         assert record is not None
         assert record.status == ForwardOutboxStatus.EXHAUSTED
+        assert record.response_data == {
+            "status": "failed",
+            "message": "feishu business error code=19001: invalid token",
+            "error_code": "19001",
+            "retryable": False,
+            "disable_rule": True,
+        }
         assert rule is not None
         assert rule.enabled is False
         assert audit.action == "auto_disabled"

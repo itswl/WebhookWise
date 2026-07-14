@@ -304,6 +304,7 @@ async def _deliver_one(outbox_id: int, *, policy: ForwardDeliveryPolicy) -> Forw
             policy=policy,
             permanent=result.get("retryable") is False,
             quarantine_rule=result.get("disable_rule") is True,
+            failure_data=result,
         )
     return {**result, "outbox_id": outbox_id}
 
@@ -345,6 +346,7 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
                     f"forward status={result.get('status')}: {result.get('message', '')}",
                     permanent=result.get("retryable") is False,
                     quarantine_rule=result.get("disable_rule") is True,
+                    failure_data=result,
                 )
             if outbox_span is not None:
                 outbox_span.set_attribute("forward.status", status)
@@ -496,6 +498,7 @@ async def _finalize_outbox_failure(
     policy: ForwardDeliveryPolicy | None = None,
     permanent: bool = False,
     quarantine_rule: bool = False,
+    failure_data: ForwardResult | None = None,
 ) -> None:
     now = utcnow()
     retry_outbox_id: int | None = None
@@ -511,6 +514,8 @@ async def _finalize_outbox_failure(
         if not record or _is_outbox_terminal(record.status):
             return
         record.last_error = error_msg[:2000]
+        if failure_data is not None:
+            record.response_data = dict(failure_data)
         record.updated_at = now
         if permanent or record.attempts >= record.max_attempts:
             record.status = ForwardOutboxStatus.EXHAUSTED

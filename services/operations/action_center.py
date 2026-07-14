@@ -15,6 +15,7 @@ from models import AnalysisFeedback, AuditLog, ForwardOutbox, ForwardRule, Incid
 from services.webhooks.types import ForwardOutboxStatus, WebhookProcessingStatus
 
 _URL_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
+_PERMANENT_DELIVERY_ERROR_CODES = {"19001", "unsafe_target"}
 
 
 def _safe_error(value: str | None) -> str:
@@ -22,6 +23,16 @@ def _safe_error(value: str | None) -> str:
     if not text:
         return "No error detail was recorded"
     return _URL_PATTERN.sub(lambda match: mask_url(match.group(0)), text)[:300]
+
+
+def _is_permanent_delivery_failure(record: ForwardOutbox) -> bool:
+    response = record.response_data if isinstance(record.response_data, dict) else {}
+    if response.get("retryable") is False:
+        return True
+    error_code = str(response.get("error_code") or "")
+    if error_code in _PERMANENT_DELIVERY_ERROR_CODES:
+        return True
+    return "code=19001" in str(record.last_error or "")
 
 
 def _item(
@@ -108,7 +119,7 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
             )
         ).scalar_one()
     )
-    latest_exhausted = list(
+    recent_exhausted = list(
         (
             await session.execute(
                 select(ForwardOutbox)
@@ -117,27 +128,52 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                     ForwardOutbox.updated_at >= recent_cutoff,
                 )
                 .order_by(ForwardOutbox.updated_at.desc(), ForwardOutbox.id.desc())
-                .limit(8)
+                .limit(100)
             )
         )
         .scalars()
         .all()
     )
-    for record in latest_exhausted:
+    grouped_exhausted: dict[tuple[object, ...], list[ForwardOutbox]] = {}
+    for record in recent_exhausted:
+        key = (
+            record.forward_rule_id,
+            str(record.rule_name or ""),
+            str(record.target_type or "unknown"),
+            _is_permanent_delivery_failure(record),
+        )
+        grouped_exhausted.setdefault(key, []).append(record)
+
+    for records in grouped_exhausted.values():
+        record = records[0]
         if record.forward_rule_id in seen_rules:
             continue
+        permanent = _is_permanent_delivery_failure(record)
         items.append(
             _item(
-                item_id=f"outbox:{record.id}",
+                item_id=(
+                    f"outbox-rule:{record.forward_rule_id}:{'permanent' if permanent else 'exhausted'}"
+                    if record.forward_rule_id is not None
+                    else f"outbox:{record.id}"
+                ),
                 kind="delivery_exhausted",
                 severity="critical",
-                title=f"Delivery exhausted: {record.rule_name or record.target_type}",
+                title=(
+                    f"Permanent delivery fault: {record.rule_name or record.target_type}"
+                    if permanent
+                    else f"Delivery exhausted: {record.rule_name or record.target_type}"
+                ),
                 detail=_safe_error(record.last_error),
+                count=len(records),
                 occurred_at=record.updated_at,
                 resource_type="outbox",
                 resource_id=record.id,
                 view="decision-trace",
-                actions=[{"action": "retry_outbox", "label": "Retry delivery", "resource_id": record.id}],
+                actions=(
+                    []
+                    if permanent
+                    else [{"action": "retry_outbox", "label": "Retry delivery", "resource_id": record.id}]
+                ),
             )
         )
 
