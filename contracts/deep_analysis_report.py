@@ -13,7 +13,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from json_repair import repair_json
 
@@ -118,6 +118,11 @@ _SECTION_TITLES = {
     "alert_identity": "告警身份",
 }
 
+# Sentinel distinguishing "no precomputed parse supplied" from a real ``None``
+# parse result, so the top-level string parse can be computed once and threaded
+# into the helpers below (see normalize_deep_analysis_report).
+_UNSET: Final = object()
+
 
 @dataclass(frozen=True)
 class DeepAnalysisReportSection:
@@ -200,9 +205,13 @@ class DeepAnalysisReport:
 
 def normalize_deep_analysis_report(value: Any) -> DeepAnalysisReport:
     """Normalize uncertain upstream deep-analysis output into a stable report."""
-    source_format = _source_format(value)
+    # source-format detection and candidate collection both run the same
+    # (json_repair + regex) parse on the same top-level string; parse it once
+    # here and thread the result through instead of paying that cost per helper.
+    top_parsed = _parse_json_like_text(_strip_markdown_json_fence(value)) if isinstance(value, str) else _UNSET
+    source_format = _source_format(value, parsed=top_parsed)
     raw_text = _first_raw_text(value)
-    candidates = _collect_candidate_mappings(value)
+    candidates = _collect_candidate_mappings(value, parsed=top_parsed)
     data = _merge_candidates(candidates)
 
     if not data and raw_text:
@@ -293,7 +302,7 @@ def _list_section(key: str, items: Iterable[str]) -> DeepAnalysisReportSection:
     return DeepAnalysisReportSection(key=key, title=_SECTION_TITLES[key], kind="list", items=tuple(items))
 
 
-def _source_format(value: Any) -> str:
+def _source_format(value: Any, *, parsed: Any = _UNSET) -> str:
     if value in (None, ""):
         return "empty"
     if isinstance(value, Mapping):
@@ -301,14 +310,13 @@ def _source_format(value: Any) -> str:
     if isinstance(value, list):
         return "array"
     if isinstance(value, str):
-        stripped = _strip_markdown_json_fence(value)
-        if _parse_json_like_text(stripped) is not None:
-            return "json_text"
-        return "plain_text"
+        if parsed is _UNSET:
+            parsed = _parse_json_like_text(_strip_markdown_json_fence(value))
+        return "json_text" if parsed is not None else "plain_text"
     return type(value).__name__
 
 
-def _collect_candidate_mappings(value: Any, *, depth: int = 0) -> list[dict[str, Any]]:
+def _collect_candidate_mappings(value: Any, *, depth: int = 0, parsed: Any = _UNSET) -> list[dict[str, Any]]:
     if depth > 5 or value in (None, ""):
         return []
 
@@ -323,9 +331,9 @@ def _collect_candidate_mappings(value: Any, *, depth: int = 0) -> list[dict[str,
             nested = _pick(current, key)
             if not isinstance(nested, str):
                 continue
-            parsed = _parse_json_like_text(nested)
-            if parsed is not None and parsed is not nested:
-                mappings.extend(_collect_candidate_mappings(parsed, depth=depth + 1))
+            nested_parsed = _parse_json_like_text(nested)
+            if nested_parsed is not None and nested_parsed is not nested:
+                mappings.extend(_collect_candidate_mappings(nested_parsed, depth=depth + 1))
         return mappings
 
     if isinstance(value, list):
@@ -334,7 +342,10 @@ def _collect_candidate_mappings(value: Any, *, depth: int = 0) -> list[dict[str,
             list_mappings.extend(_collect_candidate_mappings(item, depth=depth + 1))
         return list_mappings
 
-    parsed = _parse_json_like_text(value)
+    # ``parsed`` is precomputed only for the top-level string (see
+    # normalize_deep_analysis_report); recursive calls recompute it here.
+    if parsed is _UNSET:
+        parsed = _parse_json_like_text(value)
     if parsed is not None and parsed is not value:
         return _collect_candidate_mappings(parsed, depth=depth + 1)
     return []
@@ -467,11 +478,10 @@ def _first_raw_text(value: Any, *, depth: int = 0) -> str:
     if depth > 4 or value in (None, ""):
         return ""
     if isinstance(value, str):
-        stripped = _strip_markdown_json_fence(value)
-        parsed = _parse_json_like_text(stripped)
-        if isinstance(parsed, Mapping | list):
-            return stripped
-        return stripped
+        # Raw-text extraction only needs the fence-stripped string; the parse
+        # that used to run here was discarded (both branches returned the same
+        # stripped text), so it is dropped rather than recomputed.
+        return _strip_markdown_json_fence(value)
     if isinstance(value, Mapping):
         for key in (OPENCLAW_TEXT_KEY, "raw_text", "content", "text", "message", "root_cause", "summary"):
             text = _first_raw_text(_pick(value, key), depth=depth + 1)

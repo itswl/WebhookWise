@@ -298,6 +298,14 @@ async def test_auth_rejects_when_no_api_key_configured(monkeypatch: pytest.Monke
     assert await _run_mw(monkeypatch, api_key=None, headers=[(b"authorization", b"Bearer anything")]) == 401
 
 
+@pytest.mark.asyncio
+async def test_auth_rejects_non_ascii_token_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A garbage token carrying bytes >127 must 401 cleanly; comparing it on
+    # bytes avoids hmac.compare_digest raising TypeError (which would 500).
+    status = await _run_mw(monkeypatch, api_key="secret", headers=[(b"authorization", b"Bearer \xff\xfe\x80")])
+    assert status == 401
+
+
 # ── Mount path (regression: mounting at /mcp must resolve, not /mcp/mcp) ──────
 
 

@@ -160,3 +160,42 @@ async def test_unfiltered_count_uses_planner_estimate_on_postgresql() -> None:
     assert total == 12345
     assert len(executed) == 1
     assert "reltuples" in executed[0]
+
+
+@pytest.mark.asyncio
+async def test_small_table_estimate_falls_through_to_exact_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Below the threshold the lagging planner estimate must not be shown as the total."""
+    from db import session as db_session_module
+    from services.webhooks.query_service import count_webhook_summaries
+
+    executed: list[str] = []
+
+    class _EstimateResult:
+        def scalar(self) -> int:
+            return 500  # below _COUNT_ESTIMATE_MIN_ROWS
+
+    class _Dialect:
+        name = "postgresql"
+
+    class _Bind:
+        dialect = _Dialect()
+
+    class _Session:
+        def get_bind(self) -> _Bind:
+            return _Bind()
+
+        async def execute(self, stmt: object, params: object | None = None) -> _EstimateResult:
+            executed.append(str(stmt))
+            return _EstimateResult()
+
+    async def exact_count(session: object, stmt: object, timeout_ms: int = 2000) -> int:
+        executed.append("exact-count")
+        return 777
+
+    monkeypatch.setattr(db_session_module, "count_with_timeout", exact_count)
+
+    total = await count_webhook_summaries(_Session())  # type: ignore[arg-type]
+
+    assert total == 777
+    assert "reltuples" in executed[0]
+    assert executed[-1] == "exact-count"

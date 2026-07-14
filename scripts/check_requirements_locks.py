@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
-from packaging.requirements import Requirement
+from packaging.requirements import InvalidRequirement, Requirement
 from packaging.version import Version
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+# pip treats '#' as starting an inline comment only when it is preceded by
+# whitespace; a '#' embedded in a token (e.g. a URL fragment) is kept verbatim.
+_INLINE_COMMENT_RE = re.compile(r"\s#.*$")
 
 
 def _normalize(name: str) -> str:
@@ -29,12 +34,17 @@ def _declared_requirements(path: Path) -> list[Requirement]:
         stripped = line.strip()
         if not stripped or stripped.startswith(("#", "-")):
             continue
-        # Drop trailing inline comments (e.g. "pycron>=3.0.0  # note") so the
-        # remainder parses as a PEP 508 requirement.
-        stripped = stripped.split("#", 1)[0].strip()
+        # Drop trailing inline comments, but only when the '#' is preceded by
+        # whitespace (pip's rule). A '#' inside a token — e.g. a URL fragment
+        # like "pkg @ https://host/p#egg=pkg" — is not a comment, so a naive
+        # split on the first '#' would corrupt the requirement.
+        stripped = _INLINE_COMMENT_RE.sub("", stripped).strip()
         if not stripped:
             continue
-        requirements.append(Requirement(stripped))
+        try:
+            requirements.append(Requirement(stripped))
+        except InvalidRequirement as exc:
+            raise SystemExit(f"{path.name} has an unparseable requirement line: {stripped!r} ({exc})") from exc
     return requirements
 
 

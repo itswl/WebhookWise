@@ -13,7 +13,7 @@ RUN python -m venv /opt/venv && \
 # ====== Runtime stage ======
 FROM python:3.12-slim
 
-ARG APP_VERSION=3.0.0
+ARG APP_VERSION=3.1.0
 
 # Set the timezone to Asia/Shanghai.
 ENV TZ=Asia/Shanghai
@@ -78,7 +78,10 @@ EXPOSE 8000
 # - api/all mode: probes HTTP /ready
 # - worker mode: probes Redis/DB connectivity (workers don't listen on 8000, so
 #   an HTTP probe would wrongly mark them unhealthy)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+# start-period=30s: the lifespan opens PostgreSQL + Redis connections (and, when
+#   enabled, the MCP session manager) before /ready is meaningful, so failures
+#   during a slow dependency start must not burn the --retries budget.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD ["python3", "-m", "scripts.healthcheck"]
 
 # Set the startup entrypoint (dispatches the process by RUN_MODE; migrations run

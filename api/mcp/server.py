@@ -194,8 +194,9 @@ async def get_alert_overview_stats(period: str = "day") -> dict[str, Any]:
 
 @mcp_server.tool(
     title="Get forward-rule hit counts",
-    description="Return per-forward-rule match counts (lifetime) and last-matched timestamps — the ROI view that "
-    "answers which rule is carrying the load and which enabled rule has gone quiet (a zombie rule). "
+    description="Return per-forward-rule match counts over a rolling 90-day window and last-matched timestamps — the "
+    "ROI view that answers which rule is carrying the load and which enabled rule has gone quiet (a zombie rule). "
+    "Counts are windowed, unlike get_silence_roi which is lifetime: a rule idle for over 90 days reports 0. "
     "Returns a mapping of rule_name -> {count, last_matched_at}.",
 )
 async def get_forward_rule_roi() -> dict[str, dict[str, Any]]:

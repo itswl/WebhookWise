@@ -178,11 +178,18 @@ async def count_with_timeout(
     start = time.perf_counter()
     status = "success"
     try:
-        async with session.begin_nested():
+        async with session.begin_nested() as nested:
             with contextlib.suppress(Exception):
                 await session.execute(text(f"SET LOCAL statement_timeout = '{timeout_ms}'"))
             result = await session.execute(stmt)
-            return result.scalar() or 0
+            value = int(result.scalar() or 0)
+            # Roll the SAVEPOINT back instead of releasing it: a COUNT has no
+            # data effects to keep, and under PostgreSQL GUC semantics only
+            # ROLLBACK TO SAVEPOINT reverts SET LOCAL — releasing would leak
+            # the shortened statement_timeout onto every later query in the
+            # caller's request-scoped transaction.
+            await nested.rollback()
+            return value
     except Exception as e:
         if _is_query_timeout(e):
             status = "timeout"
