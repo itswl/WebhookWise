@@ -421,12 +421,13 @@ def ensure_forward_match_identity(ctx: WebhookProcessContext) -> dict[str, str]:
     environment cascades); caching it on the context lets the analysis-skip
     silence check and the later forward decision share one pass.
     """
-    if ctx.forward_match_identity is None:
-        # WebhookProcessContext is frozen; object.__setattr__ is the
-        # established pattern for late-bound fields (see command_service).
-        object.__setattr__(ctx, "forward_match_identity", extract_forward_match_fields(dict(ctx.req_ctx.parsed_data)))
-    assert ctx.forward_match_identity is not None
-    return ctx.forward_match_identity
+    if ctx.forward_match_identity is not None:
+        return ctx.forward_match_identity
+    identity = extract_forward_match_fields(dict(ctx.req_ctx.parsed_data))
+    # WebhookProcessContext is frozen; object.__setattr__ is the established
+    # pattern for late-bound fields (see command_service).
+    object.__setattr__(ctx, "forward_match_identity", identity)
+    return identity
 
 
 def match_active_silence(
