@@ -7,7 +7,6 @@ from collections.abc import AsyncIterator
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from db.session import Base
 from models import WebhookEvent
 from services.webhooks.query_service import (
     count_webhook_summaries,
@@ -16,18 +15,14 @@ from services.webhooks.query_service import (
 )
 
 
-@pytest.fixture()
-async def mock_session_scope() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    from sqlalchemy.ext.asyncio import create_async_engine
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    Session = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-
-    # Insert some test data
-    async with Session() as session:
+@pytest.fixture
+async def mock_session_scope(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    # Seed the shared in-memory database, then hand back the factory so the test
+    # can open its own sessions (StaticPool shares one connection, so committed
+    # rows are visible to them).
+    async with db_session_factory() as session:
         for _i in range(1, 16):
             event = WebhookEvent(
                 source="test",
@@ -38,8 +33,7 @@ async def mock_session_scope() -> AsyncIterator[async_sessionmaker[AsyncSession]
             session.add(event)
         await session.commit()
 
-    yield Session
-    await engine.dispose()
+    yield db_session_factory
 
 
 @pytest.mark.asyncio
@@ -87,20 +81,16 @@ async def test_list_webhook_summaries_page_offset_without_cursor(
     assert next_cursor == 6
 
 
-@pytest.fixture()
-async def windowed_session() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+@pytest.fixture
+async def windowed_session(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     from datetime import timedelta
-
-    from sqlalchemy.ext.asyncio import create_async_engine
 
     from core.datetime_utils import utcnow
 
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    Session = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
     now = utcnow()
-    async with Session() as session:
+    async with db_session_factory() as session:
         # 3 recent (within 24h) + 2 old (40 days ago).
         for _ in range(3):
             session.add(WebhookEvent(source="test", importance="high", is_duplicate=False, timestamp=now))
@@ -109,8 +99,7 @@ async def windowed_session() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
                 WebhookEvent(source="test", importance="low", is_duplicate=False, timestamp=now - timedelta(days=40))
             )
         await session.commit()
-    yield Session
-    await engine.dispose()
+    yield db_session_factory
 
 
 def test_window_to_time_from_presets() -> None:
@@ -139,3 +128,35 @@ async def test_list_and_count_respect_time_window(
     assert len(recent_items) == 3  # the 40-day-old ones are excluded
     assert total_all == 5
     assert total_recent == 3
+
+
+@pytest.mark.asyncio
+async def test_unfiltered_count_uses_planner_estimate_on_postgresql() -> None:
+    """The default dashboard open must not pay a full-table COUNT(*) on PG."""
+    from services.webhooks.query_service import count_webhook_summaries
+
+    executed: list[str] = []
+
+    class _Result:
+        def scalar(self) -> int:
+            return 12345
+
+    class _Dialect:
+        name = "postgresql"
+
+    class _Bind:
+        dialect = _Dialect()
+
+    class _Session:
+        def get_bind(self) -> _Bind:
+            return _Bind()
+
+        async def execute(self, stmt: object, params: object | None = None) -> _Result:
+            executed.append(str(stmt))
+            return _Result()
+
+    total = await count_webhook_summaries(_Session())  # type: ignore[arg-type]
+
+    assert total == 12345
+    assert len(executed) == 1
+    assert "reltuples" in executed[0]

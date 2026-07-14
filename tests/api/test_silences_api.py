@@ -3,37 +3,20 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+@pytest.fixture
+def session(db_session):
+    return db_session
 
 
 def _body(response: Any) -> dict[str, Any]:
     return json.loads(response.body)
-
-
-@pytest.fixture()
-async def session() -> AsyncIterator[AsyncSession]:
-    import models  # noqa: F401
-    from db.session import Base
-
-    engine = create_async_engine(
-        "sqlite+aiosqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    # Plain session (not factory.begin()): the endpoint handlers issue their own
-    # commit(), which would close a begin()-managed transaction mid-test.
-    async with factory() as sess:
-        yield sess
-    await engine.dispose()
 
 
 # ── Silence routes ──────────────────────────────────────────────────────────
@@ -194,3 +177,32 @@ async def test_silence_backtest(session: AsyncSession) -> None:
     assert res["data"]["source_counts"]["prometheus"] == 1
     assert len(res["data"]["sample_matched_events"]) == 1
     assert res["data"]["sample_matched_events"][0]["summary"] == "CPU utilization high"
+
+
+@pytest.mark.asyncio
+async def test_silence_backtest_reports_scan_truncation(session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.datetime_utils import utcnow
+    from models import WebhookEvent
+    from services.silences import backtest as backtest_module
+
+    session.add_all(
+        [
+            WebhookEvent(
+                source="prometheus",
+                importance="low",
+                parsed_data={"RuleName": f"Rule{i}"},
+                timestamp=utcnow(),
+                is_duplicate=False,
+            )
+            for i in range(5)
+        ]
+    )
+    await session.commit()
+
+    # With the cap lowered below the row count, the scan must stop at the cap
+    # and say so instead of silently understating the counts.
+    monkeypatch.setattr(backtest_module, "_MAX_BACKTEST_SCAN", 3)
+    result = await backtest_module.backtest_silence_rule(session, match_source="prometheus", lookback_days=1)
+
+    assert result["total_scanned"] == 3
+    assert result["scan_truncated"] is True

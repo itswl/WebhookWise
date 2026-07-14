@@ -318,7 +318,7 @@ def test_otlp_signals_are_explicit_and_logs_use_otlp_by_default() -> None:
     app_compose = (ROOT / "deploy/compose/docker-compose.yml").read_text()
     observability_compose = (ROOT / "deploy/compose/docker-compose.observability.yml").read_text()
 
-    assert 'return env_flag("OTEL_ENABLED", default=False)' in exporters
+    assert 'env_flag("OTEL_ENABLED", default=False)' in exporters
     assert (
         "OTEL_EXPORTER_OTLP_ENDPOINT" not in exporters.split("def otel_enabled", 1)[1].split("def parse_headers", 1)[0]
     )

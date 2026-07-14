@@ -49,25 +49,36 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
+      # Persist mypy's incremental cache across runs, keyed on the Python version
+      # plus the dependency locks and mypy config so it invalidates when they change.
+      - uses: actions/cache@v4
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-py3.12-${{ hashFiles('requirements.lock', 'requirements-dev.lock', 'pyproject.toml') }}
+          restore-keys: |
+            mypy-${{ runner.os }}-py3.12-
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements.lock -r requirements-dev.lock
       - run: python -m compileall -q .
       - run: ruff check .
       - run: ruff format --check .
-      - run: sudo apt-get update && sudo apt-get install -y shellcheck
+      # shellcheck ships pre-installed on GitHub-hosted ubuntu runners.
       - run: shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh
       - run: python scripts/check_requirements_locks.py
       - run: mypy
       - run: bandit -r core api services models adapters db scripts contracts -x tests -q -s B106
       - run: pip-audit -r requirements.lock -r requirements-dev.lock
       - run: python scripts/observability/webhookwise_observe.py contract
-      - run: pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db --cov=contracts --cov-branch --cov-report=term --cov-report=xml --cov-fail-under=85
+      # -n auto parallelizes across runner cores; pytest-cov combines per-worker
+      # coverage before evaluating --cov-fail-under.
+      - run: pytest -n auto -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db --cov=contracts --cov-branch --cov-report=term --cov-report=xml --cov-fail-under=85
 
   docker-e2e:
     needs: changes
@@ -76,4 +87,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - run: tests/e2e/run_webhook_to_feishu.sh
+      - uses: docker/setup-buildx-action@v3
+      # Build the app image once with a persistent GHA layer cache and load it
+      # into the local daemon under the exact tag the compose file references, so
+      # the e2e run reuses it (E2E_SKIP_BUILD=1) instead of rebuilding from scratch.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: webhookwise-e2e:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: E2E_SKIP_BUILD=1 tests/e2e/run_webhook_to_feishu.sh

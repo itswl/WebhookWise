@@ -112,6 +112,29 @@ def fake_state():
         yield state
 
 
+class _FakeClock:
+    """Controllable wall clock injected into the breaker under test.
+
+    Recovery-window tests advance this instead of sleeping through the real
+    recovery timeout, keeping the suite wall-clock independent.
+    """
+
+    def __init__(self) -> None:
+        self.now = time.time()
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def _advance_clock(breaker: CircuitBreaker, seconds: float) -> None:
+    clock = breaker._time
+    assert isinstance(clock, _FakeClock)
+    clock.advance(seconds)
+
+
 @pytest.fixture()
 def breaker() -> CircuitBreaker:
     return CircuitBreaker(
@@ -120,6 +143,7 @@ def breaker() -> CircuitBreaker:
         recovery_timeout=0.3,
         failure_window=60,
         expected_exceptions=(ConnectionError,),
+        time_func=_FakeClock(),
     )
 
 
@@ -242,7 +266,7 @@ class TestHalfOpenRecovery:
                 await breaker.call_async(_fail)
 
         assert await breaker._check_state_async() == CircuitState.OPEN
-        time.sleep(breaker.recovery_timeout + 0.05)
+        _advance_clock(breaker, breaker.recovery_timeout + 0.05)
         assert await breaker._check_state_async() == CircuitState.CLOSED
 
     async def test_success_after_timeout_keeps_closed(
@@ -252,7 +276,7 @@ class TestHalfOpenRecovery:
             with pytest.raises(ConnectionError):
                 await breaker.call_async(_fail)
 
-        time.sleep(breaker.recovery_timeout + 0.05)
+        _advance_clock(breaker, breaker.recovery_timeout + 0.05)
         assert await breaker._check_state_async() == CircuitState.CLOSED
 
         await breaker.call_async(_succeed)
@@ -265,7 +289,7 @@ class TestHalfOpenRecovery:
             with pytest.raises(ConnectionError):
                 await breaker.call_async(_fail)
 
-        time.sleep(breaker.recovery_timeout + 0.05)
+        _advance_clock(breaker, breaker.recovery_timeout + 0.05)
 
         # First call after timeout transitions to CLOSED via _check_state_async
         assert await breaker._check_state_async() == CircuitState.CLOSED

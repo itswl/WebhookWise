@@ -22,7 +22,12 @@ def test_security_headers_include_csp_and_browser_capability_restrictions() -> N
 
 
 def test_external_dashboard_script_is_version_pinned() -> None:
-    source = (PROJECT_ROOT / "templates/dashboard.html").read_text(encoding="utf-8")
+    # Chart.js is loaded lazily by overview.js (off the critical path) instead of
+    # a render-blocking <script> in the dashboard <head>. Its version must stay
+    # pinned (not a floating "latest") wherever it is loaded from.
+    overview = (PROJECT_ROOT / "templates/static/js/overview.js").read_text(encoding="utf-8")
+    html = (PROJECT_ROOT / "templates/dashboard.html").read_text(encoding="utf-8")
 
-    assert "https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js" in source
-    assert 'src="https://cdn.jsdelivr.net/npm/chart.js"' not in source
+    assert "https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js" in overview
+    assert "chart.js/dist" not in overview  # guard against an unpinned URL
+    assert "cdn.jsdelivr.net/npm/chart.js" not in html  # removed from the render-blocking <head>

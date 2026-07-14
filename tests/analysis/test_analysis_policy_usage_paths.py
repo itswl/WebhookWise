@@ -93,8 +93,8 @@ async def test_log_ai_usage_records_cost_and_suppresses_db_errors(
             return (tokens_in + tokens_out) / 1000
 
     class Session:
-        def add(self, item: object) -> None:
-            added.append(item)
+        def add_all(self, items: list[object]) -> None:
+            added.extend(items)
 
     @asynccontextmanager
     async def session_scope() -> Any:
@@ -110,6 +110,8 @@ async def test_log_ai_usage_records_cost_and_suppresses_db_errors(
         tokens_out=50,
         policy=Policy(),  # type: ignore[arg-type]
     )
+    # Rows are buffered; the flush is what performs the batched write.
+    await ai_usage.flush_ai_usage()
 
     assert len(added) == 1
     assert added[0].model == "gpt-test"
@@ -125,3 +127,78 @@ async def test_log_ai_usage_records_cost_and_suppresses_db_errors(
     monkeypatch.setattr(ai_usage, "session_scope", failing_session_scope)
 
     await ai_usage.log_ai_usage("cache", alert_hash="hash-2", source="grafana", policy=Policy())  # type: ignore[arg-type]
+    # The batched write must swallow DB errors (usage rows are best-effort).
+    await ai_usage.flush_ai_usage()
+
+
+@pytest.mark.asyncio
+async def test_log_ai_usage_flushes_immediately_when_buffer_is_full(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.analysis import ai_usage
+
+    written_batches: list[list[object]] = []
+
+    class Session:
+        def add_all(self, items: list[object]) -> None:
+            written_batches.append(list(items))
+
+    @asynccontextmanager
+    async def session_scope() -> Any:
+        yield Session()
+
+    class Policy:
+        model = "gpt-test"
+
+        def cost_for_tokens(self, tokens_in: int, tokens_out: int) -> float:
+            return 0.0
+
+    monkeypatch.setattr(ai_usage, "session_scope", session_scope)
+    monkeypatch.setattr(ai_usage, "_BUFFER_MAX", 3)
+
+    for index in range(3):
+        await ai_usage.log_ai_usage("cache", alert_hash=f"h-{index}", source="grafana", policy=Policy())  # type: ignore[arg-type]
+
+    # Hitting the buffer cap writes one batched INSERT without waiting for the timer.
+    assert len(written_batches) == 1
+    assert len(written_batches[0]) == 3
+    # Nothing left behind for the delayed flush.
+    await ai_usage.flush_ai_usage()
+    assert len(written_batches) == 1
+
+
+@pytest.mark.asyncio
+async def test_log_ai_usage_schedules_one_delayed_flush_for_partial_buffer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.analysis import ai_usage
+
+    class Policy:
+        model = "gpt-test"
+
+        def cost_for_tokens(self, tokens_in: int, tokens_out: int) -> float:
+            return 0.0
+
+    await ai_usage.log_ai_usage("cache", alert_hash="h-1", source="grafana", policy=Policy())  # type: ignore[arg-type]
+    first_timer = ai_usage._flush_timer
+    assert first_timer is not None
+
+    await ai_usage.log_ai_usage("cache", alert_hash="h-2", source="grafana", policy=Policy())  # type: ignore[arg-type]
+    # A second row within the window reuses the pending timer instead of stacking timers.
+    assert ai_usage._flush_timer is first_timer
+
+    # flush_ai_usage cancels the pending timer and drains the buffer.
+    written: list[int] = []
+
+    class Session:
+        def add_all(self, items: list[object]) -> None:
+            written.append(len(items))
+
+    @asynccontextmanager
+    async def session_scope() -> Any:
+        yield Session()
+
+    monkeypatch.setattr(ai_usage, "session_scope", session_scope)
+    await ai_usage.flush_ai_usage()
+    assert written == [2]
+    assert ai_usage._flush_timer is None

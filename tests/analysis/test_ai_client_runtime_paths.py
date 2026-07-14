@@ -140,8 +140,9 @@ async def test_analyze_with_openai_tracks_prompt_usage_cost_and_span_attrs(
     monkeypatch.setattr(ai_llm_client, "_create_with_completion", create_with_completion)
     monkeypatch.setattr(ai_llm_client, "otel_span", fake_span)
 
+    user_prompt = await ai_llm_client._build_user_prompt({"message": "hello"}, "prometheus", _Policy())
     result, tokens_in, tokens_out = await ai_llm_client._analyze_with_openai_tracked(
-        {"message": "hello"}, "prometheus", policy=_Policy()
+        user_prompt, "prometheus", policy=_Policy()
     )
 
     assert result == {"summary": "ok", "severity": "info"}
@@ -189,7 +190,7 @@ async def test_analyze_with_openai_marks_span_error_before_reraising(
     monkeypatch.setattr(ai_llm_client, "set_span_error", lambda _span, err: marked.append(str(err)))
 
     with pytest.raises(RuntimeError, match="llm failed"):
-        await ai_llm_client._analyze_with_openai_tracked({"message": "hello"}, "grafana", policy=_Policy())
+        await ai_llm_client._analyze_with_openai_tracked("source=grafana data={}", "grafana", policy=_Policy())
 
     assert marked == ["llm failed"]
 
@@ -201,9 +202,15 @@ async def test_call_ai_with_retry_records_success_and_non_retryable_error(
 ) -> None:
     ai_llm_client, metric_calls = ai_runtime
 
+    async def build_prompt(_data: dict[str, object], source: str, _policy: object) -> str:
+        return f"prompt-for:{source}"
+
+    monkeypatch.setattr(ai_llm_client, "_build_user_prompt", build_prompt)
+
     async def analyze_success(
-        _data: dict[str, object], source: str, *, http_client: httpx.AsyncClient | None = None
+        user_prompt: str, source: str, *, policy: object = None, http_client: httpx.AsyncClient | None = None
     ) -> tuple[dict[str, object], int, int]:
+        assert user_prompt == "prompt-for:source-a"
         assert source == "source-a"
         assert http_client is None
         return {"summary": "ok"}, 3, 4
@@ -212,7 +219,7 @@ async def test_call_ai_with_retry_records_success_and_non_retryable_error(
     assert await ai_llm_client._call_ai_with_retry({"a": 1}, "source-a") == ({"summary": "ok"}, 3, 4)
 
     async def analyze_error(
-        _data: dict[str, object], _source: str, *, http_client: httpx.AsyncClient | None = None
+        _user_prompt: str, _source: str, *, policy: object = None, http_client: httpx.AsyncClient | None = None
     ) -> tuple[dict[str, object], int, int]:
         raise ProviderBadRequestError("bad payload")
 
