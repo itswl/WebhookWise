@@ -183,7 +183,11 @@ def test_setup_and_shutdown_tracing_wires_provider_exporters_and_fastapi(
     monkeypatch.setattr(tracing, "build_resource", lambda service_name=None: {"service.name": service_name})
     monkeypatch.setattr(tracing, "_build_sampler", lambda: "sample")
     monkeypatch.setattr(tracing, "build_span_exporter", lambda: "otlp-exporter")
-    monkeypatch.setattr(tracing, "env_flag", lambda name, default=False: name == "OTEL_CONSOLE_EXPORTER")
+    monkeypatch.setattr(
+        tracing,
+        "env_flag",
+        lambda name, default=False: name in {"OTEL_CONSOLE_EXPORTER", "OTEL_TRACES_ENABLED"},
+    )
     monkeypatch.setattr(tracing, "instrument_httpx", lambda: instrumented.append("httpx"))
     monkeypatch.setattr(tracing, "instrument_redis", lambda: instrumented.append("redis"))
 

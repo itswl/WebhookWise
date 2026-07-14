@@ -34,11 +34,8 @@
                 <button class="nav-tab" data-tab="routing" type="button" data-i18n-aria-label="nav.aria.routing" aria-label="Switch to Routing">
                     <span>⚙️</span> <span data-i18n="nav.tab.routing">Routing</span>
                 </button>
-                <button class="nav-tab" data-tab="noise-center" type="button" data-i18n-aria-label="nav.aria.noise" aria-label="Switch to Noise Center">
-                    <span>🔇</span> <span data-i18n="nav.tab.noise">Noise Center</span>
-                </button>
-                <button class="nav-tab" data-tab="action-center" type="button" data-i18n-aria-label="nav.aria.actions" aria-label="Switch to Action Center">
-                    <span>🛠️</span> <span data-i18n="nav.tab.actions">Action Center</span>
+                <button class="nav-tab" data-tab="operations" type="button" data-i18n-aria-label="nav.aria.operations" aria-label="Switch to Operations Center">
+                    <span>🛠️</span> <span data-i18n="nav.tab.operations">Operations</span>
                 </button>
             </div>
             <div class="nav-actions">
@@ -420,8 +417,15 @@
             </div>
         </div>
 
-        <!-- Noise Center Tab -->
-        <div id="noiseCenterTab" class="tab-content" style="display: none;">
+        <!-- Operations Center: operator work and noise optimization in one place -->
+        <div id="operationsTab" class="tab-content" style="display: none;">
+            <div class="section-header" style="display:flex; gap:8px; align-items:center; padding-top:20px;">
+                <button class="btn operations-view-btn active" type="button" data-operations-view="actions" data-i18n="operations.view.actions">Action queue</button>
+                <button class="btn operations-view-btn" type="button" data-operations-view="noise" data-i18n="operations.view.noise">Noise optimization</button>
+            </div>
+
+        <!-- Noise Center view -->
+        <div id="noiseCenterTab" class="operations-view" style="display: none;">
             <div style="padding:20px 0;">
                 <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap;">
                     <div>
@@ -455,8 +459,8 @@
             </div>
         </div>
 
-        <!-- Action Center Tab -->
-        <div id="actionCenterTab" class="tab-content" style="display: none;">
+        <!-- Action Center view -->
+        <div id="actionCenterTab" class="operations-view">
             <div style="padding:20px 0;">
                 <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px;">
                     <div>
@@ -469,14 +473,15 @@
                 <div id="actionCenterList"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
             </div>
         </div>
+        </div>
 
     </div>
 
     <!-- Credentials modal -->
-    <div class="modal" id="authModal">
+    <div class="modal" id="authModal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title" data-i18n="auth.title">Dashboard Credentials</h2>
+                <h2 class="modal-title" id="authModalTitle" data-i18n="auth.title">Dashboard Credentials</h2>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -510,10 +515,10 @@
     </div>
 
     <!-- Forward modal -->
-    <div class="modal" id="forwardModal">
+    <div class="modal" id="forwardModal" role="dialog" aria-modal="true" aria-labelledby="forwardModalTitle">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title" data-i18n="forward.title">Forward Alert</h2>
+                <h2 class="modal-title" id="forwardModalTitle" data-i18n="forward.title">Forward Alert</h2>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -529,7 +534,7 @@
     </div>
 
     <!-- Forward rule modal -->
-    <div class="modal" id="ruleFormModal">
+    <div class="modal" id="ruleFormModal" role="dialog" aria-modal="true" aria-labelledby="ruleFormTitle">
         <div class="modal-content" style="max-width: 700px;">
             <div class="modal-header">
                 <h2 class="modal-title" id="ruleFormTitle" data-i18n="rule.addTitle">Add Forward Rule</h2>
@@ -667,7 +672,7 @@
     </div>
 
     <!-- Silence form modal -->
-    <div class="modal" id="silenceFormModal">
+    <div class="modal" id="silenceFormModal" role="dialog" aria-modal="true" aria-labelledby="silenceFormTitle">
         <div class="modal-content" style="max-width: 700px;">
             <div class="modal-header">
                 <h2 class="modal-title" id="silenceFormTitle" data-i18n="silence.addTitle">Add Silence</h2>

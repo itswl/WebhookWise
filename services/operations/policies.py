@@ -33,6 +33,10 @@ class DataMaintenancePolicy:
     retention_policies: Mapping[str, int]
     source_retention_policies: Mapping[str, int]
     cleanup_keywords: Mapping[str, tuple[str, ...]]
+    archive_retention_days: int = 90
+    terminal_outbox_retention_days: int = 30
+    ai_usage_retention_days: int = 90
+    incident_auto_close_days: int = 7
 
     @classmethod
     def from_config(cls) -> DataMaintenancePolicy:
@@ -46,4 +50,8 @@ class DataMaintenancePolicy:
                 str(field): tuple(str(keyword) for keyword in keywords)
                 for field, keywords in cfg.CLEANUP_KEYWORDS.items()
             },
+            archive_retention_days=int(cfg.ARCHIVE_RETENTION_DAYS),
+            terminal_outbox_retention_days=int(cfg.TERMINAL_OUTBOX_RETENTION_DAYS),
+            ai_usage_retention_days=int(cfg.AI_USAGE_RETENTION_DAYS),
+            incident_auto_close_days=int(cfg.INCIDENT_AUTO_CLOSE_DAYS),
         )

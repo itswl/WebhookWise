@@ -1098,11 +1098,16 @@ def health(endpoints: Endpoints | None = None) -> list[dict[str, str]]:
         ("api", f"{endpoints.api}/ready"),
         ("prometheus", f"{endpoints.prometheus}/-/ready"),
         ("loki", f"{endpoints.loki}/ready"),
-        ("tempo", f"{endpoints.tempo}/ready"),
         ("grafana", f"{endpoints.grafana}/api/health"),
-        ("pyroscope", endpoints.pyroscope),
         ("alloy", f"{endpoints.alloy}/-/ready"),
     ]
+    if os.getenv("WEBHOOKWISE_DIAGNOSTICS_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        checks.extend(
+            [
+                ("tempo", f"{endpoints.tempo}/ready"),
+                ("pyroscope", endpoints.pyroscope),
+            ]
+        )
     return [_health_row(name, url) for name, url in checks]
 
 

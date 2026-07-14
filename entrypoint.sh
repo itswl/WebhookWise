@@ -32,7 +32,7 @@ case "${RUN_MODE:-api}" in
             --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" \
             services.operations.taskiq_wiring:scheduler \
             --update-interval "${TASKIQ_SCHEDULER_UPDATE_INTERVAL_SECONDS:-30}" \
-            --loop-interval "${TASKIQ_SCHEDULER_LOOP_INTERVAL_SECONDS:-1}"
+            --loop-interval "${TASKIQ_SCHEDULER_LOOP_INTERVAL_SECONDS:-5}"
         ;;
     api|"")
         echo "Starting in API mode..."
