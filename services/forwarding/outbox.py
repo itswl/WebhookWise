@@ -442,13 +442,13 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
             .where(ForwardOutbox.id == record.id)
             .where(ForwardOutbox.status.notin_(_TERMINAL_OUTBOX_STATUSES))
             .values(status=ForwardOutboxStatus.SENT, sent_at=now, updated_at=now, last_error=None)
-            .returning(ForwardOutbox.id)
+            # RETURNING the full row folds the follow-up session.get() into the
+            # claim itself — one round trip per successful delivery, not two.
+            .returning(ForwardOutbox)
         )
-        if claim.scalar_one_or_none() is None:
-            # Another finalizer already terminalized this record.
-            return
-        current = await session.get(ForwardOutbox, record.id)
+        current = claim.scalar_one_or_none()
         if current is None:
+            # Another finalizer already terminalized this record.
             return
         current.response_data = dict(result)
 

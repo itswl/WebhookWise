@@ -106,6 +106,11 @@ class WebhookEvent(Base):
     __table_args__ = (
         Index("idx_hash_timestamp", "alert_hash", "timestamp"),
         Index("idx_dedup_key_timestamp", "dedup_key", "timestamp"),
+        # Alert-list filter columns, each paired with id for the id-DESC
+        # ordering the list always applies (migration 0014).
+        Index("idx_webhook_events_source_id", "source", "id"),
+        Index("idx_webhook_events_processing_status_id", "processing_status", "id"),
+        Index("idx_webhook_events_importance_id", "importance", "id"),
         # Partial index for the dead-letter list/count queries, which filter on
         # processing_status='dead_letter' (otherwise a full sequential scan of a
         # large events table). Mirrors the pending partial indexes. Leads with

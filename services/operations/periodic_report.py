@@ -15,7 +15,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pycron
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.app_context import get_config_manager
@@ -88,36 +88,25 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
     start = utcnow() - timedelta(days=window_days)
     previous_start = start - timedelta(days=window_days)
 
-    total_events = int(
-        await session.scalar(select(func.count(WebhookEvent.id)).where(WebhookEvent.timestamp >= start)) or 0
-    )
-    duplicate_events = int(
-        await session.scalar(
-            select(func.count(WebhookEvent.id)).where(
-                WebhookEvent.timestamp >= start, WebhookEvent.is_duplicate.is_(True)
-            )
+    # Current + previous window totals and duplicate counts collapse into one
+    # conditional-aggregation pass over the combined window — same-session
+    # queries run serially, so every merged COUNT is a saved round trip.
+    in_current = WebhookEvent.timestamp >= start
+    is_dup = WebhookEvent.is_duplicate.is_(True)
+    event_counts = (
+        await session.execute(
+            select(
+                func.coalesce(func.sum(case((in_current, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((in_current & is_dup, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((~in_current, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((~in_current & is_dup, 1), else_=0)), 0),
+            ).where(WebhookEvent.timestamp >= previous_start)
         )
-        or 0
-    )
-    previous_total = int(
-        await session.scalar(
-            select(func.count(WebhookEvent.id)).where(
-                WebhookEvent.timestamp >= previous_start,
-                WebhookEvent.timestamp < start,
-            )
-        )
-        or 0
-    )
-    previous_duplicates = int(
-        await session.scalar(
-            select(func.count(WebhookEvent.id)).where(
-                WebhookEvent.timestamp >= previous_start,
-                WebhookEvent.timestamp < start,
-                WebhookEvent.is_duplicate.is_(True),
-            )
-        )
-        or 0
-    )
+    ).one()
+    total_events = int(event_counts[0])
+    duplicate_events = int(event_counts[1])
+    previous_total = int(event_counts[2])
+    previous_duplicates = int(event_counts[3])
 
     importance_rows = (
         await session.execute(
@@ -170,53 +159,47 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
                 func.coalesce(func.sum(AIUsageLog.tokens_in), 0),
                 func.coalesce(func.sum(AIUsageLog.tokens_out), 0),
                 func.count(AIUsageLog.id),
+                # Cache hits folded into the same scan instead of a second COUNT.
+                func.coalesce(func.sum(case((AIUsageLog.cache_hit.is_(True), 1), else_=0)), 0),
             ).where(AIUsageLog.timestamp >= start)
         )
     ).first()
     ai_cost = float(cost_row[0]) if cost_row else 0.0
     ai_calls = int(cost_row[3]) if cost_row else 0
-
-    cache_hits = int(
-        await session.scalar(
-            select(func.count(AIUsageLog.id)).where(AIUsageLog.timestamp >= start, AIUsageLog.cache_hit.is_(True))
-        )
-        or 0
-    )
+    cache_hits = int(cost_row[4]) if cost_row else 0
 
     noise_pct = round(100.0 * duplicate_events / total_events, 1) if total_events else 0.0
     cache_pct = round(100.0 * cache_hits / ai_calls, 1) if ai_calls else 0.0
 
-    # Incident stats for the same window.
-    incident_total = int(await session.scalar(select(func.count(Incident.id)).where(Incident.started_at >= start)) or 0)
-    incident_active = int(
-        await session.scalar(
-            select(func.count(Incident.id)).where(Incident.started_at >= start, Incident.status == "active")
+    # Incident stats for the same window: one GROUP BY replaces the separate
+    # total/active/quiet COUNTs (total is the sum of the status buckets).
+    incident_status_rows = (
+        await session.execute(
+            select(Incident.status, func.count(Incident.id))
+            .where(Incident.started_at >= start)
+            .group_by(Incident.status)
         )
-        or 0
-    )
-    incident_quiet = int(
-        await session.scalar(
-            select(func.count(Incident.id)).where(Incident.started_at >= start, Incident.status == "quiet")
-        )
-        or 0
-    )
+    ).all()
+    incident_by_status = {str(status): int(count) for status, count in incident_status_rows}
+    incident_total = sum(incident_by_status.values())
+    incident_active = incident_by_status.get("active", 0)
+    incident_quiet = incident_by_status.get("quiet", 0)
 
-    unresolved_incidents = int(
-        await session.scalar(
-            select(func.count(Incident.id)).where(Incident.workflow_status.notin_(["resolved", "ignored"]))
+    # Unresolved count and incident-side SLA breaches share the same filtered
+    # scan; fold them into one conditional aggregation.
+    incident_health_row = (
+        await session.execute(
+            select(
+                func.count(Incident.id),
+                func.coalesce(
+                    func.sum(case(((Incident.sla_due_at.isnot(None)) & (Incident.sla_due_at <= utcnow()), 1), else_=0)),
+                    0,
+                ),
+            ).where(Incident.workflow_status.notin_(["resolved", "ignored"]))
         )
-        or 0
-    )
-    sla_breaches = int(
-        await session.scalar(
-            select(func.count(Incident.id)).where(
-                Incident.sla_due_at.isnot(None),
-                Incident.sla_due_at <= utcnow(),
-                Incident.workflow_status.notin_(["resolved", "ignored"]),
-            )
-        )
-        or 0
-    )
+    ).one()
+    unresolved_incidents = int(incident_health_row[0])
+    sla_breaches = int(incident_health_row[1])
     sla_breaches += int(
         await session.scalar(
             select(func.count(WebhookEvent.id)).where(

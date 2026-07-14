@@ -70,6 +70,24 @@ class RequestBodyLimitExceeded(Exception):
     pass
 
 
+def _select_headers(scope: Scope, names: tuple[bytes, ...]) -> dict[str, str]:
+    """Decode only the named headers from the raw ASGI header list.
+
+    Middleware runs per request; decoding the full header list into a dict just
+    to read one or three known keys is avoidable per-request work.
+    """
+    found: dict[str, str] = {}
+    remaining = set(names)
+    for raw_key, raw_value in scope.get("headers") or []:
+        key = raw_key.lower()
+        if key in remaining:
+            found[key.decode("latin1")] = raw_value.decode("latin1")
+            remaining.discard(key)
+            if not remaining:
+                break
+    return found
+
+
 class RequestBodyLimitMiddleware:
     def __init__(self, app: ASGIApp, max_body_bytes_provider: Callable[[], int]) -> None:
         self.app = app
@@ -85,8 +103,7 @@ class RequestBodyLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        headers = {k.decode("latin1").lower(): v.decode("latin1") for k, v in scope.get("headers") or []}
-        content_length = headers.get("content-length")
+        content_length = _select_headers(scope, (b"content-length",)).get("content-length")
         if content_length:
             try:
                 if int(content_length) > max_bytes:
@@ -136,7 +153,7 @@ class TraceContextMiddleware:
             await self.app(scope, receive, send)
             return
 
-        headers = {k.decode("latin1").lower(): v.decode("latin1") for k, v in scope.get("headers") or []}
+        headers = _select_headers(scope, (b"content-length", b"traceparent", b"x-request-id"))
         method = str(scope.get("method") or "")
         path = str(scope.get("path") or "")
         client = scope.get("client")

@@ -95,6 +95,10 @@ class ForwardOutbox(Base):
             "next_attempt_at",
             postgresql_where=text("status IN ('pending', 'retrying')"),
         ),
+        # Rule delivery-health panel: latest-per-rule window (partition by
+        # forward_rule_id, order by updated_at DESC) and the 24h failure count
+        # both lead with forward_rule_id (migration 0014).
+        Index("idx_forward_outboxes_rule_updated", "forward_rule_id", "updated_at"),
         # NOTE: webhook_event_id already gets ix_forward_outboxes_webhook_event_id
         # from index=True on the column above; a second explicit index on the same
         # single column is redundant. Migration 0006 drops the old duplicate.

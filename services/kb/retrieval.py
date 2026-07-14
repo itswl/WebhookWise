@@ -8,6 +8,7 @@ same function.
 
 from __future__ import annotations
 
+import asyncio
 import math
 from dataclasses import dataclass
 
@@ -71,13 +72,21 @@ async def retrieve(session: AsyncSession, query_text: str) -> list[RetrievedChun
         return []
     query_vec = query_vecs[0]
 
-    scored: list[RetrievedChunk] = []
-    for row in rows:
-        score = _cosine(query_vec, row.embedding or [])
-        if score >= cfg.KB_MIN_SCORE:
-            scored.append(RetrievedChunk(title=row.title, content=row.content, source_ref=row.source_ref, score=score))
-    scored.sort(key=lambda c: c.score, reverse=True)
-    top = scored[: max(1, cfg.KB_TOP_K)]
+    # Pure-Python cosine over up to KB_MAX_CANDIDATES × KB_VECTOR_DIM floats is
+    # CPU work (millions of multiplications at real corpus sizes); run it in a
+    # thread so per-alert retrieval doesn't stall the worker event loop.
+    def _rank() -> list[RetrievedChunk]:
+        scored: list[RetrievedChunk] = []
+        for row in rows:
+            score = _cosine(query_vec, row.embedding or [])
+            if score >= cfg.KB_MIN_SCORE:
+                scored.append(
+                    RetrievedChunk(title=row.title, content=row.content, source_ref=row.source_ref, score=score)
+                )
+        scored.sort(key=lambda c: c.score, reverse=True)
+        return scored[: max(1, cfg.KB_TOP_K)]
+
+    top = await asyncio.to_thread(_rank)
     if top:
         logger.debug("[KB] Retrieved %d chunks (top score %.3f)", len(top), top[0].score)
     return top

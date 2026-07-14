@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
 from core.logger import mask_url
+from db.session import count_with_timeout
 from models import AnalysisFeedback, AuditLog, ForwardOutbox, ForwardRule, Incident, WebhookEvent
 from services.webhooks.types import ForwardOutboxStatus, WebhookProcessingStatus
 
@@ -25,7 +26,8 @@ def _safe_error(value: str | None) -> str:
     return _URL_PATTERN.sub(lambda match: mask_url(match.group(0)), text)[:300]
 
 
-def _is_permanent_delivery_failure(record: ForwardOutbox) -> bool:
+def _is_permanent_delivery_failure(record: Any) -> bool:
+    """Accepts a ForwardOutbox entity or a projected row with the same fields."""
     response = record.response_data if isinstance(record.response_data, dict) else {}
     if response.get("retryable") is False:
         return True
@@ -122,7 +124,19 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
     recent_exhausted = list(
         (
             await session.execute(
-                select(ForwardOutbox)
+                # Project only the fields the grouping below reads; the full
+                # entity would drag forward_data/analysis_result/
+                # formatted_payload JSONB along for 100 rows (response_data is
+                # needed by the permanent-failure check).
+                select(
+                    ForwardOutbox.id,
+                    ForwardOutbox.forward_rule_id,
+                    ForwardOutbox.rule_name,
+                    ForwardOutbox.target_type,
+                    ForwardOutbox.last_error,
+                    ForwardOutbox.updated_at,
+                    ForwardOutbox.response_data,
+                )
                 .where(
                     ForwardOutbox.status == ForwardOutboxStatus.EXHAUSTED,
                     ForwardOutbox.updated_at >= recent_cutoff,
@@ -130,11 +144,9 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 .order_by(ForwardOutbox.updated_at.desc(), ForwardOutbox.id.desc())
                 .limit(100)
             )
-        )
-        .scalars()
-        .all()
+        ).all()
     )
-    grouped_exhausted: dict[tuple[object, ...], list[ForwardOutbox]] = {}
+    grouped_exhausted: dict[tuple[object, ...], list[Any]] = {}
     for record in recent_exhausted:
         key = (
             record.forward_rule_id,
@@ -211,23 +223,26 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
             )
         )
 
+    # Guarded count: non-terminal statuses are a tiny fraction of the table
+    # (served by the (processing_status, id) index), but a regression here must
+    # degrade to "unknown" instead of stalling the whole action center.
     stuck_count = int(
-        (
-            await session.execute(
-                select(func.count())
-                .select_from(WebhookEvent)
-                .where(
-                    WebhookEvent.processing_status.in_(
-                        [
-                            WebhookProcessingStatus.RECEIVED,
-                            WebhookProcessingStatus.ANALYZING,
-                            WebhookProcessingStatus.RETRY,
-                        ]
-                    ),
-                    WebhookEvent.updated_at < stuck_cutoff,
-                )
-            )
-        ).scalar_one()
+        await count_with_timeout(
+            session,
+            select(func.count())
+            .select_from(WebhookEvent)
+            .where(
+                WebhookEvent.processing_status.in_(
+                    [
+                        WebhookProcessingStatus.RECEIVED,
+                        WebhookProcessingStatus.ANALYZING,
+                        WebhookProcessingStatus.RETRY,
+                    ]
+                ),
+                WebhookEvent.updated_at < stuck_cutoff,
+            ),
+        )
+        or 0
     )
     if stuck_count:
         items.append(
@@ -331,7 +346,9 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
     overdue_events = list(
         (
             await session.execute(
-                select(WebhookEvent)
+                # The SLA card renders only these three fields; skip the full
+                # entity (raw_payload and both JSONB blobs) for the 10 rows.
+                select(WebhookEvent.id, WebhookEvent.sla_due_at, WebhookEvent.workflow_status)
                 .where(
                     WebhookEvent.sla_due_at.isnot(None),
                     WebhookEvent.sla_due_at <= now,
@@ -340,9 +357,7 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 .order_by(WebhookEvent.sla_due_at, WebhookEvent.id)
                 .limit(10)
             )
-        )
-        .scalars()
-        .all()
+        ).all()
     )
     items.extend(
         [

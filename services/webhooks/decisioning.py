@@ -13,6 +13,7 @@ from services.forwarding.types import ForwardRuleSnapshot
 from services.webhooks.types import (
     AnalysisResult,
     NoiseReductionContext,
+    WebhookProcessContext,
 )
 
 if TYPE_CHECKING:
@@ -413,6 +414,21 @@ def _first_matching_silence(
     return None
 
 
+def ensure_forward_match_identity(ctx: WebhookProcessContext) -> dict[str, str]:
+    """Return the event's forward-match identity, extracting it at most once.
+
+    The extraction walks the whole payload several times (project/region/
+    environment cascades); caching it on the context lets the analysis-skip
+    silence check and the later forward decision share one pass.
+    """
+    if ctx.forward_match_identity is None:
+        # WebhookProcessContext is frozen; object.__setattr__ is the
+        # established pattern for late-bound fields (see command_service).
+        object.__setattr__(ctx, "forward_match_identity", extract_forward_match_fields(dict(ctx.req_ctx.parsed_data)))
+    assert ctx.forward_match_identity is not None
+    return ctx.forward_match_identity
+
+
 def match_active_silence(
     silences: list[SilenceSnapshot],
     *,
@@ -421,16 +437,18 @@ def match_active_silence(
     source: str = "",
     is_duplicate: bool = False,
     parsed_data: dict[str, Any] | None = None,
+    identity: dict[str, str] | None = None,
 ) -> SilenceSnapshot | None:
-    """Public wrapper: return the first matching silence (computes identity).
+    """Public wrapper: return the first matching silence.
 
     Used by the analysis stage to decide whether to skip the (paid) AI call for a
-    silenced alert; the forward stage uses the lower-level path with a shared
-    precomputed identity.
+    silenced alert. Pass a precomputed ``identity`` (see
+    ensure_forward_match_identity) to avoid re-walking the payload.
     """
     if not silences:
         return None
-    identity = extract_forward_match_fields(parsed_data)
+    if identity is None:
+        identity = extract_forward_match_fields(parsed_data)
     return _first_matching_silence(
         silences,
         event_type=event_type,
@@ -490,6 +508,7 @@ def decide_forwarding(
     parsed_data: dict[str, Any] | None = None,
     now: datetime | None = None,
     silences: list[SilenceSnapshot] | None = None,
+    identity: dict[str, str] | None = None,
 ) -> ForwardDecision:
     if noise and noise.suppress_forward:
         return ForwardDecision(
@@ -498,8 +517,10 @@ def decide_forwarding(
 
     # An active manual silence mutes forwarding for matching alerts. Checked
     # after noise (both are suppressors) and before rule routing. The identity is
-    # computed once and reused by both the silence check and rule selection.
-    identity = extract_forward_match_fields(parsed_data)
+    # computed once (or taken precomputed from the pipeline context) and reused
+    # by both the silence check and rule selection.
+    if identity is None:
+        identity = extract_forward_match_fields(parsed_data)
     if silences and (
         silenced := _first_matching_silence(
             silences,

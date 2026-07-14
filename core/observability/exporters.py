@@ -30,8 +30,22 @@ def env_flag(name: str, *, default: bool = False) -> bool:
     return default
 
 
+# OTEL_ENABLED is immutable after process start, but otel_enabled() gates the
+# hottest paths in the app (per log record, per request, per outbound call, per
+# Redis op — ~17 call sites). Parse the environment once instead of per call.
+_OTEL_ENABLED_CACHE: bool | None = None
+
+
 def otel_enabled() -> bool:
-    return env_flag("OTEL_ENABLED", default=False)
+    global _OTEL_ENABLED_CACHE
+    if _OTEL_ENABLED_CACHE is None:
+        _OTEL_ENABLED_CACHE = env_flag("OTEL_ENABLED", default=False)
+    return _OTEL_ENABLED_CACHE
+
+
+def _reset_otel_enabled_cache_for_tests() -> None:
+    global _OTEL_ENABLED_CACHE
+    _OTEL_ENABLED_CACHE = None
 
 
 def parse_headers(raw: str | None = None) -> dict[str, str]:

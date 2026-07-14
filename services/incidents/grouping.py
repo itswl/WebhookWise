@@ -13,6 +13,7 @@ from core.datetime_utils import utcnow
 from core.logger import get_logger
 from db.session import acquire_advisory_xact_lock, session_scope
 from models import Incident, IncidentMember, WebhookEvent
+from services.incidents.summary import queue_summary_if_needed
 
 logger = get_logger("incidents.grouping")
 
@@ -407,11 +408,7 @@ def _resolve_incident_from_recovery(incident: Incident, event: WebhookEvent) -> 
     incident.resolved_at = timestamp
     incident.ended_at = timestamp
     incident.updated_at = timestamp
-    if incident.summary_analysis is None and incident.alert_count >= 2:
-        incident.summary_status = "pending"
-        incident.summary_attempts = 0
-        incident.summary_next_attempt_at = timestamp
-        incident.summary_last_error = None
+    queue_summary_if_needed(incident, timestamp)
 
 
 async def _close_quiet_incidents(session: AsyncSession, now: Any) -> int:
@@ -437,15 +434,7 @@ async def _close_quiet_incidents(session: AsyncSession, now: Any) -> int:
         incident.status = "quiet"
         incident.ended_at = now
         incident.updated_at = now
-        if incident.summary_analysis is None and incident.alert_count >= 2:
-            incident.summary_status = "pending"
-            incident.summary_attempts = 0
-            incident.summary_next_attempt_at = now
-            incident.summary_last_error = None
-        elif incident.summary_analysis is None:
-            incident.summary_status = "skipped"
-            incident.summary_next_attempt_at = None
-            incident.summary_last_error = "singleton incidents are not summarized"
+        queue_summary_if_needed(incident, now)
         logger.info(
             "[Incidents] Incident quieted id=%s title=%s alerts=%d",
             incident.id,

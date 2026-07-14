@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
 from models import AnalysisFeedback, Incident, IncidentMember, OperationalNote, WebhookEvent
+from services.incidents.summary import queue_summary_if_needed
 from services.operations.audit_logger import add_audit
 
 TERMINAL_WORKFLOW_STATUSES = {"resolved", "ignored"}
@@ -67,7 +68,7 @@ async def update_workflow(
             if new_status in TERMINAL_WORKFLOW_STATUSES:
                 resource.status = "closed"
                 resource.ended_at = resource.ended_at or now
-                _queue_summary_if_needed(resource, now)
+                queue_summary_if_needed(resource, now)
             elif new_status == "open" and resource.status == "closed":
                 resource.status = "active"
                 resource.ended_at = None
@@ -92,18 +93,6 @@ async def update_workflow(
     )
     await session.commit()
     return workflow_dict(resource)
-
-
-def _queue_summary_if_needed(incident: Incident, now: Any) -> None:
-    if incident.summary_analysis is None and incident.alert_count >= 2:
-        incident.summary_status = "pending"
-        incident.summary_attempts = 0
-        incident.summary_next_attempt_at = now
-        incident.summary_last_error = None
-    elif incident.summary_analysis is None:
-        incident.summary_status = "skipped"
-        incident.summary_next_attempt_at = None
-        incident.summary_last_error = "singleton incidents are not summarized"
 
 
 async def add_note(

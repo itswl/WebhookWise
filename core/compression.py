@@ -69,6 +69,22 @@ def decompress_payload(data: bytes | str | None) -> str | None:
     return data.decode("utf-8", errors="replace")
 
 
+async def compress_payload_async(text: str | bytes | None) -> bytes | None:
+    """Async compression: offload above-threshold payloads to a thread pool.
+
+    Mirrors decompress_payload_async — payloads large enough to compress are
+    exactly the ones whose zstd pass would stall the event loop. A fresh
+    compressor is created inside the thread because ZstdCompressor instances
+    are not safe for concurrent use across threads.
+    """
+    if not text:
+        return None
+    raw = text.encode("utf-8") if isinstance(text, str) else text
+    if len(raw) < _threshold("PAYLOAD_COMPRESS_THRESHOLD_BYTES"):
+        return raw
+    return await asyncio.to_thread(lambda: zstd.ZstdCompressor(level=3).compress(raw))
+
+
 async def decompress_payload_async(data: bytes | str | None) -> str | None:
     """Async decompression: offload large payloads to a thread pool, mirroring compress_payload."""
     if data is None:

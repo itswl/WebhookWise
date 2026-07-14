@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api import ok_response
 from core.auth import verify_api_key
 from core.datetime_utils import utc_isoformat, utcnow
 from core.log_context import clear_log_context, set_log_context
@@ -329,16 +330,20 @@ async def get_webhooks_endpoint(
             time_from=time_from,
             search=search,
         )
-    return {
-        "success": True,
-        "data": items,
-        "pagination": {
+    # Return a Response directly: the rows were already projected/serialized by
+    # the query service, and letting FastAPI re-run WebhookEventSummary
+    # validation over up to page_size=500 hand-built dicts would undo that
+    # optimization. response_model stays declared for the OpenAPI contract.
+    return ok_response(
+        data=items,
+        status=200,
+        pagination={
             "next_cursor": next_cursor,
             "has_more": has_more,
             "page_size": page_size,
             "total": total,
         },
-    }
+    )
 
 
 @webhook_router.get(

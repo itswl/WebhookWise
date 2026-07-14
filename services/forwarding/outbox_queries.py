@@ -35,10 +35,15 @@ async def list_outbox_records(
     scope = session_scope_factory or session_scope
     count_fn = count_with_timeout_fn or count_with_timeout
     async with scope() as session:
-        count_q = select(func.count()).select_from(ForwardOutbox)
-        for condition in filters:
-            count_q = count_q.where(condition)
-        total = await count_fn(session, count_q) or 0
+        # The total only matters when opening the list; cursor scrolls ("load
+        # more") should not re-pay a COUNT over the table each page. None means
+        # "unchanged since page 1" to the client.
+        total: int | None = None
+        if cursor is None:
+            count_q = select(func.count()).select_from(ForwardOutbox)
+            for condition in filters:
+                count_q = count_q.where(condition)
+            total = await count_fn(session, count_q) or 0
 
         # Project only the columns the list needs. Selecting the full entity
         # would also pull 4 large JSONB columns (forward_data, analysis_result,
@@ -95,7 +100,7 @@ async def list_outbox_records(
         "page": page,
         "page_size": page_size,
         "total": total,
-        "total_pages": max(1, (total + page_size - 1) // page_size) if total else 1,
+        "total_pages": (max(1, (total + page_size - 1) // page_size) if total else 1) if total is not None else None,
         "next_cursor": page_window.next_cursor,
         "has_more": page_window.has_more,
     }
