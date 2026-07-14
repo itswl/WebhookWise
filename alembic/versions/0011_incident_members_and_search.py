@@ -106,12 +106,9 @@ def upgrade() -> None:
         "CREATE INDEX ix_webhook_events_search_ai_summary ON webhook_events "
         "USING gin (lower(ai_analysis->>'summary') gin_trgm_ops)"
     )
+    op.execute("CREATE INDEX ix_webhook_events_search_source ON webhook_events USING gin (lower(source) gin_trgm_ops)")
     op.execute(
-        "CREATE INDEX ix_webhook_events_search_source ON webhook_events " "USING gin (lower(source) gin_trgm_ops)"
-    )
-    op.execute(
-        "CREATE INDEX ix_webhook_events_search_request_id ON webhook_events "
-        "USING gin (lower(request_id) gin_trgm_ops)"
+        "CREATE INDEX ix_webhook_events_search_request_id ON webhook_events USING gin (lower(request_id) gin_trgm_ops)"
     )
 
 

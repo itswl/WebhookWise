@@ -4,14 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
-
-_T = TypeVar("_T")
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
-class CursorWindow(Generic[_T]):
-    rows: list[_T]
+class CursorWindow[T]:
+    rows: list[T]
     has_more: bool
     next_cursor: int | None
 
@@ -41,11 +39,11 @@ def apply_cursor_window(
     return query.limit(page_size + 1)
 
 
-def trim_cursor_window(
-    rows: Sequence[_T],
+def trim_cursor_window[T](
+    rows: Sequence[T],
     page_size: int,
-    cursor_getter: Callable[[_T], int | None],
-) -> CursorWindow[_T]:
+    cursor_getter: Callable[[T], int | None],
+) -> CursorWindow[T]:
     """Trim the extra row and derive the next cursor from the visible page."""
     has_more = len(rows) > page_size
     visible_rows = list(rows[:page_size] if has_more else rows)
