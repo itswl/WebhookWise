@@ -69,7 +69,7 @@ def instrument_sqlalchemy(engine: Any) -> None:
 
 def setup_tracing(app: Any | None = None, *, service_name: str | None = None) -> None:
     global _fastapi_instrumented, _provider_initialized, _trace_provider
-    if not otel_enabled():
+    if not otel_enabled() or not env_flag("OTEL_TRACES_ENABLED", default=True):
         return
 
     if not _provider_initialized:

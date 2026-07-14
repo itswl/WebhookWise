@@ -354,6 +354,10 @@
   transition: all 0.25s ease;
 }
 
+.modal:not(.active) {
+  display: none;
+}
+
 .modal.active {
   opacity: 1;
   visibility: visible;

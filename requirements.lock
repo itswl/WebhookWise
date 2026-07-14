@@ -156,6 +156,7 @@ opentelemetry-api==1.41.1
     # via
     #   -r requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
@@ -166,8 +167,12 @@ opentelemetry-api==1.41.1
     #   opentelemetry-semantic-conventions
     #   pyroscope-otel
 opentelemetry-exporter-otlp-proto-common==1.41.1
-    # via opentelemetry-exporter-otlp-proto-grpc
+    # via
+    #   opentelemetry-exporter-otlp-proto-grpc
+    #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-exporter-otlp-proto-grpc==1.41.1
+    # via -r requirements.txt
+opentelemetry-exporter-otlp-proto-http==1.41.1
     # via -r requirements.txt
 opentelemetry-instrumentation==0.62b1
     # via

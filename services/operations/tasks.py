@@ -524,9 +524,9 @@ async def scheduled_incident_grouping() -> None:
     schedule=[{"cron": _maintenance_cron(), "cron_offset": _REPORT_CRON_OFFSET}],
 )
 async def scheduled_data_maintenance() -> None:
-    from services.operations.data_maintenance import cleanup_old_data_by_policy
+    from services.operations.data_maintenance import run_data_maintenance
 
-    await _run_scheduled("data_maintenance", 86400, cleanup_old_data_by_policy())
+    await _run_scheduled("data_maintenance", 86400, run_data_maintenance())
 
 
 def _daily_report_cron() -> str:

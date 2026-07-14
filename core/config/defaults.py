@@ -45,6 +45,20 @@ class TaskConfig(StaticSettings):
         description="Seconds before an actively processing outbox record may be reclaimed; must exceed one delivery timeout",
     )
     WORKER_STARTUP_JITTER_SECONDS: float = Field(default=0.0, ge=0.0)
+    TASKIQ_RESULT_TTL_SECONDS: int = Field(
+        default=86400,
+        gt=0,
+        description="Seconds to retain TaskIQ task results in Redis before automatic expiry",
+    )
+    TASKIQ_SCHEDULE_REDIS_URL: str = Field(
+        default="",
+        description="Optional Redis URL dedicated to dynamic schedules; defaults to REDIS_URL with the database incremented",
+    )
+    TASKIQ_SCHEDULE_SCAN_BUFFER_SIZE: int = Field(
+        default=1000,
+        gt=0,
+        description="Redis SCAN batch size for dynamic schedules",
+    )
 
 
 class MQConfig(StaticSettings):
@@ -272,6 +286,10 @@ class NotificationConfig(StaticSettings):
     DAILY_REPORT_CRON: str = Field(default="0 9 * * *")  # every day 09:00
     DAILY_REPORT_WINDOW_DAYS: int = Field(default=1, gt=0)
     DAILY_REPORT_FEISHU_WEBHOOK: str = Field(default="")
+    DAILY_REPORT_ONLY_ON_ACTIVITY: bool = Field(
+        default=True,
+        description="Skip the daily report when its window has no alerts, AI calls, or operator actions",
+    )
 
     MONTHLY_REPORT_ENABLED: bool = Field(default=False)
     MONTHLY_REPORT_CRON: str = Field(default="0 9 1 * *")  # 1st of month 09:00
@@ -339,6 +357,10 @@ class MaintenanceConfig(StaticSettings):
     CLEANUP_KEYWORDS: dict[str, list[str]] = Field(
         default={"summary": ["一般事件:", "测试告警"], "parsed_data": ["一般事件"]}
     )
+    ARCHIVE_RETENTION_DAYS: int = Field(default=90, gt=0)
+    TERMINAL_OUTBOX_RETENTION_DAYS: int = Field(default=30, gt=0)
+    AI_USAGE_RETENTION_DAYS: int = Field(default=90, gt=0)
+    INCIDENT_AUTO_CLOSE_DAYS: int = Field(default=7, gt=0)
     MAINTENANCE_HOUR: int = Field(default=3, ge=0, le=23)
 
 
