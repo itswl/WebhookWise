@@ -140,6 +140,7 @@ def coerce_str(raw: object) -> str | None:
 
 
 async def record_redis_operation[T](operation: str, awaitable: Awaitable[T]) -> T:
+    from core.observability.exporters import otel_enabled
     from core.observability.metrics import REDIS_OPERATION_DURATION_SECONDS, REDIS_OPERATIONS_TOTAL
     from core.observability.tracing import otel_span
     from core.redis_health import mark_redis_failure, mark_redis_success
@@ -147,10 +148,15 @@ async def record_redis_operation[T](operation: str, awaitable: Awaitable[T]) -> 
     start = time.perf_counter()
     status = "success"
     try:
-        with otel_span(
-            "redis.operation",
-            {"db.system": "redis", "db.operation": operation, "redis.operation": operation},
-        ):
+        # Skip the span wrapper (and its attribute dict) entirely when OTEL is
+        # off — this runs for every Redis operation on the hot path.
+        if otel_enabled():
+            with otel_span(
+                "redis.operation",
+                {"db.system": "redis", "db.operation": operation, "redis.operation": operation},
+            ):
+                result = await awaitable
+        else:
             result = await awaitable
     except (RedisError, RuntimeError, TimeoutError, OSError, TypeError, ValueError) as e:
         status = "error"

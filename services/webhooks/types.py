@@ -220,6 +220,11 @@ class WebhookProcessContext:
     req_ctx: WebhookRequestContext
     alert_hash: str
     dedup_key: str
+    # Lazily-computed forward-match identity (project/region/environment),
+    # cached here so the payload-walk extraction runs once per event and is
+    # shared by the analysis-skip silence check and the forward decision
+    # (populated via decisioning.ensure_forward_match_identity).
+    forward_match_identity: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)

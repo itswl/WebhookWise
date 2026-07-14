@@ -11,6 +11,7 @@ import ipaddress
 import socket
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from urllib.parse import urlsplit, urlunsplit
 
 from core.app_context import get_config_manager
@@ -49,6 +50,14 @@ def _evict_dns_cache_if_full(now: float) -> None:
         _DNS_CACHE.pop(k, None)
 
 
+@lru_cache(maxsize=8)
+def _parse_target_allowlist(raw: str) -> tuple[str, ...]:
+    # Keyed on the raw config string (mirrors request_ip._parse_proxy_cidrs):
+    # from_config runs per delivery and again per pinned-DNS connect, so the
+    # CSV split should not be re-done for an unchanged setting.
+    return tuple(split_csv_lower(raw))
+
+
 @dataclass(frozen=True, slots=True)
 class OutboundURLPolicy:
     allow_private_target_urls: bool
@@ -59,7 +68,7 @@ class OutboundURLPolicy:
         cfg = get_config_manager().security
         return cls(
             allow_private_target_urls=bool(cfg.ALLOW_PRIVATE_TARGET_URLS),
-            target_allowlist=tuple(split_csv_lower(str(cfg.FORWARD_TARGET_ALLOWLIST or ""))),
+            target_allowlist=_parse_target_allowlist(str(cfg.FORWARD_TARGET_ALLOWLIST or "")),
         )
 
 

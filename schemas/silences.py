@@ -196,6 +196,9 @@ class SilenceBacktestData(BaseModel):
     importance_counts: dict[str, int]
     source_counts: dict[str, int]
     sample_matched_events: list[SilenceBacktestMatchedEvent]
+    # True when the scan hit the server-side cap, i.e. the counts cover only
+    # the newest slice of the lookback window rather than all of it.
+    scan_truncated: bool = False
 
 
 class SilenceBacktestResponse(APIResponse[SilenceBacktestData]):

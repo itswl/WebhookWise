@@ -105,8 +105,11 @@ async def worker_shutdown_event(state: object) -> None:
     from core.app_context import get_default_app_context, init_default_app_context
     from core.observability import shutdown_observability
     from core.service_lifecycle import stop_runtime_services
+    from services.analysis.ai_usage import flush_ai_usage
 
     context = get_default_app_context() or init_default_app_context(get_settings())
+    # Buffered AI-usage rows must land before the DB engine goes away.
+    await flush_ai_usage()
     await stop_runtime_services(
         context.config,
         context=context,

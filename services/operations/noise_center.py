@@ -106,6 +106,25 @@ async def _window_metrics(
         or 0
     )
 
+    result: dict[str, Any] = {
+        "total": total,
+        "duplicates": duplicates,
+        "duplicate_rate": _pct(duplicates, total),
+        "noise_events": noise_events,
+        "noise_rate": _pct(noise_events, total),
+        "forwarded": forwarded,
+        "notifications_avoided": filtered,
+        "estimated_minutes_saved": filtered * _MINUTES_PER_AVOIDED_NOTIFICATION,
+        "skip_breakdown": skip_breakdown,
+    }
+    if not include_sources:
+        # Aggregate-only view (the previous/comparison window): everything above
+        # comes from index-backed GROUP BYs. The payload sample below exists to
+        # power recovery detection, rule identities, and the sources table —
+        # a Python-side pass over up to _MAX_RECOVERY_SAMPLE JSONB rows — so
+        # the aggregate view skips it and carries no recovery_* keys.
+        return result
+
     payload_rows = (
         await session.execute(
             select(
@@ -132,25 +151,15 @@ async def _window_metrics(
         if identity is not None:
             key, rule_name = identity
             rule_keys.setdefault((source_name, rule_name), key)
-
-    result: dict[str, Any] = {
-        "total": total,
-        "duplicates": duplicates,
-        "duplicate_rate": _pct(duplicates, total),
-        "noise_events": noise_events,
-        "noise_rate": _pct(noise_events, total),
-        "recoveries": recoveries,
-        "recovery_rate": _pct(recoveries, recovery_denominator),
-        "recovery_sampled": recovery_sampled,
-        "recovery_sample_size": len(payload_rows),
-        "forwarded": forwarded,
-        "notifications_avoided": filtered,
-        "estimated_minutes_saved": filtered * _MINUTES_PER_AVOIDED_NOTIFICATION,
-        "skip_breakdown": skip_breakdown,
-        "_rule_keys": rule_keys,
-    }
-    if not include_sources:
-        return result
+    result.update(
+        {
+            "recoveries": recoveries,
+            "recovery_rate": _pct(recoveries, recovery_denominator),
+            "recovery_sampled": recovery_sampled,
+            "recovery_sample_size": len(payload_rows),
+            "_rule_keys": rule_keys,
+        }
+    )
 
     event_source_rows = (
         await session.execute(
@@ -405,16 +414,19 @@ def _serialize_action(action: NoiseReductionAction) -> dict[str, Any]:
     }
 
 
-async def get_noise_center(session: AsyncSession, *, window_days: int = 7) -> dict[str, Any]:
-    """Build the noise dashboard from existing alert and decision data."""
-    window_days = max(1, min(90, int(window_days)))
+async def _current_window_state(
+    session: AsyncSession, *, window_days: int
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Current-window metrics, sources, and suggestions.
+
+    Shared by the dashboard view and by suggestion revalidation, so applying a
+    suggestion does not also pay for the previous-window comparison or the
+    recent-actions list it never reads.
+    """
     now = utcnow()
     start = now - timedelta(days=window_days)
-    previous_start = start - timedelta(days=window_days)
     current = await _window_metrics(session, start=start, end=now, include_sources=True)
-    previous = await _window_metrics(session, start=previous_start, end=start, include_sources=False)
     rule_keys = current.pop("_rule_keys")
-    previous.pop("_rule_keys", None)
     sources = list(current.pop("sources", []))
     suggestions = await _build_suggestions(
         session,
@@ -423,6 +435,17 @@ async def get_noise_center(session: AsyncSession, *, window_days: int = 7) -> di
         sources=sources,
         rule_keys=rule_keys,
     )
+    return current, sources, suggestions
+
+
+async def get_noise_center(session: AsyncSession, *, window_days: int = 7) -> dict[str, Any]:
+    """Build the noise dashboard from existing alert and decision data."""
+    window_days = max(1, min(90, int(window_days)))
+    now = utcnow()
+    start = now - timedelta(days=window_days)
+    previous_start = start - timedelta(days=window_days)
+    current, sources, suggestions = await _current_window_state(session, window_days=window_days)
+    previous = await _window_metrics(session, start=previous_start, end=start, include_sources=False)
     actions = list(
         (
             await session.execute(
@@ -470,8 +493,9 @@ async def apply_noise_suggestion(
     if existing is not None:
         return {"changed": False, "reason": "already_applied", "action": _serialize_action(existing)}
 
-    center = await get_noise_center(session, window_days=window_days)
-    suggestion = next((item for item in center["suggestions"] if item["id"] == suggestion_id), None)
+    window_days = max(1, min(90, int(window_days)))
+    _, _, suggestions = await _current_window_state(session, window_days=window_days)
+    suggestion = next((item for item in suggestions if item["id"] == suggestion_id), None)
     if suggestion is None or not suggestion.get("action_available"):
         return {"changed": False, "reason": "suggestion_not_available"}
 

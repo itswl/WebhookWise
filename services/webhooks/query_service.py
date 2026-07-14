@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
@@ -47,6 +47,15 @@ _SUMMARY_COLUMNS = [
     WebhookEvent.created_at,
     WebhookEvent.prev_alert_id,
     _prev_ts_subq,
+    # Workflow state must be projected too: WebhookEventSummary declares these
+    # with defaults, so omitting them here would ship workflow_status="open"
+    # (and null assignee/timestamps) for every row regardless of real state.
+    WebhookEvent.workflow_status,
+    WebhookEvent.assignee,
+    WebhookEvent.team,
+    WebhookEvent.acknowledged_at,
+    WebhookEvent.resolved_at,
+    WebhookEvent.sla_due_at,
 ]
 
 
@@ -74,6 +83,12 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
             utc_isoformat(row.prev_alert_timestamp) if row.prev_alert_timestamp is not None else None
         ),
         "is_within_window": is_duplicate,
+        "workflow_status": row.workflow_status or "open",
+        "assignee": row.assignee,
+        "team": row.team,
+        "acknowledged_at": utc_isoformat(row.acknowledged_at) if row.acknowledged_at is not None else None,
+        "resolved_at": utc_isoformat(row.resolved_at) if row.resolved_at is not None else None,
+        "sla_due_at": utc_isoformat(row.sla_due_at) if row.sla_due_at is not None else None,
     }
 
 
@@ -132,20 +147,24 @@ def _apply_summary_filters(
 def _search_predicate(search: str) -> Any:
     """Server-side alert search: rule/alert name, AI summary, source, request_id.
 
-    ILIKE keeps it portable between PostgreSQL (prod) and the SQLite JSON shim
-    (tests). The JSONB ->> projections match how the list already reads these
-    fields, so the search sees exactly what the operator sees in the list. The
-    escaped pattern treats the user's input as literal text (% and _ included).
+    Each term is written as ``lower(<expr>) LIKE <lowered pattern>`` so it matches
+    the trigram expression indexes from migration 0011 **exactly** — the planner
+    only uses ``gin (lower(expr) gin_trgm_ops)`` when the query contains that
+    same ``lower(expr)``; a plain ``expr ILIKE ...`` would seq-scan instead.
+    ``lower()`` + LIKE is also portable to the SQLite JSON shim (tests) and
+    keeps ILIKE's case-insensitive semantics. The escaped pattern (explicit
+    ESCAPE on both dialects) treats the user's input as literal text.
     """
-    pattern = f"%{_escape_like(search)}%"
-    return or_(
-        WebhookEvent.parsed_data["RuleName"].astext.ilike(pattern),
-        WebhookEvent.parsed_data["AlertName"].astext.ilike(pattern),
-        WebhookEvent.parsed_data["alert_name"].astext.ilike(pattern),
-        WebhookEvent.ai_analysis["summary"].astext.ilike(pattern),
-        WebhookEvent.source.ilike(pattern),
-        WebhookEvent.request_id.ilike(pattern),
+    pattern = f"%{_escape_like(search.lower())}%"
+    fields = (
+        WebhookEvent.parsed_data["RuleName"].astext,
+        WebhookEvent.parsed_data["AlertName"].astext,
+        WebhookEvent.parsed_data["alert_name"].astext,
+        WebhookEvent.ai_analysis["summary"].astext,
+        WebhookEvent.source,
+        WebhookEvent.request_id,
     )
+    return or_(*(func.lower(field).like(pattern, escape="\\") for field in fields))
 
 
 def _escape_like(value: str) -> str:
@@ -192,10 +211,28 @@ async def count_webhook_summaries(
 ) -> int | None:
     """Total event count matching the same filters (for the list's real total).
 
-    Uses count_with_timeout so a slow count degrades to None ("unknown") rather
-    than stalling the page; the API surfaces None as an unknown total.
+    The unfiltered total (default dashboard open) would be a full-table
+    ``COUNT(*)`` that on a large table just burns the statement timeout and
+    returns None every time — for that case PostgreSQL's planner statistics
+    (``pg_class.reltuples``, kept fresh by autovacuum/ANALYZE) give an instant
+    estimate that is exactly as useful for a list total. Filtered counts stay
+    exact. Uses count_with_timeout so a slow count degrades to None ("unknown")
+    rather than stalling the page; the API surfaces None as an unknown total.
     """
     from db.session import count_with_timeout
+
+    has_filters = bool(importance or source or processing_status or search) or time_from is not None
+    if not has_filters and session.get_bind().dialect.name == "postgresql":
+        estimate = (
+            await session.execute(
+                text("SELECT reltuples::bigint FROM pg_class WHERE oid = to_regclass(:table)"),
+                {"table": WebhookEvent.__tablename__},
+            )
+        ).scalar()
+        # reltuples is -1 until the first ANALYZE; fall through to the exact
+        # count in that case (the table is young, so it is cheap anyway).
+        if estimate is not None and estimate >= 0:
+            return int(estimate)
 
     stmt = _apply_summary_filters(
         select(func.count()).select_from(WebhookEvent),

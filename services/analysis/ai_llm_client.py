@@ -270,15 +270,13 @@ async def _retrieve_kb_context(source: str, identity_context: dict[str, Any], cl
         return ""
 
 
-async def _analyze_with_openai_tracked(
-    data: dict[str, Any],
-    source: str,
-    *,
-    policy: AIProviderPolicy | None = None,
-    http_client: httpx.AsyncClient | None = None,
-) -> tuple[AnalysisResult, int, int]:
-    policy = policy or AIProviderPolicy.from_config()
-    client = await _get_instructor_client_async(http_client=http_client)
+async def _build_user_prompt(data: dict[str, Any], source: str, policy: AIProviderPolicy) -> str:
+    """Assemble the full user prompt for one alert (sanitize → identity → YAML → KB → template).
+
+    Deterministic for a given alert, and not free: the YAML dumps are CPU-bound
+    (offloaded to a thread) and KB retrieval makes an embedding API call. Build
+    it once per alert and let only the provider call retry.
+    """
     cleaned_data = await sanitize_for_ai_async(data)
     identity_context = build_alert_identity_context(source, cleaned_data)
     # PyYAML's pure-Python emitter is CPU-bound and the payload can be large;
@@ -300,6 +298,18 @@ async def _analyze_with_openai_tracked(
         len(user_prompt.encode("utf-8")),
         get_prompt_source(),
     )
+    return user_prompt
+
+
+async def _analyze_with_openai_tracked(
+    user_prompt: str,
+    source: str,
+    *,
+    policy: AIProviderPolicy | None = None,
+    http_client: httpx.AsyncClient | None = None,
+) -> tuple[AnalysisResult, int, int]:
+    policy = policy or AIProviderPolicy.from_config()
+    client = await _get_instructor_client_async(http_client=http_client)
 
     with otel_span(
         "ai.request",
@@ -349,6 +359,17 @@ async def _analyze_with_openai_tracked(
     return cast(AnalysisResult, res.to_dict()), t_in, t_out
 
 
+async def _call_ai_with_retry(
+    parsed_data: dict[str, Any], source: str, *, http_client: httpx.AsyncClient | None = None
+) -> tuple[AnalysisResult, int, int]:
+    # Prompt construction is hoisted out of the retry loop: on a transient
+    # provider error the retries below reuse the same prompt instead of paying
+    # the sanitize/YAML/KB-embedding cost again for identical input.
+    policy = AIProviderPolicy.from_config()
+    user_prompt = await _build_user_prompt(parsed_data, source, policy)
+    return await _invoke_ai_with_retry(user_prompt, source, policy=policy, http_client=http_client)
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential_jitter(initial=2, max=30, jitter=2),
@@ -356,13 +377,19 @@ async def _analyze_with_openai_tracked(
     retry=retry_if_exception(is_ai_provider_retryable_error),
     before_sleep=before_sleep_log(logger, logging.WARNING),
 )
-async def _call_ai_with_retry(
-    parsed_data: dict[str, Any], source: str, *, http_client: httpx.AsyncClient | None = None
+async def _invoke_ai_with_retry(
+    user_prompt: str,
+    source: str,
+    *,
+    policy: AIProviderPolicy | None = None,
+    http_client: httpx.AsyncClient | None = None,
 ) -> tuple[AnalysisResult, int, int]:
     start = time.time()
     metric_source = sanitize_source(source)
     try:
-        res, t_in, t_out = await _analyze_with_openai_tracked(parsed_data, source, http_client=http_client)
+        res, t_in, t_out = await _analyze_with_openai_tracked(
+            user_prompt, source, policy=policy, http_client=http_client
+        )
         AI_REQUESTS_TOTAL.labels(metric_source, "openai", "success").inc()
         AI_ANALYSIS_DURATION_SECONDS.labels(source=metric_source, engine="openai").observe(time.time() - start)
         return res, t_in, t_out

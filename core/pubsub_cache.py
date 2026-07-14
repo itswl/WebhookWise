@@ -57,6 +57,12 @@ class TtlPubSubCache[T]:
         self._ttl = ttl_seconds
         self._value: T | None = None
         self._loaded_at: float = 0.0
+        # Single-flight guard for reloads (see get()).
+        self._reload_lock = asyncio.Lock()
+        # Strong reference to the listener task: the event loop only keeps a
+        # weak one, so an unreferenced listener could be garbage-collected and
+        # silently stop delivering cross-worker invalidations.
+        self._listener_task: asyncio.Task[None] | None = None
 
     def invalidate(self) -> None:
         """Drop the local cached value; the next get reloads it."""
@@ -70,13 +76,18 @@ class TtlPubSubCache[T]:
         ``session`` is only threaded to ``loader`` on a miss, so a hot-path caller
         that always passes its session still hits the cache instead of reloading.
         """
-        now = time.monotonic()
-        if self._value is not None and (now - self._loaded_at) < self._ttl:
+        if self._value is not None and (time.monotonic() - self._loaded_at) < self._ttl:
             return self._value
-        value = await self._loader(session)
-        self._value = value
-        self._loaded_at = now
-        return value
+        # Single-flight: when the TTL lapses under load, every in-flight forward
+        # decision would otherwise call the loader concurrently (a stampede of
+        # identical DB reads). Only the first waiter loads; the rest reuse it.
+        async with self._reload_lock:
+            if self._value is not None and (time.monotonic() - self._loaded_at) < self._ttl:
+                return self._value
+            value = await self._loader(session)
+            self._value = value
+            self._loaded_at = time.monotonic()
+            return value
 
     async def publish_invalidation(self) -> None:
         """Broadcast cache invalidation to all workers via Redis Pub/Sub.
@@ -118,4 +129,16 @@ class TtlPubSubCache[T]:
                     await pubsub.unsubscribe(self._channel)
                     await pubsub.close()
 
-        asyncio.create_task(_listen())
+        def _on_listener_done(task: asyncio.Task[None]) -> None:
+            if self._listener_task is task:
+                self._listener_task = None
+            if not task.cancelled() and task.exception() is not None:
+                self._log.warning(
+                    "[%s] Pub/Sub listener task died: %s — cross-worker invalidation degraded to TTL expiry",
+                    self._log_prefix,
+                    task.exception(),
+                )
+
+        task = asyncio.create_task(_listen())
+        task.add_done_callback(_on_listener_done)
+        self._listener_task = task

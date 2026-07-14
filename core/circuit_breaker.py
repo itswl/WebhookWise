@@ -55,12 +55,17 @@ class CircuitBreaker:
         recovery_timeout: float = 30.0,
         expected_exceptions: tuple[type[BaseException], ...] = (httpx.RequestError, httpx.HTTPStatusError),
         failure_window: int = 60,
+        time_func: Callable[[], float] = time.time,
     ) -> None:
         self.name = name
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.expected_exceptions = expected_exceptions
         self.failure_window = failure_window
+        # Injectable wall clock: recovery windows compare against timestamps
+        # stored in Redis, so tests can drive state transitions by advancing a
+        # fake clock instead of sleeping through real recovery timeouts.
+        self._time = time_func
 
         self._prefix = f"circuit_breaker:{name}"
         self._failures_key = f"{self._prefix}:failures"
@@ -75,8 +80,15 @@ class CircuitBreaker:
         # locally-recorded failure. Cross-process trips lag by at most this TTL.
         self._closed_cache_ttl = min(_CLOSED_CACHE_TTL_SECONDS, float(recovery_timeout))
         self._closed_cache_until = 0.0
+        self._last_recorded_state: CircuitState | None = None
 
     def _record_state_metric(self, state: CircuitState) -> None:
+        # The gauge only changes on a state transition; re-setting it on every
+        # call (including the cached-CLOSED fast path) is per-call overhead for
+        # an unchanged value.
+        if state == self._last_recorded_state:
+            return
+        self._last_recorded_state = state
         for candidate in CircuitState:
             CIRCUIT_BREAKER_STATE.labels(self.name, candidate.value).set(1 if candidate == state else 0)
 
@@ -85,7 +97,7 @@ class CircuitBreaker:
 
         # Fast path: a recently-observed CLOSED is trusted for a short window,
         # skipping the Redis round-trip on the healthy path. Never cache OPEN.
-        if self._closed_cache_ttl > 0 and time.time() < self._closed_cache_until:
+        if self._closed_cache_ttl > 0 and self._time() < self._closed_cache_until:
             self._record_state_metric(CircuitState.CLOSED)
             return CircuitState.CLOSED
 
@@ -99,7 +111,7 @@ class CircuitBreaker:
             from core.redis_client import redis_eval_str
 
             state_str = await redis_eval_str(
-                _CB_CHECK_STATE_LUA, 2, self._state_key, self._open_until_key, str(time.time())
+                _CB_CHECK_STATE_LUA, 2, self._state_key, self._open_until_key, str(self._time())
             )
             state = CircuitState(state_str) if state_str else CircuitState.CLOSED
         except (RedisError, RuntimeError, TypeError, ValueError) as e:
@@ -109,7 +121,7 @@ class CircuitBreaker:
         # Only cache a genuine CLOSED read from Redis; OPEN (and the degraded
         # fallbacks above) are left uncached so they re-check every call.
         if state == CircuitState.CLOSED and self._closed_cache_ttl > 0:
-            self._closed_cache_until = time.time() + self._closed_cache_ttl
+            self._closed_cache_until = self._time() + self._closed_cache_ttl
         self._record_state_metric(state)
         return state
 
@@ -126,7 +138,7 @@ class CircuitBreaker:
         try:
             from core.redis_client import redis_eval_int
 
-            open_until_ts = str(time.time() + self.recovery_timeout)
+            open_until_ts = str(self._time() + self.recovery_timeout)
             state_expire = int(self.recovery_timeout * 2) + 1
             tripped = await redis_eval_int(
                 _CB_RECORD_FAILURE_LUA,
@@ -173,12 +185,17 @@ class CircuitBreaker:
 
         current_state = await self._check_state_async()
         if current_state == CircuitState.OPEN:
-            record_signal("circuit_breaker", "open", {"circuit_breaker.name": self.name})
+            # Steady-state rejection: no record_signal here — the signal marks
+            # the CLOSED→OPEN *transition* (recorded below when tripping), and
+            # emitting it per rejected call floods logs and inflates the signal
+            # counter exactly while a downstream is failing under load. The
+            # span event keeps per-trace visibility; callers surface rejection
+            # rates via their own delivery/request metrics.
             add_span_event(
                 "circuit_breaker.open",
                 {"circuit_breaker.name": self.name, "circuit_breaker.state": current_state.value},
             )
-            logger.warning("CircuitBreaker [%s] OPEN — request rejected", self.name)
+            logger.debug("CircuitBreaker [%s] OPEN — request rejected", self.name)
             raise CircuitBreakerOpenException(self.name)
 
         try:

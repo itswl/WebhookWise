@@ -30,9 +30,6 @@ def _token_candidates(request: Request, auth: HTTPAuthorizationCredentials | Non
     if auth is not None:
         add_token(auth.credentials)
 
-    if auth and auth.scheme:
-        add_token(auth.credentials)
-
     header_value = request.headers.get("authorization")
     if header_value:
         token = header_value.strip()
