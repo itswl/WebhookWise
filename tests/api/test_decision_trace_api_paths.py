@@ -109,7 +109,7 @@ async def test_list_endpoint_returns_pagination_envelope(monkeypatch: pytest.Mon
 
     monkeypatch.setattr(decision_trace, "list_decision_traces", fake_list)
 
-    result = await decision_trace.list_decision_traces_endpoint(
+    response = await decision_trace.list_decision_traces_endpoint(
         page=1,
         page_size=20,
         cursor=None,
@@ -118,9 +118,10 @@ async def test_list_endpoint_returns_pagination_envelope(monkeypatch: pytest.Mon
         source="",
         session=object(),  # type: ignore[arg-type]
     )
+    result = _body(response)
     assert result["success"] is True
     assert result["data"][0]["webhook_event_id"] == 42
-    assert result["pagination"] == {"next_cursor": 5, "has_more": True, "page_size": 20}
+    assert result["pagination"] == {"next_cursor": 5, "has_more": True, "page_size": 20, "total": None}
 
 
 @pytest.mark.asyncio

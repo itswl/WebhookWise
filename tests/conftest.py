@@ -6,12 +6,14 @@ Global pytest fixtures: external-service mocks and the test database session.
 
 import os
 import sys
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.ext.compiler import compiles
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -49,12 +51,27 @@ def initialize_adapter_registry():
 
 
 @pytest.fixture(autouse=True)
+def reset_ai_usage_buffer():
+    """Drop buffered AI-usage rows between tests so no cross-test flush fires."""
+    from services.analysis import ai_usage
+
+    yield
+    ai_usage._buffer.clear()
+    if ai_usage._flush_timer is not None:
+        ai_usage._flush_timer.cancel()
+        ai_usage._flush_timer = None
+
+
+@pytest.fixture(autouse=True)
 def reset_default_app_context():
     """Keep AppContext-owned resources isolated between tests."""
     from core.app_context import AppContext, set_default_app_context
     from core.config import get_settings
+    from core.observability.exporters import _reset_otel_enabled_cache_for_tests
     from core.redis_health import reset_redis_health
     from services.forwarding.rules import invalidate_forward_rules_cache
+
+    _reset_otel_enabled_cache_for_tests()
 
     settings = get_settings().model_copy(deep=True)
     context = AppContext(config=settings)
@@ -167,3 +184,61 @@ def inline_webhook_task_runner(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(process_webhook_task, "kiq", run_task_inline)
     return run_task_inline
+
+
+# ── Shared In-Memory Database Fixtures ────────────────────────────────────────
+# One in-memory SQLite engine per test with the full schema, replacing the
+# per-file engine + Base.metadata.create_all boilerplate that used to be copied
+# across the DB-backed test modules. Function-scoped to preserve the previous
+# fresh-database-per-test isolation. Engine construction lives in
+# tests/helpers/db.py so it is reusable outside these fixtures too.
+
+
+@pytest.fixture
+async def db_engine() -> AsyncIterator[AsyncEngine]:
+    """A fresh in-memory SQLite engine with every ORM table created."""
+    from tests.helpers.db import create_all, make_memory_engine
+
+    engine = make_memory_engine()
+    await create_all(engine)
+    try:
+        yield engine
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
+def db_session_factory(db_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    """An async_sessionmaker bound to the shared in-memory engine."""
+    return async_sessionmaker(bind=db_engine, class_=AsyncSession, expire_on_commit=False)
+
+
+@pytest.fixture
+async def db_session(db_session_factory: async_sessionmaker[AsyncSession]) -> AsyncIterator[AsyncSession]:
+    """A single AsyncSession from the shared factory.
+
+    Yielded without an outer transaction so handlers under test can issue their
+    own commit(); the session closes (rolling back anything uncommitted) on exit.
+    """
+    async with db_session_factory() as sess:
+        yield sess
+
+
+@pytest.fixture
+async def db_app_context_session_factory(
+    db_engine: AsyncEngine,
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Like `db_session_factory`, but also wires the engine + factory into the default
+    AppContext so code that resolves its session maker from get_default_app_context()
+    (forwarding/outbox, retention, the integration flow) talks to the test database."""
+    from core.app_context import AppContext, set_default_app_context
+
+    factory = async_sessionmaker(bind=db_engine, class_=AsyncSession, expire_on_commit=False)
+    context = AppContext()
+    context.db_engine = db_engine
+    context.session_factory = factory
+    set_default_app_context(context)
+    try:
+        yield factory
+    finally:
+        set_default_app_context(None)

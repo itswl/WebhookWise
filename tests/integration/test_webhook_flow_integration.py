@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from datetime import timedelta
 from typing import Any, cast
 
 import httpx
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.datetime_utils import utcnow
 from services.dedup import generate_alert_hash
@@ -21,32 +19,11 @@ def _set_config(monkeypatch: pytest.MonkeyPatch, config: Any, key: str, value: o
     monkeypatch.setattr(getattr(config, config_info["sub"]), key, value)
 
 
-@pytest.fixture()
-async def integration_session_factory(
-    monkeypatch: pytest.MonkeyPatch,
-) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    import models  # noqa: F401 - register all SQLAlchemy models
-    from core.app_context import AppContext, set_default_app_context
-    from db.session import Base
-
-    engine = create_async_engine(
-        "sqlite+aiosqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    context = AppContext()
-    context.db_engine = engine
-    context.session_factory = session_factory
-    set_default_app_context(context)
-
-    yield session_factory
-
-    set_default_app_context(None)
-    await engine.dispose()
+@pytest.fixture
+def integration_session_factory(
+    db_app_context_session_factory: async_sessionmaker[AsyncSession],
+) -> async_sessionmaker[AsyncSession]:
+    return db_app_context_session_factory
 
 
 async def test_webhook_receive_to_feishu_card_flow(

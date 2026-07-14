@@ -20,7 +20,14 @@ dump_logs() {
 trap dump_logs EXIT
 
 cleanup
-"${COMPOSE[@]}" up -d --build
+# CI pre-builds the app image with a persistent layer cache and sets
+# E2E_SKIP_BUILD=1 so this run reuses it; locally the build runs by default so
+# source changes are always picked up.
+up_args=(up -d)
+if [ "${E2E_SKIP_BUILD:-}" != "1" ]; then
+  up_args+=(--build)
+fi
+"${COMPOSE[@]}" "${up_args[@]}"
 
 wait_container_running() {
   local service="$1"
