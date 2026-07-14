@@ -10,7 +10,6 @@ let forwardRules = [];
  * Load the list of forward rules
  */
 async function loadForwardRules() {
-    console.log('📋 Loading forward rules...');
     const container = document.getElementById('forwardRulesList');
 
     try {
@@ -27,7 +26,6 @@ async function loadForwardRules() {
         if (result.success) {
             forwardRules = result.data || [];
             renderForwardRules(forwardRules);
-            console.log('✅ Loaded', forwardRules.length, 'rules');
         } else {
             container.innerHTML = `
                 <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
@@ -267,16 +265,6 @@ function formatTargetType(type) {
 }
 
 /**
- * HTML escape
- */
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-/**
  * Show the rule form (create or edit)
  * @param {number} ruleId - rule ID; omit for create
  */
@@ -450,11 +438,9 @@ async function saveRule() {
         let result;
         if (ruleId) {
             // Update rule
-            console.log('📝 Updating rule:', ruleId, ruleData);
             result = await API.updateForwardRule(ruleId, ruleData);
         } else {
             // Create rule
-            console.log('➕ Creating rule:', ruleData);
             result = await API.createForwardRule(ruleData);
         }
 
@@ -478,7 +464,6 @@ async function saveRule() {
  */
 async function toggleRule(id, enabled) {
     try {
-        console.log(enabled ? '✅ Enabling rule:' : '⏸️ Disabling rule:', id);
         const result = await API.updateForwardRule(id, { enabled: enabled });
 
         if (result.success) {
@@ -513,7 +498,6 @@ async function deleteRule(id) {
     }
 
     try {
-        console.log('🗑️ Deleting rule:', id);
         const result = await API.deleteForwardRule(id);
 
         if (result.success) {
@@ -541,7 +525,6 @@ async function testRule(id) {
     }
 
     try {
-        console.log('🧪 Testing rule:', id);
         const result = await API.testForwardRule(id);
 
         if (result.success) {
@@ -558,7 +541,6 @@ async function testRule(id) {
 // Export the module (used by dashboard.js for initialization detection)
 const ForwardRulesModule = {
     init: function() {
-        console.log('📋 Forward rule module initialized');
     },
     loadRules: loadForwardRules
 };

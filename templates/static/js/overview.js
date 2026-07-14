@@ -7,6 +7,7 @@
  */
 const OverviewModule = {
     currentPeriod: 'day',
+    _chartLibPromise: null,
 
     init() {
         this.bindEvents();
@@ -39,18 +40,15 @@ const OverviewModule = {
         }
     },
 
-    escapeHtml(value) {
-        if (value === null || value === undefined) return '';
-        return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-    },
-
     async load(period) {
         this.currentPeriod = period || this.currentPeriod || 'day';
         this.updatePeriodButtons(this.currentPeriod);
         const container = document.getElementById('overviewContent');
         if (!container) return;
         const mark = document.getElementById('ovLastRefreshed');
+        // Start loading Chart.js in parallel with the data fetch so its download
+        // overlaps the API round-trips instead of blocking first paint.
+        const chartLibReady = this._ensureChartLib();
         try {
             // Overview + AI usage + recent incidents + sparkline, in parallel.
             const [ovRes, aiRes, incRes, sparkRes] = await Promise.all([
@@ -66,11 +64,22 @@ const OverviewModule = {
                 var sparkData = (sparkRes && sparkRes.success && sparkRes.data) ? sparkRes.data : [];
                 container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents, sparkData);
                 this.initOverviewChart(sparkData);
+                // If Chart.js was not ready at render time, upgrade the fallback
+                // bars to the line chart in place once the library loads.
+                if (typeof Chart === 'undefined' && sparkData && sparkData.length > 1) {
+                    chartLibReady.then(() => {
+                        const box = document.getElementById('overviewTrendBox');
+                        if (box) {
+                            box.innerHTML = this._trendInner(sparkData);
+                            this.initOverviewChart(sparkData);
+                        }
+                    }).catch(() => { /* fallback bars remain */ });
+                }
             }
             if (mark) mark.textContent = t('common.lastRefreshed', { time: new Date().toLocaleTimeString() });
         } catch (err) {
             console.error('Failed to load overview:', err);
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">' + t('common.loadFailed') + '</div><div class="empty-text">' + this.escapeHtml(String(err && err.message || err)) + '</div></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">' + t('common.loadFailed') + '</div><div class="empty-text">' + escapeHtml(String(err && err.message || err)) + '</div></div>';
         }
     },
 
@@ -111,9 +120,9 @@ const OverviewModule = {
                 // Clickable: drill from the Overview summary into the Decision Trace
                 // sub-view, pre-filtered to this skip reason.
                 html += '<span class="badge badge-outline" role="button" tabindex="0" style="font-size: 0.8rem; cursor: pointer;"' +
-                    ' title="' + this.escapeHtml(t('overview.skipChip.drill')) + '"' +
-                    ' onclick="OverviewModule.drillToSkip(\'' + this.escapeHtml(k) + '\')">' +
-                    this.escapeHtml(k) + ' <strong>' + fmt(skip[k]) + '</strong></span>';
+                    ' title="' + escapeHtml(t('overview.skipChip.drill')) + '"' +
+                    ' onclick="OverviewModule.drillToSkip(\'' + escapeHtml(k) + '\')">' +
+                    escapeHtml(k) + ' <strong>' + fmt(skip[k]) + '</strong></span>';
             });
             html += '</div>';
         }
@@ -128,7 +137,7 @@ const OverviewModule = {
                 const pct = ((s.count || 0) / max) * 100;
                 html += '<div style="margin-bottom: 0.75rem;">' +
                     '<div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:0.25rem;">' +
-                    '<span>📡 ' + this.escapeHtml(s.source) + '</span><span style="color:var(--text-muted);">' + fmt(s.count) + '</span></div>' +
+                    '<span>📡 ' + escapeHtml(s.source) + '</span><span style="color:var(--text-muted);">' + fmt(s.count) + '</span></div>' +
                     '<div style="height:8px; background:var(--bg-subtle, #f1f5f9); border-radius:4px; overflow:hidden;">' +
                     '<div style="height:100%; width:' + pct + '%; background:var(--primary);"></div></div></div>';
             });
@@ -145,33 +154,39 @@ const OverviewModule = {
                 html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="openInboxIncidents()">';
                 html += '<span style="font-size:1.2rem;">🔥</span>';
                 html += '<div style="flex:1; min-width:0;">';
-                html += '<div style="font-weight:500; font-size:0.9rem;">' + this.escapeHtml(inc.title) + '</div>';
-                html += '<div style="font-size:0.76rem; color:var(--text-muted);">' + this.escapeHtml(inc.source || '') + ' · ' + inc.alert_count + ' alerts · ' + (impEmoji[inc.top_importance] || '') + (inc.top_importance || '') + '</div>';
+                html += '<div style="font-weight:500; font-size:0.9rem;">' + escapeHtml(inc.title) + '</div>';
+                html += '<div style="font-size:0.76rem; color:var(--text-muted);">' + escapeHtml(inc.source || '') + ' · ' + inc.alert_count + ' alerts · ' + (impEmoji[inc.top_importance] || '') + (inc.top_importance || '') + '</div>';
                 html += '</div>';
                 html += '<span style="color:var(--text-muted); font-size:0.7rem;">' + (inc.started_at ? inc.started_at.slice(0, 16).replace('T', ' ') : '') + '</span>';
                 html += '</div>';
             }
             html += '</div>';
         }
-        // 7-day sparkline trend
+        // 7-day sparkline trend. Chart.js is loaded lazily (see load()); until it
+        // arrives the box shows a lightweight CSS-bar fallback that is upgraded to
+        // the line chart in place once the library is ready.
         if (sparkData && sparkData.length > 1) {
             html += '<div style="font-size:1rem; font-weight:600; margin:1.5rem 0 0.5rem;">📈 ' + t('overview.section.trend') + '</div>';
-            html += '<div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:1.25rem;">';
-            if (typeof Chart !== 'undefined') {
-                html += '<div style="height: 160px; position: relative;"><canvas id="overviewTrendChart"></canvas></div>';
-            } else {
-                var maxVal = Math.max.apply(null, sparkData.map(function (d) { return d.count; })) || 1;
-                var bars = sparkData.map(function (d) {
-                    var h = Math.max(2, Math.round((d.count / maxVal) * 40));
-                    return '<div title="' + d.day + ': ' + d.count + '" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">' +
-                        '<div style="width:100%; max-width:24px; height:' + h + 'px; background:var(--primary); border-radius:2px 2px 0 0; min-height:2px;"></div>' +
-                        '<span style="font-size:0.55rem; color:var(--text-muted);">' + (d.day || '').slice(5) + '</span></div>';
-                }).join('');
-                html += '<div style="display:flex; align-items:flex-end; gap:2px; height:50px;">' + bars + '</div>';
-            }
-            html += '</div>';
+            html += '<div id="overviewTrendBox" style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:1.25rem;">' + this._trendInner(sparkData) + '</div>';
         }
         return html;
+    },
+
+    // Trend markup: the Chart.js canvas when the library is available, otherwise
+    // a CSS-bar fallback. Kept as one helper so load() can re-render it in place
+    // after Chart.js finishes loading.
+    _trendInner(sparkData) {
+        if (typeof Chart !== 'undefined') {
+            return '<div style="height: 160px; position: relative;"><canvas id="overviewTrendChart"></canvas></div>';
+        }
+        var maxVal = Math.max.apply(null, sparkData.map(function (d) { return d.count; })) || 1;
+        var bars = sparkData.map(function (d) {
+            var h = Math.max(2, Math.round((d.count / maxVal) * 40));
+            return '<div title="' + d.day + ': ' + d.count + '" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">' +
+                '<div style="width:100%; max-width:24px; height:' + h + 'px; background:var(--primary); border-radius:2px 2px 0 0; min-height:2px;"></div>' +
+                '<span style="font-size:0.55rem; color:var(--text-muted);">' + (d.day || '').slice(5) + '</span></div>';
+        }).join('');
+        return '<div style="display:flex; align-items:flex-end; gap:2px; height:50px;">' + bars + '</div>';
     },
 
     _card(icon, label, value, trend, color) {
@@ -179,6 +194,23 @@ const OverviewModule = {
             '<div class="stat-label">' + icon + ' ' + label + '</div>' +
             '<div class="stat-value" style="font-size: 2rem; color: ' + color + ';">' + value + '</div>' +
             '<div class="stat-trend">' + trend + '</div></div>';
+    },
+
+    // Lazy-load the Chart.js UMD build the first time the trend chart is drawn.
+    // Loading it on demand (rather than a render-blocking <script> in <head>)
+    // keeps this heavy third-party dependency off the critical path. CSP
+    // script-src-elem allows cdn.jsdelivr.net.
+    _ensureChartLib() {
+        if (typeof Chart !== 'undefined') return Promise.resolve();
+        if (this._chartLibPromise) return this._chartLibPromise;
+        this._chartLibPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js';
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error('Chart.js failed to load'));
+            document.head.appendChild(script);
+        });
+        return this._chartLibPromise;
     },
 
     initOverviewChart(sparkData) {

@@ -236,6 +236,6 @@ function impClass(importance) {
 
 // Module shell (mirrors SilencesModule; init is a no-op, load is on tab switch).
 const SandboxModule = {
-    init: function () { console.log('🧪 Sandbox module initialized'); },
+    init: function () { /* bind-only; the sandbox form is static */ },
     load: function () { /* lazy: the form is static, nothing to fetch on open */ }
 };

@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Webhook Monitor</title>
 
-    <!-- External stylesheets -->
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=20260616-navbar">
-    <link rel="stylesheet" href="/static/css/components.css?v=20260714-operations">
-
-    <!-- Chart.js for beautiful analytics trend lines -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+    <!-- External stylesheets. Cache-busting ?v= content hashes are injected at
+         render time (see api/dashboard.py); the raw paths stay clean here. -->
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+    <!-- Chart.js is loaded lazily by overview.js the first time the trend chart
+         renders, so it no longer render-blocks the page. -->
 </head>
 <body>
     <!-- Top navigation bar -->
@@ -761,25 +761,28 @@
         </div>
     </div>
 
-    <!-- External scripts (loaded in dependency order) -->
-    <script src="/static/js/i18n.js?v=20260714-operations"></script>
-    <script src="/static/js/faro.js"></script>
-    <script src="/static/js/utils.js?v=20260617-noack"></script>
-    <script src="/static/js/api.js?v=20260713-persistent-credentials"></script>
-    <script src="/static/js/overview.js?v=20260709-v2"></script>
-    <script src="/static/js/alerts.js?v=20260713-alert-card"></script>
-    <script src="/static/js/ai-cost.js?v=20260622-batchb"></script>
-    <script src="/static/js/forward-rules.js?v=20260703-ruleroi"></script>
-    <script src="/static/js/silences.js?v=20260709-v2"></script>
-    <script src="/static/js/sandbox.js?v=20260709-v2"></script>
-    <script src="/static/js/incidents.js?v=20260713-product-loop"></script>
-    <script src="/static/js/rule-audit.js?v=20260703-audit"></script>
-    <script src="/static/js/integrations.js?v=20260713-product-loop"></script>
-    <script src="/static/js/routing.js?v=20260713-product-loop"></script>
-    <script src="/static/js/deep-analyses.js?v=20260617-noack"></script>
-    <script src="/static/js/decision-trace.js?v=20260709-v2"></script>
-    <script src="/static/js/action-center.js?v=20260713-product-loop"></script>
-    <script src="/static/js/noise-center.js?v=20260713-noise-center"></script>
-    <script src="/static/js/dashboard.js?v=20260714-operations"></script>
+    <!-- External scripts, in dependency order. `defer` keeps them off the
+         parser's critical path (parallel download, ordered execution after
+         parse, before DOMContentLoaded). Cache-busting ?v= content hashes are
+         injected at render time; see api/dashboard.py. -->
+    <script defer src="/static/js/i18n.js"></script>
+    <script defer src="/static/js/faro.js"></script>
+    <script defer src="/static/js/utils.js"></script>
+    <script defer src="/static/js/api.js"></script>
+    <script defer src="/static/js/overview.js"></script>
+    <script defer src="/static/js/alerts.js"></script>
+    <script defer src="/static/js/ai-cost.js"></script>
+    <script defer src="/static/js/forward-rules.js"></script>
+    <script defer src="/static/js/silences.js"></script>
+    <script defer src="/static/js/sandbox.js"></script>
+    <script defer src="/static/js/incidents.js"></script>
+    <script defer src="/static/js/rule-audit.js"></script>
+    <script defer src="/static/js/integrations.js"></script>
+    <script defer src="/static/js/routing.js"></script>
+    <script defer src="/static/js/deep-analyses.js"></script>
+    <script defer src="/static/js/decision-trace.js"></script>
+    <script defer src="/static/js/action-center.js"></script>
+    <script defer src="/static/js/noise-center.js"></script>
+    <script defer src="/static/js/dashboard.js"></script>
 </body>
 </html>

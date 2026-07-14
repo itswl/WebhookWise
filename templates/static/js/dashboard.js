@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
  * Dashboard initialization function
  */
 async function initDashboard() {
-    console.log('🚀 Initializing Dashboard...');
 
     // Initialize theme settings
     initTheme();
@@ -31,6 +30,11 @@ async function initDashboard() {
     // Apply static translations to the markup and re-render the active tab on
     // language change so dynamically-rendered content also switches language.
     if (typeof I18N !== 'undefined') {
+        // Wait for the active language's dictionary to load before applying, so
+        // the first paint is never a flash of raw i18n keys.
+        if (I18N.ready && typeof I18N.ready.then === 'function') {
+            await I18N.ready;
+        }
         I18N.apply();
         I18N.onChange(() => {
             updateAuthButtonState();
@@ -92,7 +96,6 @@ async function initDashboard() {
         }, 100);
     }
 
-    console.log('✅ Dashboard initialization complete');
 }
 
 /**
@@ -171,7 +174,6 @@ function bindGlobalEvents() {
  * @param {string} tabId - Tab ID
  */
 function switchMainTab(tabId) {
-    console.log('Switching tab:', tabId);
     currentTab = tabId;
 
     // Update the navbar active state
@@ -303,7 +305,6 @@ function refreshCurrentTab() {
  */
 function startAutoRefresh() {
     // Auto-refresh is off by default, waiting for the user to enable it manually
-    console.log('⏸️ Auto-refresh ready (click the refresh button to start)');
 }
 
 /**
@@ -324,12 +325,10 @@ function toggleAutoRefresh() {
     if (autoRefreshInterval) {
         clearInterval(autoRefreshInterval);
         autoRefreshInterval = null;
-        console.log('⏸️ Auto-refresh stopped');
     } else {
         autoRefreshInterval = setInterval(() => {
             refreshCurrentTab();
         }, DASHBOARD_AUTO_REFRESH_INTERVAL_MS);
-        console.log('⏵️ Auto-refresh started (every 1 minute)');
     }
     updateAutoRefreshLabel();
 }

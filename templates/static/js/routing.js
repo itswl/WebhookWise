@@ -61,7 +61,6 @@ const RoutingModule = (function () {
     return {
         init: function () {
             bindEvents();
-            console.log('⚙️ Routing module initialized');
         },
         // Called when the Routing tab is opened: show + load the active sub-view.
         load: function () {

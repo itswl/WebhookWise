@@ -102,14 +102,22 @@ function copyToClipboard(btn) {
 }
 
 /**
- * Escape HTML to prevent XSS attacks
- * @param {string} text - Raw text
+ * Escape HTML to prevent XSS attacks.
+ *
+ * The single shared implementation for the dashboard. Escapes quotes as well as
+ * angle brackets/ampersands so the result is safe in both element-content and
+ * attribute-value contexts. null/undefined become an empty string.
+ * @param {*} value - Raw value (coerced to string)
  * @returns {string} The escaped, HTML-safe text
  */
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 /**

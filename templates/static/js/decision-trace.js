@@ -47,16 +47,6 @@ var DecisionTraceModule = (function () {
         'forward': { icon: '📤', key: 'dt.step.forward' }
     };
 
-    function escapeHtml(value) {
-        if (value === null || value === undefined) return '';
-        return String(value)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
     function skipCodeLabel(code) {
         var meta = SKIP_CODE_META[code];
         return meta ? (meta.icon + ' ' + t(meta.key)) : escapeHtml(code);
