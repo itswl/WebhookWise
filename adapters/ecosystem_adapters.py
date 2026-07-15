@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from adapters.declarative import register_declarative_adapters
 from adapters.simple_adapters import normalize_level, register_simple_adapters
 from contracts.webhook_payload import WebhookData, webhook_data_from_mapping
 from core.logger import get_logger
@@ -24,6 +25,7 @@ __all__ = [
     "initialize_adapters",
     "normalize_level",
     "normalize_webhook_event",
+    "register_declarative_adapters",
     "register_simple_adapters",
 ]
 
@@ -54,6 +56,10 @@ def initialize_adapters() -> None:
 
     before = registry.status()["normalizers"]
     register_simple_adapters()
+    # Declarative YAML adapters register after the code adapters, so on a detect
+    # tie the built-in code adapter wins unless a spec opts into a higher
+    # priority. See adapters/declarative.py.
+    register_declarative_adapters()
     if registry.status()["normalizers"] != before:
         logger.info("[Adapter] Adapter registration complete")
 
