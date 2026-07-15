@@ -270,8 +270,10 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
     ]
 
     from services.operations.action_center import get_action_center
+    from services.operations.silence_debt import get_silence_debt, summarize_silence_debt
 
     action_center = await get_action_center(session)
+    silence_debt_line = summarize_silence_debt(await get_silence_debt(session, window_days=window_days))
     previous_noise_pct = round(100.0 * previous_duplicates / previous_total, 1) if previous_total else 0.0
     volume_change_pct = round(100.0 * (total_events - previous_total) / previous_total, 1) if previous_total else None
 
@@ -302,6 +304,7 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         "feedback_total": feedback_total,
         "feedback_agreement_pct": round(100.0 * feedback_correct / feedback_total, 1) if feedback_total else None,
         "unhealthy_rules": unhealthy_rules,
+        "silence_debt_line": silence_debt_line,
     }
 
 
@@ -357,6 +360,8 @@ def _build_summary(stats: dict[str, Any]) -> str:
             "Unhealthy delivery rules:\n"
             + "\n".join(f"  · {row['rule']}: {row['failures']} exhausted" for row in unhealthy_rules)
         )
+    if stats.get("silence_debt_line"):
+        lines.append(stats["silence_debt_line"])
     return "\n".join(lines)
 
 

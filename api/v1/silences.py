@@ -12,6 +12,7 @@ from schemas.silences import (
     SilenceBacktestRequest,
     SilenceBacktestResponse,
     SilenceCreateRequest,
+    SilenceDebtResponse,
     SilenceDetailResponse,
     SilenceListResponse,
     SilenceUpdateRequest,
@@ -57,6 +58,26 @@ async def list_silences_endpoint(
         item["suppressed_count"] = stat["count"] if stat else 0
         item["last_suppressed_at"] = stat["last_suppressed_at"] if stat else None
         data.append(item)
+    return {"success": True, "data": data}
+
+
+@silences_router.get(
+    "/silences/debt",
+    response_model=SilenceDebtResponse,
+    dependencies=[Depends(verify_api_key)],
+)
+async def silence_debt_endpoint(
+    window_days: int = Query(30, ge=1, le=90),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONDict:
+    """Rank active silences by how much they have suppressed over the window.
+
+    Registered before ``/silences/{silence_id}`` so the static path wins; the
+    detail route's int converter would reject "debt" anyway.
+    """
+    from services.operations.silence_debt import get_silence_debt
+
+    data = await get_silence_debt(session, window_days=window_days)
     return {"success": True, "data": data}
 
 

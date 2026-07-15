@@ -180,6 +180,35 @@ async def test_silence_backtest(session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_silence_debt_endpoint(session: AsyncSession) -> None:
+    from api.v1 import silences as api
+    from core.datetime_utils import utcnow
+    from models import DecisionTrace, Silence
+
+    silence = Silence(match_source="volcengine", comment="perm: GPU box", expires_at=None)
+    session.add(silence)
+    await session.flush()
+    session.add_all(
+        [
+            DecisionTrace(
+                webhook_event_id=1000 + i,
+                outcome="skipped",
+                skip_code="silenced",
+                silence_id=silence.id,
+                created_at=utcnow(),
+            )
+            for i in range(600)
+        ]
+    )
+    await session.commit()
+
+    res = await api.silence_debt_endpoint(window_days=30, session=session)
+    assert res["success"] is True
+    assert res["data"]["chronic_count"] == 1
+    assert res["data"]["silences"][0]["chronic"] is True
+
+
+@pytest.mark.asyncio
 async def test_silence_backtest_reports_scan_truncation(session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
     from core.datetime_utils import utcnow
     from models import WebhookEvent
