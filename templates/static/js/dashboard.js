@@ -284,16 +284,19 @@ function openInboxIncidents() {
 }
 
 function setOperationsView(view) {
-    currentOperationsView = view === 'noise' ? 'noise' : 'actions';
-    const actionView = document.getElementById('actionCenterTab');
-    const noiseView = document.getElementById('noiseCenterTab');
-    if (actionView) actionView.style.display = currentOperationsView === 'actions' ? 'block' : 'none';
-    if (noiseView) noiseView.style.display = currentOperationsView === 'noise' ? 'block' : 'none';
+    const views = { actions: 'actionCenterTab', noise: 'noiseCenterTab', kb: 'kbDraftsTab' };
+    currentOperationsView = views[view] ? view : 'actions';
+    Object.keys(views).forEach(function (key) {
+        const element = document.getElementById(views[key]);
+        if (element) element.style.display = key === currentOperationsView ? 'block' : 'none';
+    });
     document.querySelectorAll('[data-operations-view]').forEach(function (button) {
         button.classList.toggle('active', button.getAttribute('data-operations-view') === currentOperationsView);
     });
-    if (currentOperationsView === 'noise' && typeof NoiseCenterModule !== 'undefined') {
-        NoiseCenterModule.load();
+    if (currentOperationsView === 'noise') {
+        if (typeof NoiseCenterModule !== 'undefined') NoiseCenterModule.load();
+    } else if (currentOperationsView === 'kb') {
+        if (typeof KbDraftsModule !== 'undefined') KbDraftsModule.load();
     } else if (typeof ActionCenterModule !== 'undefined') {
         ActionCenterModule.load();
     }
