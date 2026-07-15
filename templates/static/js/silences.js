@@ -13,6 +13,10 @@ let silences = [];
 async function loadSilences() {
     const container = document.getElementById('silencesList');
 
+    // Load the silence-debt panel alongside the list (best-effort: its own error
+    // handling keeps a failure from affecting the list below).
+    loadSilenceDebt();
+
     try {
         container.innerHTML = `
             <div class="loading">
@@ -43,6 +47,103 @@ async function loadSilences() {
             </div>
         `;
     }
+}
+
+/**
+ * Silence debt: how much each active silence is suppressing over a trailing
+ * window, with chronic (no-expiry, high-volume) mutes flagged as the actionable
+ * ones — a still-firing source is being swallowed. Best-effort panel above the
+ * silence list.
+ */
+async function loadSilenceDebt() {
+    const container = document.getElementById('silenceDebtPanel');
+    if (!container) return;
+    try {
+        const result = await API.getSilenceDebt(30);
+        if (result && result.success && result.data) {
+            renderSilenceDebt(result.data);
+        } else {
+            container.innerHTML = '';
+        }
+    } catch (error) {
+        console.error('Failed to load silence debt:', error);
+        container.innerHTML = '';
+    }
+}
+
+function formatSilenceDebtTime(minutes) {
+    const m = Math.max(0, Number(minutes) || 0);
+    if (m >= 60) return t('silences.debt.timeHours', { n: (m / 60).toFixed(1) });
+    return t('silences.debt.timeMinutes', { n: m });
+}
+
+function renderSilenceDebt(data) {
+    const container = document.getElementById('silenceDebtPanel');
+    if (!container) return;
+
+    // Nothing to surface when there are no active silences at all.
+    if (!data.active_silences) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const days = data.window_days || 30;
+    const chronic = Number(data.chronic_count || 0);
+
+    let html = '<div style="font-size: 1rem; font-weight: 600; margin: 0 0 0.5rem;">' + t('silences.debt.title') + '</div>';
+    html += '<p style="margin: 0 0 0.75rem; color: var(--text-muted); font-size: 0.8rem;">' + t('silences.debt.note', { days: days }) + '</p>';
+
+    // Headline: chronic count (the actionable signal) + total suppressed.
+    html += '<div class="stats-grid" style="margin-bottom: 1rem;">';
+    html += '<div class="stat-card"' + (chronic > 0 ? ' style="border-left: 3px solid var(--warning);"' : '') + '>' +
+        '<div class="stat-label">🔇 ' + t('silences.debt.chronicCount') + '</div>' +
+        '<div class="stat-value" style="font-size: 1.75rem;' + (chronic > 0 ? ' color: var(--warning);' : '') + '">' + formatNumber(chronic) + '</div>' +
+        '<div class="stat-trend">' + t('silences.debt.chronicTrend', { active: formatNumber(data.active_silences) }) + '</div></div>';
+    html += '<div class="stat-card"><div class="stat-label">🔕 ' + t('silences.debt.suppressed') + '</div>' +
+        '<div class="stat-value" style="font-size: 1.75rem;">' + formatNumber(data.total_suppressed || 0) + '</div>' +
+        '<div class="stat-trend">' + t('silences.debt.suppressedTrend', { time: formatSilenceDebtTime(data.estimated_minutes_saved) }) + '</div></div>';
+    html += '</div>';
+
+    // Per-silence table, sorted by suppressed desc (backend order preserved);
+    // rows with no suppression in the window are omitted as uninteresting.
+    const withVolume = (Array.isArray(data.silences) ? data.silences : []).filter(function (r) {
+        return Number(r.suppressed || 0) > 0;
+    });
+    if (!withVolume.length) {
+        html += '<div style="color: var(--text-muted); font-size: 0.85rem;">' + t('silences.debt.empty') + '</div>';
+        container.innerHTML = html;
+        return;
+    }
+
+    const th = 'padding: 0.55rem 0.75rem; font-weight: 600;';
+    const td = 'padding: 0.55rem 0.75rem; border-top: 1px solid var(--border);';
+    html += '<div style="overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-surface);">';
+    html += '<table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">';
+    html += '<thead><tr style="color: var(--text-muted);">' +
+        '<th style="' + th + ' text-align: left;">' + t('silences.debt.colSilence') + '</th>' +
+        '<th style="' + th + ' text-align: right;">' + t('silences.debt.colSuppressed') + '</th>' +
+        '<th style="' + th + ' text-align: right;">' + t('silences.debt.colPerDay') + '</th>' +
+        '<th style="' + th + ' text-align: left;">' + t('silences.debt.colLast') + '</th>' +
+        '</tr></thead><tbody>';
+    withVolume.forEach(function (row) {
+        const isChronic = !!row.chronic;
+        const rowStyle = isChronic ? ' style="background: rgba(245, 158, 11, 0.08);"' : '';
+        let badge = '';
+        if (isChronic) {
+            badge = ' <span class="badge badge-danger" title="' + escapeHtml(t('silences.debt.chronicTitle')) + '" style="font-size: 0.65rem;">⚠️ ' + t('silences.debt.chronicBadge') + '</span>';
+        } else if (row.no_expiry) {
+            badge = ' <span class="badge badge-outline" style="font-size: 0.65rem;">' + t('silences.debt.noExpiry') + '</span>';
+        }
+        const last = row.last_suppressed_at ? escapeHtml(formatSilenceTime(row.last_suppressed_at)) : '—';
+        html += '<tr' + rowStyle + '>' +
+            '<td style="' + td + '">' + escapeHtml(row.label || ('#' + row.silence_id)) + badge + '</td>' +
+            '<td style="' + td + ' text-align: right; font-weight: 600;">' + formatNumber(row.suppressed || 0) + '</td>' +
+            '<td style="' + td + ' text-align: right; color: var(--text-muted);">' + escapeHtml(String(row.daily_rate != null ? row.daily_rate : '—')) + '</td>' +
+            '<td style="' + td + ' color: var(--text-muted);">' + last + '</td>' +
+            '</tr>';
+    });
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
 }
 
 /**

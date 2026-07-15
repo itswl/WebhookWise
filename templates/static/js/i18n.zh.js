@@ -761,6 +761,11 @@
             'dt.quality.importanceDist': 'AI importance 分布',
             'dt.quality.degradedReasons': '降级原因',
             'dt.quality.bySource': '按来源看 AI importance',
+            'dt.disagreements.title': 'AI 与规则——最近的分歧',
+            'dt.disagreements.note': '规则随后推翻的 AI 判断。点击某行查看完整决策链。',
+            'dt.disagreements.empty': '当前时间窗内没有 AI 与规则的分歧。',
+            'dt.disagreements.truncated': '仅显示最近 {n} 条。',
+            'dt.disagreements.noTrace': '该事件没有决策链。',
 
             // ── Rule Audit tab ──
             'routing.view.audit': '审计',
@@ -805,5 +810,21 @@
             'incidents.action.silenceAll': '静默这些来源',
             'silences.confirm.conflict': '此静默可能会屏蔽 {n} 条转发规则',
             'silences.confirm.conflictDetail': '如果此静默会屏蔽你需要的规则，建议缩小匹配条件（如添加 event_type 或 payload）。仍要继续吗？',
+            'silences.debt.title': '静默欠账',
+            'silences.debt.note': '最近 {days} 天内各条生效静默抑制的告警量。长期（无过期）静默掩盖了仍在持续触发的来源，是最该从源头修复的。',
+            'silences.debt.chronicCount': '长期静默',
+            'silences.debt.chronicTrend': '共 {active} 条生效静默',
+            'silences.debt.suppressed': '已抑制告警',
+            'silences.debt.suppressedTrend': '约避免 {time} 的通知打扰',
+            'silences.debt.chronicBadge': '长期',
+            'silences.debt.chronicTitle': '无过期时间且仍在大量抑制——来源可能仍在持续触发。请从源头修复或设置过期时间。',
+            'silences.debt.noExpiry': '无过期',
+            'silences.debt.colSilence': '静默',
+            'silences.debt.colSuppressed': '已抑制',
+            'silences.debt.colPerDay': '每天',
+            'silences.debt.colLast': '最近抑制',
+            'silences.debt.empty': '当前时间窗内没有生效静默抑制过告警。',
+            'silences.debt.timeHours': '{n} 小时',
+            'silences.debt.timeMinutes': '{n} 分钟',
     };
 })();

@@ -370,6 +370,19 @@ const API = {
     },
 
     /**
+     * Get the recent AI-vs-rules disagreements (fresh AI judgments a rule overrode).
+     * The drill-down list behind the quality panel's override rate.
+     * @param {string} period - day/week/month
+     * @param {number} limit - max items
+     */
+    async getAiDisagreements(period = 'week', limit = 50) {
+        const query = new URLSearchParams({ period: period, limit: limit });
+        const response = await this.authenticatedFetch('/v1/decision-traces/ai-disagreements?' + query.toString());
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
      * List incidents (cursor-paginated, filterable by status)
      * @param {object} params - Query params (status, page_size, cursor)
      * @returns {Promise<object>} Incident list
@@ -584,6 +597,17 @@ const API = {
         if (params.activeOnly) q.append('active_only', 'true');
         const query = q.toString();
         const response = await this.authenticatedFetch('/v1/silences' + (query ? '?' + query : ''));
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * Get the silence-debt view: per-silence suppression volume over a trailing
+     * window plus rollups (chronic count, total suppressed, time saved).
+     * @param {number} windowDays - trailing window in days
+     */
+    async getSilenceDebt(windowDays = 30) {
+        const response = await this.authenticatedFetch('/v1/silences/debt?window_days=' + encodeURIComponent(windowDays));
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
     },

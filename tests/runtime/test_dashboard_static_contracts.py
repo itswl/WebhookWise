@@ -196,6 +196,42 @@ def test_forward_rule_hits_badge_reads_as_rolling_90_day_window() -> None:
     assert "'rules.roi.hits': '近 90 天命中 {count} 次'" in _static_js("i18n.zh.js")
 
 
+def test_silence_debt_panel_is_wired() -> None:
+    # Silence-debt surface on the Silences view: container, API call, renderer,
+    # and i18n keys present in BOTH dictionaries.
+    html = _dashboard_html()
+    silences = _static_js("silences.js")
+    api_js = _static_js("api.js")
+
+    assert 'id="silenceDebtPanel"' in html
+    assert "getSilenceDebt" in api_js
+    assert "/v1/silences/debt" in api_js
+    assert "function renderSilenceDebt" in silences
+    assert "loadSilenceDebt()" in silences
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        js = _static_js(dict_name)
+        assert "'silences.debt.title'" in js
+        assert "'silences.debt.chronicBadge'" in js
+
+
+def test_ai_disagreements_review_surface_is_wired() -> None:
+    # AI-vs-rules drill-down on the Decision Trace view: container, API call, the
+    # exposed toggle, reuse of the by-event chain renderer, and i18n in both dicts.
+    html = _dashboard_html()
+    dt = _static_js("decision-trace.js")
+    api_js = _static_js("api.js")
+
+    assert 'id="decisionTraceDisagreements"' in html
+    assert "getAiDisagreements" in api_js
+    assert "/v1/decision-traces/ai-disagreements" in api_js
+    assert "toggleDisagreement: toggleDisagreement" in dt
+    assert "getDecisionTraceByEvent" in dt
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        js = _static_js(dict_name)
+        assert "'dt.disagreements.title'" in js
+        assert "'dt.disagreements.noTrace'" in js
+
+
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
     assert "DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("dashboard.js")
     assert "DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("deep-analyses.js")
