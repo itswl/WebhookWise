@@ -1,0 +1,53 @@
+# Generic flat-JSON webhook source.
+#
+# Onboards a simple alert payload without writing Python. This file doubles as
+# living documentation for the spec format described in README.md (same dir).
+#
+# Matches payloads shaped like:
+#   {
+#     "alert_name": "High CPU on web-01",
+#     "level": "critical",
+#     "host": "web-01",
+#     "service": "web",
+#     "id": "evt-123",
+#     "message": "CPU above 90% for 5m"
+#   }
+
+name: generic_json
+# Default priority (0): checked after all built-in code adapters, so a code
+# adapter wins on a detect tie. Raise above 0 only to intentionally pre-empt a
+# code adapter.
+priority: 0
+aliases:
+  - generic
+  - simple_json
+
+# Identify this source: both keys must be present at the top level. The
+# combination is specific enough not to collide with the built-in adapters.
+detect:
+  all:
+    - key_exists: alert_name
+    - key_exists: level
+
+# Map the canonical alert identity used for dedup keying. Each field takes a
+# single path or an ordered list of candidate paths (first non-empty wins).
+identity:
+  name: alert_name
+  resource:
+    - host
+    - instance
+  service: service
+  fingerprint:
+    - id
+    - event_id
+  severity: level # run through the shared severity normalizer
+
+# Optionally populate canonical WebhookData output fields. Type is a literal;
+# the rest resolve from payload paths (Level is severity-normalized).
+output:
+  Type: GenericAlert
+  RuleName: alert_name
+  Level: level
+  summary:
+    - message
+    - description
