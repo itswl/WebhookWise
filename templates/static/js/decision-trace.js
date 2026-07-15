@@ -564,6 +564,81 @@ var DecisionTraceModule = (function () {
     }
 
     // Load whichever view is active (tab open / refresh / period change).
+    // ── AI-vs-rules disagreements (drill-down behind the override rate) ───
+
+    function renderDisagreements(data) {
+        var container = document.getElementById('decisionTraceDisagreements');
+        if (!container) return;
+        var items = (data && data.items) || [];
+        var html = '<div style="font-size: 0.9rem; font-weight: 600; margin: 1.25rem 0 0.5rem;">' + t('dt.disagreements.title') + '</div>';
+        html += '<p style="margin: 0 0 0.75rem; color: var(--text-muted); font-size: 0.8rem;">' + t('dt.disagreements.note') + '</p>';
+        if (!items.length) {
+            html += '<div style="color: var(--text-muted); font-size: 0.85rem;">' + t('dt.disagreements.empty') + '</div>';
+            container.innerHTML = html;
+            return;
+        }
+        items.forEach(function (item) {
+            var eid = Number(item.webhook_event_id);
+            var time = item.created_at ? new Date(item.created_at).toLocaleString() : '-';
+            var icon = (typeof getAlertIcon === 'function') ? getAlertIcon(item.importance) : '';
+            html += '<div id="dt-dis-' + eid + '" class="da-card" style="cursor: pointer;" onclick="DecisionTraceModule.toggleDisagreement(' + eid + ')">' +
+                '<div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">' +
+                    '<span class="badge badge-outline" style="font-size: 0.7rem;">' + skipCodeLabel(item.skip_code) + '</span>' +
+                    '<span style="font-weight: 500;">' + icon + ' ' + escapeHtml(item.source || '—') + '</span>' +
+                    '<span style="margin-left: auto; color: var(--text-muted); font-size: 0.75rem;">' + escapeHtml(time) + '</span>' +
+                '</div>' +
+                // stopPropagation so clicks inside the expanded chain (e.g. a retry
+                // button) don't bubble up and collapse the row.
+                '<div id="dt-dis-details-' + eid + '" style="display: none; margin-top: 0.75rem;" onclick="event.stopPropagation()"></div>' +
+            '</div>';
+        });
+        if (data && data.truncated) {
+            html += '<div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 0.5rem;">' +
+                t('dt.disagreements.truncated', { n: (data.count != null ? data.count : items.length) }) + '</div>';
+        }
+        container.innerHTML = html;
+    }
+
+    function toggleDisagreement(eventId) {
+        var details = document.getElementById('dt-dis-details-' + eventId);
+        var card = document.getElementById('dt-dis-' + eventId);
+        if (!details) return;
+        if (details.style.display === 'block') {
+            details.style.display = 'none';
+            if (card) card.className = 'da-card';
+            return;
+        }
+        details.style.display = 'block';
+        if (card) card.className = 'da-card da-card-expanded';
+        if (details.dataset.loaded === 'true') return;
+        details.innerHTML = '<div style="padding: 1rem; text-align: center;"><div class="spinner"></div></div>';
+        // Reuse the same by-event chain the Alerts tab and the trace list render.
+        API.getDecisionTraceByEvent(eventId).then(function (res) {
+            if (res && res.success && res.data) {
+                details.innerHTML = renderDetails(res.data);
+                details.dataset.loaded = 'true';
+            } else {
+                details.innerHTML = '<div style="padding: 0.75rem; color: var(--text-muted);">' + t('dt.disagreements.noTrace') + '</div>';
+            }
+        }).catch(function (e) {
+            details.innerHTML = '<div style="padding: 0.75rem; color: var(--danger);">' + t('common.loadFailed') + ': ' + escapeHtml(String(e && e.message || e)) + '</div>';
+        });
+    }
+
+    function loadDisagreements(period) {
+        var container = document.getElementById('decisionTraceDisagreements');
+        if (!container) return Promise.resolve();
+        return API.getAiDisagreements(period || currentPeriod || 'week', 50)
+            .then(function (res) {
+                if (res && res.success && res.data) renderDisagreements(res.data);
+                else container.innerHTML = '';
+            })
+            .catch(function (err) {
+                console.error('Failed to load AI disagreements:', err);
+                container.innerHTML = '';
+            });
+    }
+
     function loadActiveView() {
         updatePeriodButtons(currentPeriod);  // keep the shared Day/Week/Month highlight in sync for every sub-view
         if (currentView === 'overview') {
@@ -577,6 +652,7 @@ var DecisionTraceModule = (function () {
         } else {
             loadStats(currentPeriod);
             loadQuality(currentPeriod);
+            loadDisagreements(currentPeriod);
             loadList();
         }
         markRefreshed();
@@ -691,6 +767,8 @@ var DecisionTraceModule = (function () {
         retryDelivery: retryDelivery,
         filterBySkipCode: filterBySkipCode,
         filterByOutcome: filterByOutcome,
+        // Expand a disagreement row into its full by-event decision chain.
+        toggleDisagreement: toggleDisagreement,
         // Exposed so the Alerts tab can inline the same chain + delivery block.
         renderDetails: renderDetails
     };

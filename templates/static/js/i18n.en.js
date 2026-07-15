@@ -762,6 +762,11 @@
             'dt.quality.importanceDist': 'AI Importance Distribution',
             'dt.quality.degradedReasons': 'Degradation Reasons',
             'dt.quality.bySource': 'AI Importance by Source',
+            'dt.disagreements.title': 'AI vs rules — recent disagreements',
+            'dt.disagreements.note': 'Fresh AI judgments a deterministic rule then overrode. Click a row for its full decision chain.',
+            'dt.disagreements.empty': 'No AI/rule disagreements in this window.',
+            'dt.disagreements.truncated': 'Showing the {n} most recent.',
+            'dt.disagreements.noTrace': 'No decision trace for this event.',
 
             // ── Rule Audit tab ──
             'routing.view.audit': 'Audit',
@@ -806,5 +811,21 @@
             'incidents.action.silenceAll': 'Silence these sources',
             'silences.confirm.conflict': 'This silence may block {n} forward rule(s)',
             'silences.confirm.conflictDetail': 'If this silence blocks rules you need, consider narrowing the match criteria (e.g. add event_type or payload). Continue anyway?',
+            'silences.debt.title': 'Silence debt',
+            'silences.debt.note': 'What each active silence has suppressed over the last {days} days. Chronic no-expiry mutes hiding a still-firing source are the ones to fix upstream.',
+            'silences.debt.chronicCount': 'Chronic silences',
+            'silences.debt.chronicTrend': '{active} active silences',
+            'silences.debt.suppressed': 'Alerts suppressed',
+            'silences.debt.suppressedTrend': '~{time} of notifications avoided',
+            'silences.debt.chronicBadge': 'Chronic',
+            'silences.debt.chronicTitle': 'A no-expiry mute still suppressing high volume — the source is likely still firing. Fix it upstream or set an expiry.',
+            'silences.debt.noExpiry': 'No expiry',
+            'silences.debt.colSilence': 'Silence',
+            'silences.debt.colSuppressed': 'Suppressed',
+            'silences.debt.colPerDay': 'Per day',
+            'silences.debt.colLast': 'Last suppressed',
+            'silences.debt.empty': 'No active silence has suppressed alerts in this window.',
+            'silences.debt.timeHours': '{n} h',
+            'silences.debt.timeMinutes': '{n} min',
     };
 })();

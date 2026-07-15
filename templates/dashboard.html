@@ -272,6 +272,8 @@
                         </div>
                     </div>
                     <div id="decisionTraceQuality"></div>
+                    <!-- AI-vs-rules disagreement drill-down behind the override rate above. Filled by decision-trace.js. -->
+                    <div id="decisionTraceDisagreements"></div>
                     <div class="dt-list-filters" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 12px;">
                         <select id="dtResultFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
                             <option value="" data-i18n="dt.filter.allOutcomes">All outcomes</option>
@@ -342,6 +344,9 @@
                             <span>➕</span> <span data-i18n="silences.add">Add Silence</span>
                         </button>
                     </div>
+                    <!-- Silence debt: how much each active silence is suppressing;
+                         chronic no-expiry mutes are flagged. Filled by silences.js. -->
+                    <div id="silenceDebtPanel" style="margin-bottom: 24px;"></div>
                     <div id="silencesList">
                         <div class="loading">
                             <div class="spinner"></div>
