@@ -75,6 +75,16 @@ class MQConfig(StaticSettings):
     WEBHOOK_MQ_CONSUMER_TIMEOUT_MS: int = Field(default=1000, gt=0)
     WEBHOOK_MQ_PENDING_IDLE_TIMEOUT_MS: int = Field(default=300000, gt=0)
     WEBHOOK_MQ_STREAM_MAXLEN: int = Field(default=100000, gt=0)
+    # Fraction of MAXLEN at which the queue is flagged as backlogged in the
+    # Action Center / dashboard (visibility only; no request is rejected). 0
+    # disables the warning.
+    WEBHOOK_MQ_BACKLOG_WARN_FRACTION: float = Field(default=0.8, ge=0.0, le=1.0)
+    # Fraction of MAXLEN above which ingress applies backpressure: the request
+    # is rejected with 503 so the (retrying) upstream holds it, instead of
+    # letting the stream silently trim its oldest un-acked entries. 0 disables
+    # (default), because enabling request rejection is an ops decision that
+    # should follow MAXLEN capacity planning and confirmed upstream retries.
+    WEBHOOK_MQ_INGRESS_HIGH_WATER_FRACTION: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class SecurityConfig(StaticSettings):

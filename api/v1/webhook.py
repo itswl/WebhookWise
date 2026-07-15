@@ -45,7 +45,7 @@ from schemas.webhook import (
     webhook_event_to_full_dict,
 )
 from services.operations.tasks import process_webhook_task
-from services.webhooks.ingress_backpressure import check_ingress_backpressure
+from services.webhooks.ingress_backpressure import check_ingress_backpressure, check_queue_backpressure
 from services.webhooks.policies import IngressPolicy
 from services.webhooks.query_service import (
     count_webhook_summaries,
@@ -156,6 +156,27 @@ async def _receive_and_enqueue_webhook(
             "event_id": None,
             "request_id": request_id,
         }
+
+    queue_bp = await check_queue_backpressure()
+    if queue_bp.reject:
+        src = sanitize_source(source_hint)
+        WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="queue_backpressure").inc()
+        WEBHOOK_INGRESS_PAYLOAD_BYTES.labels(source=src, outcome="queue_backpressure").observe(len(raw_body))
+        logger.warning(
+            "[Webhook] ingress rejected: queue near capacity request_id=%s source=%s depth=%s high_water=%s maxlen=%s",
+            request_id,
+            source_hint,
+            queue_bp.depth,
+            queue_bp.high_water,
+            queue_bp.maxlen,
+        )
+        # 503 + Retry-After: signal the (retrying) upstream to hold and resend,
+        # rather than letting the stream silently trim its oldest entries.
+        return JSONResponse(
+            status_code=503,
+            headers={"Retry-After": "10"},
+            content={"success": False, "error": "Queue near capacity, retry shortly"},
+        )
 
     headers = dict(request.headers)
     raw_body_str = raw_body.decode("utf-8", errors="replace")
