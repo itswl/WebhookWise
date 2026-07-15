@@ -345,6 +345,16 @@ const API = {
         return await response.json();
     },
 
+    /**
+     * Get ingest-queue health (Redis stream depth / pending / lag vs maxlen).
+     * Fields may be null when the probe failed; callers render those as "—".
+     */
+    async getQueueHealth() {
+        const response = await this.authenticatedFetch('/v1/queue-health');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
     // ========== Decision Trace API ==========
 
     /**

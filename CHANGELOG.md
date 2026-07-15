@@ -8,8 +8,8 @@ This project follows SemVer release headings.
 ## [3.3.0] - 2026-07-15
 
 ### Added
-- Ingest queue backlog is now visible and defensible: a dashboard queue-health tile + `GET /v1/queue-health` expose stream depth vs `MAXLEN`, pending, and consumer lag; the Action Center raises a critical item once depth crosses `WEBHOOK_MQ_BACKLOG_WARN_FRACTION` (default 0.8) — before the silent trim boundary.
-- Optional ingress backpressure: above `WEBHOOK_MQ_INGRESS_HIGH_WATER_FRACTION` of `MAXLEN` (default 0, disabled) the API rejects new webhooks with `503 Retry-After` so a retrying upstream holds them, instead of the stream trimming its oldest un-acked entries. Reads a short-TTL cached depth (no per-request XLEN) and fails open.
+- Ingest queue backlog is now visible and defensible: a dashboard queue-health tile + `GET /v1/queue-health` expose stream depth, pending, and consumer lag; the Action Center raises a critical item once the unconsumed backlog (lag + pending) crosses `WEBHOOK_MQ_BACKLOG_WARN_FRACTION` of `MAXLEN` (default 0.8) — before the silent trim boundary. The signal is the unconsumed backlog, not total stream length (a busy stream sits at `MAXLEN` of already-acked entries).
+- Optional ingress backpressure: above `WEBHOOK_MQ_INGRESS_HIGH_WATER_FRACTION` of `MAXLEN` (default 0, disabled) the API rejects new webhooks with `503 Retry-After` so a retrying upstream holds them, instead of the stream trimming its oldest un-acked entries. Keyed on the cached unconsumed backlog (not total length) and fails open.
 
 ## [3.2.0] - 2026-07-15
 

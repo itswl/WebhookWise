@@ -163,10 +163,10 @@ async def _receive_and_enqueue_webhook(
         WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="queue_backpressure").inc()
         WEBHOOK_INGRESS_PAYLOAD_BYTES.labels(source=src, outcome="queue_backpressure").observe(len(raw_body))
         logger.warning(
-            "[Webhook] ingress rejected: queue near capacity request_id=%s source=%s depth=%s high_water=%s maxlen=%s",
+            "[Webhook] ingress rejected: unconsumed backlog near capacity request_id=%s source=%s backlog=%s high_water=%s maxlen=%s",
             request_id,
             source_hint,
-            queue_bp.depth,
+            queue_bp.backlog,
             queue_bp.high_water,
             queue_bp.maxlen,
         )

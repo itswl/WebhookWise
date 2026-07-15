@@ -49,6 +49,7 @@ class IngressPolicy:
     stream_maxlen: int = 0
     ingress_high_water_fraction: float = 0.0
     mq_queue: str = "webhook:queue"
+    mq_consumer_group: str = "webhook-processors"
 
     @classmethod
     def from_config(cls) -> "IngressPolicy":
@@ -61,6 +62,7 @@ class IngressPolicy:
             stream_maxlen=max(0, int(cfg.mq.WEBHOOK_MQ_STREAM_MAXLEN or 0)),
             ingress_high_water_fraction=float(cfg.mq.WEBHOOK_MQ_INGRESS_HIGH_WATER_FRACTION or 0.0),
             mq_queue=str(cfg.mq.WEBHOOK_MQ_QUEUE),
+            mq_consumer_group=str(cfg.mq.WEBHOOK_MQ_CONSUMER_GROUP),
         )
 
 

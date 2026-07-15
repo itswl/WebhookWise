@@ -50,19 +50,23 @@ const OverviewModule = {
         // overlaps the API round-trips instead of blocking first paint.
         const chartLibReady = this._ensureChartLib();
         try {
-            // Overview + AI usage + recent incidents + sparkline, in parallel.
-            const [ovRes, aiRes, incRes, sparkRes] = await Promise.all([
+            // Overview + AI usage + recent incidents + sparkline + queue health,
+            // in parallel. Everything but the core overview is best-effort
+            // (.catch → null) so one failing probe never blanks the page.
+            const [ovRes, aiRes, incRes, sparkRes, queueRes] = await Promise.all([
                 API.getOverview(this.currentPeriod),
                 API.getAIUsage(this.currentPeriod).catch(() => null),
                 API.getIncidents({ status: 'active', page_size: 5 }).catch(() => null),
                 this._fetchSparkline(7).catch(() => null),
+                API.getQueueHealth().catch(() => null),
             ]);
             if (!ovRes || !ovRes.success || !ovRes.data) {
                 container.innerHTML = this.emptyHtml();
             } else {
                 const incidents = (incRes && incRes.success && incRes.data) ? incRes.data : [];
                 var sparkData = (sparkRes && sparkRes.success && sparkRes.data) ? sparkRes.data : [];
-                container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents, sparkData);
+                const queue = (queueRes && queueRes.success && queueRes.data) ? queueRes.data : null;
+                container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents, sparkData, queue);
                 this.initOverviewChart(sparkData);
                 // If Chart.js was not ready at render time, upgrade the fallback
                 // bars to the line chart in place once the library loads.
@@ -87,7 +91,7 @@ const OverviewModule = {
         return '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">' + t('overview.empty.title') + '</div><div class="empty-text">' + t('overview.empty.text') + '</div></div>';
     },
 
-    renderHtml(d, ai, incidents, sparkData) {
+    renderHtml(d, ai, incidents, sparkData, queue) {
         const fmt = (typeof formatNumber === 'function') ? formatNumber : (n) => String(n);
         const delivery = d.delivery || {};
         const cost = ai ? (ai.cost && ai.cost.total) || 0 : null;
@@ -109,6 +113,9 @@ const OverviewModule = {
                 t('overview.card.aiCostTrend', { n: fmt(aiCalls || 0) }), 'var(--warning)');
         }
         html += '</div>';
+
+        // Ingest-queue health tile (best-effort; omitted if the probe returned nothing).
+        html += this._renderQueueHealth(queue);
 
         // Skip-reason distribution.
         const skip = d.skip_code_breakdown || {};
@@ -187,6 +194,57 @@ const OverviewModule = {
                 '<span style="font-size:0.55rem; color:var(--text-muted);">' + (d.day || '').slice(5) + '</span></div>';
         }).join('');
         return '<div style="display:flex; align-items:flex-end; gap:2px; height:50px;">' + bars + '</div>';
+    },
+
+    // Ingest-queue health. The alarm signal is backlog_fraction (undelivered lag
+    // + un-acked pending vs maxlen), NOT the raw fill level (depth vs maxlen):
+    // a healthy busy stream sits at depth==maxlen permanently (Redis trims
+    // lazily, not on ack), so depth/maxlen is shown only as informational
+    // "retention". Any field may be null when the probe failed → render "—".
+    // When `backlogged` the tile tints critical and notes the trim-boundary risk.
+    _renderQueueHealth(q) {
+        if (!q) return '';
+        const fmt = (typeof formatNumber === 'function') ? formatNumber : (n) => String(n);
+        const dash = '—';
+        const bf = q.backlog_fraction;
+        const hasBf = bf !== null && bf !== undefined;
+        const pct = hasBf ? Math.round(bf * 100) : null;
+        const warn = q.warn_fraction;
+        const high = q.high_water_fraction;
+        let color = 'var(--success)';
+        if (q.backlogged || (hasBf && high != null && bf >= high)) color = 'var(--danger)';
+        else if (hasBf && warn != null && bf >= warn) color = 'var(--warning)';
+        const barWidth = hasBf ? Math.min(100, Math.max(0, pct)) : 0;
+        const backlog = q.backlog != null ? fmt(q.backlog) : dash;
+        const depth = q.depth != null ? fmt(q.depth) : dash;
+        const maxlen = q.maxlen != null ? fmt(q.maxlen) : dash;
+        const pending = q.pending != null ? fmt(q.pending) : dash;
+        const lag = q.lag != null ? fmt(q.lag) : dash;
+
+        let html = '<div style="background: var(--bg-surface); border: 1px solid var(--border);' +
+            (q.backlogged ? ' border-left: 4px solid var(--danger);' : '') +
+            ' border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">';
+        html += '<div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem;">' +
+            '<span style="font-weight: 600;">📥 ' + t('overview.queue.title') + '</span>' +
+            '<span style="font-size: 1.25rem; font-weight: 700; color: ' + color + ';">' + (pct != null ? pct + '%' : dash) + '</span></div>';
+        // Gauge = backlog_fraction (the at-risk-of-trim share).
+        html += '<div style="height: 8px; background: var(--bg-subtle, #f1f5f9); border-radius: 4px; overflow: hidden; margin-bottom: 0.6rem;">' +
+            '<div style="height: 100%; width: ' + barWidth + '%; background: ' + color + ';"></div></div>';
+        html += '<div style="display: flex; flex-wrap: wrap; gap: 1.25rem; font-size: 0.8rem; color: var(--text-muted);">';
+        html += '<span>' + t('overview.queue.backlog') + ': <strong style="color: var(--text-main);">' + backlog + '</strong></span>';
+        // depth / maxlen is informational retention, not the alarm signal.
+        html += '<span>' + t('overview.queue.retention') + ': <strong style="color: var(--text-main);">' + depth + ' / ' + maxlen + '</strong></span>';
+        html += '<span>' + t('overview.queue.pending') + ': <strong style="color: var(--text-main);">' + pending + '</strong></span>';
+        html += '<span>' + t('overview.queue.lag') + ': <strong style="color: var(--text-main);">' + lag + '</strong></span>';
+        if (q.stream) {
+            html += '<span>' + t('overview.queue.stream') + ': <strong style="color: var(--text-main);">' + escapeHtml(q.stream) + '</strong></span>';
+        }
+        html += '</div>';
+        if (q.backlogged) {
+            html += '<div style="margin-top: 0.6rem; font-size: 0.8rem; color: var(--danger);">⚠️ ' + t('overview.queue.backlogged') + '</div>';
+        }
+        html += '</div>';
+        return html;
     },
 
     _card(icon, label, value, trend, color) {
