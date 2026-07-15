@@ -267,9 +267,9 @@ async def get_overview_stats(session: AsyncSession, period: str = "day") -> dict
 
 
 async def get_silence_suppression_counts(
-    session: AsyncSession, *, silence_ids: list[int] | None = None
+    session: AsyncSession, *, silence_ids: list[int] | None = None, window: timedelta | None = None
 ) -> dict[int, dict[str, Any]]:
-    """How many alerts each silence rule has suppressed (lifetime) + recency.
+    """How many alerts each silence rule has suppressed + recency.
 
     Powers the Silence ROI panel: aggregates silenced decision-trace rows by the
     flattened ``silence_id`` column (set only when an alert was silenced, so the
@@ -280,7 +280,10 @@ async def get_silence_suppression_counts(
     active rule is a "zombie" silence worth reviewing, and a stale
     ``last_suppressed_at`` flags one that has gone quiet. ``silence_ids`` scopes
     the GROUP BY to the rules currently shown (skips counts for since-deleted
-    silences, whose trace rows still carry the old id).
+    silences, whose trace rows still carry the old id). ``window`` bounds the
+    scan to a trailing period (index-backed ``created_at`` filter) for rate-style
+    views like the silence-debt report; the default (``None``) keeps the ROI
+    panel's lifetime semantics.
     """
     stmt = (
         select(
@@ -291,6 +294,8 @@ async def get_silence_suppression_counts(
         .where(DecisionTrace.silence_id.isnot(None))
         .group_by(DecisionTrace.silence_id)
     )
+    if window is not None:
+        stmt = stmt.where(DecisionTrace.created_at >= utcnow() - window)
     if silence_ids:
         stmt = stmt.where(DecisionTrace.silence_id.in_(silence_ids))
     rows = (await session.execute(stmt)).all()
@@ -358,6 +363,51 @@ async def get_forward_rule_hit_counts(
         }
         for name, count in counts.items()
     }
+
+
+async def list_ai_rule_disagreements(session: AsyncSession, *, period: str = "week", limit: int = 50) -> dict[str, Any]:
+    """Recent alerts where a deterministic rule overrode the AI's importance.
+
+    ``importance_override`` is the one place the system disagrees with a fresh
+    LLM judgment (a rule corrected it). Surfacing these as a review queue —
+    rather than only the aggregate override_rate the quality-stats endpoint
+    already reports — lets an operator spot-check whether the AI or the rules
+    are miscalibrated. Bounded to the window + a hard limit; the row links back
+    to the full decision trace for the specifics.
+    """
+    start_time = utcnow() - _PERIOD_DELTAS.get(period, _PERIOD_DELTAS["week"])
+    stmt = (
+        select(
+            DecisionTrace.id,
+            DecisionTrace.webhook_event_id,
+            DecisionTrace.created_at,
+            DecisionTrace.source,
+            DecisionTrace.importance,
+            DecisionTrace.outcome,
+            DecisionTrace.skip_code,
+        )
+        .where(
+            DecisionTrace.created_at >= start_time,
+            DecisionTrace.route == _AI_ROUTE,
+            DecisionTrace.importance_override.is_(True),
+        )
+        .order_by(DecisionTrace.id.desc())
+        .limit(limit)
+    )
+    rows = (await session.execute(stmt)).all()
+    items = [
+        {
+            "id": row.id,
+            "webhook_event_id": row.webhook_event_id,
+            "created_at": utc_isoformat(row.created_at) if row.created_at is not None else None,
+            "source": row.source,
+            "importance": row.importance,
+            "outcome": row.outcome,
+            "skip_code": row.skip_code,
+        }
+        for row in rows
+    ]
+    return {"period": period, "count": len(items), "truncated": len(items) >= limit, "items": items}
 
 
 def _row_to_trace_dict(trace: DecisionTrace) -> dict[str, Any]:

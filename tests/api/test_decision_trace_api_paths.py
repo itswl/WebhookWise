@@ -145,3 +145,25 @@ async def test_by_event_endpoint_found_and_404(monkeypatch: pytest.MonkeyPatch) 
     not_found = await decision_trace.get_decision_trace_by_event_endpoint(999, session=object())  # type: ignore[arg-type]
     assert not_found.status_code == 404
     assert _body(not_found)["success"] is False
+
+
+@pytest.mark.asyncio
+async def test_ai_disagreements_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    from api.v1 import decision_trace
+
+    payload = {"period": "week", "count": 1, "truncated": False, "items": [{"id": 5, "webhook_event_id": 42}]}
+
+    async def fake_list(_session: object, *, period: str, limit: int) -> dict[str, Any]:
+        assert period == "week"
+        assert limit == 50
+        return payload
+
+    monkeypatch.setattr(decision_trace, "list_ai_rule_disagreements", fake_list)
+
+    result = await decision_trace.list_ai_rule_disagreements_endpoint(
+        period="week",
+        limit=50,
+        session=object(),  # type: ignore[arg-type]
+    )
+    assert result["success"] is True
+    assert result["data"]["items"][0]["webhook_event_id"] == 42

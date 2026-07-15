@@ -13,6 +13,7 @@ from services.webhooks.decision_trace_queries import (
     get_forward_rule_hit_counts,
     get_overview_stats,
     get_silence_suppression_counts,
+    list_ai_rule_disagreements,
     list_decision_traces,
 )
 
@@ -418,3 +419,27 @@ async def test_overview_stats_composes_volume_delivery_sources(
     assert ov["delivery"]["delivered"] == 1
     assert ov["delivery"]["failed"] == 1
     assert ov["delivery"]["success_rate"] == 50.0
+
+
+@pytest.mark.asyncio
+async def test_list_ai_rule_disagreements_returns_only_overridden_ai_rows(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory.begin() as session:
+        session.add_all(
+            [
+                # A fresh AI judgment a rule overrode → belongs in the queue.
+                _trace(1, "forwarded", "none", route="ai", importance_override=True, source="volcengine"),
+                # AI judgment with no override → excluded.
+                _trace(2, "forwarded", "none", route="ai", importance_override=False),
+                # Override but not a fresh AI route (rule-routed) → excluded.
+                _trace(3, "forwarded", "none", route="rule_routed", importance_override=True),
+            ]
+        )
+    async with session_factory() as session:
+        result = await list_ai_rule_disagreements(session, period="week")
+
+    assert result["count"] == 1
+    assert result["items"][0]["webhook_event_id"] == 1
+    assert result["items"][0]["source"] == "volcengine"
+    assert result["truncated"] is False

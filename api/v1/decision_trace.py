@@ -21,6 +21,7 @@ from services.webhooks.decision_trace_queries import (
     get_decision_trace_quality_stats,
     get_decision_trace_stats,
     get_overview_stats,
+    list_ai_rule_disagreements,
     list_decision_traces,
 )
 
@@ -115,6 +116,17 @@ async def list_decision_traces_endpoint(
         data=items,
         pagination={"next_cursor": next_cursor, "has_more": has_more, "page_size": page_size, "total": None},
     )
+
+
+@decision_trace_router.get("/decision-traces/ai-disagreements", response_model=None)
+async def list_ai_rule_disagreements_endpoint(
+    period: str = Query("week", pattern="^(day|week|month|year)$"),
+    limit: int = Query(50, ge=1, le=200),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONDict:
+    """Review queue: recent alerts where a rule overrode the AI's importance."""
+    data = await list_ai_rule_disagreements(session, period=period, limit=limit)
+    return {"success": True, "data": data}
 
 
 @decision_trace_router.get("/decision-traces/by-event/{webhook_id}", response_model=None)
