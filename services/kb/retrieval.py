@@ -60,6 +60,9 @@ async def retrieve(session: AsyncSession, query_text: str) -> list[RetrievedChun
             KBDocument.embedding,
         )
         .where(KBDocument.embedding.isnot(None))
+        # Only published chunks feed RAG — draft rows (e.g. unreviewed incident
+        # sediment) must never influence analysis until an operator approves.
+        .where(KBDocument.status == "published")
         .order_by(KBDocument.updated_at.desc(), KBDocument.id.desc())
         .limit(cfg.KB_MAX_CANDIDATES)
     )

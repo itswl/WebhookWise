@@ -43,5 +43,10 @@ class KBDocument(Base):
     # Optional filter facets (e.g. {"service": "VikingDB", "project": "..."}).
     tags: Mapped[dict[str, object] | None] = mapped_column(JSONB)
 
+    # "published" chunks feed RAG retrieval; "draft" chunks (e.g. sedimented from
+    # a resolved incident, awaiting operator review) are excluded so unreviewed
+    # content can never influence AI analysis. See migration 0016.
+    status: Mapped[str] = mapped_column(String(20), default="published", server_default="published")
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow())
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow())
