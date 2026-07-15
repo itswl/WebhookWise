@@ -529,6 +529,18 @@ async def scheduled_data_maintenance() -> None:
     await _run_scheduled("data_maintenance", 86400, run_data_maintenance())
 
 
+@broker.task(
+    task_name="scheduled_kb_sediment",
+    schedule=[{"interval": _background_scan_interval_seconds(), "schedule_id": "kb_sediment_interval"}],
+)
+async def scheduled_kb_sediment() -> None:
+    from services.kb.incident_sediment import run_pending_kb_drafts
+
+    # Draft KB entries from newly-summarized incidents (resolve → learn loop).
+    # Drafts are excluded from RAG until an operator publishes them.
+    await _run_scheduled("kb_sediment", _background_scan_interval_seconds(), run_pending_kb_drafts())
+
+
 def _daily_report_cron() -> str:
     from core.app_context import get_config_manager
 

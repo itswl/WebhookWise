@@ -320,6 +320,48 @@ async def ingest_kb_document_endpoint(
         return internal_error_response()
 
 
+@admin_router.get("/admin/kb/drafts", dependencies=[Depends(verify_api_key)])
+async def list_kb_drafts_endpoint(
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """List KB drafts awaiting review (one row per sedimented document)."""
+    from services.kb.incident_sediment import list_kb_drafts
+
+    return ok_response(http_status=200, data=await list_kb_drafts(session))
+
+
+@admin_router.post("/admin/kb/drafts/{source_ref:path}/publish", dependencies=[Depends(verify_admin_write)])
+async def publish_kb_draft_endpoint(
+    source_ref: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Publish a KB draft into the RAG corpus (operator approval)."""
+    from services.kb.incident_sediment import publish_kb_draft
+
+    published = await publish_kb_draft(session, source_ref)
+    if not published:
+        return fail_response("KB draft not found", 404)
+    await session.commit()
+    logger.info("[Admin] KB draft published source_ref=%s chunks=%d", source_ref, published)
+    return ok_response(http_status=200, message="draft published", data={"published_chunks": published})
+
+
+@admin_router.delete("/admin/kb/drafts/{source_ref:path}", dependencies=[Depends(verify_admin_write)])
+async def discard_kb_draft_endpoint(
+    source_ref: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Discard a KB draft without publishing it."""
+    from services.kb.incident_sediment import discard_kb_draft
+
+    discarded = await discard_kb_draft(session, source_ref)
+    if not discarded:
+        return fail_response("KB draft not found", 404)
+    await session.commit()
+    logger.info("[Admin] KB draft discarded source_ref=%s chunks=%d", source_ref, discarded)
+    return ok_response(http_status=200, message="draft discarded", data={"discarded_chunks": discarded})
+
+
 @admin_router.get("/admin/suppressed", dependencies=[Depends(verify_api_key)])
 async def list_suppressed_endpoint(
     session: AsyncSession = Depends(get_db_session),

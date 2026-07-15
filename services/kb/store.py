@@ -64,12 +64,15 @@ async def ingest_document(
     content: str,
     source_ref: str | None = None,
     tags: dict[str, Any] | None = None,
+    status: str = "published",
 ) -> IngestResult:
     """Chunk → embed → upsert one document. Idempotent by content_hash.
 
     Re-ingesting an identical chunk updates it in place (ON CONFLICT) rather than
     duplicating. Chunks of this title that no longer exist (content changed and
-    shrank) are pruned so the KB reflects the latest version.
+    shrank) are pruned so the KB reflects the latest version. ``status`` gates
+    RAG visibility: "draft" chunks are embedded but excluded from retrieval
+    until published (see services/kb/incident_sediment.py).
     """
     cfg = get_config_manager().kb
     chunks = chunk_text(content, cfg.KB_CHUNK_MAX_CHARS)
@@ -90,6 +93,7 @@ async def ingest_document(
             embedding=vector,
             embedding_model=model,
             tags=tags,
+            status=status,
         )
         stmt = stmt.on_conflict_do_update(
             index_elements=["content_hash"],
@@ -100,6 +104,7 @@ async def ingest_document(
                 "embedding": vector,
                 "embedding_model": model,
                 "tags": tags,
+                "status": status,
             },
         )
         await session.execute(stmt)
