@@ -427,6 +427,7 @@
             <div class="section-header" style="display:flex; gap:8px; align-items:center; justify-content:flex-start; padding-top:20px;">
                 <button class="btn operations-view-btn active" type="button" data-operations-view="actions" data-i18n="operations.view.actions">Action queue</button>
                 <button class="btn operations-view-btn" type="button" data-operations-view="noise" data-i18n="operations.view.noise">Noise optimization</button>
+                <button class="btn operations-view-btn" type="button" data-operations-view="kb" data-i18n="operations.view.kb">Knowledge drafts</button>
             </div>
 
         <!-- Noise Center view -->
@@ -476,6 +477,21 @@
                 </div>
                 <div id="actionCenterSummary" class="stats-grid" style="margin-bottom:20px;"></div>
                 <div id="actionCenterList"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
+            </div>
+        </div>
+
+        <!-- Knowledge-base drafts review view: resolved-incident summaries awaiting
+             review before they feed the AI knowledge base (RAG). -->
+        <div id="kbDraftsTab" class="operations-view" style="display: none;">
+            <div style="padding:20px 0;">
+                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px;">
+                    <div>
+                        <div class="section-title" data-i18n="kb.title">Knowledge drafts</div>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size:0.85rem;" data-i18n="kb.subtitle">Resolved-incident summaries awaiting review before they feed the AI knowledge base (RAG).</p>
+                    </div>
+                    <button class="btn" onclick="KbDraftsModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                </div>
+                <div id="kbDraftsList"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
             </div>
         </div>
         </div>
@@ -788,6 +804,7 @@
     <script defer src="/static/js/decision-trace.js"></script>
     <script defer src="/static/js/action-center.js"></script>
     <script defer src="/static/js/noise-center.js"></script>
+    <script defer src="/static/js/kb-drafts.js"></script>
     <script defer src="/static/js/dashboard.js"></script>
 </body>
 </html>

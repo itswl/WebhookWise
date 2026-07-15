@@ -232,6 +232,39 @@ def test_ai_disagreements_review_surface_is_wired() -> None:
         assert "'dt.disagreements.noTrace'" in js
 
 
+def test_kb_drafts_review_subview_is_wired() -> None:
+    # Third Operations sub-view (mirrors the actions/noise toggle): button,
+    # panel, module script, setOperationsView routing, API surface, i18n in both.
+    html = _dashboard_html()
+    api_js = _static_js("api.js")
+    dashboard = _static_js("dashboard.js")
+
+    assert 'data-operations-view="kb"' in html
+    assert 'id="kbDraftsTab"' in html
+    assert "/static/js/kb-drafts.js" in html
+    assert "kbDraftsTab" in dashboard  # setOperationsView shows/hides the panel
+    assert "KbDraftsModule" in dashboard  # ...and loads the module
+    assert "getKbDrafts" in api_js
+    assert "/v1/admin/kb/drafts" in api_js
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        js = _static_js(dict_name)
+        assert "'operations.view.kb'" in js
+        assert "'kb.title'" in js
+        assert "'kb.empty.text'" in js
+
+
+def test_kb_draft_publish_discard_urls_encode_source_ref() -> None:
+    # source_ref like "incident:123" is a path segment behind a :path route; the
+    # colon must be percent-encoded (encodeURIComponent -> %3A). Assert both
+    # admin-write calls encode it and use the right verb.
+    api_js = _static_js("api.js")
+
+    assert "'/v1/admin/kb/drafts/' + encodeURIComponent(sourceRef) + '/publish'" in api_js
+    assert "'/v1/admin/kb/drafts/' + encodeURIComponent(sourceRef)" in api_js
+    assert "method: 'POST'" in api_js  # publish
+    assert "method: 'DELETE'" in api_js  # discard
+
+
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
     assert "DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("dashboard.js")
     assert "DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("deep-analyses.js")
