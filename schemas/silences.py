@@ -203,3 +203,31 @@ class SilenceBacktestData(BaseModel):
 
 class SilenceBacktestResponse(APIResponse[SilenceBacktestData]):
     """Silence rule backtest response."""
+
+
+class SilenceDebtItem(BaseModel):
+    silence_id: int
+    label: str
+    comment: str
+    match_source: str
+    match_payload: str
+    no_expiry: bool
+    suppressed: int
+    daily_rate: float
+    last_suppressed_at: str | None = None
+    chronic: bool
+
+
+class SilenceDebtData(BaseModel):
+    """Active silences ranked by suppression volume over a trailing window."""
+
+    window_days: int
+    active_silences: int
+    chronic_count: int
+    total_suppressed: int
+    estimated_minutes_saved: int
+    silences: list[SilenceDebtItem]
+
+
+class SilenceDebtResponse(APIResponse[SilenceDebtData]):
+    """Silence debt report response."""
