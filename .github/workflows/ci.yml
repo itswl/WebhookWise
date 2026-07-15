@@ -78,7 +78,13 @@ jobs:
       - run: python scripts/observability/webhookwise_observe.py contract
       # -n auto parallelizes across runner cores; pytest-cov combines per-worker
       # coverage before evaluating --cov-fail-under.
-      - run: pytest -n auto -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db --cov=contracts --cov-branch --cov-report=term --cov-report=xml --cov-fail-under=85
+      # --dist loadfile keeps each test file's tests on one worker in collection
+      # order. Some analysis/forwarding tests carry module-scoped state that the
+      # suite handles in-order (a single-process run is green) but the default
+      # `load` scheduler can interleave across workers into a leaking order.
+      # loadfile pins that boundary; the residual isolation debt is tracked
+      # separately.
+      - run: pytest -n auto --dist loadfile -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db --cov=contracts --cov-branch --cov-report=term --cov-report=xml --cov-fail-under=85
 
   docker-e2e:
     needs: changes

@@ -229,7 +229,6 @@ async def test_deliver_outbox_record_openclaw_feishu_remote_payloads(monkeypatch
     monkeypatch.setattr("services.notifications.feishu.is_feishu_url", lambda url: "feishu" in url)
     monkeypatch.setattr("services.notifications.feishu.build_feishu_card", lambda *_args, **_kwargs: {"card": True})
     monkeypatch.setattr("services.notifications.feishu.send_to_feishu", send_feishu)
-    monkeypatch.setattr("services.forwarding.circuit_breakers.build_remote_forward_dependencies", lambda _url: "deps")
     monkeypatch.setattr("services.forwarding.remote.post_json_to_remote", post_remote)
 
     openclaw_record = ForwardOutbox(
