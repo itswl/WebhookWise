@@ -5,6 +5,21 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+## [3.2.0] - 2026-07-15
+
+### Added
+- Silence debt report: `GET /v1/silences/debt` ranks active silences by suppression volume over a trailing window and flags "chronic" no-expiry mutes that are hiding a still-firing source; the periodic report gains a matching line. (`get_silence_suppression_counts` now accepts an optional window.)
+- Declarative file adapters: onboard a simple JSON webhook source with a YAML spec under `adapters/specs/` (detect conditions + identity field mapping) loaded at startup and registered alongside the built-in adapters — no Python or redeploy-of-code needed. Ships a `generic_json` example and format docs.
+- Knowledge-base learning loop: resolved/summarized incidents are sedimented into KB **drafts** (composed from the existing incident summary — no new LLM call) via a scheduled sweep; drafts are excluded from RAG until an operator publishes them. New admin endpoints `GET /v1/admin/kb/drafts`, `POST /v1/admin/kb/drafts/{source_ref}/publish`, `DELETE /v1/admin/kb/drafts/{source_ref}` (migration 0016 adds `kb_documents.status`).
+- AI-vs-rules review queue: `GET /v1/decision-traces/ai-disagreements` lists recent alerts where a deterministic rule overrode the AI's importance, as a drill-down for the existing override-rate stat.
+
+### Changed
+- `count_with_timeout` rolls its SAVEPOINT back rather than releasing it, so the scoped `statement_timeout` can no longer leak onto later queries in the same request session.
+- Unfiltered alert-list totals below 10k rows use an exact COUNT instead of the lagging `pg_class.reltuples` estimate.
+- Per-alert payload normalization no longer rebuilds the payload tree (validate-in-place at the adapter boundary), removing a full recursive copy from the ingress and worker paths.
+- Pub/Sub cache reloads no longer clobber an invalidation that arrives mid-load; the listener uses redis-py 8 `aclose()`.
+- MCP token comparison is done on bytes, so a non-ASCII `Authorization` header returns 401 instead of 500.
+
 ## [3.1.0] - 2026-07-14
 
 ### Added
