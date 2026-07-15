@@ -35,6 +35,43 @@ class IngressBackpressureResult:
     reason: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class QueueBackpressureResult:
+    """Outcome of the global queue-depth high-water check."""
+
+    reject: bool
+    depth: int | None
+    high_water: int
+    maxlen: int
+
+
+async def check_queue_backpressure(*, policy: IngressPolicy | None = None) -> QueueBackpressureResult:
+    """Reject ingress when the stream is near MAXLEN, so the upstream retries
+    instead of the stream silently trimming its oldest un-acked entries.
+
+    Reads a per-process cached depth (no per-request XLEN) and FAILS OPEN: a
+    disabled fraction (0), an unavailable depth, or any error never rejects — a
+    depth-probe problem must not take ingress down. Trades trimming the *oldest*
+    (gone forever) for rejecting the *newest* (the retrying sender holds it).
+    """
+    policy = policy or IngressPolicy.from_config()
+    fraction = policy.ingress_high_water_fraction
+    maxlen = policy.stream_maxlen
+    if fraction <= 0 or maxlen <= 0:
+        return QueueBackpressureResult(reject=False, depth=None, high_water=0, maxlen=maxlen)
+
+    high_water = int(maxlen * fraction)
+    try:
+        from core.redis_streams import redis_xlen_cached
+
+        depth = await redis_xlen_cached(policy.mq_queue)
+    except (RedisError, RuntimeError, TypeError, ValueError):
+        depth = None
+    if depth is None:
+        return QueueBackpressureResult(reject=False, depth=None, high_water=high_water, maxlen=maxlen)
+    return QueueBackpressureResult(reject=depth >= high_water, depth=depth, high_water=high_water, maxlen=maxlen)
+
+
 def _fallback_body_hash(source: str, raw_body: bytes) -> str:
     digest = hashlib.sha256(source.encode("utf-8") + b"\0" + raw_body).hexdigest()
     return f"body:{digest}"

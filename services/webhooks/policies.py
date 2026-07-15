@@ -45,6 +45,10 @@ class IngressPolicy:
     ingress_backpressure_threshold: int
     ingress_backpressure_window_seconds: int
     ingress_backpressure_fail_open_on_redis_error: bool = False
+    # Global queue-depth backpressure (see check_queue_backpressure).
+    stream_maxlen: int = 0
+    ingress_high_water_fraction: float = 0.0
+    mq_queue: str = "webhook:queue"
 
     @classmethod
     def from_config(cls) -> "IngressPolicy":
@@ -54,6 +58,9 @@ class IngressPolicy:
             ingress_backpressure_threshold=max(0, int(cfg.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0)),
             ingress_backpressure_window_seconds=max(1, int(cfg.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS or 1)),
             ingress_backpressure_fail_open_on_redis_error=bool(cfg.retry.INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR),
+            stream_maxlen=max(0, int(cfg.mq.WEBHOOK_MQ_STREAM_MAXLEN or 0)),
+            ingress_high_water_fraction=float(cfg.mq.WEBHOOK_MQ_INGRESS_HIGH_WATER_FRACTION or 0.0),
+            mq_queue=str(cfg.mq.WEBHOOK_MQ_QUEUE),
         )
 
 

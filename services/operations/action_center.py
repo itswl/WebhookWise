@@ -13,6 +13,7 @@ from core.datetime_utils import utc_isoformat, utcnow
 from core.logger import mask_url
 from db.session import count_with_timeout
 from models import AnalysisFeedback, AuditLog, ForwardOutbox, ForwardRule, Incident, WebhookEvent
+from services.operations.queue_health import get_queue_health
 from services.webhooks.types import ForwardOutboxStatus, WebhookProcessingStatus
 
 _URL_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
@@ -257,6 +258,29 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 resource_type="webhook_event",
                 view="alerts",
                 actions=[{"action": "retry_stuck_events", "label": "Retry stuck events"}],
+            )
+        )
+
+    # Ingress queue nearing MAXLEN: warn BEFORE the stream silently trims its
+    # oldest un-acked entries (already-200'd webhooks lost forever). Best-effort
+    # probe — a Redis hiccup must not fail the whole action center.
+    queue = await get_queue_health()
+    if queue.get("backlogged"):
+        fill_pct = round(float(queue["fill_fraction"]) * 100, 1)
+        items.append(
+            _item(
+                item_id="queue-backlog",
+                kind="queue_backlog",
+                severity="critical",
+                title=f"Ingest queue at {fill_pct}% of capacity",
+                detail=(
+                    f"Depth {queue['depth']} / MAXLEN {queue['maxlen']}. Beyond MAXLEN the stream trims its "
+                    "oldest un-acked entries — accepted webhooks would be lost. Scale workers or raise MAXLEN."
+                ),
+                count=int(queue["depth"]),  # backlogged ⇒ fill_fraction set ⇒ depth is not None
+                occurred_at=now,
+                resource_type="queue",
+                view="overview",
             )
         )
 
