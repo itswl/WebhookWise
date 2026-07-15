@@ -22,7 +22,7 @@ resources:
 images:
   # newTag is the single source of truth for the deployed image tag (the
   # hard-coded image: refs in the deployment/job manifests are placeholders this
-  # transformer overrides). A matching v3.2.0 release tag must be cut so CI
-  # publishes ghcr.io/itswl/webhookwise:3.2.0 before this is applied.
+  # transformer overrides). A matching v3.3.0 release tag must be cut so CI
+  # publishes ghcr.io/itswl/webhookwise:3.3.0 before this is applied.
   - name: ghcr.io/itswl/webhookwise
-    newTag: 3.2.0
+    newTag: 3.3.0
