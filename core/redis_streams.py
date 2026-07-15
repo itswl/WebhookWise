@@ -12,29 +12,35 @@ async def redis_xlen(stream: str) -> int:
     return coerce_int(raw)
 
 
-# Per-process depth cache for the ingress backpressure gate: the hot ingress
-# path must not pay an XLEN round trip per request, and a slightly stale depth
-# is fine for a high-water check. Under a burst, at most one XLEN per stream per
-# TTL window is issued (a concurrent-refresh race just does a couple extra, both
-# harmless). Returns None when never populated / on error, so callers fail open.
-_XLEN_CACHE: dict[str, tuple[float, int]] = {}
+# Per-process backlog cache for the ingress backpressure gate: the hot ingress
+# path must not pay a Redis round trip per request, and a slightly stale value
+# is fine for a high-water check. Under a burst, at most one probe per stream
+# per TTL window is issued (a concurrent-refresh race just does a couple extra,
+# both harmless). Returns None when never populated / on error, so callers fail
+# open. The metric is the UNCONSUMED backlog (undelivered lag + un-acked
+# pending) — the set actually at risk when the stream trims — not total XLEN,
+# which sits near MAXLEN permanently on any busy stream once trimming kicks in.
+_BACKLOG_CACHE: dict[tuple[str, str], tuple[float, int]] = {}
 
 
-async def redis_xlen_cached(stream: str, *, ttl_seconds: float = 2.0) -> int | None:
+async def redis_group_backlog_cached(stream: str, group: str, *, ttl_seconds: float = 2.0) -> int | None:
     now = time.monotonic()
-    cached = _XLEN_CACHE.get(stream)
+    key = (stream, group)
+    cached = _BACKLOG_CACHE.get(key)
     if cached is not None and now < cached[0]:
         return cached[1]
     try:
-        value = await redis_xlen(stream)
-    except Exception:  # noqa: BLE001 - a depth probe failure must fail open, never block ingress
+        pending = await redis_xpending_pending(stream, group)
+        lag = await redis_xinfo_group_lag(stream, group)
+        value = int(pending) + int(lag)
+    except Exception:  # noqa: BLE001 - a backlog probe failure must fail open, never block ingress
         return cached[1] if cached is not None else None
-    _XLEN_CACHE[stream] = (now + ttl_seconds, value)
+    _BACKLOG_CACHE[key] = (now + ttl_seconds, value)
     return value
 
 
-def _reset_xlen_cache_for_tests() -> None:
-    _XLEN_CACHE.clear()
+def _reset_backlog_cache_for_tests() -> None:
+    _BACKLOG_CACHE.clear()
 
 
 async def redis_xpending_pending(stream: str, group: str) -> int:

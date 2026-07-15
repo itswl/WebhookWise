@@ -261,23 +261,26 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
             )
         )
 
-    # Ingress queue nearing MAXLEN: warn BEFORE the stream silently trims its
-    # oldest un-acked entries (already-200'd webhooks lost forever). Best-effort
-    # probe — a Redis hiccup must not fail the whole action center.
+    # Unconsumed ingest backlog nearing MAXLEN: warn BEFORE the stream silently
+    # trims its oldest un-acked entries (already-200'd webhooks lost forever).
+    # Keyed on the unconsumed backlog (lag + pending), not total depth — a busy
+    # stream sits at MAXLEN of already-acked entries, which is not a problem.
+    # Best-effort probe — a Redis hiccup must not fail the whole action center.
     queue = await get_queue_health()
     if queue.get("backlogged"):
-        fill_pct = round(float(queue["fill_fraction"]) * 100, 1)
+        backlog_pct = round(float(queue["backlog_fraction"]) * 100, 1)
         items.append(
             _item(
                 item_id="queue-backlog",
                 kind="queue_backlog",
                 severity="critical",
-                title=f"Ingest queue at {fill_pct}% of capacity",
+                title=f"Ingest queue backlog at {backlog_pct}% of capacity",
                 detail=(
-                    f"Depth {queue['depth']} / MAXLEN {queue['maxlen']}. Beyond MAXLEN the stream trims its "
-                    "oldest un-acked entries — accepted webhooks would be lost. Scale workers or raise MAXLEN."
+                    f"Unconsumed backlog {queue['backlog']} / MAXLEN {queue['maxlen']} "
+                    f"(pending {queue['pending']}, lag {queue['lag']}). Consumers are falling behind; beyond "
+                    "MAXLEN the stream trims un-acked entries and accepted webhooks are lost. Scale workers."
                 ),
-                count=int(queue["depth"]),  # backlogged ⇒ fill_fraction set ⇒ depth is not None
+                count=int(queue["backlog"]),  # backlogged ⇒ backlog_fraction set ⇒ backlog is not None
                 occurred_at=now,
                 resource_type="queue",
                 view="overview",

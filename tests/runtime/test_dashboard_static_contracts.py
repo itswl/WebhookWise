@@ -265,6 +265,29 @@ def test_kb_draft_publish_discard_urls_encode_source_ref() -> None:
     assert "method: 'DELETE'" in api_js  # discard
 
 
+def test_queue_health_tile_keys_on_backlog_not_fill() -> None:
+    # Ingest-queue health tile on the Overview view (rendered dynamically by
+    # overview.js). The gauge/tint must key on backlog_fraction, NOT fill_fraction:
+    # a healthy busy stream sits at depth==maxlen permanently (Redis trims lazily,
+    # not on ack), so fill would show a false 100%/red. depth/maxlen is only
+    # informational retention.
+    overview = _static_js("overview.js")
+    api_js = _static_js("api.js")
+
+    assert "getQueueHealth" in api_js
+    assert "/v1/queue-health" in api_js
+    assert "_renderQueueHealth" in overview
+    assert "API.getQueueHealth()" in overview  # fetched alongside the overview stats
+    assert "backlog_fraction" in overview  # the alarm signal
+    assert "fill_fraction" not in overview  # the buggy signal is gone from the tile
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        js = _static_js(dict_name)
+        assert "'overview.queue.title'" in js
+        assert "'overview.queue.backlog'" in js
+        assert "'overview.queue.retention'" in js  # depth/maxlen is informational
+        assert "'overview.queue.backlogged'" in js
+
+
 def test_dashboard_auto_refresh_intervals_are_operator_friendly() -> None:
     assert "DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("dashboard.js")
     assert "DEEP_ANALYSES_AUTO_REFRESH_INTERVAL_MS = 60000" in _static_js("deep-analyses.js")
