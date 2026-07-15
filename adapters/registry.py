@@ -14,7 +14,8 @@ _FDet = TypeVar("_FDet", bound=_Detector)
 
 class AdapterRegistry:
     def __init__(self) -> None:
-        self._detectors: list[tuple[str, Callable[[JsonObject], bool]]] = []
+        self._detectors: list[tuple[int, int, str, Callable[[JsonObject], bool]]] = []
+        self._detector_seq = 0
         self._normalizers: dict[str, Callable[[JsonObject], WebhookData]] = {}
         self._aliases: dict[str, str] = {}
 
@@ -34,19 +35,32 @@ class AdapterRegistry:
 
         return wrapper
 
-    def register_detector(self, source_name: str) -> Callable[[_FDet], _FDet]:
-        """Decorator: register an ecosystem adapter detector."""
+    def register_detector(self, source_name: str, *, priority: int = 0) -> Callable[[_FDet], _FDet]:
+        """Decorator: register an ecosystem adapter detector.
+
+        ``priority`` controls detection order: detectors run highest priority
+        first, ties broken by registration order. Built-in code adapters
+        register at the default priority (0) before any declarative specs, so a
+        declarative adapter must set a positive ``priority`` to win a detect tie
+        against a code adapter (and a negative one to defer to every other
+        detector). See adapters/declarative.py.
+        """
 
         def wrapper(func: _FDet) -> _FDet:
-            self._detectors.append((source_name, func))
-            logger.debug("[Adapter Registry] Registered detector for: %s", source_name)
+            self._detectors.append((priority, self._detector_seq, source_name, func))
+            self._detector_seq += 1
+            # Re-sort on each registration (startup-only, tiny N) so the hot
+            # find_adapter_by_payload path iterates in priority order without
+            # sorting per lookup: highest priority first, then insertion order.
+            self._detectors.sort(key=lambda entry: (-entry[0], entry[1]))
+            logger.debug("[Adapter Registry] Registered detector for: %s (priority=%d)", source_name, priority)
             return func
 
         return wrapper
 
     def find_adapter_by_payload(self, data: JsonObject) -> str | None:
         """Match an adapter based on payload characteristics."""
-        for source_name, detector in self._detectors:
+        for _priority, _seq, source_name, detector in self._detectors:
             try:
                 if detector(data):
                     return source_name
