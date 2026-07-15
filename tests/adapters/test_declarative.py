@@ -137,7 +137,11 @@ def test_output_defaults_type_to_name_and_level_from_severity() -> None:
         {"name": "x", "detect": {"key_equals": {"path": "a"}}, "identity": {"name": "a"}},  # key_equals missing value
         {"name": "x", "detect": {"key_equals": {"path": "a", "value": {}}}, "identity": {"name": "a"}},  # non-scalar
         {"name": "x", "detect": {"key_prefix": {"path": "a"}}, "identity": {"name": "a"}},  # prefix missing
-        {"name": "x", "detect": {"key_prefix": {"path": "a", "prefix": 5}}, "identity": {"name": "a"}},  # prefix not str
+        {
+            "name": "x",
+            "detect": {"key_prefix": {"path": "a", "prefix": 5}},
+            "identity": {"name": "a"},
+        },  # prefix not str
         {"name": "x", "detect": {"key_exists": "a"}},  # missing identity
         {"name": "x", "detect": {"key_exists": "a"}, "identity": {"resource": "r"}},  # identity missing name
         {"name": "x", "detect": {"key_exists": "a"}, "identity": {"name": "a", "bogus": "b"}},  # unknown identity field
