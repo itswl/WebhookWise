@@ -37,39 +37,43 @@ class IngressBackpressureResult:
 
 @dataclass(frozen=True, slots=True)
 class QueueBackpressureResult:
-    """Outcome of the global queue-depth high-water check."""
+    """Outcome of the global queue-backlog high-water check."""
 
     reject: bool
-    depth: int | None
+    backlog: int | None
     high_water: int
     maxlen: int
 
 
 async def check_queue_backpressure(*, policy: IngressPolicy | None = None) -> QueueBackpressureResult:
-    """Reject ingress when the stream is near MAXLEN, so the upstream retries
-    instead of the stream silently trimming its oldest un-acked entries.
+    """Reject ingress when the UNCONSUMED backlog nears MAXLEN, so the upstream
+    retries instead of the stream silently trimming its oldest un-acked entries.
 
-    Reads a per-process cached depth (no per-request XLEN) and FAILS OPEN: a
-    disabled fraction (0), an unavailable depth, or any error never rejects — a
-    depth-probe problem must not take ingress down. Trades trimming the *oldest*
-    (gone forever) for rejecting the *newest* (the retrying sender holds it).
+    Keyed on the unconsumed backlog (undelivered lag + un-acked pending), NOT
+    total stream length: a busy stream's XLEN sits at MAXLEN permanently even
+    when every entry is processed, so an XLEN gate would reject all traffic
+    forever. Reads a per-process cached value (no per-request Redis round trip)
+    and FAILS OPEN: a disabled fraction (0), an unavailable value, or any error
+    never rejects — a probe problem must not take ingress down. Trades trimming
+    the *oldest* un-acked (gone forever) for rejecting the *newest* (the
+    retrying sender holds it).
     """
     policy = policy or IngressPolicy.from_config()
     fraction = policy.ingress_high_water_fraction
     maxlen = policy.stream_maxlen
     if fraction <= 0 or maxlen <= 0:
-        return QueueBackpressureResult(reject=False, depth=None, high_water=0, maxlen=maxlen)
+        return QueueBackpressureResult(reject=False, backlog=None, high_water=0, maxlen=maxlen)
 
     high_water = int(maxlen * fraction)
     try:
-        from core.redis_streams import redis_xlen_cached
+        from core.redis_streams import redis_group_backlog_cached
 
-        depth = await redis_xlen_cached(policy.mq_queue)
+        backlog = await redis_group_backlog_cached(policy.mq_queue, policy.mq_consumer_group)
     except (RedisError, RuntimeError, TypeError, ValueError):
-        depth = None
-    if depth is None:
-        return QueueBackpressureResult(reject=False, depth=None, high_water=high_water, maxlen=maxlen)
-    return QueueBackpressureResult(reject=depth >= high_water, depth=depth, high_water=high_water, maxlen=maxlen)
+        backlog = None
+    if backlog is None:
+        return QueueBackpressureResult(reject=False, backlog=None, high_water=high_water, maxlen=maxlen)
+    return QueueBackpressureResult(reject=backlog >= high_water, backlog=backlog, high_water=high_water, maxlen=maxlen)
 
 
 def _fallback_body_hash(source: str, raw_body: bytes) -> str:

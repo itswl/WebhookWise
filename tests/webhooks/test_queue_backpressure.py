@@ -1,4 +1,9 @@
-"""Tests for global queue-depth ingress backpressure + queue-health readout."""
+"""Tests for global queue-backlog ingress backpressure + queue-health readout.
+
+The risk metric is the UNCONSUMED backlog (undelivered lag + un-acked pending),
+never total stream length — a busy stream's depth sits at MAXLEN of already-
+acked entries, which is not a backlog.
+"""
 
 from __future__ import annotations
 
@@ -15,28 +20,29 @@ def _policy(**over: object) -> IngressPolicy:
         "stream_maxlen": 1000,
         "ingress_high_water_fraction": 0.9,
         "mq_queue": "webhook:queue",
+        "mq_consumer_group": "webhook-processors",
     }
     base.update(over)
     return IngressPolicy(**base)  # type: ignore[arg-type]
 
 
 @pytest.fixture(autouse=True)
-def _clear_depth_cache():
-    from core.redis_streams import _reset_xlen_cache_for_tests
+def _clear_backlog_cache():
+    from core.redis_streams import _reset_backlog_cache_for_tests
 
-    _reset_xlen_cache_for_tests()
+    _reset_backlog_cache_for_tests()
     yield
-    _reset_xlen_cache_for_tests()
+    _reset_backlog_cache_for_tests()
 
 
 @pytest.mark.asyncio
-async def test_rejects_when_depth_at_or_above_high_water(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_rejects_when_backlog_at_or_above_high_water(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.webhooks.ingress_backpressure as bp
 
-    async def fake_depth(stream: str, *, ttl_seconds: float = 2.0) -> int:
+    async def fake_backlog(stream: str, group: str, *, ttl_seconds: float = 2.0) -> int:
         return 950  # ≥ 0.9 * 1000
 
-    monkeypatch.setattr("core.redis_streams.redis_xlen_cached", fake_depth)
+    monkeypatch.setattr("core.redis_streams.redis_group_backlog_cached", fake_backlog)
     result = await bp.check_queue_backpressure(policy=_policy())
     assert result.reject is True
     assert result.high_water == 900
@@ -46,10 +52,10 @@ async def test_rejects_when_depth_at_or_above_high_water(monkeypatch: pytest.Mon
 async def test_allows_below_high_water(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.webhooks.ingress_backpressure as bp
 
-    async def fake_depth(stream: str, *, ttl_seconds: float = 2.0) -> int:
+    async def fake_backlog(stream: str, group: str, *, ttl_seconds: float = 2.0) -> int:
         return 500
 
-    monkeypatch.setattr("core.redis_streams.redis_xlen_cached", fake_depth)
+    monkeypatch.setattr("core.redis_streams.redis_group_backlog_cached", fake_backlog)
     result = await bp.check_queue_backpressure(policy=_policy())
     assert result.reject is False
 
@@ -58,70 +64,96 @@ async def test_allows_below_high_water(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_disabled_fraction_never_rejects(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.webhooks.ingress_backpressure as bp
 
-    async def boom(stream: str, *, ttl_seconds: float = 2.0) -> int:
-        raise AssertionError("depth must not be probed when the gate is disabled")
+    async def boom(stream: str, group: str, *, ttl_seconds: float = 2.0) -> int:
+        raise AssertionError("backlog must not be probed when the gate is disabled")
 
-    monkeypatch.setattr("core.redis_streams.redis_xlen_cached", boom)
-    # Default fraction 0.0 → gate off → no probe, no rejection.
+    monkeypatch.setattr("core.redis_streams.redis_group_backlog_cached", boom)
     result = await bp.check_queue_backpressure(policy=_policy(ingress_high_water_fraction=0.0))
     assert result.reject is False
 
 
 @pytest.mark.asyncio
-async def test_fails_open_when_depth_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_fails_open_when_backlog_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.webhooks.ingress_backpressure as bp
 
-    async def unavailable(stream: str, *, ttl_seconds: float = 2.0) -> int | None:
+    async def unavailable(stream: str, group: str, *, ttl_seconds: float = 2.0) -> int | None:
         return None  # cache never populated / probe failed
 
-    monkeypatch.setattr("core.redis_streams.redis_xlen_cached", unavailable)
+    monkeypatch.setattr("core.redis_streams.redis_group_backlog_cached", unavailable)
     result = await bp.check_queue_backpressure(policy=_policy())
-    assert result.reject is False  # fail open — a depth-probe gap must not block ingress
+    assert result.reject is False  # fail open — a probe gap must not block ingress
 
 
 @pytest.mark.asyncio
-async def test_xlen_cache_reuses_within_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_backlog_cache_reuses_within_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
     from core import redis_streams
 
     calls = {"n": 0}
 
-    async def counting_xlen(stream: str) -> int:
+    async def counting_pending(stream: str, group: str) -> int:
         calls["n"] += 1
-        return 42
+        return 30
 
-    monkeypatch.setattr(redis_streams, "redis_xlen", counting_xlen)
-    a = await redis_streams.redis_xlen_cached("webhook:queue", ttl_seconds=60)
-    b = await redis_streams.redis_xlen_cached("webhook:queue", ttl_seconds=60)
-    assert a == b == 42
-    assert calls["n"] == 1  # second read served from cache, no extra XLEN
+    async def zero_lag(stream: str, group: str) -> int:
+        return 12
+
+    monkeypatch.setattr(redis_streams, "redis_xpending_pending", counting_pending)
+    monkeypatch.setattr(redis_streams, "redis_xinfo_group_lag", zero_lag)
+    a = await redis_streams.redis_group_backlog_cached("webhook:queue", "g", ttl_seconds=60)
+    b = await redis_streams.redis_group_backlog_cached("webhook:queue", "g", ttl_seconds=60)
+    assert a == b == 42  # 30 pending + 12 lag
+    assert calls["n"] == 1  # second read served from cache, no extra probe
 
 
 @pytest.mark.asyncio
-async def test_queue_health_reports_fill_and_backlogged(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_queue_health_backlogged_on_unconsumed_not_depth(monkeypatch: pytest.MonkeyPatch) -> None:
     from services.operations import queue_health
 
     async def xlen(stream: str) -> int:
         return 850
 
     async def xpending(stream: str, group: str) -> int:
-        return 40
+        return 800
 
     async def lag(stream: str, group: str) -> int:
-        return 810
+        return 40
 
     monkeypatch.setattr(queue_health, "redis_xlen", xlen)
     monkeypatch.setattr(queue_health, "redis_xpending_pending", xpending)
     monkeypatch.setattr(queue_health, "redis_xinfo_group_lag", lag)
-
     cfg = queue_health.get_config_manager().mq
     monkeypatch.setattr(cfg, "WEBHOOK_MQ_STREAM_MAXLEN", 1000)
     monkeypatch.setattr(cfg, "WEBHOOK_MQ_BACKLOG_WARN_FRACTION", 0.8)
 
     health = await queue_health.get_queue_health()
     assert health["depth"] == 850
-    assert health["pending"] == 40
-    assert health["fill_fraction"] == 0.85
-    assert health["backlogged"] is True  # 0.85 ≥ 0.8 warn threshold
+    assert health["backlog"] == 840  # 800 pending + 40 lag
+    assert health["backlog_fraction"] == 0.84
+    assert health["backlogged"] is True  # 0.84 ≥ 0.8
+
+
+@pytest.mark.asyncio
+async def test_queue_health_full_but_acked_stream_is_not_backlogged(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The production regression: depth at MAXLEN but everything acked → healthy."""
+    from services.operations import queue_health
+
+    async def xlen(stream: str) -> int:
+        return 100002  # at/over MAXLEN
+
+    async def zero(stream: str, group: str) -> int:
+        return 0
+
+    monkeypatch.setattr(queue_health, "redis_xlen", xlen)
+    monkeypatch.setattr(queue_health, "redis_xpending_pending", zero)
+    monkeypatch.setattr(queue_health, "redis_xinfo_group_lag", zero)
+    cfg = queue_health.get_config_manager().mq
+    monkeypatch.setattr(cfg, "WEBHOOK_MQ_STREAM_MAXLEN", 100000)
+    monkeypatch.setattr(cfg, "WEBHOOK_MQ_BACKLOG_WARN_FRACTION", 0.8)
+
+    health = await queue_health.get_queue_health()
+    assert health["fill_fraction"] == round(100002 / 100000, 4)  # full (informational)
+    assert health["backlog"] == 0
+    assert health["backlogged"] is False  # acked entries are not a backlog
 
 
 @pytest.mark.asyncio
@@ -135,7 +167,6 @@ async def test_queue_health_degrades_when_probe_fails(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(queue_health, "redis_xlen", boom)
     health = await queue_health.get_queue_health()
-    # Best-effort: unreadable metrics come back null, not an exception.
     assert health["depth"] is None
-    assert health["fill_fraction"] is None
+    assert health["backlog"] is None
     assert health["backlogged"] is False
