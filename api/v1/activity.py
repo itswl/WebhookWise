@@ -22,6 +22,25 @@ _ACTIVITY_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError, TimeoutE
 
 
 @activity_router.get(
+    "/queue-health",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
+)
+async def queue_health_endpoint() -> JSONResponse:
+    """Redis Stream backlog health: depth vs MAXLEN, pending, and consumer lag.
+
+    Backs the dashboard queue tile. Fails soft — an unreadable metric comes back
+    as null rather than erroring the panel.
+    """
+    from services.operations.queue_health import get_queue_health
+
+    try:
+        return ok_response(http_status=200, data=await get_queue_health())
+    except _ACTIVITY_ERRORS as e:
+        logger.error("Failed to read queue health: %s", e, exc_info=True)
+        return internal_error_response()
+
+
+@activity_router.get(
     "/action-center",
     dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
 )
