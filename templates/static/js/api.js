@@ -752,5 +752,37 @@ const API = {
         const q = batchSize ? '?batch_size=' + encodeURIComponent(batchSize) : '';
         const response = await this.authenticatedFetch('/v1/admin/dead-letters/replay-all' + q, { method: 'POST' });
         return await this.parseJsonResponse(response);
+    },
+
+    // ========== KB drafts (resolved-incident summaries awaiting review) ==========
+
+    /**
+     * List pending KB drafts (resolved-incident summaries awaiting review).
+     * @returns {Promise<object>} { data: [{ source_ref, title, chunks, updated_at }] }
+     */
+    async getKbDrafts() {
+        const response = await this.authenticatedFetch('/v1/admin/kb/drafts');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * Publish a KB draft into the AI knowledge base (RAG). Admin-write.
+     * source_ref (e.g. "incident:123") is a path segment; encodeURIComponent
+     * percent-encodes the colon to %3A so the server's :path route matches.
+     * @param {string} sourceRef - draft identifier, e.g. "incident:123"
+     */
+    async publishKbDraft(sourceRef) {
+        const response = await this.authenticatedFetch('/v1/admin/kb/drafts/' + encodeURIComponent(sourceRef) + '/publish', { method: 'POST' });
+        return await this.parseJsonResponse(response);
+    },
+
+    /**
+     * Discard a KB draft. Admin-write. Same source_ref path-encoding as publish.
+     * @param {string} sourceRef - draft identifier, e.g. "incident:123"
+     */
+    async discardKbDraft(sourceRef) {
+        const response = await this.authenticatedFetch('/v1/admin/kb/drafts/' + encodeURIComponent(sourceRef), { method: 'DELETE' });
+        return await this.parseJsonResponse(response);
     }
 };
