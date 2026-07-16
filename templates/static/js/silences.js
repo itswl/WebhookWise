@@ -13,9 +13,11 @@ let silences = [];
 async function loadSilences() {
     const container = document.getElementById('silencesList');
 
-    // Load the silence-debt panel alongside the list (best-effort: its own error
-    // handling keeps a failure from affecting the list below).
+    // Load the silence-debt panel and the maintenance-windows section alongside
+    // the list (best-effort: their own error handling keeps a failure from
+    // affecting the list below).
     loadSilenceDebt();
+    loadMaintenanceWindows();
 
     try {
         container.innerHTML = `
@@ -239,6 +241,12 @@ function renderSilenceCard(silence) {
             t('silences.roi.lastSuppressed', { time: formatSilenceTime(silence.last_suppressed_at) }) + '</div>'
         : '';
 
+    // Silences materialized by a maintenance window carry a "[mw:{id}:{date}]"
+    // comment prefix; badge them so operators know they are schedule-managed.
+    const originBadge = String(silence.comment || '').startsWith('[mw:')
+        ? '<span class="badge badge-outline" title="' + escapeHtml(t('silences.mw.originTooltip')) + '" style="font-size: 0.65rem;">🔧 ' + t('silences.mw.originBadge') + '</span>'
+        : '';
+
     return `
         <div class="silence-card" style="
             background: var(--bg-surface);
@@ -253,6 +261,7 @@ function renderSilenceCard(silence) {
             <div class="silence-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
                 <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                     ${statusBadge}
+                    ${originBadge}
                     ${suppressedBadge}
                     <span style="font-weight: 600; font-size: 1.05rem; ${titleColor}">${escapeHtml(silence.comment || t('silences.card.noComment'))}</span>
                 </div>
@@ -606,6 +615,319 @@ async function backtestSilenceRule() {
     } catch (error) {
         console.error('❌ Silence backtest failed:', error);
         container.innerHTML = `<div style="color: var(--danger); font-size: 0.85rem;">⚠️ Failure: ${escapeHtml(error.message || String(error))}</div>`;
+    }
+}
+
+// ============================================================================
+// Maintenance windows — recurring weekly mute windows rendered below the
+// silence list. The backend materializes each live occurrence as a normal
+// silence (comment prefixed "[mw:"), so this section only manages the
+// schedules themselves.
+// ============================================================================
+
+// Stores the current list of maintenance windows
+let maintenanceWindows = [];
+
+/**
+ * Load the maintenance windows list (best-effort panel on the silences view).
+ */
+async function loadMaintenanceWindows() {
+    const container = document.getElementById('maintenanceWindowsList');
+    if (!container) return;
+    try {
+        const result = await API.getMaintenanceWindows();
+        if (result.success) {
+            maintenanceWindows = result.data || [];
+            renderMaintenanceWindows(maintenanceWindows);
+        } else {
+            container.innerHTML = `
+                <div class="empty-state" style="text-align: center; padding: 30px; color: var(--text-secondary);">
+                    <p>❌ ${t('common.loadFailed')}: ${escapeHtml(result.error || t('common.unknownError'))}</p>
+                    <button class="btn" onclick="loadMaintenanceWindows()" style="margin-top: 10px;">${t('common.retry')}</button>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('❌ Failed to load maintenance windows:', error);
+        container.innerHTML = `
+            <div class="empty-state" style="text-align: center; padding: 30px; color: var(--text-secondary);">
+                <p>❌ ${t('common.loadFailed')}: ${escapeHtml(error.message || String(error))}</p>
+                <button class="btn" onclick="loadMaintenanceWindows()" style="margin-top: 10px;">${t('common.retry')}</button>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Format a minute-of-day (0-1439) as "HH:MM".
+ */
+function formatMinuteOfDay(totalMinutes) {
+    const total = Math.max(0, Number(totalMinutes) || 0);
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+/**
+ * Human schedule like "Sat,Sun 02:00–04:00 Asia/Shanghai".
+ * days_of_week arrives as an ISO-weekday CSV string ("6,7", 1=Mon…7=Sun).
+ */
+function formatMwSchedule(mw) {
+    const dayNames = String(mw.days_of_week || '')
+        .split(',')
+        .map(function (s) { return parseInt(s.trim(), 10); })
+        .filter(function (n) { return n >= 1 && n <= 7; })
+        .map(function (n) { return t('mw.day.' + n); })
+        .join(',');
+    const start = Number(mw.start_minute || 0);
+    const end = start + Number(mw.duration_minutes || 0);
+    // A window may run past local midnight (duration up to 7 days).
+    let endLabel = formatMinuteOfDay(end % 1440);
+    if (end >= 1440) {
+        endLabel += t('silences.mw.nextDay', { n: Math.floor(end / 1440) });
+    }
+    return dayNames + ' ' + formatMinuteOfDay(start) + '–' + endLabel + ' ' + (mw.timezone || 'UTC');
+}
+
+/**
+ * Compact match-criteria summary reusing the silence-card field labels.
+ */
+function formatMwMatch(mw) {
+    const parts = [];
+    if (mw.match_source) parts.push(t('silences.card.source') + ': ' + mw.match_source);
+    if (mw.match_importance) parts.push(t('silences.card.importance') + ': ' + formatImportance(mw.match_importance));
+    if (mw.match_event_type) parts.push(t('silences.card.eventType') + ': ' + mw.match_event_type);
+    if (mw.match_project) parts.push(t('silences.card.project') + ': ' + mw.match_project);
+    if (mw.match_region) parts.push(t('silences.card.region') + ': ' + mw.match_region);
+    if (mw.match_environment) parts.push(t('silences.card.environment') + ': ' + mw.match_environment);
+    if (mw.match_payload) parts.push(t('silences.card.payload') + ': ' + mw.match_payload);
+    return parts.join(' · ');
+}
+
+/**
+ * Render the maintenance windows table.
+ * @param {Array} list - array of maintenance windows
+ */
+function renderMaintenanceWindows(list) {
+    const container = document.getElementById('maintenanceWindowsList');
+    if (!container) return;
+
+    if (!list || list.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="text-align: center; padding: 30px; color: var(--text-secondary);">
+                <div style="font-size: 32px; margin-bottom: 12px;">🔧</div>
+                <p style="font-size: 14px;">${t('silences.mw.empty')}</p>
+            </div>
+        `;
+        return;
+    }
+
+    const th = 'padding: 0.55rem 0.75rem; font-weight: 600;';
+    const td = 'padding: 0.55rem 0.75rem; border-top: 1px solid var(--border); vertical-align: top;';
+    let html = '<div style="overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-surface);">';
+    html += '<table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">';
+    html += '<thead><tr style="color: var(--text-muted);">' +
+        '<th style="' + th + ' text-align: left;">' + t('silences.mw.col.name') + '</th>' +
+        '<th style="' + th + ' text-align: left;">' + t('silences.mw.col.schedule') + '</th>' +
+        '<th style="' + th + ' text-align: left;">' + t('silences.mw.col.match') + '</th>' +
+        '<th style="' + th + ' text-align: left;">' + t('silences.mw.col.status') + '</th>' +
+        '<th style="' + th + ' text-align: right;">' + t('silences.mw.col.actions') + '</th>' +
+        '</tr></thead><tbody>';
+    list.forEach(function (mw) {
+        let statusBadge;
+        if (!mw.enabled) {
+            statusBadge = '<span class="badge badge-new">' + t('silences.mw.disabled') + '</span>';
+        } else if (mw.active_now) {
+            statusBadge = '<span class="badge badge-medium">🔧 ' + t('silences.mw.activeNow') + '</span>';
+        } else {
+            statusBadge = '<span class="badge badge-outline">' + t('silences.mw.scheduled') + '</span>';
+        }
+        const comment = mw.comment
+            ? '<div style="color: var(--text-muted); font-size: 0.78rem; margin-top: 2px;">' + escapeHtml(mw.comment) + '</div>'
+            : '';
+        html += '<tr' + (mw.active_now ? ' style="background: rgba(245, 158, 11, 0.08);"' : '') + '>' +
+            '<td style="' + td + ' font-weight: 600;">' + escapeHtml(mw.name || '') + comment + '</td>' +
+            '<td style="' + td + ' white-space: nowrap;">' + escapeHtml(formatMwSchedule(mw)) + '</td>' +
+            '<td style="' + td + ' color: var(--text-secondary);">' + escapeHtml(formatMwMatch(mw)) + '</td>' +
+            '<td style="' + td + '">' + statusBadge + '</td>' +
+            '<td style="' + td + ' text-align: right; white-space: nowrap;">' +
+            '<button class="btn btn-sm" onclick="showMaintenanceWindowForm(' + mw.id + ')" style="font-weight: 600;">✏️ ' + t('silences.action.edit') + '</button> ' +
+            '<button class="btn btn-sm" onclick="deleteMaintenanceWindow(' + mw.id + ')" style="color: var(--danger); border-color: rgba(225,29,72,0.25); background: var(--danger-bg); font-weight: 600;">🗑️ ' + t('silences.action.delete') + '</button>' +
+            '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+}
+
+/**
+ * Show the maintenance window form (create or edit)
+ * @param {number} windowId - window ID; omit for create
+ */
+function showMaintenanceWindowForm(windowId) {
+    const modal = document.getElementById('maintenanceWindowFormModal');
+    const title = document.getElementById('mwFormTitle');
+
+    // Reset the form to create defaults
+    document.getElementById('mwFormId').value = '';
+    document.getElementById('mwFormName').value = '';
+    document.getElementById('mwFormEnabled').checked = true;
+    modal.querySelectorAll('.mw-day-checkbox').forEach(function (cb) { cb.checked = false; });
+    document.getElementById('mwFormStartTime').value = '02:00';
+    document.getElementById('mwFormDurationMinutes').value = '120';
+    document.getElementById('mwFormTimezone').value = 'Asia/Shanghai';
+    document.getElementById('mwFormSource').value = '';
+    ['mwFormImportanceHigh', 'mwFormImportanceMedium', 'mwFormImportanceLow'].forEach(function (id) {
+        document.getElementById(id).checked = false;
+    });
+    document.getElementById('mwFormEventType').value = '';
+    document.getElementById('mwFormProject').value = '';
+    document.getElementById('mwFormRegion').value = '';
+    document.getElementById('mwFormEnvironment').value = '';
+    document.getElementById('mwFormPayload').value = '';
+    document.getElementById('mwFormComment').value = '';
+
+    if (windowId) {
+        title.textContent = t('mw.editTitle');
+        const mw = maintenanceWindows.find(w => w.id === windowId);
+        if (mw) {
+            document.getElementById('mwFormId').value = mw.id;
+            document.getElementById('mwFormName').value = mw.name || '';
+            document.getElementById('mwFormEnabled').checked = !!mw.enabled;
+            const days = String(mw.days_of_week || '').split(',').map(function (s) { return parseInt(s.trim(), 10); });
+            modal.querySelectorAll('.mw-day-checkbox').forEach(function (cb) {
+                cb.checked = days.includes(Number(cb.value));
+            });
+            document.getElementById('mwFormStartTime').value = formatMinuteOfDay(mw.start_minute);
+            document.getElementById('mwFormDurationMinutes').value = String(mw.duration_minutes || '');
+            document.getElementById('mwFormTimezone').value = mw.timezone || 'Asia/Shanghai';
+            document.getElementById('mwFormSource').value = mw.match_source || '';
+            if (mw.match_importance) {
+                const importances = mw.match_importance.split(',').map(s => s.trim());
+                document.getElementById('mwFormImportanceHigh').checked = importances.includes('high');
+                document.getElementById('mwFormImportanceMedium').checked = importances.includes('medium');
+                document.getElementById('mwFormImportanceLow').checked = importances.includes('low');
+            }
+            document.getElementById('mwFormEventType').value = mw.match_event_type || '';
+            document.getElementById('mwFormProject').value = mw.match_project || '';
+            document.getElementById('mwFormRegion').value = mw.match_region || '';
+            document.getElementById('mwFormEnvironment').value = mw.match_environment || '';
+            document.getElementById('mwFormPayload').value = mw.match_payload || '';
+            document.getElementById('mwFormComment').value = mw.comment || '';
+        }
+    } else {
+        title.textContent = t('mw.addTitle');
+    }
+
+    modal.classList.add('active');
+}
+
+/**
+ * Close the maintenance window form
+ */
+function closeMaintenanceWindowForm() {
+    document.getElementById('maintenanceWindowFormModal').classList.remove('active');
+}
+
+/**
+ * Save the maintenance window (create or update)
+ */
+async function saveMaintenanceWindow() {
+    const windowId = document.getElementById('mwFormId').value;
+    const name = document.getElementById('mwFormName').value.trim();
+    if (!name) {
+        alert(t('mw.alert.nameRequired'));
+        return;
+    }
+
+    const days = [];
+    document.querySelectorAll('#maintenanceWindowFormModal .mw-day-checkbox').forEach(function (cb) {
+        if (cb.checked) days.push(Number(cb.value));
+    });
+    if (!days.length) {
+        alert(t('mw.alert.daysRequired'));
+        return;
+    }
+
+    const startTime = document.getElementById('mwFormStartTime').value;
+    const timeParts = /^(\d{1,2}):(\d{2})$/.exec(startTime || '');
+    if (!timeParts) {
+        alert(t('mw.alert.startRequired'));
+        return;
+    }
+    const startMinute = Number(timeParts[1]) * 60 + Number(timeParts[2]);
+
+    const durationMinutes = Number(document.getElementById('mwFormDurationMinutes').value);
+    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+        alert(t('mw.alert.durationInvalid'));
+        return;
+    }
+
+    const importances = [];
+    if (document.getElementById('mwFormImportanceHigh').checked) importances.push('high');
+    if (document.getElementById('mwFormImportanceMedium').checked) importances.push('medium');
+    if (document.getElementById('mwFormImportanceLow').checked) importances.push('low');
+
+    const windowData = {
+        name: name,
+        enabled: document.getElementById('mwFormEnabled').checked,
+        days_of_week: days,
+        start_minute: startMinute,
+        duration_minutes: durationMinutes,
+        timezone: document.getElementById('mwFormTimezone').value.trim() || 'Asia/Shanghai',
+        match_source: document.getElementById('mwFormSource').value.trim(),
+        match_importance: importances.join(','),
+        match_event_type: document.getElementById('mwFormEventType').value.trim(),
+        match_project: document.getElementById('mwFormProject').value.trim(),
+        match_region: document.getElementById('mwFormRegion').value.trim(),
+        match_environment: document.getElementById('mwFormEnvironment').value.trim(),
+        match_payload: document.getElementById('mwFormPayload').value.trim(),
+        comment: document.getElementById('mwFormComment').value.trim()
+    };
+
+    // Require at least one match criterion (mirrors the backend validation).
+    const hasCriterion = windowData.match_source || windowData.match_importance ||
+        windowData.match_event_type || windowData.match_project ||
+        windowData.match_region || windowData.match_environment || windowData.match_payload;
+    if (!hasCriterion) {
+        alert(t('silences.alert.criterionRequired'));
+        return;
+    }
+
+    try {
+        if (windowId) {
+            await API.updateMaintenanceWindow(windowId, windowData);
+            alert('✅ ' + t('mw.alert.updateSuccess'));
+        } else {
+            await API.createMaintenanceWindow(windowData);
+            alert('✅ ' + t('mw.alert.createSuccess'));
+        }
+        closeMaintenanceWindowForm();
+        // Saving sweeps occurrences server-side (may materialize or lift a
+        // "[mw:" silence), so refresh the whole view, not just the table.
+        loadSilences();
+    } catch (error) {
+        console.error('❌ Failed to save maintenance window:', error);
+        alert('❌ ' + t('silences.alert.saveFailed') + ': ' + (error.message || String(error)));
+    }
+}
+
+/**
+ * Delete a maintenance window
+ * @param {number} id - window ID
+ */
+async function deleteMaintenanceWindow(id) {
+    if (!confirm(t('mw.confirm.delete'))) {
+        return;
+    }
+    try {
+        await API.deleteMaintenanceWindow(id);
+        alert('✅ ' + t('mw.alert.deleteSuccess'));
+        // Deleting sweeps occurrences server-side (lifts any live "[mw:"
+        // silence), so refresh the whole view.
+        loadSilences();
+    } catch (error) {
+        console.error('❌ Failed to delete maintenance window:', error);
+        alert('❌ ' + t('silences.alert.deleteFailed') + ': ' + (error.message || String(error)));
     }
 }
 
