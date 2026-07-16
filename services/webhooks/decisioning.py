@@ -510,10 +510,19 @@ def decide_forwarding(
     now: datetime | None = None,
     silences: list[SilenceSnapshot] | None = None,
     identity: dict[str, str] | None = None,
+    flapping: bool = False,
 ) -> ForwardDecision:
     if noise and noise.suppress_forward:
         return ForwardDecision(
             False, f"Smart noise reduction suppressed forwarding: {noise.reason}", False, skip_code="noise_suppressed"
+        )
+
+    # A flapping identity (rapid firing↔recovered oscillation) is muted as a
+    # unit while it stabilizes. The caller only passes flapping=True when
+    # suppression is enabled AND the identity crossed the flip threshold.
+    if flapping:
+        return ForwardDecision(
+            False, "Flapping identity: notifications withheld until it stabilizes", False, skip_code="flapping"
         )
 
     # An active manual silence mutes forwarding for matching alerts. Checked

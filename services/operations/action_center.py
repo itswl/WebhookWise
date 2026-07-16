@@ -14,6 +14,7 @@ from core.logger import mask_url
 from db.session import count_with_timeout
 from models import AnalysisFeedback, AuditLog, ForwardOutbox, ForwardRule, Incident, WebhookEvent
 from services.operations.queue_health import get_queue_health
+from services.webhooks.flapping import list_active_flapping
 from services.webhooks.types import ForwardOutboxStatus, WebhookProcessingStatus
 
 _URL_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
@@ -284,6 +285,29 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 occurred_at=now,
                 resource_type="queue",
                 view="overview",
+            )
+        )
+
+    # Identities oscillating firing↔recovered right now (best-effort Redis
+    # read). Each one is a notification storm dedup cannot absorb; suggest a
+    # threshold/for-duration fix upstream, or FLAPPING_SUPPRESS_ENABLED.
+    flapping = await list_active_flapping(limit=5)
+    if flapping:
+        labels = ", ".join(item["identity"] for item in flapping[:3])
+        items.append(
+            _item(
+                item_id="flapping-identities",
+                kind="flapping_identity",
+                severity="warning",
+                title=f"{len(flapping)} alert identit{'y is' if len(flapping) == 1 else 'ies are'} flapping",
+                detail=(
+                    f"Rapid firing↔recovered oscillation: {labels}. Fix the upstream threshold or add a "
+                    "for-duration; FLAPPING_SUPPRESS_ENABLED=true withholds notifications while they flap."
+                ),
+                count=len(flapping),
+                occurred_at=now,
+                resource_type="alert_identity",
+                view="noise",
             )
         )
 

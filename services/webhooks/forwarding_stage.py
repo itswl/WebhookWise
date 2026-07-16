@@ -29,6 +29,7 @@ from services.webhooks.decisioning import (
     forwarding_policy_from_config,
     normalize_importance,
 )
+from services.webhooks.flapping import FlappingPolicy, observe_flapping
 from services.webhooks.types import (
     AnalysisResult,
     NoiseReductionContext,
@@ -56,6 +57,7 @@ async def resolve_forward_decision(
     policy: ForwardingPolicy | None = None,
     event_type: str = "webhook_forward",
     identity: dict[str, str] | None = None,
+    analysis: AnalysisResult | None = None,
 ) -> ForwardDecision:
     """Resolve forwarding policy and matching rules for a processed webhook."""
     rules: list[ForwardRuleSnapshot] = []
@@ -70,6 +72,11 @@ async def resolve_forward_decision(
     except (KeyError, RuntimeError, SQLAlchemyError, TypeError, ValueError) as e:
         logger.warning("[Forward] Failed to load active silences: %s", e)
 
+    # Always-on flap observation (fail-open); the decision only suppresses when
+    # the opt-in is enabled AND the identity crossed the flip threshold.
+    flapping_policy = FlappingPolicy.from_config()
+    flap = await observe_flapping(source, parsed_data, dict(analysis) if analysis else None, policy=flapping_policy)
+
     decision = decide_forwarding(
         event_type=event_type,
         importance=importance,
@@ -82,6 +89,7 @@ async def resolve_forward_decision(
         parsed_data=parsed_data,
         silences=silences,
         identity=identity,
+        flapping=flap.flapping and flapping_policy.suppress_enabled,
     )
 
     if decision.should_forward:
@@ -172,6 +180,7 @@ async def finalize_analysis_transaction(
                 # check (or extract it now, once) instead of re-walking the
                 # payload inside decide_forwarding.
                 identity=ensure_forward_match_identity(ctx),
+                analysis=final_analysis,
             )
 
             # Update the forward status of the alert event
