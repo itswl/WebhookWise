@@ -9,6 +9,10 @@ from core.datetime_utils import naive_utc, utcnow
 from core.logger import get_logger
 from db.session import get_db_session
 from schemas.silences import (
+    MaintenanceWindowCreateRequest,
+    MaintenanceWindowDetailResponse,
+    MaintenanceWindowListResponse,
+    MaintenanceWindowUpdateRequest,
     SilenceBacktestRequest,
     SilenceBacktestResponse,
     SilenceCreateRequest,
@@ -16,6 +20,7 @@ from schemas.silences import (
     SilenceDetailResponse,
     SilenceListResponse,
     SilenceUpdateRequest,
+    maintenance_window_to_dict,
     silence_to_dict,
 )
 from services.operations.audit_logger import add_audit
@@ -75,8 +80,10 @@ async def silence_debt_endpoint(
     Registered before ``/silences/{silence_id}`` so the static path wins; the
     detail route's int converter would reject "debt" anyway.
     """
+    from services.operations.feature_adoption import record_feature_use
     from services.operations.silence_debt import get_silence_debt
 
+    await record_feature_use("view:silence_debt")
     data = await get_silence_debt(session, window_days=window_days)
     return {"success": True, "data": data}
 
@@ -199,6 +206,162 @@ async def delete_silence_endpoint(
     return {"success": True, "message": "Silence deleted"}
 
 
+@silences_router.get(
+    "/maintenance-windows",
+    response_model=MaintenanceWindowListResponse,
+    dependencies=[Depends(verify_api_key)],
+)
+async def list_maintenance_windows_endpoint(
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONDict:
+    from sqlalchemy import select
+
+    from models import MaintenanceWindow
+    from services.silences.maintenance_windows import active_occurrence
+
+    now = utcnow()
+    windows = (await session.execute(select(MaintenanceWindow).order_by(MaintenanceWindow.name))).scalars().all()
+    data = []
+    for window in windows:
+        try:
+            active = window.enabled and active_occurrence(window, now) is not None
+        except ValueError:
+            active = False
+        data.append(maintenance_window_to_dict(window, active_now=active))
+    return {"success": True, "data": data}
+
+
+@silences_router.post(
+    "/maintenance-windows",
+    response_model=MaintenanceWindowDetailResponse,
+    dependencies=[Depends(verify_admin_write)],
+)
+async def create_maintenance_window_endpoint(
+    payload: MaintenanceWindowCreateRequest, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict | JSONResponse:
+    from sqlalchemy import select
+
+    from models import MaintenanceWindow
+    from services.silences.maintenance_windows import active_occurrence, sweep_maintenance_windows
+
+    exists = (
+        await session.execute(select(MaintenanceWindow.id).where(MaintenanceWindow.name == payload.name))
+    ).scalar_one_or_none()
+    if exists is not None:
+        return JSONResponse(
+            status_code=409,
+            content={"success": False, "error": f"A maintenance window named {payload.name!r} already exists"},
+        )
+    window = MaintenanceWindow(**payload.to_model_kwargs())
+    session.add(window)
+    await session.flush()
+    # Materialize immediately so a window covering "now" mutes without waiting
+    # for the next scheduler tick.
+    await sweep_maintenance_windows(session)
+    add_audit(
+        session,
+        "maintenance_window",
+        window.id,
+        window.name,
+        "created",
+        f"Maintenance window created: {window.name}",
+    )
+    await session.commit()
+    logger.info("[SilenceAPI] Maintenance window created id=%s name=%s", window.id, window.name)
+    from services.operations.feature_adoption import record_feature_use
+
+    await record_feature_use("action:maintenance_window_created")
+    active = window.enabled and active_occurrence(window, utcnow()) is not None
+    return {
+        "success": True,
+        "data": maintenance_window_to_dict(window, active_now=active),
+        "message": "Maintenance window created",
+    }
+
+
+@silences_router.put(
+    "/maintenance-windows/{window_id}",
+    response_model=MaintenanceWindowDetailResponse,
+    dependencies=[Depends(verify_admin_write)],
+)
+async def update_maintenance_window_endpoint(
+    window_id: int, payload: MaintenanceWindowUpdateRequest, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict | JSONResponse:
+    from sqlalchemy import select
+
+    from models import MaintenanceWindow
+    from services.silences.maintenance_windows import active_occurrence, sweep_maintenance_windows
+
+    window = await session.get(MaintenanceWindow, window_id)
+    if window is None:
+        return JSONResponse(status_code=404, content={"success": False, "error": "Maintenance window does not exist"})
+    name_clash = (
+        await session.execute(
+            select(MaintenanceWindow.id).where(
+                MaintenanceWindow.name == payload.name, MaintenanceWindow.id != window_id
+            )
+        )
+    ).scalar_one_or_none()
+    if name_clash is not None:
+        return JSONResponse(
+            status_code=409,
+            content={"success": False, "error": f"A maintenance window named {payload.name!r} already exists"},
+        )
+    for field, value in payload.to_model_kwargs().items():
+        setattr(window, field, value)
+    await session.flush()
+    # Re-materialize: an edit can start, move, or end the active occurrence.
+    await sweep_maintenance_windows(session)
+    add_audit(
+        session,
+        "maintenance_window",
+        window.id,
+        window.name,
+        "updated",
+        f"Maintenance window updated: {window.name}",
+    )
+    await session.commit()
+    logger.info("[SilenceAPI] Maintenance window updated id=%s name=%s", window.id, window.name)
+    active = window.enabled and active_occurrence(window, utcnow()) is not None
+    return {
+        "success": True,
+        "data": maintenance_window_to_dict(window, active_now=active),
+        "message": "Maintenance window updated",
+    }
+
+
+@silences_router.delete(
+    "/maintenance-windows/{window_id}",
+    response_model=None,
+    dependencies=[Depends(verify_admin_write)],
+)
+async def delete_maintenance_window_endpoint(
+    window_id: int, session: AsyncSession = Depends(get_db_session)
+) -> JSONDict | JSONResponse:
+    from models import MaintenanceWindow
+    from services.silences.maintenance_windows import sweep_maintenance_windows
+
+    window = await session.get(MaintenanceWindow, window_id)
+    if window is None:
+        return JSONResponse(status_code=404, content={"success": False, "error": "Maintenance window does not exist"})
+    name = window.name
+    await session.delete(window)
+    await session.flush()
+    # Lift any live silence this window materialized.
+    await sweep_maintenance_windows(session)
+    add_audit(
+        session,
+        "maintenance_window",
+        window_id,
+        name,
+        "deleted",
+        f"Maintenance window deleted: {name}",
+    )
+    await session.commit()
+    logger.info("[SilenceAPI] Maintenance window deleted id=%s name=%s", window_id, name)
+    return {"success": True, "message": "Maintenance window deleted"}
+
+
 @silences_router.post(
     "/silences/backtest",
     response_model=SilenceBacktestResponse,
@@ -215,6 +378,9 @@ async def backtest_silence_endpoint(
         payload.match_source,
         payload.match_project,
     )
+    from services.operations.feature_adoption import record_feature_use
+
+    await record_feature_use("action:silence_backtest_run")
     result = await backtest_silence_rule(
         session=session,
         match_source=payload.match_source,

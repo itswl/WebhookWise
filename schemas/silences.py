@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, TypedDict, cast
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -231,3 +232,92 @@ class SilenceDebtData(BaseModel):
 
 class SilenceDebtResponse(APIResponse[SilenceDebtData]):
     """Silence debt report response."""
+
+
+class _MaintenanceWindowFields(_SilenceRequestBase):
+    """Shared schedule + match fields for maintenance window requests."""
+
+    name: str = Field(min_length=1, max_length=100)
+    enabled: bool = True
+    # ISO weekday numbers, 1=Monday … 7=Sunday.
+    days_of_week: list[int] = Field(min_length=1, max_length=7)
+    start_minute: int = Field(ge=0, le=1439)
+    duration_minutes: int = Field(gt=0, le=7 * 24 * 60)
+    timezone: str = Field(default="Asia/Shanghai", max_length=64)
+
+    @model_validator(mode="after")
+    def _validate_schedule(self) -> _MaintenanceWindowFields:
+        bad = [d for d in self.days_of_week if not 1 <= d <= 7]
+        if bad:
+            raise ValueError(f"days_of_week must be ISO weekdays 1..7, got {bad}")
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            raise ValueError(f"Unknown timezone: {self.timezone}") from e
+        criteria = (
+            self.match_source,
+            self.match_importance,
+            self.match_event_type,
+            self.match_project,
+            self.match_region,
+            self.match_environment,
+            self.match_payload,
+        )
+        if not any(c.strip() for c in criteria):
+            raise ValueError("At least one match criterion must be provided")
+        return self
+
+    def to_model_kwargs(self) -> dict[str, Any]:
+        data = self.model_dump()
+        data["days_of_week"] = ",".join(str(d) for d in sorted(set(self.days_of_week)))
+        return data
+
+
+class MaintenanceWindowCreateRequest(_MaintenanceWindowFields):
+    """Request body for creating a maintenance window."""
+
+
+class MaintenanceWindowUpdateRequest(_MaintenanceWindowFields):
+    """Full-replace update body (windows are small; PUT semantics keep it simple)."""
+
+
+class MaintenanceWindowSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    enabled: bool
+    match_source: str | None = None
+    match_importance: str | None = None
+    match_event_type: str | None = None
+    match_project: str | None = None
+    match_region: str | None = None
+    match_environment: str | None = None
+    match_payload: str | None = None
+    days_of_week: str
+    start_minute: int
+    duration_minutes: int
+    timezone: str
+    comment: str | None = None
+    created_by: str | None = None
+    created_at: datetime | str | None = None
+    updated_at: datetime | str | None = None
+    # Annotated by the list endpoint: whether an occurrence is live right now.
+    active_now: bool = False
+
+
+class MaintenanceWindowListResponse(APIResponse[list[MaintenanceWindowSchema]]):
+    """Maintenance window list response."""
+
+
+class MaintenanceWindowDetailResponse(APIResponse[MaintenanceWindowSchema]):
+    """Maintenance window detail response."""
+
+
+def maintenance_window_to_dict(window: Any, *, active_now: bool = False) -> dict[str, Any]:
+    data = MaintenanceWindowSchema.model_validate(window).model_dump()
+    data["active_now"] = active_now
+    for field in ("created_at", "updated_at"):
+        if isinstance(data.get(field), datetime):
+            data[field] = utc_isoformat(data[field])
+    return data
