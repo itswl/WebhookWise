@@ -1,0 +1,55 @@
+# Alibaba Cloud CloudMonitor (CMS) alert HTTP callback.
+#
+# CloudMonitor POSTs a flat JSON document to the configured callback URL when
+# a metric alert rule changes state.
+#
+# Matches payloads shaped like:
+#   {
+#     "alertName": "cpu_total on prod-web-01",
+#     "alertState": "ALERT",               # OK | ALERT | INSUFFICIENT_DATA
+#     "curValue": "95.2",
+#     "dimensions": "{userId=12345, instanceId=i-abc123}",
+#     "expression": "$Average>90",
+#     "instanceName": "prod-web-01",
+#     "metricName": "cpu_total",
+#     "namespace": "acs_ecs_dashboard",
+#     "triggerLevel": "CRITICAL",          # CRITICAL | WARN | INFO
+#     "lastTime": "300000",
+#     "ruleId": "putNewAlarm_ab12cd34",
+#     "timestamp": "1752650000000",
+#     "userId": "12345"
+#   }
+#
+# On recovery callbacks alertState flips to OK while triggerLevel keeps the
+# level that recovered, so Level maps triggerLevel (the rule severity) and
+# alertState stays in the preserved payload.
+
+name: aliyun_cms
+priority: 0
+aliases:
+  - aliyun
+  - aliyun_cloudmonitor
+
+# Aliyun-specific camelCase trio. Distinct from the volcengine built-in
+# (capital-N "Namespace" starting with VCM_ plus "Resources") and from every
+# sibling spec.
+detect:
+  all:
+    - key_exists: alertName
+    - key_exists: alertState
+    - key_exists: metricName
+
+identity:
+  name: alertName
+  resource:
+    - instanceName
+    - dimensions # raw "{userId=..., instanceId=...}" string as last resort
+  service: namespace
+  fingerprint: ruleId
+  severity: triggerLevel
+
+output:
+  Type: AliyunCMSAlert
+  RuleName: alertName
+  Level: triggerLevel
+  summary: expression

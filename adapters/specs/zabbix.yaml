@@ -1,0 +1,48 @@
+# Zabbix webhook media type.
+#
+# Zabbix webhook payloads are OPERATOR-CONFIGURABLE macro maps: the media
+# type's parameters decide which {MACRO}s are sent under which field names,
+# so there is no single wire format. This spec matches the snake_case field
+# names used by Zabbix's official sample webhook integrations; an operator
+# who renames those fields must adjust their media type (or this spec).
+#
+# Matches payloads shaped like:
+#   {
+#     "event_name": "High CPU utilization on web-01",   # {EVENT.NAME} / trigger name
+#     "event_id": "4721",                               # {EVENT.ID}
+#     "event_status": "PROBLEM",                        # {EVENT.STATUS}: PROBLEM | RESOLVED
+#     "event_severity": "High",                         # {EVENT.SEVERITY}: Not classified .. Disaster
+#     "host_name": "web-01",                            # {HOST.NAME}
+#     "host_ip": "10.0.0.5",                            # {HOST.IP}
+#     "trigger_description": "CPU utilization above 90% for 5m"
+#   }
+
+name: zabbix
+priority: 0
+aliases:
+  - zabbix_webhook
+
+# event_name + event_id + host_name together are specific to the Zabbix sample
+# shape; no built-in adapter or sibling spec detects on these keys. Severity is
+# left out of detection because recovery operations may omit it.
+detect:
+  all:
+    - key_exists: event_name
+    - key_exists: event_id
+    - key_exists: host_name
+
+identity:
+  name: event_name # trigger name: the stable per-rule alert identity
+  resource:
+    - host_name
+    - host_ip
+  fingerprint: event_id
+  severity: event_severity # High/Warning/Information/... via the shared normalizer
+
+output:
+  Type: ZabbixAlert
+  RuleName: event_name
+  Level: event_severity
+  summary:
+    - trigger_description
+    - event_name
