@@ -107,6 +107,7 @@ def build_feishu_card(
     analysis_result: AnalysisResult,
     *,
     is_periodic_reminder: bool = False,
+    kb_links: list[dict[str, str]] | None = None,
 ) -> JsonObject:
     importance = str(analysis_result.get("importance", "medium")).strip().lower()
     if "." in importance:
@@ -147,7 +148,14 @@ def build_feishu_card(
         elements.append({"tag": "hr"})
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🎯 影响范围**\n{impact[:600]}"}})
 
-    # 4) Metadata footer (source · type · time) — de-emphasized in a note so it
+    # 4) Matching knowledge-base entries (documented resolutions) so the reader
+    #    gets the runbook at notification time, not after a dashboard visit.
+    if kb_links:
+        kb_lines = "\n".join(f"- **{item.get('title', '')}**：{item.get('snippet', '')}" for item in kb_links[:3])
+        elements.append({"tag": "hr"})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📖 相关知识库**\n{kb_lines}"}})
+
+    # 5) Metadata footer (source · type · time) — de-emphasized in a note so it
     #    doesn't compete with the alert content above.
     elements.append({"tag": "hr"})
     elements.append(
