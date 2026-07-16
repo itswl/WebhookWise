@@ -1,0 +1,57 @@
+# Sentry legacy webhook integration (Settings -> Integrations -> WebHooks).
+#
+# Sentry POSTs one JSON document per triggered issue alert.
+#
+# Matches payloads shaped like:
+#   {
+#     "id": "42",                          # issue id: stable across events of one issue
+#     "project": "backend",
+#     "project_name": "Backend",
+#     "project_slug": "backend",
+#     "level": "error",                    # fatal | error | warning | info | debug
+#     "culprit": "app.api.handlers in create_order",
+#     "message": "IntegrityError: duplicate key value violates unique constraint",
+#     "url": "https://sentry.example.com/organizations/acme/issues/42/",
+#     "event": {
+#       "event_id": "d34db33f2ab84a21a4a1cd6d72cdd5b7",
+#       "title": "IntegrityError: duplicate key value violates unique constraint"
+#     }
+#   }
+#
+# The "event" value is a dict WITHOUT an "event_type" key, so the PagerDuty
+# built-in detector (which requires incident or event.event_type) does not
+# steal these payloads even though it runs first.
+
+name: sentry
+priority: 0
+aliases:
+  - sentry_legacy
+
+detect:
+  all:
+    - key_exists: project_name
+    - key_exists: culprit
+    - key_exists: event.event_id
+
+identity:
+  name:
+    - event.title
+    - message
+  resource: culprit # offending code location
+  service:
+    - project_slug
+    - project_name
+  fingerprint:
+    - id # issue id groups repeated events of the same issue
+    - event.event_id
+  severity: level
+
+output:
+  Type: SentryEvent
+  RuleName:
+    - event.title
+    - message
+  Level: level
+  summary:
+    - message
+    - event.title
