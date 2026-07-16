@@ -695,3 +695,36 @@ async def test_ai_cost_budget_warning_then_critical_are_separate_alerts(temp_con
     assert again["tier"] == "critical"
 
     assert tiers_sent == ["warning", "critical"]
+
+
+@pytest.mark.asyncio
+async def test_value_stats_new_alert_types_and_interruptions(session: AsyncSession) -> None:
+    from datetime import timedelta
+
+    from models import DecisionTrace
+    from services.operations.periodic_report import collect_report_stats
+
+    now = utcnow()
+    # dedup key A existed in the previous window too → not new.
+    session.add(WebhookEvent(source="s", timestamp=now - timedelta(days=10), dedup_key="A", duplicate_count=1))
+    session.add(WebhookEvent(source="s", timestamp=now, dedup_key="A", duplicate_count=1))
+    # dedup key B first seen in this window → new alert type.
+    session.add(WebhookEvent(source="s", timestamp=now, dedup_key="B", is_duplicate=True, duplicate_count=1))
+    # Deliberate suppressions counted; plain no_match skips are not.
+    session.add(DecisionTrace(webhook_event_id=1, created_at=now, outcome="skipped", skip_code="silenced"))
+    session.add(DecisionTrace(webhook_event_id=2, created_at=now, outcome="skipped", skip_code="flapping"))
+    session.add(DecisionTrace(webhook_event_id=3, created_at=now, outcome="skipped", skip_code="no_match"))
+    await session.commit()
+
+    stats = await collect_report_stats(session, window_days=7)
+
+    assert stats["new_alert_types"] == 1
+    assert stats["suppressed_notifications"] == 2
+    # 1 duplicate in window + 2 withheld notifications.
+    assert stats["interruptions_avoided"] == 3
+
+    from services.operations.periodic_report import _build_summary
+
+    summary = _build_summary(stats)
+    assert "Interruptions avoided (estimate): 3" in summary
+    assert "New alert types this window: 1" in summary

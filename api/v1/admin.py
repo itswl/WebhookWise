@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +27,7 @@ from db.engine import test_db_connection
 from db.session import get_db_session
 from models import WebhookEvent
 from schemas.admin import (
+    ConfigImportRequest,
     DeadLetterListResponse,
     KBDocumentRequest,
     PromptGetResponse,
@@ -47,6 +48,7 @@ from services.analysis.ai_prompt import (
     reload_incident_summary_prompt_template,
 )
 from services.forwarding.outbox import requeue_forward_outbox
+from services.operations.audit_logger import add_audit
 from services.operations.tasks import process_webhook_task
 from services.webhooks.query_service import count_dead_letters, get_dead_letter_detail, list_dead_letters
 from services.webhooks.repository import count_suppressed_records, list_suppressed_records, load_event_payload
@@ -326,7 +328,9 @@ async def list_kb_drafts_endpoint(
 ) -> JSONResponse:
     """List KB drafts awaiting review (one row per sedimented document)."""
     from services.kb.incident_sediment import list_kb_drafts
+    from services.operations.feature_adoption import record_feature_use
 
+    await record_feature_use("view:kb_drafts")
     return ok_response(http_status=200, data=await list_kb_drafts(session))
 
 
@@ -342,6 +346,9 @@ async def publish_kb_draft_endpoint(
     if not published:
         return fail_response("KB draft not found", 404)
     await session.commit()
+    from services.operations.feature_adoption import record_feature_use
+
+    await record_feature_use("action:kb_draft_published")
     logger.info("[Admin] KB draft published source_ref=%s chunks=%d", source_ref, published)
     return ok_response(http_status=200, message="draft published", data={"published_chunks": published})
 
@@ -358,8 +365,101 @@ async def discard_kb_draft_endpoint(
     if not discarded:
         return fail_response("KB draft not found", 404)
     await session.commit()
+    from services.operations.feature_adoption import record_feature_use
+
+    await record_feature_use("action:kb_draft_discarded")
     logger.info("[Admin] KB draft discarded source_ref=%s chunks=%d", source_ref, discarded)
     return ok_response(http_status=200, message="draft discarded", data={"discarded_chunks": discarded})
+
+
+@admin_router.get("/admin/config/export", dependencies=[Depends(verify_admin_write)])
+async def export_config_endpoint(session: AsyncSession = Depends(get_db_session)) -> Response:
+    """Export forward rules + active silences + maintenance windows as YAML.
+
+    Write-key-gated although it is a read: the bundle contains forwarding
+    target URLs (bot tokens).
+    """
+    import yaml
+
+    from services.operations.config_transfer import export_config
+    from services.operations.feature_adoption import record_feature_use
+
+    bundle = await export_config(session)
+    await record_feature_use("action:config_exported")
+    content = yaml.safe_dump(bundle, allow_unicode=True, sort_keys=False)
+    return Response(
+        content=content,
+        media_type="application/x-yaml; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="webhookwise-config.yaml"'},
+    )
+
+
+@admin_router.post("/admin/config/import", dependencies=[Depends(verify_admin_write)])
+async def import_config_endpoint(
+    request: ConfigImportRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Upsert a previously exported YAML bundle (dry_run to preview).
+
+    Additive only: creates or updates by natural key, never deletes. After a
+    real import, the forward-rule and silence caches are invalidated and the
+    maintenance-window sweep runs so an active window takes effect immediately.
+    """
+    import yaml
+
+    from services.forwarding.rules import invalidate_forward_rules_cache, publish_rules_invalidation
+    from services.operations.config_transfer import import_config
+    from services.operations.feature_adoption import record_feature_use
+    from services.silences.maintenance_windows import sweep_maintenance_windows
+    from services.silences.store import invalidate_silences_cache, publish_silences_invalidation
+
+    try:
+        bundle = yaml.safe_load(request.content)
+    except yaml.YAMLError as e:
+        return fail_response(f"Invalid YAML: {e}", 400)
+    try:
+        report = await import_config(session, bundle, dry_run=request.dry_run)
+    except ValueError as e:
+        return fail_response(str(e), 400)
+
+    if request.dry_run:
+        await session.rollback()
+        return ok_response(http_status=200, message="dry run — nothing applied", data=report)
+
+    await sweep_maintenance_windows(session)
+    add_audit(
+        session,
+        "config_bundle",
+        0,
+        "import",
+        "imported",
+        (
+            f"Config import: rules +{report['forward_rules']['created']}/~{report['forward_rules']['updated']}, "
+            f"windows +{report['maintenance_windows']['created']}/~{report['maintenance_windows']['updated']}, "
+            f"silences +{report['silences']['created']}/~{report['silences']['updated']}"
+        ),
+    )
+    await session.commit()
+    invalidate_forward_rules_cache()
+    await publish_rules_invalidation()
+    invalidate_silences_cache()
+    await publish_silences_invalidation()
+    await record_feature_use("action:config_imported")
+    logger.info("[Admin] Config bundle imported report=%s", report)
+    return ok_response(http_status=200, message="config imported", data=report)
+
+
+@admin_router.get("/admin/feature-adoption", dependencies=[Depends(verify_api_key)])
+async def feature_adoption_endpoint() -> JSONResponse:
+    """Monthly usage counters for recently shipped operator features.
+
+    The observation-period instrument: after a release, this answers "which of
+    the new features actually get used", so the next iteration can double down
+    or delete. See services/operations/feature_adoption.py for semantics.
+    """
+    from services.operations.feature_adoption import get_feature_adoption
+
+    return ok_response(http_status=200, data=await get_feature_adoption())
 
 
 @admin_router.get("/admin/suppressed", dependencies=[Depends(verify_api_key)])

@@ -15,8 +15,9 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pycron
-from sqlalchemy import case, func, select
+from sqlalchemy import case, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
@@ -242,6 +243,39 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         or 0
     )
 
+    # Value framing: notifications the suppressors actively withheld this
+    # window (deliberate skips only — not "no matching rule").
+    suppressed_notifications = int(
+        await session.scalar(
+            select(func.count(DecisionTrace.id)).where(
+                DecisionTrace.created_at >= start,
+                DecisionTrace.skip_code.in_(["silenced", "noise_suppressed", "flapping", "cooldown"]),
+            )
+        )
+        or 0
+    )
+
+    # Novelty: alert identities (dedup keys) first seen in this window, judged
+    # against the preceding window of the same length. Bounded by the indexed
+    # dedup_key lookup, and runs once per report.
+    prior = aliased(WebhookEvent)
+    new_alert_types = int(
+        await session.scalar(
+            select(func.count(func.distinct(WebhookEvent.dedup_key))).where(
+                WebhookEvent.timestamp >= start,
+                WebhookEvent.dedup_key.isnot(None),
+                ~exists(
+                    select(prior.id).where(
+                        prior.dedup_key == WebhookEvent.dedup_key,
+                        prior.timestamp < start,
+                        prior.timestamp >= previous_start,
+                    )
+                ),
+            )
+        )
+        or 0
+    )
+
     feedback_rows = (
         await session.execute(
             select(AnalysisFeedback.verdict, func.count(AnalysisFeedback.id))
@@ -294,6 +328,9 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         "previous_total_events": previous_total,
         "previous_noise_pct": previous_noise_pct,
         "volume_change_pct": volume_change_pct,
+        "suppressed_notifications": suppressed_notifications,
+        "interruptions_avoided": duplicate_events + suppressed_notifications,
+        "new_alert_types": new_alert_types,
         "noise_change_pp": round(noise_pct - previous_noise_pct, 1),
         "delivery_success_rate": delivery_success_rate,
         "delivery_breakdown": delivery_breakdown,
@@ -322,6 +359,19 @@ def _build_summary(stats: dict[str, Any]) -> str:
         f"Importance breakdown: {imp_txt}.",
         f"Noisiest source: {top_txt}.",
     ]
+    # Value framing: what the shielding actually saved people from.
+    if stats.get("interruptions_avoided"):
+        lines.append(
+            f"Interruptions avoided (estimate): {stats['interruptions_avoided']} — "
+            f"{stats['duplicate_events']} duplicates absorbed + "
+            f"{stats.get('suppressed_notifications', 0)} notifications withheld "
+            "(silences / noise reduction / flapping / cooldown)."
+        )
+    if stats.get("new_alert_types"):
+        lines.append(
+            f"New alert types this window: {stats['new_alert_types']} "
+            "(identities not seen in the previous window — worth a triage pass)."
+        )
     # Break the noisiest source down by rule so the report says WHAT is noisy.
     rules = stats.get("top_rules") or []
     if rules:
