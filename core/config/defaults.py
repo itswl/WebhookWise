@@ -188,6 +188,16 @@ class NoiseConfig(StaticSettings):
     NOISE_SEVERITY_DOWNGRADE_SCORE: float = Field(default=0.03, ge=0.0, le=1.0)
     SUPPRESS_DERIVED_ALERT_FORWARD: bool = Field(default=True)
 
+    # Status flapping (Nagios sense): one alert identity oscillating
+    # firing↔recovered. Detection is always on and cheap (a Redis flip window
+    # per identity); it feeds the Action Center "currently flapping" item and
+    # the decision trace. Suppressing notifications while an identity flaps is
+    # OPT-IN — enabling it withholds both the firing and the recovery cards
+    # until the identity stays quiet for a full window.
+    FLAPPING_WINDOW_MINUTES: int = Field(default=10, gt=0)
+    FLAPPING_MIN_TRANSITIONS: int = Field(default=6, gt=0)
+    FLAPPING_SUPPRESS_ENABLED: bool = Field(default=False)
+
     @model_validator(mode="after")
     def validate_confidence_order(self) -> NoiseConfig:
         if self.ROOT_CAUSE_MIN_CONFIDENCE < self.NOISE_RELATED_MIN_CONFIDENCE:
@@ -277,6 +287,13 @@ class KBConfig(StaticSettings):
     KB_MAX_CONTEXT_CHARS: int = Field(default=2000, gt=0)
     KB_EMBEDDING_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0)
 
+    # Attach matching published KB entries to outgoing Feishu alert cards (a
+    # small "runbook" block, cheap token matching, no LLM call). Independent of
+    # KB_ENABLED, which gates RAG context in the AI prompt; with no published
+    # documents the block simply never appears.
+    KB_CARD_LINKS_ENABLED: bool = Field(default=True)
+    KB_CARD_LINKS_MAX: int = Field(default=2, gt=0, le=5)
+
 
 class NotificationConfig(StaticSettings):
     """Feishu and operational notification settings."""
@@ -319,6 +336,17 @@ class NotificationConfig(StaticSettings):
     AI_COST_MONTHLY_BUDGET_USD: float = Field(default=0.0, ge=0.0)
     AI_COST_BUDGET_ALERT_THRESHOLD: float = Field(default=0.8, gt=0.0, le=1.0)  # warn at 80% of budget
     AI_COST_BUDGET_FEISHU_WEBHOOK: str = Field(default="")
+
+    # Escalation-lite: arm each new incident's SLA from its importance
+    # ("high=30,medium=240" → a high incident unacknowledged for 30 minutes
+    # triggers the SLA-breach escalation card). Empty = off (default): SLAs
+    # stay operator-set only. Clearing an armed SLA on a still-firing incident
+    # re-arms it when the next member alert lands.
+    INCIDENT_AUTO_SLA_MINUTES: str = Field(default="")
+    # Make the breach card louder: @all mention, and/or a dedicated escalation
+    # webhook (falls back to the deep-analysis, then weekly-report webhook).
+    SLA_BREACH_MENTION_ALL: bool = Field(default=False)
+    SLA_BREACH_FEISHU_WEBHOOK: str = Field(default="")
 
 
 class OpenClawConfig(StaticSettings):
