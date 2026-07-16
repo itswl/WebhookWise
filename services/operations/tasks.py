@@ -541,6 +541,18 @@ async def scheduled_kb_sediment() -> None:
     await _run_scheduled("kb_sediment", _background_scan_interval_seconds(), run_pending_kb_drafts())
 
 
+@broker.task(
+    task_name="scheduled_maintenance_windows",
+    schedule=[{"interval": _background_scan_interval_seconds(), "schedule_id": "maintenance_windows_interval"}],
+)
+async def scheduled_maintenance_windows() -> None:
+    from services.silences.maintenance_windows import run_maintenance_window_sweep
+
+    # Materialize recurring maintenance windows into expiring silences and lift
+    # silences whose window was disabled or deleted mid-occurrence.
+    await _run_scheduled("maintenance_windows", _background_scan_interval_seconds(), run_maintenance_window_sweep())
+
+
 def _daily_report_cron() -> str:
     from core.app_context import get_config_manager
 
