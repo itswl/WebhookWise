@@ -1,0 +1,59 @@
+# Tencent Cloud Monitor alarm callback.
+#
+# Cloud Monitor POSTs a nested JSON document to the configured alarm callback
+# URL when a policy fires or resolves.
+#
+# Matches payloads shaped like:
+#   {
+#     "sessionId": "6b52d17a-4d78-4bc7-9f8e-2a2c61e6b0f1",
+#     "alarmStatus": "1",                  # "1" = firing, "0" = resolved
+#     "alarmType": "metric",
+#     "alarmObjInfo": {
+#       "region": "gz",
+#       "namespace": "qce/cvm",
+#       "dimensions": {"unInstanceId": "ins-o9p3rg3m"}
+#     },
+#     "alarmPolicyInfo": {
+#       "policyId": "policy-n4exeh88",
+#       "policyName": "cpu-usage-high",
+#       "conditions": {
+#         "metricName": "cpu_usage",
+#         "metricShowName": "CPU utilization",
+#         "calcType": ">", "calcValue": "90", "currentValue": "97"
+#       }
+#     },
+#     "firstOccurTime": "2026-07-16 10:00:00",
+#     "durationTime": 500,
+#     "recoverTime": "0"
+#   }
+#
+# alarmStatus is a numeric-string flag ("0"/"1"), not a severity: the shared
+# normalizer cannot map it meaningfully, so this spec maps no severity/Level;
+# alarmStatus stays in the preserved payload for downstream logic.
+
+name: tencent_cloud_monitor
+priority: 0
+aliases:
+  - tencent_cm
+  - qcloud_monitor
+
+detect:
+  all:
+    - key_exists: sessionId
+    - key_exists: alarmStatus
+    - key_exists: alarmPolicyInfo.policyName
+
+identity:
+  name: alarmPolicyInfo.policyName # policy name: the stable per-rule identity
+  resource:
+    - alarmObjInfo.dimensions.unInstanceId
+    - alarmObjInfo.dimensions.objId # dimension key varies by product namespace
+  service: alarmObjInfo.namespace
+  fingerprint: alarmPolicyInfo.policyId
+
+output:
+  Type: TencentCloudMonitorAlarm
+  RuleName: alarmPolicyInfo.policyName
+  summary:
+    - alarmPolicyInfo.conditions.metricShowName
+    - alarmPolicyInfo.conditions.metricName

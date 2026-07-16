@@ -1,0 +1,46 @@
+# Jenkins Notification plugin webhook.
+#
+# The Notification plugin POSTs job/build state at the STARTED / COMPLETED /
+# FINALIZED phases of every build.
+#
+# Matches payloads shaped like:
+#   {
+#     "name": "deploy-api",
+#     "url": "job/deploy-api/",
+#     "build": {
+#       "full_url": "https://ci.example.com/job/deploy-api/118/",
+#       "number": 118,
+#       "phase": "COMPLETED",              # STARTED | COMPLETED | FINALIZED
+#       "status": "FAILURE",               # SUCCESS | FAILURE | UNSTABLE | ABORTED
+#       "url": "job/deploy-api/118/"
+#     }
+#   }
+#
+# build.status is NOT mapped to severity/Level: SUCCESS, FAILURE and UNSTABLE
+# all fall through the shared severity normalizer to "warning", which would
+# tag successful builds as warning-level alerts. The raw build.status stays in
+# the preserved payload for downstream logic.
+
+name: jenkins
+priority: 0
+aliases:
+  - jenkins_notification
+
+# Top-level "name"/"url" alone are far too generic; the nested build.phase +
+# build.full_url pair is what makes this shape unambiguously the Jenkins
+# Notification plugin.
+detect:
+  all:
+    - key_exists: name
+    - key_exists: build.phase
+    - key_exists: build.full_url
+
+identity:
+  name: name # job name: the stable per-job alert identity
+  resource: url # job URL path, not the per-build URL, so one job groups together
+  fingerprint: build.full_url # per-build instance id
+
+output:
+  Type: JenkinsBuild
+  RuleName: name
+  summary: build.full_url

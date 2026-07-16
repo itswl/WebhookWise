@@ -1,0 +1,47 @@
+# Uptime Kuma webhook notification.
+#
+# Uptime Kuma POSTs one JSON document per heartbeat state change (monitor
+# down / back up).
+#
+# Matches payloads shaped like:
+#   {
+#     "heartbeat": {
+#       "status": 0,                       # 0 = down, 1 = up (numeric!)
+#       "time": "2026-07-16 10:32:01",
+#       "msg": "Request failed with status code 500"
+#     },
+#     "monitor": {
+#       "name": "api-prod",
+#       "url": "https://api.example.com/health"
+#     },
+#     "msg": "[api-prod] [Down] Request failed with status code 500"
+#   }
+#
+# heartbeat.status is NUMERIC, which the shared severity normalizer cannot
+# interpret (0 and 1 would both collapse to "warning"), so this spec
+# deliberately maps no severity/Level; the raw status stays in the preserved
+# payload for downstream logic.
+
+name: uptime_kuma
+priority: 0
+aliases:
+  - uptimekuma
+  - uptime-kuma
+
+# The nested heartbeat.status + monitor.name pair is unique to Uptime Kuma;
+# no built-in adapter or sibling spec keys on these paths.
+detect:
+  all:
+    - key_exists: heartbeat.status
+    - key_exists: monitor.name
+
+identity:
+  name: monitor.name # monitor name: the stable per-check alert identity
+  resource: monitor.url
+
+output:
+  Type: UptimeKumaAlert
+  RuleName: monitor.name
+  summary:
+    - msg # pre-rendered "[monitor] [status] message" line
+    - heartbeat.msg
