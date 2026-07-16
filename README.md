@@ -32,7 +32,10 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 | AI + rule dual analysis | Structured LLM analysis is preferred; it automatically falls back to rule-based analysis when the external service has problems. |
 | OpenClaw deep analysis | Optionally integrate OpenClaw and poll for analysis results via TaskIQ delayed tasks. |
 | Deduplication and noise reduction | Identifies duplicate and derived alerts based on alert hash, time window, similarity, and optional semantic signals. |
-| Rule-based forwarding | Supports generic Webhook, Feishu card, and OpenClaw targets. |
+| Rule-based forwarding | Supports generic Webhook, Feishu card, DingTalk/WeCom bot (URL auto-detected), and OpenClaw targets. |
+| Silencing and maintenance windows | One-off silences (with backtest + suppression debt report) plus recurring maintenance windows materialized into expiring silences by the scheduler. |
+| Escalation-lite | Optional auto-SLA per importance arms the SLA-breach escalation card (@all / dedicated webhook) for unacknowledged incidents; status-flapping identities are detected and can be muted while they oscillate. |
+| Learn loop | Resolved incidents sediment into KB drafts; published KB entries are attached to outgoing Feishu alert cards and one-click incident postmortem drafts (Markdown) close the review loop. |
 | Transactional Outbox | Processing results and forwarding intent are written to the database in the same transaction, then delivered and retried asynchronously by the Worker. |
 | OTel-first observability | The application emits telemetry over OTLP; the local stack integrates Alloy, Prometheus, Tempo, Loki, and Pyroscope. |
 
@@ -48,7 +51,7 @@ flowchart LR
     normalize --> dedup["Dedup / noise"]
     dedup --> analyze["AI / rule / OpenClaw"]
     analyze --> outbox["Forward Outbox"]
-    outbox --> targets["Webhook / Feishu / OpenClaw"]
+    outbox --> targets["Webhook / Feishu / DingTalk / WeCom / OpenClaw"]
     worker --> db["PostgreSQL"]
     worker --> redis["Redis"]
     api --> otel["OpenTelemetry"]
@@ -96,7 +99,16 @@ curl -X POST http://localhost:8000/v1/webhook \
   -d '{"alertname":"TestAlert","severity":"critical","host":"prod-01"}'
 ```
 
+Or seed a realistic five-minute demo (dedup storm, recoveries, a flapping
+identity, multi-vendor payloads) through the real ingest path:
+
+```bash
+python scripts/seed_demo_data.py --base-url http://localhost:8000
+```
+
 The business API is only exposed under `/v1`; if Webhook authentication is enabled, you need to add a signature or Token according to the current configuration.
+
+Out-of-the-box source formats: volcengine, Grafana, Prometheus Alertmanager, Datadog, PagerDuty, Feishu cards (code adapters), plus declarative YAML specs for Zabbix, Uptime-Kuma, Alibaba CloudMonitor, Tencent Cloud Monitor, Jenkins, and Sentry under `adapters/specs/` — add your own simple source with one YAML file (see `adapters/specs/README.md`).
 
 ### 4. Open the entry points
 

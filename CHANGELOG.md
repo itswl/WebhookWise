@@ -5,6 +5,21 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+## [3.4.0] - 2026-07-16
+
+### Added
+- Maintenance windows (recurring silences): `maintenance_windows` table + CRUD API (`/v1/maintenance-windows`) + dashboard section. A scheduler sweep materializes each active occurrence into a normal expiring silence (tagged `created_by=maintenance-window`, comment marker `[mw:{id}:{date}]`), so suppression accounting/debt keep working; disabling or deleting a window lifts its live silence. Cross-midnight windows and per-window IANA timezones supported (migration 0017).
+- Escalation-lite via auto-SLA: `WEBHOOK_INCIDENT_AUTO_SLA_MINUTES` ("high=30,medium=240", default off) arms each incident's SLA from its importance, so the existing breach sweep escalates unacknowledged incidents. Breach cards can @all (`SLA_BREACH_MENTION_ALL`) and route to a dedicated webhook (`SLA_BREACH_FEISHU_WEBHOOK`); the breach is stamped on `incidents.escalated_at` and shown in incident payloads.
+- Status-flapping detection: an alert identity (source + rule) oscillating firing↔recovered ≥ `FLAPPING_MIN_TRANSITIONS` flips within `FLAPPING_WINDOW_MINUTES` is flagged (Action Center `flapping_identity` item; always on, fail-open, Redis flip window). Withholding its notifications while it flaps is opt-in (`FLAPPING_SUPPRESS_ENABLED`, decision-trace skip code `flapping`).
+- KB → alert cards: outgoing Feishu alert cards attach the best-matching published KB entries as a "相关知识库" runbook block (cheap token matching at delivery time, no LLM call; `KB_CARD_LINKS_ENABLED`, default on).
+- Postmortem export: `GET /v1/incidents/{id}/postmortem` renders the incident as a Markdown draft — header facts, member-alert timeline with decision-trace outcomes, ack/escalation/resolution milestones, AI summary sections, recommendations as action items, linked KB entry.
+- DingTalk and WeCom bot channels: forward-rule target URLs on `oapi.dingtalk.com/robot/send` / `qyapi.weixin.qq.com/cgi-bin/webhook/send` are auto-detected and delivered as native markdown messages (zero config, same circuit-breaker/idempotency path as other channels).
+- Declarative adapter spec library: zabbix, uptime_kuma, aliyun_cms, tencent_cloud_monitor, jenkins, sentry YAML specs ship under `adapters/specs/` with fixture tests.
+- Config export/import: `GET /v1/admin/config/export` (YAML bundle of forward rules + active silences + maintenance windows; write-key-gated since it contains bot tokens) and `POST /v1/admin/config/import` (additive upsert by natural key, `dry_run` preview, audit-logged, cache-invalidating).
+- Feature-adoption ledger: `GET /v1/admin/feature-adoption` returns monthly action/view counters for recently shipped operator features (Redis hash; the post-release "does anyone use this" instrument).
+- Periodic report value lines: interruptions avoided (duplicates absorbed + deliberate suppressions), and new-alert-type count vs the previous window.
+- Demo seeding: `python scripts/seed_demo_data.py` posts a realistic mixed batch (dup storm, recoveries, a flapping identity, multi-vendor payloads) through the real ingest path for a 5-minute evaluation.
+
 ## [3.3.0] - 2026-07-15
 
 ### Added
