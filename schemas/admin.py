@@ -65,6 +65,14 @@ class KBDocumentRequest(BaseModel):
     tags: dict[str, str] | None = None
 
 
+class ConfigImportRequest(BaseModel):
+    """Request to import a previously exported YAML config bundle."""
+
+    # 2 MB YAML ceiling — a real bundle is a few KB; this bounds parse work.
+    content: str = Field(min_length=1, max_length=2_000_000)
+    dry_run: bool = False
+
+
 class KBDocumentResponse(BaseModel):
     """Knowledge-base ingest response."""
 

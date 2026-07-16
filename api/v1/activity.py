@@ -31,9 +31,11 @@ async def queue_health_endpoint() -> JSONResponse:
     Backs the dashboard queue tile. Fails soft — an unreadable metric comes back
     as null rather than erroring the panel.
     """
+    from services.operations.feature_adoption import record_feature_use
     from services.operations.queue_health import get_queue_health
 
     try:
+        await record_feature_use("view:queue_health")
         return ok_response(http_status=200, data=await get_queue_health())
     except _ACTIVITY_ERRORS as e:
         logger.error("Failed to read queue health: %s", e, exc_info=True)
