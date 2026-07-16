@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: webhookwise
 data:
   APP_ENV: production
-  APP_VERSION: "3.3.0"
+  APP_VERSION: "3.4.0"
   HOST: 0.0.0.0
   PORT: "8000"
   LOG_LEVEL: INFO
@@ -20,7 +20,7 @@ data:
   OTEL_EXPORTER_OTLP_ENDPOINT: ""
   OTEL_EXPORTER_OTLP_PROTOCOL: grpc
   OTEL_SERVICE_NAMESPACE: webhookwise
-  OTEL_SERVICE_VERSION: "3.3.0"
+  OTEL_SERVICE_VERSION: "3.4.0"
   OTEL_SCHEMA_URL: https://opentelemetry.io/schemas/1.41.0
   OTEL_SEMCONV_VERSION: "1.41.0"
   OTEL_SEMCONV_STABILITY_OPT_IN: http
