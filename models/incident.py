@@ -46,6 +46,10 @@ class Incident(Base):
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
     sla_due_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    # Set when the SLA-breach escalation notification is queued, so the breach
+    # is visible on the incident (dashboard badge / postmortem timeline) and
+    # queryable without joining the outbox.
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     correlation_dimensions: Mapped[dict[str, object]] = mapped_column(
         JSONB,
