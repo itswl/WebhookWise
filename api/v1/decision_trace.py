@@ -125,6 +125,9 @@ async def list_ai_rule_disagreements_endpoint(
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict:
     """Review queue: recent alerts where a rule overrode the AI's importance."""
+    from services.operations.feature_adoption import record_feature_use
+
+    await record_feature_use("view:ai_disagreements")
     data = await list_ai_rule_disagreements(session, period=period, limit=limit)
     return {"success": True, "data": data}
 
