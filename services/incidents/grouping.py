@@ -13,6 +13,7 @@ from core.datetime_utils import utcnow
 from core.logger import get_logger
 from db.session import acquire_advisory_xact_lock, session_scope
 from models import Incident, IncidentMember, WebhookEvent
+from services.incidents.auto_sla import AutoSlaPolicy, apply_auto_sla
 from services.incidents.summary import queue_summary_if_needed
 
 logger = get_logger("incidents.grouping")
@@ -398,6 +399,9 @@ def _add_event_to_incident(
     incident.correlation_dimensions = dimensions
     if incident.source and incident.source != event.source:
         incident.source = "multiple"
+    # Arm the auto-SLA escalation timer (no-op when the policy is off, the SLA
+    # is already set, or the importance is not covered by the mapping).
+    apply_auto_sla(incident, AutoSlaPolicy.from_config())
     return True
 
 
