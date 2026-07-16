@@ -353,6 +353,24 @@
                             <p data-i18n="common.loading">Loading...</p>
                         </div>
                     </div>
+                    <!-- Maintenance windows: recurring weekly mute windows. Live
+                         occurrences are materialized as silences whose comment
+                         starts with "[mw:". Filled by silences.js. -->
+                    <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin: 32px 0 16px;">
+                        <div>
+                            <div class="section-title" data-i18n="silences.mw.title">Maintenance windows</div>
+                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="silences.mw.subtitle">Weekly recurring mute windows (e.g. weekend maintenance). Matching alerts are silenced automatically while a window is active.</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="showMaintenanceWindowForm()">
+                            <span>➕</span> <span data-i18n="silences.mw.add">Add Window</span>
+                        </button>
+                    </div>
+                    <div id="maintenanceWindowsList">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p data-i18n="common.loading">Loading...</p>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- View: Integration catalog and guided setup -->
@@ -778,6 +796,117 @@
                 <button class="btn" id="silenceBacktestBtn" onclick="backtestSilenceRule()" data-i18n="silence.action.backtest" style="margin-right: auto; color: var(--primary); border-color: var(--primary);">🧪 Test Rule</button>
                 <button class="btn" onclick="closeSilenceForm()" data-i18n="common.cancel">Cancel</button>
                 <button class="btn btn-primary" onclick="saveSilence()" data-i18n="common.save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Maintenance window form modal -->
+    <div class="modal" id="maintenanceWindowFormModal" role="dialog" aria-modal="true" aria-labelledby="mwFormTitle">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2 class="modal-title" id="mwFormTitle" data-i18n="mw.addTitle">Add Maintenance Window</h2>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="mwFormId">
+
+                <div style="display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: end;">
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="mw.nameLabel">Name *</label>
+                        <input type="text" class="form-input" id="mwFormName" data-i18n-placeholder="mw.namePlaceholder" placeholder="e.g. weekend-db-maintenance" autocomplete="off">
+                    </div>
+                    <div class="form-checkbox" style="padding-bottom: 0.35rem;">
+                        <input type="checkbox" id="mwFormEnabled" checked>
+                        <label for="mwFormEnabled" data-i18n="mw.enable">Enabled</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="mw.commentLabel">Note</label>
+                    <input type="text" class="form-input" id="mwFormComment" data-i18n-placeholder="mw.commentPlaceholder" placeholder="e.g. Weekly DB maintenance, DBA team" autocomplete="off">
+                </div>
+
+                <!-- Schedule -->
+                <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="mw.scheduleSection">Schedule</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;" data-i18n="mw.scheduleHint">Repeats weekly on the checked days, in the window's timezone.</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="mw.daysLabel">Days of week *</label>
+                    <div style="display: flex; gap: 12px; padding-top: 2px; flex-wrap: wrap;">
+                        <label class="importance-check"><input type="checkbox" class="mw-day-checkbox" id="mwFormDay1" value="1"> <span data-i18n="mw.day.1">Mon</span></label>
+                        <label class="importance-check"><input type="checkbox" class="mw-day-checkbox" id="mwFormDay2" value="2"> <span data-i18n="mw.day.2">Tue</span></label>
+                        <label class="importance-check"><input type="checkbox" class="mw-day-checkbox" id="mwFormDay3" value="3"> <span data-i18n="mw.day.3">Wed</span></label>
+                        <label class="importance-check"><input type="checkbox" class="mw-day-checkbox" id="mwFormDay4" value="4"> <span data-i18n="mw.day.4">Thu</span></label>
+                        <label class="importance-check"><input type="checkbox" class="mw-day-checkbox" id="mwFormDay5" value="5"> <span data-i18n="mw.day.5">Fri</span></label>
+                        <label class="importance-check"><input type="checkbox" class="mw-day-checkbox" id="mwFormDay6" value="6"> <span data-i18n="mw.day.6">Sat</span></label>
+                        <label class="importance-check"><input type="checkbox" class="mw-day-checkbox" id="mwFormDay7" value="7"> <span data-i18n="mw.day.7">Sun</span></label>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="mw.startLabel">Start time *</label>
+                        <input type="time" class="form-input" id="mwFormStartTime" value="02:00">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="mw.durationLabel">Duration (minutes) *</label>
+                        <input type="number" class="form-input" id="mwFormDurationMinutes" min="1" max="10080" step="1" value="120">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="mw.timezoneLabel">Timezone</label>
+                        <input type="text" class="form-input" id="mwFormTimezone" value="Asia/Shanghai" autocomplete="off">
+                    </div>
+                </div>
+
+                <!-- Match conditions (mirrors the silence form) -->
+                <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="silence.matchSection">Match Conditions</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;" data-i18n="silence.matchHint">At least one is required. Same matching as forward rules.</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="silence.sourceLabel">Source</label>
+                    <input type="text" class="form-input" id="mwFormSource" data-i18n-placeholder="silence.sourcePlaceholder" placeholder="Comma-separated; empty = all sources" autocomplete="off">
+                </div>
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label class="form-label" data-i18n="silence.importanceLabel">Importance</label>
+                    <div style="display: flex; gap: 12px; padding-top: 2px;">
+                        <label class="importance-check">
+                            <input type="checkbox" id="mwFormImportanceHigh" value="high"> <span data-i18n="common.high">High</span>
+                        </label>
+                        <label class="importance-check">
+                            <input type="checkbox" id="mwFormImportanceMedium" value="medium"> <span data-i18n="common.medium">Medium</span>
+                        </label>
+                        <label class="importance-check">
+                            <input type="checkbox" id="mwFormImportanceLow" value="low"> <span data-i18n="common.low">Low</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="silence.eventTypeLabel">Event Type</label>
+                    <input type="text" class="form-input" id="mwFormEventType" data-i18n-placeholder="silence.eventTypePlaceholder" placeholder="Comma-separated; empty = all types" autocomplete="off">
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="silence.projectLabel">Project</label>
+                        <input type="text" class="form-input" id="mwFormProject" data-i18n-placeholder="silence.projectPlaceholder" placeholder="e.g. eve-cn" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="silence.regionLabel">Region</label>
+                        <input type="text" class="form-input" id="mwFormRegion" data-i18n-placeholder="silence.regionPlaceholder" placeholder="e.g. cn-shanghai" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="silence.envLabel">Environment</label>
+                        <input type="text" class="form-input" id="mwFormEnvironment" data-i18n-placeholder="silence.envPlaceholder" placeholder="e.g. prod,dev" autocomplete="off">
+                    </div>
+                </div>
+                <small style="display:block; color: var(--text-muted); font-size: 0.75rem; margin: -0.5rem 0 0.75rem;" data-i18n="silence.geoHint">Project, region, and environment support comma-separated values; use !prod / !eve-cn to exclude.</small>
+                <div class="form-group">
+                    <label class="form-label" data-i18n="silence.payloadLabel">Payload Field Match</label>
+                    <input type="text" class="form-input" id="mwFormPayload" data-i18n-placeholder="silence.payloadPlaceholder" placeholder='e.g. status=firing,severity=critical' autocomplete="off">
+                    <small style="color: var(--text-muted); font-size: 0.75rem;" data-i18n="silence.payloadHint">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeMaintenanceWindowForm()" data-i18n="common.cancel">Cancel</button>
+                <button class="btn btn-primary" onclick="saveMaintenanceWindow()" data-i18n="common.save">Save</button>
             </div>
         </div>
     </div>

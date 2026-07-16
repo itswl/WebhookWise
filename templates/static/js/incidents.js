@@ -172,6 +172,7 @@ const IncidentsModule = (function () {
         html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.feedback(' + data.id + ',\'grouping_wrong\')">👎 Grouping wrong</button>';
         html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.merge(' + data.id + ')">🔗 Merge</button>';
         html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.split(' + data.id + ')">✂️ Split</button>';
+        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.exportPostmortem(' + data.id + ')">📄 ' + t('incidents.action.postmortem') + '</button>';
         html += '</div>';
 
         var notes = data.notes || [];
@@ -397,6 +398,26 @@ const IncidentsModule = (function () {
         } catch (e) { alert('Merge failed: ' + (e.message || e)); }
     }
 
+    async function exportPostmortem(id) {
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/postmortem');
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var blob = await resp.blob();
+            var url = URL.createObjectURL(blob);
+            var link = document.createElement('a');
+            link.href = url;
+            // Mirrors the backend Content-Disposition filename.
+            link.download = 'postmortem-incident-' + id + '.md';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            // Delay revocation so the click-initiated download keeps its blob.
+            setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        } catch (e) {
+            alert(t('incidents.action.postmortemFailed') + ': ' + (e && e.message || e));
+        }
+    }
+
     async function split(id) {
         var value = prompt('Alert IDs to split into a new incident (comma separated)', '');
         if (!value) return;
@@ -478,6 +499,7 @@ const IncidentsModule = (function () {
         feedback: feedback,
         merge: merge,
         split: split,
+        exportPostmortem: exportPostmortem,
         silenceIncidentSources: silenceIncidentSources
     };
 })();
