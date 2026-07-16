@@ -694,6 +694,61 @@ const API = {
         return await response.json();
     },
 
+    // ========== Maintenance Windows API ==========
+
+    /**
+     * Get the maintenance windows list (recurring weekly mute windows).
+     * days_of_week is an ISO-weekday CSV string ("6,7") in responses;
+     * requests send it as an array of ints ([6, 7]).
+     * @returns {Promise<object>} Maintenance windows list
+     */
+    async getMaintenanceWindows() {
+        const response = await this.authenticatedFetch('/v1/maintenance-windows');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
+     * Create a maintenance window
+     * @param {object} windowData - Window data (days_of_week as an int array)
+     * @returns {Promise<object>} Creation result (409 on duplicate name)
+     */
+    async createMaintenanceWindow(windowData) {
+        const response = await this.authenticatedFetch('/v1/maintenance-windows', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(windowData)
+        });
+        return await this.parseJsonResponse(response);
+    },
+
+    /**
+     * Update a maintenance window (full replace)
+     * @param {number} id - Window ID
+     * @param {object} windowData - Window data (days_of_week as an int array)
+     * @returns {Promise<object>} Update result
+     */
+    async updateMaintenanceWindow(id, windowData) {
+        const response = await this.authenticatedFetch('/v1/maintenance-windows/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(windowData)
+        });
+        return await this.parseJsonResponse(response);
+    },
+
+    /**
+     * Delete a maintenance window
+     * @param {number} id - Window ID
+     * @returns {Promise<object>} Deletion result
+     */
+    async deleteMaintenanceWindow(id) {
+        const response = await this.authenticatedFetch('/v1/maintenance-windows/' + id, {
+            method: 'DELETE'
+        });
+        return await this.parseJsonResponse(response);
+    },
+
     // ========== Forwarding Queue API ==========
 
     /**

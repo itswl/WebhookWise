@@ -73,6 +73,10 @@ const ActionCenterModule = (function () {
                 } else if (view === 'decision-trace') {
                     switchMainTab('decision-trace');
                     if (typeof DecisionTraceModule !== 'undefined') DecisionTraceModule.setView('trace');
+                } else if (view === 'noise') {
+                    // e.g. kind=flapping_identity — the fix lives in the Noise Center.
+                    switchMainTab('operations');
+                    if (typeof setOperationsView === 'function') setOperationsView('noise');
                 }
             });
         });

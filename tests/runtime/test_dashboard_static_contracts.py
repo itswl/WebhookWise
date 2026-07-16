@@ -214,6 +214,59 @@ def test_silence_debt_panel_is_wired() -> None:
         assert "'silences.debt.chronicBadge'" in js
 
 
+def test_maintenance_windows_surface_is_wired() -> None:
+    # Maintenance windows on the Silences view: list container, form modal with
+    # weekday checkboxes, API surface (array days_of_week in requests), renderer,
+    # the "[mw:" origin badge on materialized silences, and i18n in BOTH dicts.
+    html = _dashboard_html()
+    silences = _static_js("silences.js")
+    api_js = _static_js("api.js")
+
+    assert 'id="maintenanceWindowsList"' in html
+    assert 'id="maintenanceWindowFormModal"' in html
+    assert html.count('class="mw-day-checkbox"') == 7
+    assert "getMaintenanceWindows" in api_js
+    assert "createMaintenanceWindow" in api_js
+    assert "updateMaintenanceWindow" in api_js
+    assert "deleteMaintenanceWindow" in api_js
+    assert "/v1/maintenance-windows" in api_js
+    assert "function renderMaintenanceWindows" in silences
+    assert "loadMaintenanceWindows()" in silences
+    assert "days_of_week: days" in silences  # requests send an int array, not the CSV
+    assert "startsWith('[mw:')" in silences  # origin badge on window-materialized silences
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        js = _static_js(dict_name)
+        assert "'silences.mw.title'" in js
+        assert "'silences.mw.originBadge'" in js
+        for day in range(1, 8):
+            assert f"'mw.day.{day}'" in js
+
+
+def test_incident_postmortem_export_is_wired() -> None:
+    # Export postmortem on the incident detail: authenticated fetch of the
+    # markdown endpoint, blob download named like the backend attachment, and
+    # i18n in BOTH dicts.
+    incidents = _static_js("incidents.js")
+
+    assert "'/v1/incidents/' + id + '/postmortem'" in incidents
+    assert "exportPostmortem" in incidents
+    assert "'postmortem-incident-' + id + '.md'" in incidents
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        js = _static_js(dict_name)
+        assert "'incidents.action.postmortem'" in js
+        assert "'incidents.action.postmortemFailed'" in js
+
+
+def test_action_center_routes_noise_view_items() -> None:
+    # Action Center items render generically off severity/view (no kind
+    # whitelist), so flapping_identity (view="noise") only needs the open-details
+    # navigation to know the noise view.
+    action_center = _static_js("action-center.js")
+
+    assert "view === 'noise'" in action_center
+    assert "setOperationsView('noise')" in action_center
+
+
 def test_ai_disagreements_review_surface_is_wired() -> None:
     # AI-vs-rules drill-down on the Decision Trace view: container, API call, the
     # exposed toggle, reuse of the by-event chain renderer, and i18n in both dicts.
