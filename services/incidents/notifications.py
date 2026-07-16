@@ -85,11 +85,20 @@ async def queue_incident_notifications(
 
 
 async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> list[int]:
-    """Create idempotent notifications for newly breached alert and incident SLAs."""
+    """Create idempotent notifications for newly breached alert and incident SLAs.
+
+    This is the escalation path: with the auto-SLA policy armed (see
+    services/incidents/auto_sla.py), an unacknowledged incident lands here N
+    minutes later. A dedicated escalation webhook and an @all mention can make
+    the breach louder than the original alert.
+    """
     cfg = get_config_manager().notifications
-    target_url = str(cfg.DEEP_ANALYSIS_FEISHU_WEBHOOK or cfg.WEEKLY_REPORT_FEISHU_WEBHOOK or "").strip()
+    target_url = str(
+        cfg.SLA_BREACH_FEISHU_WEBHOOK or cfg.DEEP_ANALYSIS_FEISHU_WEBHOOK or cfg.WEEKLY_REPORT_FEISHU_WEBHOOK or ""
+    ).strip()
     if not target_url:
         return []
+    mention_all = bool(cfg.SLA_BREACH_MENTION_ALL)
 
     incidents = list(
         (
@@ -125,8 +134,10 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
     )
     policy = ForwardDeliveryPolicy.from_config()
     outbox_ids: list[int] = []
-    resources: list[tuple[str, int, str, str, Any]] = [
-        ("incident", int(item.id), item.title, item.workflow_status, item.sla_due_at) for item in incidents
+    incidents_by_id = {int(item.id): item for item in incidents}
+    resources: list[tuple[str, int, str, str, Any, str]] = [
+        ("incident", int(item.id), item.title, item.workflow_status, item.sla_due_at, str(item.assignee or ""))
+        for item in incidents
     ]
     resources.extend(
         (
@@ -135,6 +146,7 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
             str(item.request_id or f"Alert #{item.id}"),
             item.workflow_status,
             item.sla_due_at,
+            str(item.assignee or ""),
         )
         for item in events
     )
@@ -144,6 +156,7 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
     keys_by_resource = [
         (resource, f"sla-breached:{resource[0]}:{resource[1]}:{resource[4].isoformat()}") for resource in resources
     ]
+    dashboard_url = str(cfg.DASHBOARD_PUBLIC_URL or "").strip()
     already_queued: set[str] = set()
     if keys_by_resource:
         already_queued = set(
@@ -155,24 +168,28 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
                 )
             ).scalars()
         )
-    for (resource_type, resource_id, title, status, due_at), key in keys_by_resource:
+    for (resource_type, resource_id, title, status, due_at, assignee), key in keys_by_resource:
         if key in already_queued:
             continue
+        body = (
+            f"**Resource:** {resource_type} #{resource_id}\n"
+            f"**Title:** {title[:160]}\n"
+            f"**Workflow status:** {status}\n"
+            f"**Assignee:** {assignee or 'unassigned'}\n"
+            f"**SLA due:** {due_at.isoformat()}"
+        )
+        if dashboard_url:
+            body += f"\n[Open dashboard]({dashboard_url})"
+        if mention_all:
+            body += '\n<at id="all"></at> unacknowledged past its SLA — please claim it.'
         card = {
             "msg_type": "interactive",
             "card": {
-                "header": {"title": {"tag": "plain_text", "content": "⏰ WebhookWise SLA breached"}},
-                "elements": [
-                    {
-                        "tag": "markdown",
-                        "content": (
-                            f"**Resource:** {resource_type} #{resource_id}\n"
-                            f"**Title:** {title[:160]}\n"
-                            f"**Workflow status:** {status}\n"
-                            f"**SLA due:** {due_at.isoformat()}"
-                        ),
-                    }
-                ],
+                "header": {
+                    "title": {"tag": "plain_text", "content": "⏰ WebhookWise SLA breached"},
+                    "template": "red",
+                },
+                "elements": [{"tag": "markdown", "content": body}],
             },
         }
         record = ForwardOutbox(
@@ -195,4 +212,10 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
         await session.flush()
         outbox_ids.append(int(record.id))
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("feishu", "created").inc()
+        # Mark the escalation on the incident itself so it is visible without
+        # joining the outbox (dashboard badge, postmortem timeline).
+        if resource_type == "incident":
+            incident = incidents_by_id.get(resource_id)
+            if incident is not None and incident.escalated_at is None:
+                incident.escalated_at = now
     return outbox_ids
