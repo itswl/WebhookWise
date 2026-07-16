@@ -3,7 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -77,6 +77,32 @@ async def get_incident_detail_endpoint(
         return ok_response(http_status=200, data=detail)
     except _INCIDENT_ERRORS as e:
         logger.error("Failed to get incident detail id=%s: %s", incident_id, e, exc_info=True)
+        return internal_error_response()
+
+
+@incidents_router.get(
+    "/incidents/{incident_id}/postmortem",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
+)
+async def export_incident_postmortem_endpoint(
+    incident_id: int, session: AsyncSession = Depends(get_db_session)
+) -> Response:
+    """Export the incident as a Markdown postmortem draft (download)."""
+    from services.incidents.postmortem import build_postmortem_markdown
+    from services.operations.feature_adoption import record_feature_use
+
+    try:
+        markdown = await build_postmortem_markdown(session, incident_id)
+        if markdown is None:
+            return fail_response(f"Incident {incident_id} not found", 404)
+        await record_feature_use("action:postmortem_exported")
+        return Response(
+            content=markdown,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="postmortem-incident-{incident_id}.md"'},
+        )
+    except _INCIDENT_ERRORS as e:
+        logger.error("Failed to export postmortem id=%s: %s", incident_id, e, exc_info=True)
         return internal_error_response()
 
 
