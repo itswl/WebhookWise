@@ -7,7 +7,7 @@ existing suppression accounting keeps working on plain silences.
 incidents.escalated_at marks when the SLA-breach escalation notification was
 queued for an incident, making the breach visible without joining the outbox.
 
-Revision ID: 0017_maintenance_windows_and_escalated_at
+Revision ID: 0017_maintenance_windows
 Revises: 0016_kb_document_status
 Create Date: 2026-07-16 00:00:00.000000
 """
@@ -18,7 +18,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0017_maintenance_windows_and_escalated_at"
+revision: str = "0017_maintenance_windows"
 down_revision: str | Sequence[str] | None = "0016_kb_document_status"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
