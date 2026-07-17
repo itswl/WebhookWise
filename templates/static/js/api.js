@@ -135,7 +135,7 @@ const API = {
         return mode === 'write' ? this.getWriteToken() : this.getReadToken();
     },
 
-    // Global auth lock, prevents multiple input prompts from appearing on concurrent requests
+    // Global auth lock, prevents concurrent requests from opening duplicate credential modals.
     _authPromises: {
         read: null,
         write: null
@@ -184,31 +184,24 @@ const API = {
             }
 
             if (!this._authPromises[authMode]) {
-                // Create a Promise lock and block other concurrent requests
+                // Wait for the dashboard credential modal. It owns persistence and
+                // resolves when the user saves or dismisses it.
                 this._authPromises[authMode] = new Promise((resolve) => {
-                    // Use setTimeout to avoid deadlocking the UI thread and give the browser a chance to render
                     setTimeout(async () => {
-                        const key = prompt(this.authPromptText(authMode));
-                        if (key) {
-                            try {
-                                if (authMode === 'write') {
-                                    await this.setWriteToken(key);
-                                } else {
-                                    await this.setReadToken(key);
-                                }
-                                if (typeof updateAuthButtonState === 'function') {
-                                    updateAuthButtonState();
-                                }
-                            } catch (error) {
-                                console.error('Failed to save credentials in the browser', error);
+                        try {
+                            if (typeof openAuthModal !== 'function') {
                                 resolve(null);
-                                this._authPromises[authMode] = null;
                                 return;
                             }
+                            await openAuthModal(authMode);
+                            resolve(this.getTokenForMode(authMode));
+                        } catch (error) {
+                            console.error('Failed to request browser credentials', error);
+                            resolve(null);
+                        } finally {
+                            this._authPromises[authMode] = null;
                         }
-                        resolve(key);
-                        this._authPromises[authMode] = null;
-                    }, 50);
+                    }, 0);
                 });
             }
 
@@ -220,13 +213,6 @@ const API = {
         }
 
         return response;
-    },
-
-    authPromptText(mode) {
-        if (mode === 'write') {
-            return 'Enter the WebhookWise ADMIN_WRITE_KEY (used for write operations such as save, forward, and retry):';
-        }
-        return 'Enter the WebhookWise API_KEY (used for read-only Dashboard queries):';
     },
 
     async shouldPromptForAuth(response, mode) {
