@@ -165,7 +165,11 @@ function bindGlobalEvents() {
     // Close modal when clicking outside it
     document.addEventListener('click', (e) => {
         if (e.target.classList.contains('modal')) {
-            e.target.classList.remove('active');
+            if (e.target.id === 'authModal') {
+                closeAuthModal();
+            } else {
+                e.target.classList.remove('active');
+            }
         }
     });
 
@@ -174,7 +178,11 @@ function bindGlobalEvents() {
         // ESC closes the modal
         if (e.key === 'Escape') {
             document.querySelectorAll('.modal.active').forEach(modal => {
-                modal.classList.remove('active');
+                if (modal.id === 'authModal') {
+                    closeAuthModal();
+                } else {
+                    modal.classList.remove('active');
+                }
             });
         }
 
@@ -381,17 +389,38 @@ if (!_incidentsBadgeTimer) {
     setTimeout(updateIncidentsBadge, 5000); // First update after API token loads
 }
 
-function openAuthModal() {
+let authModalPromise = null;
+let resolveAuthModal = null;
+
+function openAuthModal(authMode = '') {
+    if (authModalPromise) {
+        return authModalPromise;
+    }
+
     const apiKeyInput = document.getElementById('authApiKey');
     const adminWriteKeyInput = document.getElementById('authAdminWriteKey');
     if (apiKeyInput) apiKeyInput.value = '';
     if (adminWriteKeyInput) adminWriteKeyInput.value = '';
     updateAuthButtonState();
     document.getElementById('authModal').classList.add('active');
+
+    authModalPromise = new Promise((resolve) => {
+        resolveAuthModal = resolve;
+    });
+
+    const preferredInput = authMode === 'write' ? adminWriteKeyInput : apiKeyInput;
+    if (preferredInput) {
+        window.requestAnimationFrame(() => preferredInput.focus());
+    }
+    return authModalPromise;
 }
 
 function closeAuthModal() {
     document.getElementById('authModal').classList.remove('active');
+    const resolver = resolveAuthModal;
+    resolveAuthModal = null;
+    authModalPromise = null;
+    if (resolver) resolver();
 }
 
 async function saveAuthKeys() {

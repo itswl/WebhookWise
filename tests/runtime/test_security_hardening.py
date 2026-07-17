@@ -593,6 +593,7 @@ async def test_admin_write_key_does_not_bypass_api_key_and_requires_mixed_header
 
 def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     api_js = (PROJECT_ROOT / "templates/static/js/api.js").read_text()
+    dashboard_js = (PROJECT_ROOT / "templates/static/js/dashboard.js").read_text()
     dashboard_html = (PROJECT_ROOT / "templates/dashboard.html").read_text()
 
     assert "method === 'GET' || method === 'HEAD' ? 'read' : 'write'" in api_js
@@ -606,11 +607,64 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     assert "storage?.getItem" in api_js
     assert "storage.setItem" in api_js
     assert "window.indexedDB?.deleteDatabase('webhookwise_auth_crypto')" in api_js
+    assert "await openAuthModal(authMode)" in api_js
+    assert "prompt(this.authPromptText" not in api_js
+    assert "return authModalPromise" in dashboard_js
+    assert "if (resolver) resolver();" in dashboard_js
 
     assert 'id="authModal"' in dashboard_html
     assert 'id="authApiKey"' in dashboard_html
     assert 'id="authAdminWriteKey"' in dashboard_html
     assert "ADMIN_WRITE_KEY is kept only for the current tab session" in dashboard_html
+
+
+def test_dashboard_authentication_retries_after_modal_save() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for dashboard authentication behavior test")
+
+    api_js = PROJECT_ROOT / "templates/static/js/api.js"
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync({pyjson.dumps(str(api_js))}, 'utf8');
+const values = new Map();
+let fetchCalls = 0;
+const context = {{
+  console: {{ warn() {{}}, error() {{}}, log() {{}} }},
+  URLSearchParams,
+  setTimeout,
+  localStorage: {{
+    getItem(key) {{ return values.get(key) || null; }},
+    setItem(key, value) {{ values.set(key, String(value)); }},
+    removeItem(key) {{ values.delete(key); }}
+  }},
+  sessionStorage: {{ getItem() {{ return null; }}, setItem() {{}}, removeItem() {{}} }},
+  indexedDB: {{ deleteDatabase() {{}} }},
+  async fetch(_url, options) {{
+    fetchCalls += 1;
+    const authorized = options.headers.Authorization === 'Bearer saved-api-key';
+    return {{ status: authorized ? 200 : 401, ok: authorized }};
+  }}
+}};
+context.window = context;
+vm.runInNewContext(source + '\\nthis.__API = API;', context, {{ filename: 'api.js' }});
+context.openAuthModal = async (mode) => {{
+  if (mode !== 'read') throw new Error('wrong auth mode');
+  await context.__API.setReadToken('saved-api-key');
+}};
+
+(async () => {{
+  const response = await context.__API.authenticatedFetch('/v1/test');
+  if (response.status !== 200) throw new Error('request was not retried after saving');
+  if (fetchCalls !== 2) throw new Error(`expected 2 fetches, got ${{fetchCalls}}`);
+  console.log('ok');
+}})().catch((error) => {{
+  console.error(error.stack || error.message);
+  process.exit(1);
+}});
+"""
+    subprocess.run([node, "-e", script], text=True, capture_output=True, check=True)
 
 
 def test_dashboard_read_token_is_local_and_write_token_is_session_scoped() -> None:
