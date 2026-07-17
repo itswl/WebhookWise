@@ -70,6 +70,7 @@ def reset_default_app_context():
     from core.observability.exporters import _reset_otel_enabled_cache_for_tests
     from core.redis_health import reset_redis_health
     from services.forwarding.rules import invalidate_forward_rules_cache
+    from services.silences.store import invalidate_silences_cache
 
     _reset_otel_enabled_cache_for_tests()
 
@@ -77,6 +78,7 @@ def reset_default_app_context():
     context = AppContext(config=settings)
     reset_redis_health()
     invalidate_forward_rules_cache()
+    invalidate_silences_cache()
     set_default_app_context(context)
     app_module = sys.modules.get("api.app")
     if app_module is not None:
@@ -85,6 +87,7 @@ def reset_default_app_context():
     set_default_app_context(None)
     reset_redis_health()
     invalidate_forward_rules_cache()
+    invalidate_silences_cache()
 
 
 # ── External Service Mocks ────────────────────────────────────────────────────

@@ -186,8 +186,8 @@ def test_dashboard_startup_is_resilient_to_i18n_dictionary_stalls() -> None:
     # setLang commits the switch only once the target dictionary populated
     # (ensureDict resolves even on load failure).
     assert "if (!DICT[norm])" in i18n
-    # A failed Chart.js load is not memoized forever — a later render can retry.
-    assert "this._chartLibPromise = null;" in overview
+    # The trend stays dependency-free and renders even when external networks fail.
+    assert "Native CSS bars" in overview
 
 
 def test_forward_rule_hits_badge_reads_as_rolling_90_day_window() -> None:

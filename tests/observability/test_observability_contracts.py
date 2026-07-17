@@ -228,7 +228,7 @@ def test_sqlalchemy_shutdown_and_worker_trace_contracts_are_wired() -> None:
     assert "services.operations.tasks" not in broker
     assert "import services.operations.tasks" in taskiq_wiring
     assert "inject_trace_headers" in webhook
-    assert '"traceparent": trace_headers.get("traceparent") or headers.get("traceparent")' in webhook
+    assert '"traceparent": trace_headers.get("traceparent")' in webhook
     assert "trace_context_from_headers(ctx.trace_headers)" in tasks
     assert "inject_trace_headers" in tasks
     assert '"worker.webhook_process_task"' in tasks
@@ -262,6 +262,8 @@ def test_core_runtime_wiring_has_no_service_or_config_side_effects() -> None:
     assert "get_default_config" not in forwarding_breakers
     assert "services.operations.taskiq_wiring:broker" in entrypoint
     assert "services.operations.taskiq_wiring:scheduler" in entrypoint
+    assert '--workers "${TASKIQ_WORKERS:-1}"' in entrypoint
+    assert '--max-async-tasks "${TASKIQ_MAX_ASYNC_TASKS:-20}"' in entrypoint
 
 
 def test_metric_aliases_histogram_views_and_source_limit_are_contractual(monkeypatch) -> None:

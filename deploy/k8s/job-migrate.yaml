@@ -24,7 +24,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: webhookwise-migrate
-          image: ghcr.io/itswl/webhookwise:3.0.0
+          image: ghcr.io/itswl/webhookwise:3.4.0
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

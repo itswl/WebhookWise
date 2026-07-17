@@ -35,6 +35,8 @@ def test_container_and_k8s_versions_match_project_version() -> None:
     dockerfile = (PROJECT_ROOT / "Dockerfile").read_text()
     kustomization = yaml.safe_load((PROJECT_ROOT / "deploy/k8s/kustomization.yaml").read_text())
     configmap = yaml.safe_load((PROJECT_ROOT / "deploy/k8s/configmap.yaml").read_text())
+    compose_text = (PROJECT_ROOT / "deploy/compose/docker-compose.yml").read_text()
+    k8s_readme = (PROJECT_ROOT / "deploy/k8s/README.md").read_text()
     env_example = (PROJECT_ROOT / ".env.example.all").read_text()
     minimal_env_example = (PROJECT_ROOT / ".env.example").read_text()
 
@@ -48,6 +50,19 @@ def test_container_and_k8s_versions_match_project_version() -> None:
     assert f"OTEL_SERVICE_VERSION={version}" in env_example
     assert f"APP_VERSION={version}" in minimal_env_example
     assert f"OTEL_SERVICE_VERSION={version}" in minimal_env_example
+    assert f"OTEL_SERVICE_VERSION: ${{OTEL_SERVICE_VERSION:-{version}}}" in compose_text
+    assert compose_text.count(f"APP_VERSION: ${{APP_VERSION:-{version}}}") == 4
+    assert f"ghcr.io/itswl/webhookwise:{version}" in k8s_readme
+
+    for manifest_name in (
+        "deployment-api.yaml",
+        "deployment-worker.yaml",
+        "deployment-scheduler.yaml",
+        "job-migrate.yaml",
+    ):
+        manifest = (PROJECT_ROOT / "deploy/k8s" / manifest_name).read_text()
+        image_tags = re.findall(r"image: ghcr\.io/itswl/webhookwise:([^\s]+)", manifest)
+        assert image_tags and set(image_tags) == {version}
 
 
 def test_release_workflow_publishes_versioned_ghcr_image() -> None:

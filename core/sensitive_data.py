@@ -15,6 +15,8 @@ SENSITIVE_HEADER_NAMES = {
     "cookie",
     "set-cookie",
     "token",
+    "x-admin-key",
+    "x-admin-write-key",
     "x-api-key",
     "x-auth-token",
     "x-gitlab-token",
@@ -104,7 +106,8 @@ def redact_headers(headers: Mapping[str, Any] | None) -> dict[str, Any]:
         return {}
     redacted: dict[str, Any] = {}
     for key, value in headers.items():
-        redacted[key] = REDACTED if str(key).lower() in SENSITIVE_HEADER_NAMES else value
+        normalized = str(key).lower()
+        redacted[key] = REDACTED if normalized in SENSITIVE_HEADER_NAMES or _is_sensitive_key(key) else value
     return redacted
 
 

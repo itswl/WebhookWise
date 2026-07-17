@@ -21,6 +21,7 @@ def _migration_heads_match(database_heads: set[str], expected_heads: set[str]) -
 
 async def _check_background_process() -> None:
     from core.redis_client import dispose_redis, get_redis
+    from core.runtime_heartbeat import runtime_heartbeat_is_fresh
     from db.engine import dispose_engine, init_engine, test_db_connection
 
     try:
@@ -30,6 +31,9 @@ async def _check_background_process() -> None:
             raise SystemExit(1)
         r = get_redis()
         await r.ping()
+        role = (os.getenv("RUN_MODE") or "").strip().lower()
+        if not await runtime_heartbeat_is_fresh(role):
+            raise SystemExit(1)
     finally:
         await dispose_redis()
         await dispose_engine()

@@ -304,6 +304,7 @@ def test_trace_header_injection_extraction_and_context_attach(
     assert carrier["X-Request-Id"] == "req-1"
     assert tracing.extract_trace_id_from_headers({"Traceparent": carrier["traceparent"]}) == "a" * 32
     assert tracing.extract_request_id_from_headers({"x-request-id": " req-2 "}) == "req-2"
+    assert len(tracing.extract_request_id_from_headers({"x-request-id": "x" * 10_000})) == 32
 
     with tracing.trace_context_from_headers({"traceparent": carrier["traceparent"]}):
         actions.append(("inside", True))

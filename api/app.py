@@ -56,8 +56,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.app_context = services.app_context
 
-    from services.forwarding.rules import start_rules_invalidation_listener
-    from services.silences.store import start_silences_invalidation_listener
+    from services.forwarding.rules import start_rules_invalidation_listener, stop_rules_invalidation_listener
+    from services.silences.store import start_silences_invalidation_listener, stop_silences_invalidation_listener
 
     await start_rules_invalidation_listener()
     await start_silences_invalidation_listener()
@@ -80,6 +80,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from services.analysis.ai_usage import flush_ai_usage
 
             await flush_ai_usage()
+            await stop_rules_invalidation_listener()
+            await stop_silences_invalidation_listener()
             await stop_runtime_services(
                 config,
                 context=context,
