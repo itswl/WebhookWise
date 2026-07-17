@@ -19,7 +19,7 @@ x-app-observability-env: &app-observability-env
   OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
   OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
   OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-webhookwise}
-  OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-3.1.0}
+  OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-3.4.0}
   OTEL_SEMCONV_VERSION: ${OTEL_SEMCONV_VERSION:-1.41.0}
   OTEL_SCHEMA_URL: ${OTEL_SCHEMA_URL:-https://opentelemetry.io/schemas/1.41.0}
   OTEL_METRICS_EXEMPLAR_FILTER: ${OTEL_METRICS_EXEMPLAR_FILTER:-trace_based}
@@ -41,7 +41,7 @@ services:
     environment:
       RUN_MODE: migrate
       APP_ENV: ${COMPOSE_APP_ENV:-development}
-      APP_VERSION: ${APP_VERSION:-3.1.0}
+      APP_VERSION: ${APP_VERSION:-3.4.0}
       PYTHONPATH: /app
       OTEL_ENABLED: "false"
       OTEL_CONSOLE_EXPORTER: "false"
@@ -90,7 +90,8 @@ services:
       RUN_MODE: api
       PORT: ${PORT:-8000}
       APP_ENV: ${COMPOSE_APP_ENV:-development}
-      APP_VERSION: ${APP_VERSION:-3.1.0}
+      APP_VERSION: ${APP_VERSION:-3.4.0}
+      API_WORKERS: ${API_WORKERS:-2}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       API_KEY: ${API_KEY}
@@ -98,7 +99,7 @@ services:
       REDIS_URL: ${REDIS_URL}
       DATABASE_URL: ${DATABASE_URL}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
-      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-2}
       BACKGROUND_SCAN_INTERVAL_SECONDS: ${BACKGROUND_SCAN_INTERVAL_SECONDS:-300}
       FORWARD_OUTBOX_STALE_SECONDS: ${FORWARD_OUTBOX_STALE_SECONDS:-300}
       TASKIQ_RESULT_TTL_SECONDS: ${TASKIQ_RESULT_TTL_SECONDS:-86400}
@@ -144,11 +145,16 @@ services:
       <<: *app-observability-env
       RUN_MODE: worker
       APP_ENV: ${COMPOSE_APP_ENV:-development}
+      APP_VERSION: ${APP_VERSION:-3.4.0}
       PYTHONPATH: /app
       REDIS_URL: ${REDIS_URL}
       DATABASE_URL: ${DATABASE_URL}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
-      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-2}
+      TASKIQ_WORKERS: ${TASKIQ_WORKERS:-1}
+      TASKIQ_MAX_ASYNC_TASKS: ${TASKIQ_MAX_ASYNC_TASKS:-20}
+      RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
+      RUNTIME_HEARTBEAT_TTL_SECONDS: ${RUNTIME_HEARTBEAT_TTL_SECONDS:-45}
       HOST: 0.0.0.0
       BACKGROUND_SCAN_INTERVAL_SECONDS: ${BACKGROUND_SCAN_INTERVAL_SECONDS:-300}
       FORWARD_OUTBOX_STALE_SECONDS: ${FORWARD_OUTBOX_STALE_SECONDS:-300}
@@ -160,10 +166,8 @@ services:
       PYROSCOPE_APPLICATION_NAME: webhookwise-worker
     healthcheck:
       # The worker exposes no HTTP port; scripts.healthcheck branches on
-      # RUN_MODE=worker to a DB connect + redis.ping() liveness check. Without
-      # this, a wedged-but-alive worker (lost consumer / deadlock) is neither
-      # restarted nor shown unhealthy — restart: unless-stopped only fires on
-      # process exit.
+      # RUN_MODE=worker to DB/Redis checks plus the worker heartbeat. This also
+      # detects a wedged-but-alive consumer instead of only checking dependencies.
       test: ["CMD", "python3", "-m", "scripts.healthcheck"]
       interval: 30s
       timeout: 20s
@@ -199,6 +203,7 @@ services:
       <<: *app-observability-env
       RUN_MODE: scheduler
       APP_ENV: ${COMPOSE_APP_ENV:-development}
+      APP_VERSION: ${APP_VERSION:-3.4.0}
       PYTHONPATH: /app
       REDIS_URL: ${REDIS_URL}
       DATABASE_URL: ${DATABASE_URL}
@@ -208,6 +213,8 @@ services:
       TASKIQ_RESULT_TTL_SECONDS: ${TASKIQ_RESULT_TTL_SECONDS:-86400}
       TASKIQ_SCHEDULE_REDIS_URL: ${TASKIQ_SCHEDULE_REDIS_URL:-}
       TASKIQ_SCHEDULE_SCAN_BUFFER_SIZE: ${TASKIQ_SCHEDULE_SCAN_BUFFER_SIZE:-1000}
+      RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
+      RUNTIME_HEARTBEAT_TTL_SECONDS: ${RUNTIME_HEARTBEAT_TTL_SECONDS:-45}
       FORWARD_OUTBOX_STALE_SECONDS: ${FORWARD_OUTBOX_STALE_SECONDS:-300}
       DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
       OTEL_SERVICE_NAME: webhookwise-scheduler

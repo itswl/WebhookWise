@@ -2,6 +2,7 @@
 Versioned webhook ingress and query API routes.
 """
 
+import hashlib
 import time
 from typing import Any
 
@@ -61,6 +62,8 @@ JSONDict = dict[str, Any]
 MAX_SOURCE_LENGTH = 100
 _WEBHOOK_RUNTIME_ERRORS = (OSError, RuntimeError, ValueError, TypeError)
 _CLIENT_IP_CONTEXT_ERRORS = (OSError, RuntimeError, ValueError, TypeError, AttributeError)
+_QUEUED_HEADER_NAMES = frozenset({"content-type", "user-agent", "x-request-id", "x-webhook-source"})
+_MAX_QUEUED_HEADER_VALUE_LENGTH = 512
 
 
 def _normalize_source_hint(value: str | None) -> str:
@@ -68,6 +71,23 @@ def _normalize_source_hint(value: str | None) -> str:
     if len(source) > MAX_SOURCE_LENGTH:
         raise HTTPException(status_code=400, detail=f"source must be at most {MAX_SOURCE_LENGTH} characters")
     return source
+
+
+def _ingress_request_id(source_hint: str, external_request_id: str, generated_request_id: str) -> str:
+    """Return a bounded, source-scoped identifier for persistence and idempotency."""
+    if not external_request_id:
+        return generated_request_id[:64] or generate_trace_id()
+    digest = hashlib.sha256(f"{source_hint}\0{external_request_id}".encode("utf-8", errors="replace")).hexdigest()
+    return digest[:32]
+
+
+def _queue_safe_headers(headers: Any) -> dict[str, str]:
+    """Keep only non-secret headers required for parsing and diagnostics."""
+    return {
+        str(key).lower(): str(value)[:_MAX_QUEUED_HEADER_VALUE_LENGTH]
+        for key, value in headers.items()
+        if str(key).lower() in _QUEUED_HEADER_NAMES
+    }
 
 
 def _payload_too_large_response(
@@ -178,7 +198,7 @@ async def _receive_and_enqueue_webhook(
             content={"success": False, "error": "Queue near capacity, retry shortly"},
         )
 
-    headers = dict(request.headers)
+    headers = _queue_safe_headers(request.headers)
     raw_body_str = raw_body.decode("utf-8", errors="replace")
     received_at = utc_isoformat(utcnow())
 
@@ -194,7 +214,7 @@ async def _receive_and_enqueue_webhook(
         "client_ip": client_ip or "",
         "request_id": request_id,
         "received_at": received_at,
-        "traceparent": trace_headers.get("traceparent") or headers.get("traceparent"),
+        "traceparent": trace_headers.get("traceparent"),
     }
     enqueue_started = time.perf_counter()
     enqueue_status = "success"
@@ -258,12 +278,17 @@ async def receive_webhook(
 ) -> JSONDict | JSONResponse:
     """Webhook ingress entry point (supports /v1/webhook and /v1/webhook/{source})."""
     ingress_outcome = "accepted"
-    request_id = request.headers.get("x-request-id") or getattr(request.state, "request_id", "") or generate_trace_id()
     token = set_fallback_trace_id(
         get_current_trace_id() or getattr(request.state, "trace_id", "") or generate_trace_id()
     )
     path_source = request.path_params.get("source")
     source_hint = _normalize_source_hint(path_source or source or request.headers.get("x-webhook-source"))
+    external_request_id = str(request.headers.get("x-request-id") or "").strip()
+    request_id = _ingress_request_id(
+        source_hint,
+        external_request_id,
+        getattr(request.state, "request_id", "") or generate_trace_id(),
+    )
     metric_source = sanitize_source(source_hint)
     clear_log_context()
     set_log_context(request_id=request_id, webhook_source=source_hint)

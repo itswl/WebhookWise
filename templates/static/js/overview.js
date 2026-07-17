@@ -7,7 +7,6 @@
  */
 const OverviewModule = {
     currentPeriod: 'day',
-    _chartLibPromise: null,
 
     init() {
         this.bindEvents();
@@ -46,9 +45,6 @@ const OverviewModule = {
         const container = document.getElementById('overviewContent');
         if (!container) return;
         const mark = document.getElementById('ovLastRefreshed');
-        // Start loading Chart.js in parallel with the data fetch so its download
-        // overlaps the API round-trips instead of blocking first paint.
-        const chartLibReady = this._ensureChartLib();
         try {
             // Overview + AI usage + recent incidents + sparkline + queue health,
             // in parallel. Everything but the core overview is best-effort
@@ -67,18 +63,6 @@ const OverviewModule = {
                 var sparkData = (sparkRes && sparkRes.success && sparkRes.data) ? sparkRes.data : [];
                 const queue = (queueRes && queueRes.success && queueRes.data) ? queueRes.data : null;
                 container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents, sparkData, queue);
-                this.initOverviewChart(sparkData);
-                // If Chart.js was not ready at render time, upgrade the fallback
-                // bars to the line chart in place once the library loads.
-                if (typeof Chart === 'undefined' && sparkData && sparkData.length > 1) {
-                    chartLibReady.then(() => {
-                        const box = document.getElementById('overviewTrendBox');
-                        if (box) {
-                            box.innerHTML = this._trendInner(sparkData);
-                            this.initOverviewChart(sparkData);
-                        }
-                    }).catch(() => { /* fallback bars remain */ });
-                }
             }
             if (mark) mark.textContent = t('common.lastRefreshed', { time: new Date().toLocaleTimeString() });
         } catch (err) {
@@ -169,9 +153,7 @@ const OverviewModule = {
             }
             html += '</div>';
         }
-        // 7-day sparkline trend. Chart.js is loaded lazily (see load()); until it
-        // arrives the box shows a lightweight CSS-bar fallback that is upgraded to
-        // the line chart in place once the library is ready.
+        // Dependency-free 7-day sparkline trend.
         if (sparkData && sparkData.length > 1) {
             html += '<div style="font-size:1rem; font-weight:600; margin:1.5rem 0 0.5rem;">📈 ' + t('overview.section.trend') + '</div>';
             html += '<div id="overviewTrendBox" style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:1.25rem;">' + this._trendInner(sparkData) + '</div>';
@@ -179,13 +161,8 @@ const OverviewModule = {
         return html;
     },
 
-    // Trend markup: the Chart.js canvas when the library is available, otherwise
-    // a CSS-bar fallback. Kept as one helper so load() can re-render it in place
-    // after Chart.js finishes loading.
+    // Native CSS bars keep the dashboard self-contained and CSP-friendly.
     _trendInner(sparkData) {
-        if (typeof Chart !== 'undefined') {
-            return '<div style="height: 160px; position: relative;"><canvas id="overviewTrendChart"></canvas></div>';
-        }
         var maxVal = Math.max.apply(null, sparkData.map(function (d) { return d.count; })) || 1;
         var bars = sparkData.map(function (d) {
             var h = Math.max(2, Math.round((d.count / maxVal) * 40));
@@ -252,82 +229,6 @@ const OverviewModule = {
             '<div class="stat-label">' + icon + ' ' + label + '</div>' +
             '<div class="stat-value" style="font-size: 2rem; color: ' + color + ';">' + value + '</div>' +
             '<div class="stat-trend">' + trend + '</div></div>';
-    },
-
-    // Lazy-load the Chart.js UMD build the first time the trend chart is drawn.
-    // Loading it on demand (rather than a render-blocking <script> in <head>)
-    // keeps this heavy third-party dependency off the critical path. CSP
-    // script-src-elem allows cdn.jsdelivr.net.
-    _ensureChartLib() {
-        if (typeof Chart !== 'undefined') return Promise.resolve();
-        if (this._chartLibPromise) return this._chartLibPromise;
-        this._chartLibPromise = new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js';
-            script.onload = () => resolve();
-            script.onerror = () => {
-                // Don't memoize the failure — clear the cached promise (and drop
-                // the dead <script>) so a later render can re-attempt the load.
-                this._chartLibPromise = null;
-                script.remove();
-                reject(new Error('Chart.js failed to load'));
-            };
-            document.head.appendChild(script);
-        });
-        return this._chartLibPromise;
-    },
-
-    initOverviewChart(sparkData) {
-        const ctx = document.getElementById('overviewTrendChart');
-        if (!ctx || typeof Chart === 'undefined') return;
-
-        if (window.ovTrendChartInstance) {
-            window.ovTrendChartInstance.destroy();
-        }
-
-        const labels = sparkData.map(d => (d.day || '').slice(5));
-        const data = sparkData.map(d => d.count);
-
-        const isDark = document.documentElement.classList.contains('theme-dark');
-        const primaryColor = isDark ? '#818cf8' : '#6366f1';
-        const gridColor = isDark ? '#1e293b' : '#eef1f6';
-        const textColor = isDark ? '#94a3b8' : '#475569';
-
-        window.ovTrendChartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: t('overview.section.trend') || 'Throughput',
-                    data: data,
-                    borderColor: primaryColor,
-                    backgroundColor: isDark ? 'rgba(129, 140, 248, 0.15)' : 'rgba(99, 102, 241, 0.08)',
-                    borderWidth: 2.5,
-                    fill: true,
-                    tension: 0.35,
-                    pointBackgroundColor: primaryColor,
-                    pointRadius: 4,
-                    pointHoverRadius: 6
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false }
-                },
-                scales: {
-                    x: {
-                        grid: { display: false },
-                        ticks: { color: textColor, font: { size: 10 } }
-                    },
-                    y: {
-                        grid: { color: gridColor },
-                        ticks: { color: textColor, font: { size: 10 }, stepSize: Math.max(1, Math.round(Math.max(...data) / 4)) }
-                    }
-                }
-            }
-        });
     },
 
     async _fetchSparkline(days) {

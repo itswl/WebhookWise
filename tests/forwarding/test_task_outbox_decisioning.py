@@ -27,7 +27,17 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
     shutdown_calls: list[dict[str, object]] = []
     validated_configs: list[object] = []
     sleeps: list[float] = []
-    contexts = [SimpleNamespace(config=SimpleNamespace(name="config"))]
+
+    async def close_context(**kwargs: object) -> None:
+        shutdown_calls.append({"context_close": kwargs})
+
+    contexts = [
+        SimpleNamespace(
+            config=SimpleNamespace(name="config"),
+            ensure_redis_client=lambda: object(),
+            close=close_context,
+        )
+    ]
     scheduler_config = SimpleNamespace(name="scheduler-config")
 
     monkeypatch.setattr(
@@ -75,6 +85,28 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
     ai_llm_client.initialize_openai_client = lambda *_args: None
     ai_llm_client.reset_openai_client = lambda *_args: None
     monkeypatch.setitem(sys.modules, "services.analysis.ai_llm_client", ai_llm_client)
+    heartbeat = ModuleType("core.runtime_heartbeat")
+
+    async def start_heartbeat(role: str) -> None:
+        startup_calls.append({"heartbeat": role})
+
+    async def stop_heartbeat(role: str) -> None:
+        shutdown_calls.append({"heartbeat": role})
+
+    heartbeat.start_runtime_heartbeat = start_heartbeat
+    heartbeat.stop_runtime_heartbeat = stop_heartbeat
+    monkeypatch.setitem(sys.modules, "core.runtime_heartbeat", heartbeat)
+
+    from services.forwarding import rules
+    from services.silences import store
+
+    async def noop_listener() -> None:
+        return None
+
+    monkeypatch.setattr(rules, "start_rules_invalidation_listener", noop_listener)
+    monkeypatch.setattr(rules, "stop_rules_invalidation_listener", noop_listener)
+    monkeypatch.setattr(store, "start_silences_invalidation_listener", noop_listener)
+    monkeypatch.setattr(store, "stop_silences_invalidation_listener", noop_listener)
 
     await taskiq_wiring.worker_startup_event(object())
     await taskiq_wiring.worker_shutdown_event(object())
@@ -83,8 +115,10 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
     assert startup_calls[0]["initialize_redis_client"] is True
     assert startup_calls[0]["initialize_adapter_registry_hook"] is taskiq_wiring.initialize_adapters
     assert startup_calls[0]["initialize_ai_client"] is True
-    assert shutdown_calls[0]["reset_ai_client"] is True
+    assert any(call.get("reset_ai_client") is True for call in shutdown_calls)
     assert shutdown_calls[-1] == {"shutdown": True}
+    assert {"heartbeat": "worker"} in startup_calls
+    assert {"heartbeat": "worker"} in shutdown_calls
 
     monkeypatch.setattr(
         taskiq_wiring,
@@ -94,8 +128,9 @@ async def test_taskiq_worker_lifecycle_initializes_and_stops_runtime(monkeypatch
     await taskiq_wiring.scheduler_startup_event(object())
     await taskiq_wiring.scheduler_shutdown_event(object())
 
-    assert scheduler_config in validated_configs
-    assert startup_calls[-1] == {"setup_observability": True}
+    assert contexts[0].config in validated_configs
+    assert {"heartbeat": "scheduler"} in startup_calls
+    assert {"heartbeat": "scheduler"} in shutdown_calls
     assert shutdown_calls[-1] == {"shutdown": True}
 
 

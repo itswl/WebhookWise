@@ -245,7 +245,7 @@
             'auth.readSaved': 'API_KEY: saved in this browser',
             'auth.writeNotSaved': 'ADMIN_WRITE_KEY: not loaded',
             'auth.writeSaved': 'ADMIN_WRITE_KEY: saved in this browser',
-            'auth.storageNote': 'Credentials are saved in this browser and remain available after refreshes, closing tabs, or restarting the browser. Use “Clear credentials” to remove them. They are never written to server config.',
+            'auth.storageNote': 'API_KEY is saved in this browser. ADMIN_WRITE_KEY is kept only for the current tab session and is cleared when the tab closes. Use “Clear credentials” to remove both. They are never written to server config.',
             'auth.clear': 'Clear credentials',
             'auth.saveFailed': 'Failed to save credentials in this browser.',
 

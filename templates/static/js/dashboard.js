@@ -525,12 +525,4 @@ function toggleTheme() {
         if (icon) icon.textContent = '☀️';
     }
     
-    // Also re-render chart if Overview tab is active
-    if (typeof OverviewModule !== 'undefined' && currentTab === 'decision-trace') {
-        const ctx = document.getElementById('overviewTrendChart');
-        if (ctx && window.ovTrendChartInstance) {
-            // Re-fetch overview data or just trigger chart refresh
-            OverviewModule.load(OverviewModule.currentPeriod);
-        }
-    }
 }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import timedelta
 
 import pytest
@@ -78,5 +80,96 @@ async def test_secondary_retention_bounds_history_and_closes_quiet_incidents(
         assert await session.scalar(select(func.count(AIUsageLog.id))) == 1
         assert await session.scalar(select(func.count(ForwardOutbox.id))) == 1
         incident = (await session.execute(select(Incident))).scalar_one()
-        assert incident.status == "closed"
-        assert incident.workflow_status == "resolved"
+    assert incident.status == "closed"
+    assert incident.workflow_status == "resolved"
+
+
+@pytest.mark.asyncio
+async def test_event_archival_preserves_live_child_histories(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from models import (
+        ArchivedWebhookEvent,
+        DeepAnalysis,
+        ForwardOutbox,
+        Incident,
+        IncidentMember,
+        WebhookEvent,
+    )
+    from services.operations.data_maintenance import cleanup_old_data_by_policy
+
+    old = utcnow() - timedelta(days=60)
+    async with session_factory.begin() as session:
+        events = [
+            WebhookEvent(request_id=f"retention-{name}", source="test", timestamp=old)
+            for name in ("free", "outbox", "analysis", "incident")
+        ]
+        session.add_all(events)
+        await session.flush()
+        free, with_outbox, with_analysis, with_incident = events
+        incident = Incident(title="retained incident", status="closed", started_at=old, ended_at=old)
+        session.add(incident)
+        await session.flush()
+        session.add_all(
+            [
+                ForwardOutbox(
+                    idempotency_key="retained-outbox",
+                    webhook_event_id=with_outbox.id,
+                    target_type="webhook",
+                    status="sent",
+                    created_at=old,
+                    updated_at=utcnow(),
+                ),
+                DeepAnalysis(webhook_event_id=with_analysis.id, status="completed"),
+                IncidentMember(
+                    incident_id=incident.id,
+                    event_id=with_incident.id,
+                    event_timestamp=old,
+                ),
+            ]
+        )
+        protected_ids = {with_outbox.id, with_analysis.id, with_incident.id}
+
+    archived = await cleanup_old_data_by_policy(
+        policy=DataMaintenancePolicy(
+            enabled=True,
+            retention_days_default=30,
+            retention_policies={},
+            source_retention_policies={},
+            cleanup_keywords={},
+        )
+    )
+
+    async with session_factory() as session:
+        remaining_ids = set((await session.scalars(select(WebhookEvent.id))).all())
+        archived_ids = set((await session.scalars(select(ArchivedWebhookEvent.id))).all())
+        assert await session.scalar(select(func.count(ForwardOutbox.id))) == 1
+        assert await session.scalar(select(func.count(DeepAnalysis.id))) == 1
+        assert await session.scalar(select(func.count(IncidentMember.id))) == 1
+
+    assert archived == 1
+    assert archived_ids == {free.id}
+    assert remaining_ids == protected_ids
+
+
+@pytest.mark.asyncio
+async def test_event_archival_propagates_transaction_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    from services.operations import data_maintenance
+
+    @asynccontextmanager
+    async def failed_scope() -> AsyncIterator[AsyncSession]:
+        raise RuntimeError("commit failed")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(data_maintenance, "session_scope", failed_scope)
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        await data_maintenance.cleanup_old_data_by_policy(
+            policy=DataMaintenancePolicy(
+                enabled=True,
+                retention_days_default=30,
+                retention_policies={},
+                source_retention_policies={},
+                cleanup_keywords={},
+            )
+        )

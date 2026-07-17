@@ -148,7 +148,7 @@ class DBConfig(StaticSettings):
     # pgbouncer when scaling out. Defaults suit a small single-node deployment.
     DB_POOL_SIZE: int = Field(default=5, ge=1, description="Number of persistent connections in the per-process pool")
     DB_MAX_OVERFLOW: int = Field(
-        default=5, ge=0, description="Number of connections the per-process pool may temporarily exceed by"
+        default=2, ge=0, description="Number of connections the per-process pool may temporarily exceed by"
     )
     DB_POOL_RECYCLE_SECONDS: int = Field(default=3600, gt=0)
     DB_POOL_TIMEOUT_SECONDS: int = Field(
@@ -369,6 +369,7 @@ class OpenClawConfig(StaticSettings):
     OPENCLAW_POLL_TIMEOUT_SECONDS: int = Field(default=180, gt=0)
     OPENCLAW_POLL_STABILITY_TTL_SECONDS: int = Field(default=3600, gt=0)
     OPENCLAW_WS_MAX_HISTORY_FRAMES: int = Field(default=50, gt=0)
+    OPENCLAW_WS_MAX_MESSAGE_BYTES: int = Field(default=2_097_152, gt=0)
     OPENCLAW_DEVICE_ID: str = Field(default="")
     OPENCLAW_DEVICE_PRIVATE_KEY_PEM: str = Field(default="")
     OPENCLAW_DEVICE_TOKEN: str = Field(default="")

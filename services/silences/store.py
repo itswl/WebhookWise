@@ -77,8 +77,7 @@ async def create_silence(
     )
     session.add(silence)
     await session.flush()
-    invalidate_silences_cache()
-    await publish_silences_invalidation()
+    _silences_cache.invalidate_after_commit(session)
     return silence
 
 
@@ -91,8 +90,7 @@ async def update_silence(session: AsyncSession, silence_id: int, payload: Mappin
         if field in payload:
             setattr(silence, field, payload[field])
     await session.flush()
-    invalidate_silences_cache()
-    await publish_silences_invalidation()
+    _silences_cache.invalidate_after_commit(session)
     return silence
 
 
@@ -104,8 +102,7 @@ async def lift_silence(session: AsyncSession, silence_id: int) -> Silence | None
     if silence.lifted_at is None:
         silence.lifted_at = utcnow()
     await session.flush()
-    invalidate_silences_cache()
-    await publish_silences_invalidation()
+    _silences_cache.invalidate_after_commit(session)
     return silence
 
 
@@ -114,8 +111,7 @@ async def delete_silence(session: AsyncSession, silence_id: int) -> bool:
     if not silence:
         return False
     await session.delete(silence)
-    invalidate_silences_cache()
-    await publish_silences_invalidation()
+    _silences_cache.invalidate_after_commit(session)
     return True
 
 
@@ -175,3 +171,8 @@ async def start_silences_invalidation_listener() -> None:
     publishes an update.
     """
     _silences_cache.start_listener()
+
+
+async def stop_silences_invalidation_listener() -> None:
+    """Stop the cross-worker invalidation listener during process shutdown."""
+    await _silences_cache.stop_listener()

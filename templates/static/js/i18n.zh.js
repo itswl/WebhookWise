@@ -244,7 +244,7 @@
             'auth.readSaved': 'API_KEY：已保存至此浏览器',
             'auth.writeNotSaved': 'ADMIN_WRITE_KEY：未载入',
             'auth.writeSaved': 'ADMIN_WRITE_KEY：已保存至此浏览器',
-            'auth.storageNote': '凭证将保存在此浏览器中，刷新页面、关闭标签页或重启浏览器后仍然有效；点击“清除凭证”即可删除。凭证不会写入服务端配置。',
+            'auth.storageNote': 'API_KEY 会保存在此浏览器中；ADMIN_WRITE_KEY 仅在当前标签页会话内保留，关闭标签页后即清除。点击“清除凭证”可删除两者。凭证不会写入服务端配置。',
             'auth.clear': '清除凭证',
             'auth.saveFailed': '无法将凭证保存至此浏览器。',
 

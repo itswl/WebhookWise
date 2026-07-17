@@ -1,7 +1,7 @@
 import contextlib
 import hashlib
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any, cast
 
@@ -18,6 +18,36 @@ _logger = get_logger("db.session")
 # identity (e.g. an alert hash). Keeping it stable avoids collisions with any
 # other advisory-lock use that picks a different namespace.
 _ADVISORY_LOCK_NAMESPACE = 0x57484B57  # "WHKW"
+_AFTER_COMMIT_ACTIONS_KEY = "webhookwise.after_commit_actions"
+
+AfterCommitAction = Callable[[], Awaitable[None]]
+
+
+def register_after_commit_action(session: AsyncSession, key: str, action: AfterCommitAction) -> None:
+    """Queue one idempotent async side effect for the successful transaction owner.
+
+    Service methods often flush before their API or worker transaction commits. Side
+    effects such as cross-process cache invalidation must therefore be delayed until
+    the owning dependency/context manager has observed a successful commit. Reusing
+    ``key`` coalesces repeated mutations in the same transaction.
+    """
+    actions = cast(dict[str, AfterCommitAction], session.info.setdefault(_AFTER_COMMIT_ACTIONS_KEY, {}))
+    actions[key] = action
+
+
+async def _run_after_commit_actions(session: AsyncSession) -> None:
+    info = getattr(session, "info", None)
+    if not isinstance(info, dict):
+        return
+    actions = cast(dict[str, AfterCommitAction], info.pop(_AFTER_COMMIT_ACTIONS_KEY, {}))
+    for action in actions.values():
+        await action()
+
+
+def _discard_after_commit_actions(session: AsyncSession) -> None:
+    info = getattr(session, "info", None)
+    if isinstance(info, dict):
+        info.pop(_AFTER_COMMIT_ACTIONS_KEY, None)
 
 
 def _advisory_lock_classid(key: str) -> int:
@@ -96,7 +126,21 @@ async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:
 
         with otel_span("db.session", {"db.operation": "request_session"}):
             async with session_factory() as session:
-                yield session
+                try:
+                    yield session
+                except Exception:
+                    _discard_after_commit_actions(session)
+                    raise
+                else:
+                    # A pending transaction means a write endpoint returned
+                    # without the explicit commit required by this dependency.
+                    # Never publish side effects for data that will roll back on
+                    # session close.
+                    in_transaction = getattr(session, "in_transaction", None)
+                    if callable(in_transaction) and in_transaction():
+                        _discard_after_commit_actions(session)
+                    else:
+                        await _run_after_commit_actions(session)
     except Exception:
         status = "error"
         raise
@@ -128,7 +172,12 @@ async def session_scope(existing_session: AsyncSession | None = None) -> AsyncIt
             else:
                 session_factory = await _ensure_session_factory()
                 async with session_factory.begin() as session:
-                    yield session
+                    try:
+                        yield session
+                    except Exception:
+                        _discard_after_commit_actions(session)
+                        raise
+                await _run_after_commit_actions(session)
     except Exception:
         status = "error"
         raise
@@ -210,5 +259,6 @@ __all__ = [
     "acquire_advisory_xact_lock",
     "count_with_timeout",
     "get_db_session",
+    "register_after_commit_action",
     "session_scope",
 ]

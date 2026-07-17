@@ -113,6 +113,21 @@ class TtlPubSubCache[T]:
         except Exception as e:  # noqa: BLE001 - invalidation is best-effort, never a gate on the write
             self._log.warning("[%s] Failed to publish cache invalidation notification: %s", self._log_prefix, e)
 
+    def invalidate_after_commit(self, session: AsyncSession) -> None:
+        """Invalidate locally now and coalesce publication until commit."""
+        from db.session import register_after_commit_action
+
+        # Drop the local value immediately so this process does not keep serving
+        # known-stale configuration. The action repeats invalidation after commit
+        # in case a concurrent pre-commit miss reloaded the old database value.
+        self.invalidate()
+
+        async def _invalidate() -> None:
+            self.invalidate()
+            await self.publish_invalidation()
+
+        register_after_commit_action(session, self._channel, _invalidate)
+
     def start_listener(self) -> None:
         """Subscribe to the Pub/Sub channel for cross-worker invalidation.
 
@@ -120,6 +135,9 @@ class TtlPubSubCache[T]:
         background task that invalidates the local cache when another worker
         publishes an update.
         """
+        if self._listener_task is not None and not self._listener_task.done():
+            return
+
         from redis.exceptions import RedisError
 
         from core.redis_client import get_redis
@@ -155,3 +173,13 @@ class TtlPubSubCache[T]:
         task = asyncio.create_task(_listen())
         task.add_done_callback(_on_listener_done)
         self._listener_task = task
+
+    async def stop_listener(self) -> None:
+        """Cancel and await the Pub/Sub listener if it is running."""
+        task = self._listener_task
+        if task is None:
+            return
+        self._listener_task = None
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task

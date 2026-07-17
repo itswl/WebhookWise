@@ -32,7 +32,7 @@ class SecurityHeadersMiddleware:
             b"content-security-policy",
             b"default-src 'self'; base-uri 'self'; object-src 'none'; "
             b"frame-ancestors 'none'; form-action 'self'; "
-            b"script-src-elem 'self' https://cdn.jsdelivr.net; "
+            b"script-src-elem 'self'; "
             b"script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
             b"img-src 'self' data: https:; font-src 'self' data:; "
             b"connect-src 'self' https: wss:",

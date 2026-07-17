@@ -83,15 +83,22 @@ def test_forward_rule_public_projection_masks_target_url() -> None:
 
 @pytest.mark.asyncio
 async def test_forward_rule_mutations_invalidate_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    from db import session as db_session
     from services.forwarding import rules
 
     calls: list[str] = []
-    monkeypatch.setattr(rules, "invalidate_forward_rules_cache", lambda: calls.append("invalidated"))
+
+    async def published() -> None:
+        calls.append("published")
+
+    monkeypatch.setattr(rules._rules_cache, "invalidate", lambda: calls.append("invalidated"))
+    monkeypatch.setattr(rules._rules_cache, "publish_invalidation", published)
 
     class FakeSession:
         def __init__(self) -> None:
             self.added: list[Any] = []
             self.deleted: list[Any] = []
+            self.info: dict[str, object] = {}
 
         def add(self, item: Any) -> None:
             self.added.append(item)
@@ -137,3 +144,8 @@ async def test_forward_rule_mutations_invalidate_cache(monkeypatch: pytest.Monke
     assert await rules.delete_forward_rule(session, 1) is True  # type: ignore[arg-type]
     assert session.deleted == [existing]
     assert calls == ["invalidated", "invalidated", "invalidated"]
+
+    # Local invalidation is immediate, while repeated mutations coalesce into
+    # one post-commit invalidation and one cross-process publication.
+    await db_session._run_after_commit_actions(session)  # type: ignore[arg-type]
+    assert calls == ["invalidated", "invalidated", "invalidated", "invalidated", "published"]

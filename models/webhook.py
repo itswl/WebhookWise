@@ -84,7 +84,7 @@ class WebhookEvent(Base):
     forward_status: Mapped[str | None] = mapped_column(String(20))
 
     prev_alert_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("webhook_events.id", ondelete="SET NULL"), nullable=True
+        BigInteger, ForeignKey("webhook_events.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
     is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False)

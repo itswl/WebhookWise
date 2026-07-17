@@ -32,11 +32,16 @@ async def scheduler_startup_event(state: object) -> None:
         logger.debug("[TaskIQ] Skipping scheduler runtime initialization run_mode=%s", _settings.run_mode)
         return
 
+    from core.app_context import init_default_app_context
     from core.observability import setup_observability
+    from core.runtime_heartbeat import start_runtime_heartbeat
     from core.web.startup_checks import validate_startup_security
 
-    validate_startup_security(get_settings())
+    context = init_default_app_context(get_settings())
+    validate_startup_security(context.config)
     setup_observability()
+    context.ensure_redis_client()
+    await start_runtime_heartbeat("scheduler")
 
 
 @broker.on_event(TaskiqEvents.CLIENT_SHUTDOWN)
@@ -46,8 +51,14 @@ async def scheduler_shutdown_event(state: object) -> None:
         logger.debug("[TaskIQ] Skipping scheduler runtime shutdown run_mode=%s", _settings.run_mode)
         return
 
+    from core.app_context import get_default_app_context
     from core.observability import shutdown_observability
+    from core.runtime_heartbeat import stop_runtime_heartbeat
 
+    await stop_runtime_heartbeat("scheduler")
+    context = get_default_app_context()
+    if context is not None:
+        await context.close(close_db=False, close_http=False)
     shutdown_observability()
 
 
@@ -81,6 +92,14 @@ async def worker_startup_event(state: object) -> None:
         initialize_ai_client_hook=initialize_openai_client,
     )
 
+    from core.runtime_heartbeat import start_runtime_heartbeat
+    from services.forwarding.rules import start_rules_invalidation_listener
+    from services.silences.store import start_silences_invalidation_listener
+
+    await start_rules_invalidation_listener()
+    await start_silences_invalidation_listener()
+    await start_runtime_heartbeat("worker")
+
     # Catch-up: send any enabled periodic report whose most recent scheduled fire
     # was missed while no scheduler was alive (deploy/restart landing on the cron
     # minute). Idempotent via a Redis last-sent marker. Best-effort — a failure
@@ -104,12 +123,18 @@ async def worker_shutdown_event(state: object) -> None:
 
     from core.app_context import get_default_app_context, init_default_app_context
     from core.observability import shutdown_observability
+    from core.runtime_heartbeat import stop_runtime_heartbeat
     from core.service_lifecycle import stop_runtime_services
     from services.analysis.ai_usage import flush_ai_usage
+    from services.forwarding.rules import stop_rules_invalidation_listener
+    from services.silences.store import stop_silences_invalidation_listener
 
     context = get_default_app_context() or init_default_app_context(get_settings())
     # Buffered AI-usage rows must land before the DB engine goes away.
     await flush_ai_usage()
+    await stop_runtime_heartbeat("worker")
+    await stop_rules_invalidation_listener()
+    await stop_silences_invalidation_listener()
     await stop_runtime_services(
         context.config,
         context=context,

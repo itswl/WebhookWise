@@ -5,11 +5,20 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy import and_, delete, not_, or_, select, true, update
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import aliased
 
 from core.datetime_utils import utcnow
 from core.logger import get_logger
 from db.session import dml_rowcount, session_scope
-from models import AIUsageLog, ArchivedWebhookEvent, ForwardOutbox, Incident, WebhookEvent
+from models import (
+    AIUsageLog,
+    ArchivedWebhookEvent,
+    DeepAnalysis,
+    ForwardOutbox,
+    Incident,
+    IncidentMember,
+    WebhookEvent,
+)
 from services.operations.policies import DataMaintenancePolicy
 from services.webhooks.types import ForwardOutboxStatus
 
@@ -131,6 +140,37 @@ def _cleanup_filter(policy: DataMaintenancePolicy, now: datetime) -> sa.ColumnEl
     return or_(*conditions)
 
 
+def _has_no_live_dependencies() -> sa.ColumnElement[bool]:
+    """Protect records whose child data is still part of the operational history.
+
+    Several child tables intentionally cascade when an event is deleted. Archival
+    must not invoke those cascades before each child's own retention policy exists.
+    Terminal outboxes become eligible after secondary retention removes them;
+    incident members and deep analyses remain conservatively retained.
+    """
+    related_event = aliased(WebhookEvent)
+    return and_(
+        ~sa.exists(
+            select(ForwardOutbox.id).where(
+                or_(
+                    ForwardOutbox.webhook_event_id == WebhookEvent.id,
+                    ForwardOutbox.original_event_id == WebhookEvent.id,
+                )
+            )
+        ),
+        ~sa.exists(select(DeepAnalysis.id).where(DeepAnalysis.webhook_event_id == WebhookEvent.id)),
+        ~sa.exists(select(IncidentMember.id).where(IncidentMember.event_id == WebhookEvent.id)),
+        ~sa.exists(
+            select(related_event.id).where(
+                or_(
+                    related_event.prev_alert_id == WebhookEvent.id,
+                    related_event.duplicate_of == WebhookEvent.id,
+                )
+            )
+        ),
+    )
+
+
 async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = None) -> int:
     """
     Archive and clean up expired webhook records according to the data retention policy.
@@ -144,11 +184,11 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
     try:
         now = utcnow()
 
-        combined_filter = _cleanup_filter(policy, now)
+        combined_filter = and_(_cleanup_filter(policy, now), _has_no_live_dependencies())
 
         batch_limit = 5000
         while True:
-            deleted_this_round = 0
+            archived_this_round = 0
             async with session_scope() as session:
                 # Find the IDs to process
                 target_ids = list(
@@ -184,11 +224,12 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
                     await session.execute(sa.insert(ArchivedWebhookEvent), archive_rows)
                     await session.execute(delete(WebhookEvent).filter(WebhookEvent.id.in_(chunk_ids)))
 
-                    deleted_this_round += len(events)
-                    total_archived += len(events)
+                    archived_this_round += len(events)
 
+            # Count only after session_scope has committed the archive + delete.
+            total_archived += archived_this_round
             logger.info("[Maintenance] Archived and cleaned up %d records...", total_archived)
-            if deleted_this_round < batch_limit:
+            if archived_this_round < batch_limit:
                 break
             await asyncio.sleep(0.5)
 
@@ -200,7 +241,7 @@ async def cleanup_old_data_by_policy(*, policy: DataMaintenancePolicy | None = N
 
     except (RuntimeError, SQLAlchemyError, ValueError, TypeError) as e:
         logger.error("[Maintenance] Cleanup task failed: %s", e, exc_info=True)
-        return total_archived
+        raise
 
 
 async def cleanup_expired_operational_data(*, policy: DataMaintenancePolicy | None = None) -> dict[str, int]:

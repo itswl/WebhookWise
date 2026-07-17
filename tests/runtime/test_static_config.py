@@ -64,6 +64,7 @@ def test_full_env_example_covers_direct_environment_reads() -> None:
     source_paths = [
         ROOT / "scripts/run_migrations.py",
         ROOT / "scripts/healthcheck.py",
+        ROOT / "core/runtime_heartbeat.py",
         ROOT / "core/observability/profiling.py",
         ROOT / "scripts/observability/query_lib.py",
         ROOT / "core/observability/exporters.py",

@@ -19,6 +19,9 @@ def test_redacts_headers_and_nested_payload_fields() -> None:
             "Content-Type": "application/json",
             "Authorization": "Bearer secret",
             "X-Webhook-Signature": "sig",
+            "X-Admin-Key": "admin-read-secret",
+            "X-Admin-Write-Key": "admin-write-secret",
+            "X-Custom-Secret": "custom-secret",
         },
         "raw_payload": '{"service":"api","token":"abc","nested":{"password":"pw","value":1}}',
         "parsed_data": {"api_key": "k", "safe": "value"},
@@ -29,6 +32,9 @@ def test_redacts_headers_and_nested_payload_fields() -> None:
     assert redacted["headers"]["Content-Type"] == "application/json"
     assert redacted["headers"]["Authorization"] == REDACTED
     assert redacted["headers"]["X-Webhook-Signature"] == REDACTED
+    assert redacted["headers"]["X-Admin-Key"] == REDACTED
+    assert redacted["headers"]["X-Admin-Write-Key"] == REDACTED
+    assert redacted["headers"]["X-Custom-Secret"] == REDACTED
     assert '"token":"[REDACTED]"' in redacted["raw_payload"]
     assert '"password":"[REDACTED]"' in redacted["raw_payload"]
     assert redacted["parsed_data"]["api_key"] == REDACTED
@@ -43,6 +49,34 @@ def test_non_json_raw_payload_is_not_echoed() -> None:
     assert redacted is not None
     assert "token=abc123" not in redacted
     assert redacted.startswith("[REDACTED_NON_JSON_PAYLOAD")
+
+
+def test_webhook_queue_headers_are_allowlisted_and_request_ids_are_source_scoped() -> None:
+    from api.v1.webhook import _ingress_request_id, _queue_safe_headers
+
+    headers = _queue_safe_headers(
+        {
+            "Content-Type": "application/json",
+            "User-Agent": "sender/1.0",
+            "X-Request-Id": "upstream-42",
+            "X-Webhook-Source": "prometheus",
+            "Authorization": "Bearer secret",
+            "X-Admin-Write-Key": "admin-secret",
+            "Cookie": "session=secret",
+        }
+    )
+
+    assert headers == {
+        "content-type": "application/json",
+        "user-agent": "sender/1.0",
+        "x-request-id": "upstream-42",
+        "x-webhook-source": "prometheus",
+    }
+    prometheus_id = _ingress_request_id("prometheus", "upstream-42", "fallback")
+    grafana_id = _ingress_request_id("grafana", "upstream-42", "fallback")
+    assert len(prometheus_id) == 32
+    assert prometheus_id != grafana_id
+    assert len(_ingress_request_id("prometheus", "x" * 10_000, "fallback")) == 32
 
 
 def test_default_prompt_path_resolves_from_project_root() -> None:
@@ -576,10 +610,10 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     assert 'id="authModal"' in dashboard_html
     assert 'id="authApiKey"' in dashboard_html
     assert 'id="authAdminWriteKey"' in dashboard_html
-    assert "restarting the browser" in dashboard_html
+    assert "ADMIN_WRITE_KEY is kept only for the current tab session" in dashboard_html
 
 
-def test_dashboard_tokens_persist_in_local_storage() -> None:
+def test_dashboard_read_token_is_local_and_write_token_is_session_scoped() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for dashboard crypto behavior test")
@@ -596,10 +630,16 @@ const context = {{
 context.window = context;
 const removed = [];
 const localValues = new Map();
+const sessionValues = new Map();
 context.localStorage = {{
   getItem(key) {{ return localValues.has(key) ? localValues.get(key) : null; }},
   setItem(key, value) {{ localValues.set(key, String(value)); }},
   removeItem(key) {{ removed.push(key); localValues.delete(key); }}
+}};
+context.sessionStorage = {{
+  getItem(key) {{ return sessionValues.has(key) ? sessionValues.get(key) : null; }},
+  setItem(key, value) {{ sessionValues.set(key, String(value)); }},
+  removeItem(key) {{ removed.push(key); sessionValues.delete(key); }}
 }};
 context.indexedDB = {{ deleteDatabase(name) {{ removed.push(name); }} }};
 
@@ -614,8 +654,11 @@ vm.runInNewContext(source + '\\nthis.__API = API;', context, {{ filename: 'api.j
   if (localValues.get('webhookwise_dashboard_api_key') !== 'secret-token') {{
     throw new Error('read token was not saved in local storage');
   }}
-  if (localValues.get('webhookwise_dashboard_admin_write_key') !== 'write-token') {{
-    throw new Error('write token was not saved in local storage');
+  if (localValues.has('webhookwise_dashboard_admin_write_key')) {{
+    throw new Error('write token must not be saved in local storage');
+  }}
+  if (sessionValues.get('webhookwise_dashboard_admin_write_key') !== 'write-token') {{
+    throw new Error('write token was not saved in session storage');
   }}
 
   api._tokenCache.read = '';
@@ -623,12 +666,13 @@ vm.runInNewContext(source + '\\nthis.__API = API;', context, {{ filename: 'api.j
   api._authStorageInitialized = false;
   await api.initAuthStorage();
   if (api.getReadToken() !== 'secret-token' || api.getWriteToken() !== 'write-token') {{
-    throw new Error('tokens were not restored from local storage');
+    throw new Error('tokens were not restored from their scoped storage');
   }}
 
   await api.clearTokens();
   if (api.getReadToken() || api.getWriteToken()) throw new Error('tokens were not cleared');
   if (localValues.size !== 0) throw new Error('local storage credentials were not cleared');
+  if (sessionValues.size !== 0) throw new Error('session storage credentials were not cleared');
   if (!removed.includes('webhook_api_key') || !removed.includes('webhook_admin_write_key')) {{
     throw new Error('legacy persisted tokens were not removed');
   }}

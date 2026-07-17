@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: wait-for-migrations
-          image: ghcr.io/itswl/webhookwise:3.0.0
+          image: ghcr.io/itswl/webhookwise:3.4.0
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
@@ -50,7 +50,7 @@ spec:
                 - ALL
       containers:
         - name: webhookwise-scheduler
-          image: ghcr.io/itswl/webhookwise:3.0.0
+          image: ghcr.io/itswl/webhookwise:3.4.0
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
