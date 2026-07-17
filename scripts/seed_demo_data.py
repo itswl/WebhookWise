@@ -29,7 +29,9 @@ from typing import Any
 
 import httpx
 
-RNG = random.Random(42)
+# Deterministic on purpose: demo runs should be reproducible. Nothing here is
+# security-sensitive — these are synthetic alert payloads.
+RNG = random.Random(42)  # nosec B311
 
 _HOSTS = ["web-01", "web-02", "db-01", "cache-01", "gpu-node-02"]
 _SERVICES = ["checkout", "search", "render", "auth"]
