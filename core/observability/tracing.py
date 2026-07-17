@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextvars
+import hashlib
 import logging
 import os
 import secrets
@@ -276,7 +277,15 @@ def extract_trace_id_from_headers(headers: Mapping[str, Any]) -> str:
 
 
 def extract_request_id_from_headers(headers: Mapping[str, Any]) -> str:
-    return _header_value(headers, "x-request-id")
+    value = _header_value(headers, "x-request-id")
+    if not value:
+        return ""
+    # Request IDs are written to structured logs and tracing attributes. Keep
+    # ordinary upstream IDs recognizable, but hash oversized or control-bearing
+    # values so an untrusted header cannot inject log lines or inflate telemetry.
+    if len(value) <= 64 and value.isprintable():
+        return value
+    return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()[:32]
 
 
 def inject_trace_headers(

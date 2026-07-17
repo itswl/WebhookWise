@@ -150,10 +150,12 @@ async def test_start_listener_retains_task_reference(monkeypatch) -> None:
     task = cache._listener_task
     assert task is not None and not task.done()
 
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert cache._listener_task is None  # done-callback cleared the slot
+    cache.start_listener()
+    assert cache._listener_task is task  # duplicate startup is idempotent
+    await cache.stop_listener()
+    await cache.stop_listener()
+    assert task.cancelled()
+    assert cache._listener_task is None
 
 
 @pytest.mark.asyncio

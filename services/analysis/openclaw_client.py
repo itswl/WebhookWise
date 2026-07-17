@@ -114,6 +114,7 @@ class OpenClawWsPolicy:
     gateway_token: str
     nonce_timeout: float
     max_history_frames: int
+    max_message_bytes: int = 2_097_152
 
     @classmethod
     def from_config(cls) -> OpenClawWsPolicy:
@@ -125,6 +126,7 @@ class OpenClawWsPolicy:
             gateway_token=str(cfg.openclaw.OPENCLAW_GATEWAY_TOKEN),
             nonce_timeout=float(cfg.openclaw.OPENCLAW_NONCE_TIMEOUT_SECONDS),
             max_history_frames=max(1, int(cfg.openclaw.OPENCLAW_WS_MAX_HISTORY_FRAMES)),
+            max_message_bytes=max(1, int(cfg.openclaw.OPENCLAW_WS_MAX_MESSAGE_BYTES)),
         )
 
 
@@ -464,7 +466,12 @@ async def poll_session_result(
     handshake_timeout = min(15, max(3, timeout // 2))
 
     try:
-        async with websockets.connect(ws_url, open_timeout=connect_timeout, close_timeout=1, max_size=None) as ws:
+        async with websockets.connect(
+            ws_url,
+            open_timeout=connect_timeout,
+            close_timeout=1,
+            max_size=max(1, int(getattr(policy, "max_message_bytes", 2_097_152))),
+        ) as ws:
             ok, err_type = await _handshake(ws, gateway_token, timeout=handshake_timeout, policy=policy)
             if not ok:
                 return {"status": "error", "error": err_type or "handshake_failed"}

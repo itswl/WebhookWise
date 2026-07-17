@@ -24,7 +24,11 @@ case "${RUN_MODE:-api}" in
         ;;
     worker)
         echo "Starting in TaskIQ Worker mode..."
-        exec taskiq worker --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" services.operations.taskiq_wiring:broker
+        exec taskiq worker \
+            --log-level "${THIRD_PARTY_LOG_LEVEL:-WARNING}" \
+            --workers "${TASKIQ_WORKERS:-1}" \
+            --max-async-tasks "${TASKIQ_MAX_ASYNC_TASKS:-20}" \
+            services.operations.taskiq_wiring:broker
         ;;
     scheduler)
         echo "Starting in TaskIQ Scheduler mode..."

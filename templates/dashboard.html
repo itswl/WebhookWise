@@ -9,8 +9,7 @@
          render time (see api/dashboard.py); the raw paths stay clean here. -->
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <link rel="stylesheet" href="/static/css/components.css">
-    <!-- Chart.js is loaded lazily by overview.js the first time the trend chart
-         renders, so it no longer render-blocks the page. -->
+    <!-- The overview trend uses native CSS bars; no third-party runtime script is required. -->
 </head>
 <body>
     <!-- Top navigation bar -->
@@ -542,7 +541,7 @@
                     <span id="authWriteStatus" data-i18n="auth.writeNotSaved">ADMIN_WRITE_KEY: not saved</span>
                 </div>
                 <p style="margin: 14px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="auth.storageNote">
-                    Credentials are saved in this browser and remain available after refreshes, closing tabs, or restarting the browser. Use “Clear credentials” to remove them. They are never written to server config.
+                    API_KEY is saved in this browser. ADMIN_WRITE_KEY is kept only for the current tab session and is cleared when the tab closes. Use “Clear credentials” to remove both. They are never written to server config.
                 </p>
             </div>
             <div class="modal-footer">

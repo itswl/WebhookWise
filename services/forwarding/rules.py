@@ -127,8 +127,7 @@ async def create_forward_rule(
     )
     session.add(rule)
     await session.flush()
-    invalidate_forward_rules_cache()
-    await publish_rules_invalidation()
+    _rules_cache.invalidate_after_commit(session)
     return rule
 
 
@@ -166,8 +165,7 @@ async def update_forward_rule(session: AsyncSession, rule_id: int, payload: Mapp
 
     rule.updated_at = utcnow()
     await session.flush()
-    invalidate_forward_rules_cache()
-    await publish_rules_invalidation()
+    _rules_cache.invalidate_after_commit(session)
     return rule
 
 
@@ -176,8 +174,7 @@ async def delete_forward_rule(session: AsyncSession, rule_id: int) -> bool:
     if not rule:
         return False
     await session.delete(rule)
-    invalidate_forward_rules_cache()
-    await publish_rules_invalidation()
+    _rules_cache.invalidate_after_commit(session)
     return True
 
 
@@ -242,3 +239,8 @@ async def start_rules_invalidation_listener() -> None:
     publishes an update.
     """
     _rules_cache.start_listener()
+
+
+async def stop_rules_invalidation_listener() -> None:
+    """Stop the cross-worker invalidation listener during process shutdown."""
+    await _rules_cache.stop_listener()
