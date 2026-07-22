@@ -17,8 +17,8 @@ jobs:
     outputs:
       docker_e2e: ${{ steps.filter.outputs.docker_e2e }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -51,14 +51,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: "pip"
       # Persist mypy's incremental cache across runs, keyed on the Python version
       # plus the dependency locks and mypy config so it invalidates when they change.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .mypy_cache
           key: mypy-${{ runner.os }}-py3.12-${{ hashFiles('requirements.lock', 'requirements-dev.lock', 'pyproject.toml') }}
@@ -92,12 +92,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
       # Build the app image once with a persistent GHA layer cache and load it
       # into the local daemon under the exact tag the compose file references, so
       # the e2e run reuses it (E2E_SKIP_BUILD=1) instead of rebuilding from scratch.
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           load: true
