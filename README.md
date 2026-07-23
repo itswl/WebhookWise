@@ -73,10 +73,12 @@ At a minimum you need to replace:
 | --- | --- |
 | `API_KEY` | Token for read access to the management API. |
 | `ADMIN_WRITE_KEY` | Token for management actions such as writes, replays, forwarding, and re-analysis. |
-| `WEBHOOK_SECRET` | Webhook HMAC-SHA256 signing key. |
+| `WEBHOOK_SECRET` | Webhook HMAC-SHA256 signing key and ingress token. |
 | `OPENAI_API_KEY` | Optional; fill in when enabling AI analysis. |
 
 The management API is limited to 300 requests per IP per minute by default. Expensive per-alert actions also have a 60-second distributed cooldown, with a five-minute minimum for starting deep analysis; the base values are configurable through `ADMIN_API_RATE_LIMIT_PER_MINUTE` and `ADMIN_ACTION_COOLDOWN_SECONDS`.
+
+Webhook ingress accepts `X-Webhook-Signature: <HMAC-SHA256>` and token authentication through either `Token: <WEBHOOK_SECRET>`, `Authorization: Token <WEBHOOK_SECRET>`, or `Authorization: Bearer <WEBHOOK_SECRET>`. Grafana webhook contact points should use the Authorization header with scheme `Bearer` and the webhook secret as credentials; HTTP Basic authentication is intentionally not accepted.
 
 For the complete configuration, see [.env.example.all](.env.example.all). Configuration is read only at process startup; after changes you must restart the process or perform a rolling release.
 

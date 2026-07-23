@@ -777,12 +777,30 @@ async def test_webhook_auth_respects_require_webhook_auth_switch(
             json={"alertname": "valid-token"},
             headers={"token": "real-secret"},
         )
+        valid_bearer = await client.post(
+            "/v1/webhook/grafana",
+            json={
+                "receiver": "webhookwise",
+                "status": "firing",
+                "title": "APIErrorRate",
+                "message": "API error rate is high",
+                "alerts": [
+                    {
+                        "status": "firing",
+                        "labels": {"alertname": "APIErrorRate", "service": "checkout-api"},
+                        "annotations": {"summary": "API error rate exceeded 5%"},
+                    }
+                ],
+            },
+            headers={"Authorization": "Bearer real-secret"},
+        )
 
     assert disabled.status_code == 200
     assert missing_secret.status_code == 401
     assert missing_token.status_code == 401
     assert valid_token.status_code == 200
-    assert len(enqueued) == 2
+    assert valid_bearer.status_code == 200
+    assert len(enqueued) == 3
 
 
 @pytest.mark.asyncio

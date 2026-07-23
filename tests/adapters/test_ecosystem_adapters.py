@@ -147,6 +147,56 @@ def test_grafana_type_set():
     assert result.data.get("Type") == "GrafanaAlert"
 
 
+def test_grafana_unified_webhook_extracts_alert_details():
+    from adapters.normalized import extract_alert_identity
+
+    payload = {
+        "receiver": "webhookwise",
+        "status": "firing",
+        "orgId": 1,
+        "title": "[FIRING:1] APIErrorRate",
+        "message": "Fallback group message",
+        "commonLabels": {"team": "payments"},
+        "commonAnnotations": {"description": "Fallback description"},
+        "alerts": [
+            {
+                "status": "firing",
+                "labels": {
+                    "alertname": "APIErrorRate",
+                    "service": "checkout-api",
+                    "instance": "checkout-01",
+                },
+                "annotations": {
+                    "summary": "API error rate exceeded 5%",
+                    "description": "The checkout API is returning too many errors",
+                },
+                "fingerprint": "b7d4f7d0f4be2c11",
+                "valueString": "A=8.2",
+            }
+        ],
+    }
+
+    result = normalize_webhook_event(payload, None)
+    identity = extract_alert_identity(result.data)
+
+    assert result.source == "grafana"
+    assert result.adapter == "grafana"
+    assert result.data["Type"] == "GrafanaAlert"
+    assert result.data["RuleName"] == "APIErrorRate"
+    assert result.data["Level"] == "critical"
+    assert result.data["summary"] == "API error rate exceeded 5%"
+    assert result.data["service"] == "checkout-api"
+    assert result.data["Resources"] == [{"InstanceId": "checkout-01"}]
+    assert identity == {
+        "source": "grafana",
+        "name": "apierrorrate",
+        "resource": "checkout-01",
+        "service": "checkout-api",
+        "fingerprint": "b7d4f7d0f4be2c11",
+        "severity": "critical",
+    }
+
+
 # ── Datadog ───────────────────────────────────────────────────────────────
 
 
