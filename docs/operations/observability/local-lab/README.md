@@ -44,7 +44,24 @@ docker compose up -d --build
 docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d --build
 ```
 
-To have the API, Worker, and Scheduler report to the local observability stack, `.env` must at least enable `OTEL_ENABLED=true` and `OTEL_LOGS_ENABLED=true`, and set `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317` and `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`. When enabling Pyroscope, also set `PYROSCOPE_ENABLED=true` and `PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040`, then restart the business containers after the changes.
+To have the API, Worker, and Scheduler report to the local observability stack, `.env` must at least enable `OTEL_ENABLED=true` and `OTEL_LOGS_ENABLED=true`, and set `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317` and `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`. When enabling diagnostics, also set `OTEL_TRACES_ENABLED=true`, `PYROSCOPE_ENABLED=true`, and `PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040`.
+
+Start Tempo and Pyroscope before recreating the application containers, then
+create Beyla after the current API container exists:
+
+```bash
+OBS="docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile diagnostics"
+
+$OBS up -d tempo pyroscope
+docker compose up -d --no-deps --force-recreate webhook-service worker scheduler
+$OBS up -d --no-deps --force-recreate beyla
+```
+
+Use `up --force-recreate`, not `restart`, after changing `.env`; Compose
+`restart` does not reload container environment values. See
+[Diagnostics Lifecycle and Full Restart](../overview.md#diagnostics-lifecycle-and-full-restart)
+for the complete restart, verification, and Beyla `bpffs` host-mount
+requirements.
 
 Check service status:
 
