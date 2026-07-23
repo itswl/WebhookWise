@@ -145,24 +145,69 @@ def _norm_volc(data: JsonObject) -> WebhookData:
 
 
 def _detect_grafana(data: JsonObject) -> bool:
-    return any(k in data for k in ("ruleName", "dashboardId")) and any(k in data for k in ("state", "status"))
+    legacy_payload = any(k in data for k in ("ruleName", "dashboardId")) and any(k in data for k in ("state", "status"))
+    alerts = data.get("alerts")
+    unified_payload = (
+        isinstance(alerts, list)
+        and bool(alerts)
+        and ("orgId" in data or ("receiver" in data and "title" in data and "message" in data))
+    )
+    return legacy_payload or unified_payload
 
 
 def _norm_grafana(data: JsonObject) -> WebhookData:
-    rule = _pick_first(data.get("ruleName"), data.get("title"), "grafana_alert")
-    state = _pick_first(data.get("state"), data.get("status"))
+    alerts = data.get("alerts")
+    first_alert = alerts[0] if isinstance(alerts, list) and alerts and isinstance(alerts[0], Mapping) else {}
+    labels_value = first_alert.get("labels")
+    labels = labels_value if isinstance(labels_value, Mapping) else {}
+    common_labels_value = data.get("commonLabels")
+    common_labels = common_labels_value if isinstance(common_labels_value, Mapping) else {}
+    annotations_value = first_alert.get("annotations")
+    annotations = annotations_value if isinstance(annotations_value, Mapping) else {}
+    common_annotations_value = data.get("commonAnnotations")
+    common_annotations = common_annotations_value if isinstance(common_annotations_value, Mapping) else {}
+
+    rule = _pick_first(
+        _pick_label(labels, "alertname", "alert_name"),
+        _pick_label(common_labels, "alertname", "alert_name"),
+        data.get("ruleName"),
+        data.get("title"),
+        "grafana_alert",
+    )
+    state = _pick_first(first_alert.get("status"), data.get("state"), data.get("status"))
+    resource = _pick_first(
+        _pick_label(labels, "instance", "pod", "host", "container", "node"),
+        data.get("ruleId"),
+        data.get("panelId"),
+        data.get("dashboardId"),
+    )
+    service = _pick_first(
+        _pick_label(labels, "service", "app", "job"), _pick_label(common_labels, "service", "app", "job")
+    )
+    fingerprint = _pick_first(first_alert.get("fingerprint"), data.get("ruleId"))
+    summary = _pick_first(
+        _pick_label(annotations, "summary", "description"),
+        _pick_label(common_annotations, "summary", "description"),
+        data.get("message"),
+        data.get("title"),
+    )
+
     res = dict(data)
     res.update({"Type": "GrafanaAlert", "RuleName": rule, "Level": normalize_level(state), "event": "alert"})
-    if "message" in data:
-        res["summary"] = data["message"]
-    if "ruleId" in data or "panelId" in data:
-        res["Resources"] = [{"InstanceId": str(_pick_first(data.get("ruleId"), data.get("panelId")))}]
+    if summary is not None:
+        res["summary"] = str(summary)
+    if resource is not None:
+        res["Resources"] = [{"InstanceId": str(resource)}]
+    if service is not None:
+        res["service"] = str(service)
     return with_alert_identity(
         res,
         AlertIdentity(
             source="grafana",
             name=str(rule) if rule else None,
-            resource=str(_pick_first(data.get("ruleId"), data.get("panelId"), data.get("dashboardId")) or ""),
+            resource=str(resource) if resource is not None else None,
+            service=str(service) if service is not None else None,
+            fingerprint=str(fingerprint) if fingerprint is not None else None,
             severity=normalize_level(state),
         ),
     )

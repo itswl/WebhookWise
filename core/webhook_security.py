@@ -117,8 +117,13 @@ async def enforce_replay_protection(headers: Mapping[str, str], raw_body: bytes,
 
 def extract_token(headers: Mapping[str, str]) -> str:
     token = headers.get("token", "")
-    if not token and headers.get("authorization", "").startswith("Token "):
-        token = headers.get("authorization", "")[6:].strip()
+    if token:
+        return token
+
+    authorization = headers.get("authorization", "").strip()
+    scheme, separator, credentials = authorization.partition(" ")
+    if separator and scheme.casefold() in {"bearer", "token"}:
+        token = credentials.strip()
     return token
 
 
