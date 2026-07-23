@@ -170,10 +170,14 @@ def test_webhook_signature_and_token_auth_contracts() -> None:
     assert webhook_security.verify_signature(payload, signature, "secret") is True
     assert webhook_security.verify_signature(payload, "bad", "secret") is False
     assert webhook_security.extract_token({"authorization": "Token secret"}) == "secret"
+    assert webhook_security.extract_token({"authorization": "Bearer secret"}) == "secret"
+    assert webhook_security.extract_token({"authorization": "bearer secret"}) == "secret"
+    assert webhook_security.extract_token({"authorization": "Basic c2VjcmV0"}) == ""
     assert webhook_security.extract_token({"token": "direct"}) == "direct"
 
     webhook_security.ensure_webhook_auth({"x-webhook-signature": signature}, payload, secret="secret")
     webhook_security.ensure_webhook_auth({"token": "secret"}, payload, secret="secret")
+    webhook_security.ensure_webhook_auth({"authorization": "Bearer secret"}, payload, secret="secret")
     with pytest.raises(InvalidSignatureError):
         webhook_security.ensure_webhook_auth({"token": "wrong"}, payload, secret="secret")
     with pytest.raises(InvalidSignatureError):
