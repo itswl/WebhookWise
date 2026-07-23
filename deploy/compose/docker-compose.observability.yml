@@ -78,6 +78,9 @@ services:
       BEYLA_CONFIG_PATH: /etc/beyla/config.yml
     volumes:
       - ../../deploy/observability/beyla/config.yml:/etc/beyla/config.yml:ro
+      # Beyla uses bpffs pinned maps for log enrichment and profile correlation.
+      # The host path must be an existing read-write BPF filesystem mount.
+      - /sys/fs/bpf:/sys/fs/bpf
     depends_on:
       alloy:
         condition: service_started
