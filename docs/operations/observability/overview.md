@@ -113,6 +113,113 @@ The Tempo and Pyroscope datasources remain provisioned in Grafana but have no da
 
 Pyroscope is available directly at `http://localhost:4040`. For practical reading notes on CPU cores, top table, flamegraphs, and common WebhookWise API / worker patterns, see [local-lab/profiling.md](local-lab/profiling.md#viewing-profiles).
 
+### Diagnostics Lifecycle and Full Restart
+
+Before enabling the diagnostics profile, configure the application to export
+traces through Alloy and profiles to Pyroscope:
+
+```dotenv
+OTEL_ENABLED=true
+OTEL_LOGS_ENABLED=true
+OTEL_TRACES_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+PYROSCOPE_ENABLED=true
+PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040
+PYROSCOPE_SPAN_PROFILES_ENABLED=true
+```
+
+Alloy also accepts OTLP over gRPC at `http://alloy:4317`; use
+`OTEL_EXPORTER_OTLP_PROTOCOL=grpc` with that endpoint. Do not mix the gRPC port
+with the HTTP/protobuf protocol.
+
+Compose `restart` reuses the environment stored in an existing container. It
+does not reload values changed in `.env`. After enabling tracing or profiling,
+start the backends first and recreate the application containers:
+
+```bash
+OBS="docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile diagnostics"
+
+$OBS up -d tempo pyroscope
+docker compose up -d --no-deps --force-recreate webhook-service worker scheduler
+$OBS up -d --no-deps --force-recreate beyla
+```
+
+Beyla uses `pid: container:webhook-receiver`, so create or recreate it after
+recreating `webhook-service`. This ensures that Beyla attaches to the current API
+container PID namespace. The commands preserve PostgreSQL, Redis, and all named
+data volumes.
+
+For a full process restart when `.env` and the Compose definitions have not
+changed, restart the observability backends first, then the application stack,
+and finally Beyla:
+
+```bash
+OBS="docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile diagnostics"
+
+$OBS restart alertmanager prometheus loki alloy grafana tempo pyroscope
+docker compose restart postgres redis webhook-service worker scheduler
+$OBS restart beyla
+```
+
+The `migrate` service is an expected one-shot container and remains
+`Exited (0)` after a successful migration.
+
+Verify container state and backend readiness:
+
+```bash
+docker compose ps
+$OBS ps
+
+curl -fsS http://localhost:8000/ready
+curl -fsS http://localhost:9090/-/ready
+curl -fsS http://localhost:3100/ready
+curl -fsS http://localhost:3200/ready
+curl -fsS http://localhost:4040/ready
+curl -fsS http://localhost:12345/-/ready
+curl -fsS http://localhost:3000/api/health
+```
+
+After sending safe test traffic to the API, verify that data rather than only
+containers is present:
+
+```bash
+python scripts/observability/webhookwise_observe.py health
+python scripts/observability/webhookwise_observe.py tempo --service-name webhookwise-api --limit 5
+python scripts/observability/webhookwise_observe.py profiles --service-name webhookwise-api
+python scripts/observability/webhookwise_observe.py preset beyla-calls
+```
+
+The query helper requires the project Python dependencies. If the Docker host
+does not have them installed, run it from the project virtual environment or
+from an application container with the backend URLs overridden to their Compose
+service names.
+
+Beyla requires a Linux host with eBPF support and runs as a privileged
+container. The Compose service bind-mounts the host `/sys/fs/bpf` into Beyla as
+read-write so it can create `/sys/fs/bpf/otel` and use pinned maps for log
+enrichment and profile correlation. Verify the host mount before starting
+Beyla:
+
+```bash
+findmnt -T /sys/fs/bpf
+mountpoint /sys/fs/bpf
+```
+
+If the host supports BPF but does not mount bpffs automatically, mount it before
+starting the diagnostics profile:
+
+```bash
+sudo mount -t bpf bpffs /sys/fs/bpf
+```
+
+Do not change the Compose bind mount to read-only: Beyla must create and update
+objects under `/sys/fs/bpf/otel`. If the mount is unavailable, basic HTTP, SQL,
+Redis, process metrics, and trace collection can still work, but
+pinned-map-dependent features such as the log enricher and some profile
+correlation remain disabled. Confirm the base collection path with
+`preset beyla-calls` and inspect the Beyla logs.
+
 Run the k6 smoke load check:
 
 ```bash

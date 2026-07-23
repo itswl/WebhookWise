@@ -112,6 +112,7 @@ def test_local_observability_images_are_pinned_and_alerts_have_receiver() -> Non
     assert not {"webhook-service", "worker", "scheduler", "migrate"} & set(compose["services"])
     assert compose["services"]["beyla"]["pid"] == "container:webhook-receiver"
     assert compose["services"]["beyla"]["profiles"] == ["diagnostics"]
+    assert "/sys/fs/bpf:/sys/fs/bpf" in compose["services"]["beyla"]["volumes"]
     assert compose["services"]["tempo"]["profiles"] == ["diagnostics"]
     assert compose["services"]["pyroscope"]["profiles"] == ["diagnostics"]
     assert compose["networks"]["webhook_net"] == {
