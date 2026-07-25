@@ -54,10 +54,13 @@ def test_business_api_routes_are_v1_only() -> None:
         "/v1/forward-rules/audit",
         "/v1/incidents",
         "/v1/incidents/{incident_id}",
+        "/v1/incidents/{incident_id}/intelligence",
+        "/v1/incidents/{incident_id}/intelligence/feedback",
         "/v1/incidents/{incident_id}/summary",
         "/v1/incidents/{incident_id}/summarize",
         "/v1/incidents/{incident_id}/close",
         "/v1/incidents/{incident_id}/reopen",
+        "/v1/changes",
         "/v1/outbox",
         "/v1/admin/dead-letters",
         "/v1/admin/dead-letters/{event_id}",
@@ -150,6 +153,7 @@ def test_incident_mutations_require_admin_write_permission() -> None:
         "/incidents/{incident_id}/summarize",
         "/incidents/{incident_id}/close",
         "/incidents/{incident_id}/reopen",
+        "/incidents/{incident_id}/intelligence/feedback",
     }
     for path in mutation_paths:
         route = next(route for route in incidents_router.routes if str(getattr(route, "path", "")) == path)
@@ -166,6 +170,7 @@ def test_business_api_modules_live_under_v1_package() -> None:
     business_modules = {
         "admin.py",
         "ai_usage.py",
+        "changes.py",
         "deep_analysis.py",
         "forwarding.py",
         "incidents.py",

@@ -128,11 +128,31 @@ const IncidentsModule = (function () {
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             var result = await resp.json();
             var data = result.data || {};
+            data.intelligenceLoading = true;
             _detailCache[id] = data;
             detailEl.innerHTML = renderDetail(data);
+            loadIntelligence(id);
         } catch (e) {
             detailEl.innerHTML = '<div style="color:var(--danger); padding:0.5rem;">' + t('common.loadFailed') + ': ' + escapeHtml(String(e && e.message || e)) + '</div>';
         }
+    }
+
+    async function loadIntelligence(id) {
+        var data = _detailCache[id];
+        if (!data) return;
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/intelligence');
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var result = await resp.json();
+            data.intelligence = result.data || {};
+            data.intelligenceError = false;
+        } catch (e) {
+            data.intelligence = {};
+            data.intelligenceError = true;
+        }
+        data.intelligenceLoading = false;
+        var detailEl = document.getElementById('incident-detail-' + id);
+        if (detailEl) detailEl.innerHTML = renderDetail(data);
     }
 
     function formatRelativeOffset(offsetSecs) {
@@ -153,6 +173,139 @@ const IncidentsModule = (function () {
         if (importance === 'medium') return 'medium';
         if (importance === 'low') return 'success';
         return 'outline';
+    }
+
+    function intelligenceReason(reason) {
+        var code = String((reason && reason.code) || '');
+        var value = reason && reason.value != null ? String(reason.value) : '';
+        return t('incidents.intelligence.reason.' + code, { value: escapeHtml(value) });
+    }
+
+    function intelligenceReasons(reasons) {
+        return (reasons || []).slice(0, 3).map(function (reason) {
+            return '<span class="incident-intelligence-reason">' + intelligenceReason(reason) + '</span>';
+        }).join('');
+    }
+
+    function intelligenceScore(score) {
+        return '<span class="incident-intelligence-score">' +
+            t('incidents.intelligence.score', { value: Math.round(Number(score || 0) * 100) }) +
+            '</span>';
+    }
+
+    function intelligenceFeedbackButtons(incidentId, recommendationType, candidateRef, verdict) {
+        var encodedRef = encodeURIComponent(String(candidateRef || ''));
+        var relevantClass = verdict === 'relevant' || verdict === 'used' ? ' active' : '';
+        var irrelevantClass = verdict === 'irrelevant' || verdict === 'not_used' ? ' active' : '';
+        return '<div class="incident-intelligence-feedback">' +
+            '<button class="btn btn-sm incident-intelligence-feedback-btn' + relevantClass + '" ' +
+            'onclick="event.stopPropagation(); IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
+            recommendationType + '\',\'' + encodedRef + '\',\'relevant\')">✓ ' +
+            t('incidents.intelligence.relevant') + '</button>' +
+            '<button class="btn btn-sm incident-intelligence-feedback-btn' + irrelevantClass + '" ' +
+            'onclick="event.stopPropagation(); IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
+            recommendationType + '\',\'' + encodedRef + '\',\'irrelevant\')">× ' +
+            t('incidents.intelligence.irrelevant') + '</button>' +
+            '</div>';
+    }
+
+    function renderSimilarIncident(item, incidentId) {
+        var resolution = Array.isArray(item.resolution) ? item.resolution.join('；') : (item.resolution || '');
+        var html = '<article class="incident-intelligence-card">';
+        html += '<div class="incident-intelligence-card-head"><strong>#' + item.incident_id + ' ' +
+            escapeHtml(item.title || '') + '</strong>' + intelligenceScore(item.score) + '</div>';
+        if (item.root_cause) {
+            html += '<p><span>' + t('incidents.rootCause') + ':</span> ' + escapeHtml(String(item.root_cause)) + '</p>';
+        } else if (resolution) {
+            html += '<p>' + escapeHtml(String(resolution)) + '</p>';
+        }
+        html += '<div class="incident-intelligence-reasons">' + intelligenceReasons(item.reasons) + '</div>';
+        html += intelligenceFeedbackButtons(
+            incidentId, 'similar_incident', item.candidate_ref, item.feedback
+        );
+        return html + '</article>';
+    }
+
+    function changeTitle(item) {
+        var identity = item.service || item.external_id || ('#' + item.change_id);
+        return escapeHtml(String(item.change_type || 'change')) + ' · ' + escapeHtml(String(identity));
+    }
+
+    function renderRelatedChange(item, incidentId) {
+        var html = '<article class="incident-intelligence-card">';
+        html += '<div class="incident-intelligence-card-head"><strong>' + changeTitle(item) +
+            '</strong>' + intelligenceScore(item.score) + '</div>';
+        if (item.version_from || item.version_to) {
+            html += '<p><span>' + t('incidents.intelligence.version') + ':</span> ' +
+                escapeHtml(item.version_from || '—') + ' → ' + escapeHtml(item.version_to || '—') + '</p>';
+        }
+        if (item.actor) {
+            html += '<p><span>' + t('incidents.intelligence.actor') + ':</span> ' +
+                escapeHtml(item.actor) + '</p>';
+        }
+        html += '<div class="incident-intelligence-reasons">' + intelligenceReasons(item.reasons) + '</div>';
+        html += intelligenceFeedbackButtons(incidentId, 'change', item.candidate_ref, item.feedback);
+        return html + '</article>';
+    }
+
+    function renderRunbook(item, incidentId) {
+        var html = '<article class="incident-intelligence-card">';
+        html += '<div class="incident-intelligence-card-head"><strong>' + escapeHtml(item.title || '') +
+            '</strong>' + intelligenceScore(item.score) + '</div>';
+        if (item.excerpt) html += '<p class="incident-intelligence-excerpt">' + escapeHtml(item.excerpt) + '</p>';
+        html += '<div class="incident-intelligence-reasons">' + intelligenceReasons(item.reasons) + '</div>';
+        html += intelligenceFeedbackButtons(incidentId, 'runbook', item.candidate_ref, item.feedback);
+        return html + '</article>';
+    }
+
+    function renderIntelligence(data) {
+        if (data.intelligenceLoading) {
+            return '<section class="incident-intelligence"><div class="incident-intelligence-title">✨ ' +
+                t('incidents.intelligence.title') + '</div><div class="incident-intelligence-loading">' +
+                t('common.loading') + '</div></section>';
+        }
+        if (data.intelligenceError) {
+            return '<section class="incident-intelligence"><div class="incident-intelligence-title">✨ ' +
+                t('incidents.intelligence.title') + '</div><div class="incident-intelligence-empty">' +
+                t('incidents.intelligence.unavailable') + '</div></section>';
+        }
+        var intelligence = data.intelligence || {};
+        var groups = [
+            {
+                icon: '🕘',
+                title: t('incidents.intelligence.similar'),
+                items: intelligence.similar_incidents || [],
+                render: renderSimilarIncident
+            },
+            {
+                icon: '🚀',
+                title: t('incidents.intelligence.changes'),
+                items: intelligence.related_changes || [],
+                render: renderRelatedChange
+            },
+            {
+                icon: '📘',
+                title: t('incidents.intelligence.runbooks'),
+                items: intelligence.recommended_runbooks || [],
+                render: renderRunbook
+            }
+        ];
+        var html = '<section class="incident-intelligence">';
+        html += '<div class="incident-intelligence-title">✨ ' + t('incidents.intelligence.title') + '</div>';
+        html += '<p class="incident-intelligence-note">' + t('incidents.intelligence.note') + '</p>';
+        html += '<div class="incident-intelligence-grid">';
+        groups.forEach(function (group) {
+            html += '<div class="incident-intelligence-group"><h4>' + group.icon + ' ' + group.title + '</h4>';
+            if (!group.items.length) {
+                html += '<div class="incident-intelligence-empty">' + t('incidents.intelligence.empty') + '</div>';
+            } else {
+                group.items.forEach(function (item) {
+                    html += group.render(item, data.id);
+                });
+            }
+            html += '</div>';
+        });
+        return html + '</div></section>';
     }
 
     function renderDetail(data) {
@@ -202,6 +355,8 @@ const IncidentsModule = (function () {
         } else if (data.summary_status === 'pending' || data.summary_status === 'retrying' || data.summary_status === 'processing') {
             html += '<div style="padding:0.5rem; margin-bottom:1rem; font-size:0.82rem; color:var(--text-muted);">💬 ' + t('incidents.summaryPending') + '</div>';
         }
+
+        html += renderIntelligence(data);
 
         // Member alert timeline
         if (members.length) {
@@ -385,6 +540,24 @@ const IncidentsModule = (function () {
         } catch (e) { alert('Feedback failed: ' + (e.message || e)); }
     }
 
+    async function intelligenceFeedback(id, recommendationType, encodedCandidateRef, verdict) {
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/intelligence/feedback', {
+                method: 'POST',
+                body: JSON.stringify({
+                    recommendation_type: recommendationType,
+                    candidate_ref: decodeURIComponent(encodedCandidateRef),
+                    verdict: verdict,
+                    actor: 'dashboard'
+                })
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            await loadIntelligence(id);
+        } catch (e) {
+            alert(t('incidents.intelligence.feedbackFailed') + ': ' + (e.message || e));
+        }
+    }
+
     async function merge(id) {
         var value = prompt('Incident IDs to merge into #' + id + ' (comma separated)', '');
         if (!value) return;
@@ -497,6 +670,7 @@ const IncidentsModule = (function () {
         assign: assign,
         addNote: addNote,
         feedback: feedback,
+        intelligenceFeedback: intelligenceFeedback,
         merge: merge,
         split: split,
         exportPostmortem: exportPostmortem,
