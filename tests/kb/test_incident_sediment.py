@@ -33,6 +33,7 @@ async def _add_incident(session: AsyncSession, *, title: str, status: str, summa
         alert_count=3,
         summary_analysis=summary,
         started_at=utcnow(),
+        correlation_dimensions={"service": "inference", "environment": "prod"},
     )
     session.add(incident)
     await session.flush()
@@ -52,6 +53,7 @@ async def test_draft_from_incident_is_draft_and_excluded_from_rag(
         rows = list((await session.execute(select(KBDocument))).scalars().all())
         assert rows and all(r.status == "draft" for r in rows)
         assert all(r.source_ref == f"incident:{incident.id}" for r in rows)
+        assert all(r.tags and r.tags.get("service") == "inference" for r in rows)
         # Composed body carries the incident's own analysis text.
         blob = "\n".join(r.content for r in rows)
         assert "leaked GPU memory" in blob and "Add a memory ceiling" in blob

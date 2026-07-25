@@ -66,6 +66,11 @@ async def draft_kb_from_incident(session: AsyncSession, incident_id: int) -> boo
     content = _compose_kb_content(incident.summary_analysis)
     if not content.strip():
         return False
+    identity_tags = {
+        key: str(value)
+        for key, value in (incident.correlation_dimensions or {}).items()
+        if key in {"service", "project", "environment", "region"} and str(value).strip()
+    }
     await ingest_document(
         session,
         title=f"Incident resolution: {incident.title}"[:300],
@@ -75,6 +80,7 @@ async def draft_kb_from_incident(session: AsyncSession, incident_id: int) -> boo
             "kind": "incident_resolution",
             "incident_id": int(incident.id),
             "source": incident.source or "",
+            **identity_tags,
         },
         status="draft",
     )

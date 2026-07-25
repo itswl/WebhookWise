@@ -9,6 +9,7 @@ from models.audit_log import AuditLog
 from models.decision_trace import DecisionTrace
 from models.forwarding import ForwardOutbox, ForwardRule
 from models.incident import Incident, IncidentMember
+from models.intelligence import ChangeEvent, IncidentIntelligenceFeedback
 from models.kb_document import KBDocument
 from models.operations import AnalysisFeedback, NoiseReductionAction, OperationalNote
 from models.silence import MaintenanceWindow, Silence
@@ -30,6 +31,8 @@ __all__ = [
     "KBDocument",
     "Incident",
     "IncidentMember",
+    "ChangeEvent",
+    "IncidentIntelligenceFeedback",
     "AuditLog",
     "OperationalNote",
     "AnalysisFeedback",

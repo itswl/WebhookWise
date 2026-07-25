@@ -257,6 +257,23 @@ def test_incident_postmortem_export_is_wired() -> None:
         assert "'incidents.action.postmortemFailed'" in js
 
 
+def test_incident_intelligence_is_wired() -> None:
+    incidents = _static_js("incidents.js")
+
+    assert "'/v1/incidents/' + id + '/intelligence'" in incidents
+    assert "'/v1/incidents/' + id + '/intelligence/feedback'" in incidents
+    assert "renderIntelligence" in incidents
+    assert "similar_incidents" in incidents
+    assert "related_changes" in incidents
+    assert "recommended_runbooks" in incidents
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        js = _static_js(dict_name)
+        assert "'incidents.intelligence.title'" in js
+        assert "'incidents.intelligence.similar'" in js
+        assert "'incidents.intelligence.changes'" in js
+        assert "'incidents.intelligence.runbooks'" in js
+
+
 def test_action_center_routes_noise_view_items() -> None:
     # Action Center items render generically off severity/view (no kind
     # whitelist), so flapping_identity (view="noise") only needs the open-details
