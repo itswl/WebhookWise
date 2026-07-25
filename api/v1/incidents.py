@@ -13,6 +13,11 @@ from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.webhook_security import check_admin_rate_limit_dep
 from db.session import get_db_session
+from schemas.intelligence import IntelligenceFeedbackRequest
+from services.incidents.intelligence import (
+    get_incident_intelligence,
+    record_intelligence_feedback,
+)
 from services.incidents.queries import (
     get_incident_detail,
     get_incident_summary,
@@ -59,6 +64,59 @@ async def list_incidents_endpoint(
         )
     except _INCIDENT_ERRORS as e:
         logger.error("Failed to list incidents: %s", e, exc_info=True)
+        return internal_error_response()
+
+
+@incidents_router.get(
+    "/incidents/{incident_id}/intelligence",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
+)
+async def get_incident_intelligence_endpoint(
+    incident_id: int,
+    limit: int = Query(3, ge=1, le=5),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Return explainable similar incidents, related changes, and runbooks."""
+    try:
+        data = await get_incident_intelligence(session, incident_id, limit=limit)
+        if data is None:
+            return fail_response(f"Incident {incident_id} not found", 404)
+        return ok_response(http_status=200, data=data)
+    except _INCIDENT_ERRORS as e:
+        logger.error("Failed to get incident intelligence id=%s: %s", incident_id, e, exc_info=True)
+        return internal_error_response()
+
+
+@incidents_router.post(
+    "/incidents/{incident_id}/intelligence/feedback",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_admin_write)],
+)
+async def record_incident_intelligence_feedback_endpoint(
+    incident_id: int,
+    request: IntelligenceFeedbackRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Record operator feedback for one incident-intelligence recommendation."""
+    try:
+        feedback = await record_intelligence_feedback(
+            session,
+            incident_id,
+            request.model_dump(),
+        )
+        if feedback is None:
+            return fail_response(f"Incident {incident_id} not found", 404)
+        return ok_response(
+            http_status=200,
+            message="incident intelligence feedback recorded",
+            data={
+                "incident_id": incident_id,
+                "recommendation_type": feedback.recommendation_type,
+                "candidate_ref": feedback.candidate_ref,
+                "verdict": feedback.verdict,
+            },
+        )
+    except _INCIDENT_ERRORS as e:
+        logger.error("Failed to record incident intelligence feedback id=%s: %s", incident_id, e, exc_info=True)
         return internal_error_response()
 
 

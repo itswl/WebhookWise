@@ -18,6 +18,44 @@ OTEL_ENABLED=false python scripts/export_openapi.py
 
 The default output directory is `build/openapi`. Pass `--output-dir <dir>` to write somewhere else.
 
+## Incident intelligence
+
+`GET /v1/incidents/{incident_id}/intelligence` returns three independently
+ranked groups:
+
+- similar quiet or closed incidents;
+- deployment, configuration, feature-flag, and infrastructure changes near the
+  incident start;
+- published knowledge-base runbooks.
+
+Each candidate includes a deterministic score and machine-readable evidence.
+The endpoint does not call an LLM and does not execute a remediation. Operators
+can label a candidate with
+`POST /v1/incidents/{incident_id}/intelligence/feedback`.
+
+CI/CD and change systems can idempotently ingest a normalized change through
+`POST /v1/changes`. The `(source, external_id)` pair is the idempotency key.
+Management read and write credentials are both required:
+
+```bash
+curl -X POST http://localhost:8000/v1/changes \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -H "X-Admin-Write-Key: $ADMIN_WRITE_KEY" \
+  -d '{
+    "external_id": "deploy-20260725-42",
+    "source": "github-actions",
+    "change_type": "deployment",
+    "service": "checkout",
+    "project": "store",
+    "environment": "prod",
+    "version_from": "v41",
+    "version_to": "v42",
+    "started_at": "2026-07-25T13:40:00Z",
+    "source_url": "https://github.example/actions/runs/42"
+  }'
+```
+
 ## Read-only MCP server
 
 WebhookWise can expose its read side over the Model Context Protocol (MCP) so
