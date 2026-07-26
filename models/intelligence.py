@@ -93,3 +93,89 @@ class IncidentIntelligenceFeedback(Base):
             "recommendation_type",
         ),
     )
+
+
+class RunbookExecution(Base):
+    """One operator-owned runbook execution attached to an incident."""
+
+    __tablename__ = "runbook_executions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    candidate_ref: Mapped[str] = mapped_column(String(500), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="in_progress", nullable=False)
+    steps: Mapped[list[dict[str, object]]] = mapped_column(
+        JSONB,
+        default=list,
+        server_default=text("'[]'"),
+        nullable=False,
+    )
+    effectiveness: Mapped[str | None] = mapped_column(String(20))
+    notes: Mapped[str | None] = mapped_column(Text)
+    actor: Mapped[str] = mapped_column(String(100), default="operator", nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: utcnow(),
+        onupdate=lambda: utcnow(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "incident_id",
+            "candidate_ref",
+            name="uq_runbook_executions_incident_candidate",
+        ),
+        Index(
+            "ix_runbook_executions_incident_status",
+            "incident_id",
+            "status",
+            "started_at",
+        ),
+    )
+
+
+class IntegrationActionReceipt(Base):
+    """Idempotency receipt for a verified external interactive action."""
+
+    __tablename__ = "integration_action_receipts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    provider: Mapped[str] = mapped_column(String(30), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    action: Mapped[str] = mapped_column(String(40), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    resource_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    result: Mapped[dict[str, object]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "event_id",
+            name="uq_integration_action_receipts_provider_event",
+        ),
+        Index(
+            "ix_integration_action_receipts_resource",
+            "resource_type",
+            "resource_id",
+            "created_at",
+        ),
+    )

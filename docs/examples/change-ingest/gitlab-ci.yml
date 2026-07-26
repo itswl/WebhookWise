@@ -1,0 +1,39 @@
+# Add this job to a pipeline after its deployment job succeeds.
+report_webhookwise_change:
+  stage: .post
+  when: on_success
+  image: alpine:3.22
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - |
+      payload="$(jq -n \
+        --arg external_id "${CI_PIPELINE_ID}-${CI_JOB_ID}-${CI_ENVIRONMENT_NAME:-production}" \
+        --arg source "gitlab-ci" \
+        --arg service "$CI_PROJECT_NAME" \
+        --arg project "$CI_PROJECT_PATH" \
+        --arg environment "${CI_ENVIRONMENT_NAME:-production}" \
+        --arg version_from "${CI_COMMIT_BEFORE_SHA:-}" \
+        --arg version_to "$CI_COMMIT_SHA" \
+        --arg actor "$GITLAB_USER_LOGIN" \
+        --arg started_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --arg source_url "$CI_PIPELINE_URL" \
+        '{
+          external_id: $external_id,
+          source: $source,
+          change_type: "deployment",
+          service: $service,
+          project: $project,
+          environment: $environment,
+          version_from: $version_from,
+          version_to: $version_to,
+          actor: $actor,
+          status: "succeeded",
+          started_at: $started_at,
+          source_url: $source_url
+        }')"
+      curl --fail-with-body --retry 3 --retry-all-errors \
+        -X POST "${WEBHOOKWISE_URL%/}/v1/changes" \
+        -H "Authorization: Bearer $WEBHOOKWISE_CHANGE_INGEST_TOKEN" \
+        -H "Content-Type: application/json" \
+        --data "$payload"

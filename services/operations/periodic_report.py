@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from statistics import median
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -23,7 +24,17 @@ from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
 from core.logger import get_logger
 from db.session import session_scope
-from models import AIUsageLog, AnalysisFeedback, DecisionTrace, ForwardOutbox, Incident, WebhookEvent
+from models import (
+    AIUsageLog,
+    AnalysisFeedback,
+    DecisionTrace,
+    DeepAnalysis,
+    ForwardOutbox,
+    Incident,
+    IncidentIntelligenceFeedback,
+    RunbookExecution,
+    WebhookEvent,
+)
 from services.webhooks.types import ForwardOutboxStatus, ForwardResult
 
 logger = get_logger("periodic_report")
@@ -81,6 +92,29 @@ REPORT_PERIODS: dict[str, ReportPeriod] = {
         catchup_lookback_minutes=31 * 24 * 60 + 60,  # ~1 month + slack
     ),
 }
+
+
+def _percentage(numerator: int, denominator: int) -> float | None:
+    """Return a one-decimal percentage without inventing a zero-sized result."""
+    return round(100.0 * numerator / denominator, 1) if denominator else None
+
+
+def _duration_stats(rows: list[tuple[datetime, datetime | None]]) -> dict[str, int | float | None]:
+    """Summarize valid start/end pairs in minutes.
+
+    Invalid negative intervals are excluded rather than clamped: clock/data
+    problems must not make operational response times look artificially fast.
+    """
+    values = sorted(
+        (finished - started).total_seconds() / 60.0
+        for started, finished in rows
+        if finished is not None and finished >= started
+    )
+    return {
+        "average_minutes": round(sum(values) / len(values), 1) if values else None,
+        "p50_minutes": round(float(median(values)), 1) if values else None,
+        "sample_size": len(values),
+    }
 
 
 async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[str, Any]:
@@ -186,6 +220,27 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
     incident_active = incident_by_status.get("active", 0)
     incident_quiet = incident_by_status.get("quiet", 0)
 
+    # Product-value response-time measures use incidents as the operational
+    # unit, not raw alerts (otherwise one noisy incident would dominate the
+    # result). Only valid, observed intervals enter the samples; a zero-sized
+    # sample is reported as None rather than a misleading 0 minutes.
+    incident_timing_rows = list(
+        (
+            await session.execute(
+                select(
+                    Incident.started_at,
+                    Incident.acknowledged_at,
+                    Incident.resolved_at,
+                ).where(
+                    Incident.started_at >= start,
+                    Incident.alert_count > 0,
+                )
+            )
+        ).all()
+    )
+    mtta = _duration_stats([(row.started_at, row.acknowledged_at) for row in incident_timing_rows])
+    mttr = _duration_stats([(row.started_at, row.resolved_at) for row in incident_timing_rows])
+
     # Unresolved count and incident-side SLA breaches share the same filtered
     # scan; fold them into one conditional aggregation.
     incident_health_row = (
@@ -287,6 +342,104 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
     feedback_total = sum(feedback_breakdown.values())
     feedback_correct = feedback_breakdown.get("correct", 0)
 
+    # Deep-analysis success is deliberately based on terminal records only.
+    # Pending work is surfaced separately and cannot dilute or inflate the
+    # completed/(completed+failed) rate.
+    deep_status_rows = (
+        await session.execute(
+            select(DeepAnalysis.status, func.count(DeepAnalysis.id))
+            .where(DeepAnalysis.created_at >= start)
+            .group_by(DeepAnalysis.status)
+        )
+    ).all()
+    deep_statuses = {str(status): int(count) for status, count in deep_status_rows}
+    deep_terminal_statuses = ("completed", "failed", "timeout", "degraded", "error")
+    deep_terminal = sum(deep_statuses.get(status, 0) for status in deep_terminal_statuses)
+    deep_completed = deep_statuses.get("completed", 0)
+    deep_analysis_success = {
+        "completed": deep_completed,
+        "terminal": deep_terminal,
+        "pending": deep_statuses.get("pending", 0),
+        "rate_pct": _percentage(deep_completed, deep_terminal),
+    }
+
+    # Recommendation feedback is the only human truth signal currently
+    # persisted. Change association is reported per reviewed incident so one
+    # incident with several candidate changes does not dominate the rate.
+    intelligence_feedback_rows = list(
+        (
+            await session.execute(
+                select(
+                    IncidentIntelligenceFeedback.incident_id,
+                    IncidentIntelligenceFeedback.recommendation_type,
+                    IncidentIntelligenceFeedback.verdict,
+                ).where(IncidentIntelligenceFeedback.updated_at >= start)
+            )
+        ).all()
+    )
+    reviewed_change_incidents: set[int] = set()
+    confirmed_change_incidents: set[int] = set()
+    recommendation_counts = {
+        "runbook": {"used": 0, "not_used": 0},
+        "similar_incident": {"used": 0, "not_used": 0},
+    }
+    for row in intelligence_feedback_rows:
+        recommendation_type = str(row.recommendation_type)
+        verdict = str(row.verdict)
+        if recommendation_type == "change" and verdict in {"relevant", "irrelevant", "used", "not_used"}:
+            reviewed_change_incidents.add(int(row.incident_id))
+            if verdict in {"relevant", "used"}:
+                confirmed_change_incidents.add(int(row.incident_id))
+        counts = recommendation_counts.get(recommendation_type)
+        if counts is not None and verdict in counts:
+            counts[verdict] += 1
+
+    change_review_sample = len(reviewed_change_incidents)
+    confirmed_change_count = len(confirmed_change_incidents)
+    confirmed_change_association = {
+        "confirmed_incidents": confirmed_change_count,
+        "reviewed_incidents": change_review_sample,
+        "rate_pct": _percentage(confirmed_change_count, change_review_sample),
+    }
+
+    def recommendation_adoption(kind: str) -> dict[str, int | float | None]:
+        counts = recommendation_counts[kind]
+        sample_size = counts["used"] + counts["not_used"]
+        return {
+            "used": counts["used"],
+            "sample_size": sample_size,
+            "rate_pct": _percentage(counts["used"], sample_size),
+        }
+
+    runbook_adoption = recommendation_adoption("runbook")
+    similar_incident_adoption = recommendation_adoption("similar_incident")
+
+    # A runbook execution is a stronger adoption signal than a feedback click.
+    # This is a start-window cohort: completed/effective counts belong to
+    # executions started in the report window, keeping their denominator
+    # explicit and stable.
+    runbook_execution_rows = list(
+        (
+            await session.execute(
+                select(
+                    RunbookExecution.status,
+                    RunbookExecution.effectiveness,
+                ).where(RunbookExecution.started_at >= start)
+            )
+        ).all()
+    )
+    runbook_started = len(runbook_execution_rows)
+    completed_runbooks = [row for row in runbook_execution_rows if str(row.status) == "completed"]
+    rated_runbooks = [row for row in completed_runbooks if str(row.effectiveness or "") in {"effective", "ineffective"}]
+    effective_runbooks = sum(1 for row in rated_runbooks if str(row.effectiveness) == "effective")
+    runbook_executions = {
+        "started": runbook_started,
+        "completed": len(completed_runbooks),
+        "effective": effective_runbooks,
+        "effectiveness_sample_size": len(rated_runbooks),
+        "effective_rate_pct": _percentage(effective_runbooks, len(rated_runbooks)),
+    }
+
     unhealthy_rule_rows = (
         await session.execute(
             select(ForwardOutbox.rule_name, func.count(ForwardOutbox.id))
@@ -325,6 +478,8 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         "incident_total": incident_total,
         "incident_active": incident_active,
         "incident_quiet": incident_quiet,
+        "mtta": mtta,
+        "mttr": mttr,
         "previous_total_events": previous_total,
         "previous_noise_pct": previous_noise_pct,
         "volume_change_pct": volume_change_pct,
@@ -340,6 +495,11 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         "action_center_total": int(action_center["summary"]["total"]),
         "feedback_total": feedback_total,
         "feedback_agreement_pct": round(100.0 * feedback_correct / feedback_total, 1) if feedback_total else None,
+        "deep_analysis_success": deep_analysis_success,
+        "confirmed_change_association": confirmed_change_association,
+        "runbook_adoption": runbook_adoption,
+        "similar_incident_adoption": similar_incident_adoption,
+        "runbook_executions": runbook_executions,
         "unhealthy_rules": unhealthy_rules,
         "silence_debt_line": silence_debt_line,
     }
@@ -412,6 +572,75 @@ def _build_summary(stats: dict[str, Any]) -> str:
         )
     if stats.get("silence_debt_line"):
         lines.append(stats["silence_debt_line"])
+
+    product_lines: list[str] = []
+    if "mtta" in stats or "mttr" in stats:
+        timing_parts: list[str] = []
+        for label, key in (("MTTA", "mtta"), ("MTTR", "mttr")):
+            metric = stats.get(key)
+            if not isinstance(metric, dict):
+                continue
+            sample_size = int(metric.get("sample_size") or 0)
+            average = metric.get("average_minutes")
+            p50 = metric.get("p50_minutes")
+            if average is None or p50 is None:
+                timing_parts.append(f"{label} unavailable (n={sample_size})")
+            else:
+                timing_parts.append(f"{label} avg {float(average):.1f}m / P50 {float(p50):.1f}m (n={sample_size})")
+        if timing_parts:
+            product_lines.append("Response time: " + "; ".join(timing_parts) + ".")
+
+    deep_success = stats.get("deep_analysis_success")
+    if isinstance(deep_success, dict):
+        terminal = int(deep_success.get("terminal") or 0)
+        rate = deep_success.get("rate_pct")
+        rate_text = f"{float(rate):.1f}%" if rate is not None else "unavailable"
+        product_lines.append(
+            f"Deep-analysis success: {rate_text} "
+            f"({int(deep_success.get('completed') or 0)}/{terminal} terminal; "
+            f"{int(deep_success.get('pending') or 0)} pending)."
+        )
+
+    change_association = stats.get("confirmed_change_association")
+    if isinstance(change_association, dict):
+        reviewed = int(change_association.get("reviewed_incidents") or 0)
+        rate = change_association.get("rate_pct")
+        rate_text = f"{float(rate):.1f}%" if rate is not None else "unavailable"
+        product_lines.append(
+            f"Human-confirmed change association: {rate_text} "
+            f"({int(change_association.get('confirmed_incidents') or 0)}/{reviewed} reviewed incidents)."
+        )
+
+    adoption_parts: list[str] = []
+    for label, key in (
+        ("runbooks", "runbook_adoption"),
+        ("similar incidents", "similar_incident_adoption"),
+    ):
+        adoption = stats.get(key)
+        if not isinstance(adoption, dict):
+            continue
+        sample_size = int(adoption.get("sample_size") or 0)
+        rate = adoption.get("rate_pct")
+        rate_text = f"{float(rate):.1f}%" if rate is not None else "unavailable"
+        adoption_parts.append(f"{label} {rate_text} ({int(adoption.get('used') or 0)}/{sample_size} reviewed)")
+    if adoption_parts:
+        product_lines.append("Operator-reported reuse: " + "; ".join(adoption_parts) + ".")
+
+    runbook_executions = stats.get("runbook_executions")
+    if isinstance(runbook_executions, dict):
+        rated = int(runbook_executions.get("effectiveness_sample_size") or 0)
+        rate = runbook_executions.get("effective_rate_pct")
+        rate_text = f"{float(rate):.1f}%" if rate is not None else "unavailable"
+        product_lines.append(
+            f"Runbook executions: {int(runbook_executions.get('started') or 0)} started / "
+            f"{int(runbook_executions.get('completed') or 0)} completed; "
+            f"effective rate {rate_text} "
+            f"({int(runbook_executions.get('effective') or 0)}/{rated} rated completions)."
+        )
+
+    if product_lines:
+        lines.append("\n**Product value**")
+        lines.extend(product_lines)
     return "\n".join(lines)
 
 

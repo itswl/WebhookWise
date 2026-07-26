@@ -16,7 +16,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
-from models import DecisionTrace, Incident, IncidentMember, KBDocument, WebhookEvent
+from models import (
+    DecisionTrace,
+    Incident,
+    IncidentMember,
+    KBDocument,
+    RunbookExecution,
+    WebhookEvent,
+)
 
 _TIMELINE_LIMIT = 40
 
@@ -132,6 +139,43 @@ async def build_postmortem_markdown(session: AsyncSession, incident_id: int) -> 
     milestone_lines = [f"- {_fmt(ts)} — {label}" for ts, label in milestones if ts is not None]
     if milestone_lines:
         lines += ["", "### Milestones", ""] + milestone_lines
+
+    runbook_executions = list(
+        (
+            await session.execute(
+                select(RunbookExecution)
+                .where(RunbookExecution.incident_id == incident_id)
+                .order_by(RunbookExecution.started_at, RunbookExecution.id)
+                .limit(10)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if runbook_executions:
+        lines += ["", "## Runbook executions", ""]
+        for execution in runbook_executions:
+            lines += [
+                f"### {execution.title}",
+                "",
+                f"- **Status:** {execution.status}",
+                f"- **Actor:** {execution.actor}",
+                f"- **Started:** {_fmt(execution.started_at)}",
+                f"- **Completed:** {_fmt(execution.completed_at)}",
+                f"- **Effectiveness:** {execution.effectiveness or 'not rated'}",
+            ]
+            steps = execution.steps if isinstance(execution.steps, list) else []
+            if steps:
+                lines.append("")
+                for step in steps:
+                    if not isinstance(step, dict):
+                        continue
+                    marker = "x" if bool(step.get("completed")) else " "
+                    text = str(step.get("text") or "Unnamed manual step").strip()
+                    lines.append(f"- [{marker}] {text}")
+            if execution.notes:
+                lines += ["", f"> {execution.notes.strip()}"]
+            lines.append("")
 
     raw_recommendations = summary.get("recommendations")
     recommendation_items = raw_recommendations if isinstance(raw_recommendations, list) else []

@@ -96,6 +96,13 @@ class Incident(Base):
             "sla_due_at",
             postgresql_where=text("workflow_status NOT IN ('resolved', 'ignored')"),
         ),
+        Index(
+            "ix_incidents_service_environment_started",
+            text("(correlation_dimensions ->> 'service')"),
+            text("(correlation_dimensions ->> 'environment')"),
+            text("started_at DESC"),
+            postgresql_where=text("correlation_dimensions ? 'service' AND alert_count > 0"),
+        ).ddl_if(dialect="postgresql"),
     )
 
 

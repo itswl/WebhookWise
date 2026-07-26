@@ -1466,8 +1466,604 @@
   text-align: center;
 }
 
+.incident-timeline-change-node {
+  position: relative;
+}
+
+.incident-timeline-change-indicator {
+  position: absolute;
+  left: -2.1rem;
+  top: 5px;
+  display: flex;
+  width: 1.25rem;
+  height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  border-radius: 50%;
+  background: var(--bg-surface);
+  box-shadow: 0 0 0 3px var(--bg-surface);
+  font-size: 0.68rem;
+}
+
+.incident-timeline-change {
+  padding: 0.65rem 0.85rem;
+  border: 1px dashed color-mix(in srgb, var(--primary) 55%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--primary) 6%, var(--bg-surface));
+}
+
+.incident-timeline-change-head,
+.incident-timeline-change-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.incident-timeline-change-head > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  color: var(--text-main);
+  font-size: 0.78rem;
+}
+
+.incident-timeline-change-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.incident-timeline-offset {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-base);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.incident-timeline-change-version,
+.incident-timeline-change-meta,
+.incident-timeline-change-footer {
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.incident-timeline-change-version span {
+  color: var(--text-secondary);
+}
+
+.incident-timeline-change-footer {
+  flex-wrap: wrap;
+}
+
+.incident-timeline-change-footer a {
+  color: var(--primary);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.incident-timeline-change-footer a:hover {
+  text-decoration: underline;
+}
+
+.incident-detail {
+  cursor: default;
+}
+
+.incident-command-summary {
+  margin-bottom: 1rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-base);
+}
+
+.incident-command-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.incident-command-meta,
+.incident-command-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.incident-command-meta {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.incident-command-meta strong {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
+.incident-command-actions {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.incident-action-menu {
+  margin-left: 0;
+}
+
+.incident-action-menu[open] {
+  flex-basis: 100%;
+}
+
+.incident-action-menu .alert-secondary-actions {
+  justify-content: flex-end;
+}
+
+.incident-command-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0.85rem;
+}
+
+.incident-command-card {
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+}
+
+.incident-command-label,
+.incident-section-title {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.incident-command-body {
+  display: -webkit-box;
+  margin-top: 0.45rem;
+  overflow: hidden;
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.incident-command-body.is-muted {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.incident-command-card-meta {
+  margin-top: 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.incident-service-profile {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0 0.9rem 0.85rem;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.incident-service-profile > strong {
+  flex: 0 0 auto;
+  color: var(--text-main);
+}
+
+.incident-service-profile > div {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.incident-service-profile > div > span,
+.incident-service-health {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+}
+
+.incident-service-health.health-healthy {
+  color: var(--success);
+}
+
+.incident-service-health.health-watch {
+  color: var(--warning);
+}
+
+.incident-service-health.health-at_risk {
+  color: var(--danger);
+}
+
+.incident-change-impact {
+  margin-top: 0.55rem;
+}
+
+.incident-change-impact.is-compact {
+  margin-top: 0.45rem;
+}
+
+.incident-change-impact-head,
+.incident-change-impact-metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.incident-impact-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 0.63rem;
+  font-weight: 800;
+}
+
+.incident-impact-badge.impact-high {
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+  color: var(--danger);
+}
+
+.incident-impact-badge.impact-medium {
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  color: var(--warning);
+}
+
+.incident-impact-badge.impact-low {
+  background: color-mix(in srgb, var(--success) 13%, transparent);
+  color: var(--success);
+}
+
+.incident-change-impact-summary {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.incident-change-impact-metrics {
+  margin-top: 0.35rem;
+}
+
+.incident-change-impact-metrics span {
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 0.63rem;
+}
+
+.incident-runbook-start {
+  margin-top: 0.55rem;
+}
+
+.incident-runbook-card-progress {
+  margin-top: 0.55rem;
+  color: var(--primary);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.incident-runbook-section {
+  margin-bottom: 1rem;
+  padding: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 32%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--primary) 4%, var(--bg-surface));
+}
+
+.incident-runbook-section > .incident-section-title {
+  margin-bottom: 0.65rem;
+  color: var(--primary);
+}
+
+.incident-runbook-execution {
+  margin-top: 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+}
+
+.incident-runbook-execution:first-of-type {
+  margin-top: 0;
+}
+
+.incident-runbook-execution-head,
+.incident-runbook-execution-head > div,
+.incident-runbook-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.incident-runbook-execution-head {
+  justify-content: space-between;
+  color: var(--text-main);
+  font-size: 0.78rem;
+}
+
+.incident-runbook-status {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 0.63rem;
+  font-weight: 800;
+}
+
+.incident-runbook-status.status-in_progress {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
+.incident-runbook-status.status-completed {
+  background: color-mix(in srgb, var(--success) 13%, transparent);
+  color: var(--success);
+}
+
+.incident-runbook-status.status-failed,
+.incident-runbook-status.status-abandoned {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+
+.incident-runbook-meta,
+.incident-runbook-notes,
+.incident-runbook-manual-note {
+  color: var(--text-muted);
+  font-size: 0.67rem;
+}
+
+.incident-runbook-meta {
+  margin-top: 0.25rem;
+}
+
+.incident-runbook-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+  color: var(--text-muted);
+  font-size: 0.65rem;
+}
+
+.incident-runbook-progress-track {
+  width: min(240px, 65%);
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+}
+
+.incident-runbook-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+
+.incident-runbook-steps {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.incident-runbook-step {
+  display: grid;
+  grid-template-columns: 1.35rem minmax(0, 1fr);
+  gap: 0.45rem;
+  width: 100%;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-base);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.incident-runbook-step > span {
+  display: inline-flex;
+  width: 1.2rem;
+  height: 1.2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  font-size: 0.65rem;
+}
+
+.incident-runbook-step > strong {
+  min-width: 0;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.incident-runbook-step.is-complete {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  color: var(--text-muted);
+}
+
+.incident-runbook-step.is-complete > span {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+
+.incident-runbook-step:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.incident-runbook-notes {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem;
+  border-left: 2px solid var(--border);
+  white-space: pre-wrap;
+}
+
+.incident-runbook-actions {
+  margin-top: 0.65rem;
+}
+
+.incident-runbook-actions .btn.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.incident-runbook-manual-note {
+  margin-left: auto;
+}
+
+.incident-supporting-details {
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+}
+
+.incident-supporting-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.7rem 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+  list-style: none;
+}
+
+.incident-supporting-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.incident-supporting-count {
+  display: inline-flex;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 0.63rem;
+}
+
+.incident-supporting-details > .incident-intelligence {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.incident-notes > div {
+  padding: 0 0.85rem 0.7rem;
+}
+
+.incident-note {
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.incident-note span {
+  color: var(--text-muted);
+}
+
+.incident-summary-state {
+  margin-bottom: 1rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 6px;
+  background: var(--bg-base);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.incident-summary-state.is-warning {
+  color: var(--warning);
+}
+
 @media (max-width: 1100px) {
   .incident-intelligence-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .incident-command-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .incident-command-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .incident-command-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .incident-command-body {
+    display: block;
+    overflow: visible;
+  }
+
+  .incident-service-profile {
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .incident-action-menu > summary {
+    margin-left: 0;
+  }
+
+  .incident-runbook-manual-note {
+    width: 100%;
+    margin-left: 0;
   }
 }

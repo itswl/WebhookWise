@@ -210,3 +210,39 @@ def test_production_rejects_k8s_placeholder_secret_values(temp_config) -> None:
 
     with pytest.raises(RuntimeError, match="API_KEY"):
         validate_startup_security(temp_config)
+
+
+def test_production_rejects_placeholder_change_ingest_token(temp_config) -> None:
+    from core.web.startup_checks import validate_startup_security
+
+    temp_config.server.APP_ENV = "production"
+    temp_config.security.API_KEY = "real-api-key-value"
+    temp_config.security.ADMIN_WRITE_KEY = "real-admin-write-key-value"
+    temp_config.security.CHANGE_INGEST_TOKEN = "replace-me-change-ingest-token"
+    temp_config.security.REQUIRE_WEBHOOK_AUTH = True
+    temp_config.security.WEBHOOK_SECRET = "real-webhook-secret-value"
+
+    with pytest.raises(RuntimeError, match="CHANGE_INGEST_TOKEN"):
+        validate_startup_security(temp_config)
+
+
+def test_production_requires_complete_feishu_card_action_credentials(temp_config) -> None:
+    from core.web.startup_checks import validate_startup_security
+
+    temp_config.server.APP_ENV = "production"
+    temp_config.security.API_KEY = "real-api-key-value"
+    temp_config.security.ADMIN_WRITE_KEY = "real-admin-write-key-value"
+    temp_config.security.REQUIRE_WEBHOOK_AUTH = True
+    temp_config.security.WEBHOOK_SECRET = "real-webhook-secret-value"
+    temp_config.notifications.FEISHU_CARD_ACTIONS_ENABLED = True
+
+    with pytest.raises(RuntimeError, match="FEISHU_APP_ID"):
+        validate_startup_security(temp_config)
+
+    temp_config.notifications.FEISHU_APP_ID = "cli_real"
+    temp_config.notifications.FEISHU_APP_SECRET = "real-app-secret-value"
+    temp_config.notifications.FEISHU_INCIDENT_CHAT_ID = "oc_real"
+    temp_config.security.FEISHU_CARD_VERIFICATION_TOKEN = "real-verification-token"
+    temp_config.security.FEISHU_CARD_ACTION_SECRET = "real-card-action-secret"
+
+    validate_startup_security(temp_config)

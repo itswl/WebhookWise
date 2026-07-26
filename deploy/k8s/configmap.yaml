@@ -16,6 +16,10 @@ data:
   RUNTIME_HEARTBEAT_INTERVAL_SECONDS: "10"
   RUNTIME_HEARTBEAT_TTL_SECONDS: "45"
   REQUIRE_WEBHOOK_AUTH: "true"
+  FEISHU_CARD_ACTIONS_ENABLED: "false"
+  FEISHU_ALLOWED_TENANT_KEYS: ""
+  FEISHU_ALLOWED_OPERATOR_OPEN_IDS: ""
+  FEISHU_CARD_ACTION_TTL_SECONDS: "604800"
   REDIS_URL: redis://webhookwise-redis:6379/0
   # Leaving OTEL_ENABLED "true" with a blank OTEL_EXPORTER_OTLP_ENDPOINT makes
   # telemetry a silent no-op (dashboards stay empty), so it defaults to "false"

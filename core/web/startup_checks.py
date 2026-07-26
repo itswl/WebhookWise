@@ -44,6 +44,35 @@ def validate_startup_security(config: AppConfig, *, app_env: str | None = None) 
     if env == "production":
         _warn_if_short_secret("API_KEY", config.security.API_KEY)
         _warn_if_short_secret("ADMIN_WRITE_KEY", config.security.ADMIN_WRITE_KEY)
+        change_ingest_token = config.security.CHANGE_INGEST_TOKEN.strip()
+        if change_ingest_token and looks_like_placeholder_secret(change_ingest_token):
+            raise RuntimeError(
+                "CHANGE_INGEST_TOKEN is still an example placeholder value; please replace it with a real random key"
+            )
+        if change_ingest_token:
+            _warn_if_short_secret("CHANGE_INGEST_TOKEN", change_ingest_token)
+        if config.notifications.FEISHU_CARD_ACTIONS_ENABLED:
+            required_feishu_values = {
+                "FEISHU_APP_ID": config.notifications.FEISHU_APP_ID,
+                "FEISHU_APP_SECRET": config.notifications.FEISHU_APP_SECRET,
+                "FEISHU_INCIDENT_CHAT_ID": config.notifications.FEISHU_INCIDENT_CHAT_ID,
+                "FEISHU_CARD_VERIFICATION_TOKEN": config.security.FEISHU_CARD_VERIFICATION_TOKEN,
+                "FEISHU_CARD_ACTION_SECRET": config.security.FEISHU_CARD_ACTION_SECRET,
+            }
+            missing = [name for name, value in required_feishu_values.items() if not value.strip()]
+            if missing:
+                raise RuntimeError(
+                    "Feishu card actions are enabled but required settings are missing: " + ", ".join(missing)
+                )
+            for name in (
+                "FEISHU_APP_SECRET",
+                "FEISHU_CARD_VERIFICATION_TOKEN",
+                "FEISHU_CARD_ACTION_SECRET",
+            ):
+                value = required_feishu_values[name].strip()
+                if looks_like_placeholder_secret(value):
+                    raise RuntimeError(f"{name} is still an example placeholder value")
+                _warn_if_short_secret(name, value)
     if env == "production" and not config.security.REQUIRE_WEBHOOK_AUTH:
         raise RuntimeError(
             "Webhook authentication is not enabled in production. Please set REQUIRE_WEBHOOK_AUTH=true and WEBHOOK_SECRET"

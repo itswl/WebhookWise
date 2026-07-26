@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.datetime_utils import utcnow
-from models import DecisionTrace, Incident, IncidentMember, KBDocument, WebhookEvent
+from models import DecisionTrace, Incident, IncidentMember, KBDocument, RunbookExecution, WebhookEvent
 from services.incidents.postmortem import build_postmortem_markdown
 
 
@@ -78,6 +78,21 @@ async def test_postmortem_assembles_header_timeline_and_actions(session: AsyncSe
                 status="draft",
                 source_ref=f"incident:{incident.id}",
             ),
+            RunbookExecution(
+                incident_id=incident.id,
+                candidate_ref="wiki:gpu-recovery",
+                title="GPU recovery",
+                status="completed",
+                actor="ops-a",
+                started_at=now - timedelta(hours=1, minutes=40),
+                completed_at=now - timedelta(hours=1, minutes=10),
+                effectiveness="effective",
+                notes="Memory pressure cleared.",
+                steps=[
+                    {"text": "Drain rendering traffic", "completed": True},
+                    {"text": "Restart the worker", "completed": True},
+                ],
+            ),
         ]
     )
     await session.flush()
@@ -93,6 +108,11 @@ async def test_postmortem_assembles_header_timeline_and_actions(session: AsyncSe
     assert "GPU 显存超过 95% · forwarded" in markdown
     assert "duplicate · skipped (cooldown)" in markdown
     assert "- [ ] Add cache eviction" in markdown
+    assert "## Runbook executions" in markdown
+    assert "### GPU recovery" in markdown
+    assert "- [x] Drain rendering traffic" in markdown
+    assert "- **Effectiveness:** effective" in markdown
+    assert "> Memory pressure cleared." in markdown
     assert "Knowledge base: “Incident resolution: gpu-mem-high” (draft)" in markdown
 
 

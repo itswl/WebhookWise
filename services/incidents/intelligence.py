@@ -9,8 +9,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from core.datetime_utils import naive_utc, utc_isoformat, utcnow
 from models import (
@@ -21,7 +23,10 @@ from models import (
     KBDocument,
     WebhookEvent,
 )
+from services.incidents.change_impact import assess_change_impact
 from services.incidents.grouping import _correlation_dimensions, _event_rule_name
+from services.incidents.runbooks import load_runbook_execution_responses
+from services.incidents.service_profiles import get_service_profile
 from services.operations.audit_logger import add_audit
 
 _MAX_HISTORICAL_INCIDENTS = 200
@@ -195,6 +200,14 @@ async def _incident_members(
         await session.execute(
             select(IncidentMember.incident_id, WebhookEvent)
             .join(WebhookEvent, WebhookEvent.id == IncidentMember.event_id)
+            .options(
+                load_only(
+                    WebhookEvent.id,
+                    WebhookEvent.source,
+                    WebhookEvent.parsed_data,
+                    WebhookEvent.ai_analysis,
+                )
+            )
             .where(IncidentMember.incident_id.in_(incident_ids))
             .order_by(IncidentMember.event_timestamp.desc())
             .limit(limit)
@@ -321,14 +334,21 @@ async def _related_changes(
     limit: int,
 ) -> list[dict[str, object]]:
     window_end = incident.ended_at or incident.resolved_at or utcnow()
+    filters = [
+        ChangeEvent.started_at >= incident.started_at - timedelta(hours=_CHANGE_LOOKBACK_HOURS),
+        ChangeEvent.started_at <= window_end + timedelta(minutes=_CHANGE_FOLLOWUP_MINUTES),
+    ]
+    service = current_profile.dimensions.get("service")
+    project = current_profile.dimensions.get("project")
+    if service:
+        filters.append(func.lower(ChangeEvent.service) == service)
+    elif project:
+        filters.append(func.lower(ChangeEvent.project) == project)
     candidates = list(
         (
             await session.execute(
                 select(ChangeEvent)
-                .where(
-                    ChangeEvent.started_at >= incident.started_at - timedelta(hours=_CHANGE_LOOKBACK_HOURS),
-                    ChangeEvent.started_at <= window_end + timedelta(minutes=_CHANGE_FOLLOWUP_MINUTES),
-                )
+                .where(*filters)
                 .order_by(ChangeEvent.started_at.desc(), ChangeEvent.id.desc())
                 .limit(200)
             )
@@ -367,7 +387,15 @@ async def _related_changes(
             )
         )
     ranked.sort(key=lambda item: (item[0], str(item[1]["started_at"])), reverse=True)
-    return [item[1] for item in ranked[:limit]]
+    selected = [item[1] for item in ranked[:limit]]
+    changes_by_id = {int(change.id): change for change in candidates}
+    for item in selected:
+        change_id = int(str(item["change_id"]))
+        item["impact_assessment"] = await assess_change_impact(
+            session,
+            changes_by_id[change_id],
+        )
+    return selected
 
 
 def _tag_values(tags: Mapping[str, object], key: str) -> set[str]:
@@ -470,6 +498,99 @@ async def _feedback_map(
     return {(row.recommendation_type, row.candidate_ref): row.verdict for row in rows}
 
 
+def _brief(value: object) -> str:
+    """Normalize structured summary fragments into one compact display line."""
+    if value in (None, ""):
+        return ""
+    if isinstance(value, str):
+        return " ".join(value.split()).strip()[:500]
+    if isinstance(value, Mapping):
+        for key in ("description", "summary", "cause", "action", "text", "title"):
+            if result := _brief(value.get(key)):
+                return result
+        return ""
+    if isinstance(value, list):
+        for item in value:
+            if result := _brief(item):
+                return result
+        return ""
+    return _brief(str(value))
+
+
+def _float_or_none(value: object) -> float | None:
+    if not isinstance(value, (int, float, str, bytes)):
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def _command_summary(
+    incident: Incident,
+    *,
+    changes: list[dict[str, object]],
+    runbooks: list[dict[str, object]],
+    runbook_executions: list[dict[str, object]],
+) -> dict[str, object]:
+    """Build a deterministic four-part command summary from existing evidence."""
+    summary = incident.summary_analysis if isinstance(incident.summary_analysis, dict) else {}
+    top_change = changes[0] if changes else {}
+    assessment_value = top_change.get("impact_assessment")
+    assessment = assessment_value if isinstance(assessment_value, dict) else {}
+
+    likely_cause = _brief(summary.get("root_cause"))
+    if not likely_cause and str(assessment.get("level") or "") in {"medium", "high"}:
+        likely_cause = _brief(assessment.get("summary"))
+
+    next_action = _brief(summary.get("recommendations"))
+    active_execution = next(
+        (execution for execution in runbook_executions if str(execution.get("status") or "") == "in_progress"),
+        None,
+    )
+    if active_execution is not None:
+        steps_value = active_execution.get("steps")
+        steps = steps_value if isinstance(steps_value, list) else []
+        next_action = next(
+            (_brief(step.get("text")) for step in steps if isinstance(step, dict) and not bool(step.get("completed"))),
+            "",
+        ) or _brief(active_execution.get("title"))
+    elif not next_action and runbooks:
+        executed_refs = {str(execution.get("candidate_ref") or "") for execution in runbook_executions}
+        next_runbook = next(
+            (runbook for runbook in runbooks if str(runbook.get("candidate_ref") or "") not in executed_refs),
+            None,
+        )
+        if next_runbook is not None:
+            next_action = _brief(next_runbook.get("title"))
+
+    change_identity = _brief(top_change.get("external_id") or top_change.get("service"))
+    change_versions = " → ".join(
+        part
+        for part in (
+            _brief(top_change.get("version_from")),
+            _brief(top_change.get("version_to")),
+        )
+        if part
+    )
+    recent_change = " · ".join(part for part in (change_identity, change_versions) if part)
+
+    confidence = _float_or_none(summary.get("confidence"))
+    if confidence is None and likely_cause and assessment:
+        confidence = _float_or_none(assessment.get("confidence"))
+    if confidence is not None:
+        confidence = max(0.0, min(confidence, 1.0))
+
+    return {
+        "what_happened": _brief(summary.get("summary")) or incident.title,
+        "likely_cause": likely_cause,
+        "impact": _brief(summary.get("impact") or summary.get("impact_scope")),
+        "recent_change": recent_change,
+        "next_action": next_action,
+        "confidence": confidence,
+    }
+
+
 async def get_incident_intelligence(
     session: AsyncSession,
     incident_id: int,
@@ -486,6 +607,18 @@ async def get_incident_intelligence(
     similar = await _similar_incidents(session, incident, current_profile, feedback, limit)
     changes = await _related_changes(session, incident, current_profile, feedback, limit)
     runbooks = await _recommended_runbooks(session, current_profile, feedback, limit)
+    runbook_executions = await load_runbook_execution_responses(session, incident_id)
+    service = current_profile.dimensions.get("service", "")
+    service_profile = (
+        await get_service_profile(
+            session,
+            service,
+            environment=current_profile.dimensions.get("environment", ""),
+            include_change_impact=False,
+        )
+        if service
+        else None
+    )
     return {
         "incident_id": incident_id,
         "strategy": "deterministic_v1",
@@ -493,6 +626,14 @@ async def get_incident_intelligence(
         "similar_incidents": similar,
         "related_changes": changes,
         "recommended_runbooks": runbooks,
+        "runbook_executions": runbook_executions,
+        "service_profile": service_profile,
+        "command_summary": _command_summary(
+            incident,
+            changes=changes,
+            runbooks=runbooks,
+            runbook_executions=runbook_executions,
+        ),
     }
 
 
@@ -512,14 +653,42 @@ async def upsert_change_event(
         )
     ).scalar_one_or_none()
     created = change is None
+
+    def apply_payload(target: ChangeEvent) -> None:
+        for key, raw_value in payload.items():
+            value = raw_value
+            if key in {"started_at", "finished_at"} and isinstance(value, datetime):
+                value = naive_utc(value)
+            setattr(target, key, value)
+
     if change is None:
-        change = ChangeEvent(source=source, external_id=external_id)
-        session.add(change)
-    for key, value in payload.items():
-        if key in {"started_at", "finished_at"} and isinstance(value, datetime):
-            value = naive_utc(value)
-        setattr(change, key, value)
-    await session.flush()
+        candidate = ChangeEvent(source=source, external_id=external_id)
+        apply_payload(candidate)
+        try:
+            async with session.begin_nested():
+                session.add(candidate)
+                await session.flush()
+            change = candidate
+        except IntegrityError:
+            # Another CI worker may have committed the same idempotency key
+            # between our read and insert. Re-read and apply the latest payload
+            # instead of surfacing a transient 500.
+            change = (
+                await session.execute(
+                    select(ChangeEvent).where(
+                        ChangeEvent.source == source,
+                        ChangeEvent.external_id == external_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if change is None:
+                raise
+            created = False
+            apply_payload(change)
+            await session.flush()
+    else:
+        apply_payload(change)
+        await session.flush()
     add_audit(
         session,
         "change_event",

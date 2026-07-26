@@ -19,6 +19,7 @@ SENSITIVE_HEADER_NAMES = {
     "x-admin-write-key",
     "x-api-key",
     "x-auth-token",
+    "x-change-ingest-token",
     "x-gitlab-token",
     "x-hub-signature",
     "x-hub-signature-256",

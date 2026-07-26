@@ -13,7 +13,11 @@ from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.webhook_security import check_admin_rate_limit_dep
 from db.session import get_db_session
-from schemas.intelligence import IntelligenceFeedbackRequest
+from schemas.intelligence import (
+    IntelligenceFeedbackRequest,
+    RunbookExecutionStartRequest,
+    RunbookExecutionUpdateRequest,
+)
 from services.incidents.intelligence import (
     get_incident_intelligence,
     record_intelligence_feedback,
@@ -22,6 +26,14 @@ from services.incidents.queries import (
     get_incident_detail,
     get_incident_summary,
     list_incidents,
+)
+from services.incidents.runbooks import (
+    RunbookExecutionConflictError,
+    RunbookExecutionNotFoundError,
+    list_runbook_executions,
+    runbook_execution_response,
+    start_runbook_execution,
+    update_runbook_execution,
 )
 
 logger = get_logger("api.v1.incidents")
@@ -117,6 +129,96 @@ async def record_incident_intelligence_feedback_endpoint(
         )
     except _INCIDENT_ERRORS as e:
         logger.error("Failed to record incident intelligence feedback id=%s: %s", incident_id, e, exc_info=True)
+        return internal_error_response()
+
+
+@incidents_router.get(
+    "/incidents/{incident_id}/runbook-executions",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
+)
+async def list_runbook_executions_endpoint(
+    incident_id: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """List manual runbook executions attached to an incident."""
+    try:
+        return ok_response(
+            http_status=200,
+            data=await list_runbook_executions(session, incident_id),
+        )
+    except RunbookExecutionNotFoundError as error:
+        return fail_response(str(error), 404)
+    except _INCIDENT_ERRORS as error:
+        logger.error("Failed to list runbook executions incident_id=%s: %s", incident_id, error, exc_info=True)
+        return internal_error_response()
+
+
+@incidents_router.post(
+    "/incidents/{incident_id}/runbook-executions",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_admin_write)],
+)
+async def start_runbook_execution_endpoint(
+    incident_id: int,
+    request: RunbookExecutionStartRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Start or retrieve one idempotent, operator-driven runbook execution."""
+    try:
+        execution, created = await start_runbook_execution(
+            session,
+            incident_id=incident_id,
+            candidate_ref=request.candidate_ref,
+            actor=request.actor,
+        )
+        return ok_response(
+            http_status=201 if created else 200,
+            message="runbook execution started" if created else "runbook execution already exists",
+            data=runbook_execution_response(execution),
+        )
+    except RunbookExecutionNotFoundError as error:
+        return fail_response(str(error), 404)
+    except _INCIDENT_ERRORS as error:
+        logger.error("Failed to start runbook execution incident_id=%s: %s", incident_id, error, exc_info=True)
+        return internal_error_response()
+
+
+@incidents_router.put(
+    "/incidents/{incident_id}/runbook-executions/{execution_id}",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_admin_write)],
+)
+async def update_runbook_execution_endpoint(
+    incident_id: int,
+    execution_id: int,
+    request: RunbookExecutionUpdateRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Update manual step progress, terminal state, notes, or effectiveness."""
+    try:
+        changes = request.model_dump(exclude_unset=True, exclude={"actor"})
+        execution = await update_runbook_execution(
+            session,
+            incident_id=incident_id,
+            execution_id=execution_id,
+            changes=changes,
+            actor=request.actor,
+        )
+        return ok_response(
+            http_status=200,
+            message="runbook execution updated",
+            data=runbook_execution_response(execution),
+        )
+    except RunbookExecutionNotFoundError as error:
+        return fail_response(str(error), 404)
+    except RunbookExecutionConflictError as error:
+        return fail_response(str(error), 409)
+    except _INCIDENT_ERRORS as error:
+        logger.error(
+            "Failed to update runbook execution incident_id=%s execution_id=%s: %s",
+            incident_id,
+            execution_id,
+            error,
+            exc_info=True,
+        )
         return internal_error_response()
 
 
