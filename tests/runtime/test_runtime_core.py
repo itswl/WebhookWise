@@ -239,6 +239,26 @@ async def test_auth_api_key_and_admin_write_branches(monkeypatch: pytest.MonkeyP
     assert api_key_is_read_only.value.status_code == 403
     assert "API key is insufficient" in str(api_key_is_read_only.value.detail)
 
+    monkeypatch.setattr(temp_config.security, "CHANGE_INGEST_TOKEN", "change-token")
+    change_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="change-token")
+    assert await auth.verify_change_ingest_token(request, change_credentials, temp_config) is True
+    assert await auth.verify_change_ingest_token(request, admin_credentials, temp_config) is True
+
+    change_header_request = Request()
+    change_header_request.headers = {"x-change-ingest-token": "change-token"}
+    change_header_request.query_params = {}
+    assert await auth.verify_change_ingest_token(change_header_request, bad_credentials, temp_config) is True
+
+    with pytest.raises(HTTPException) as api_key_cannot_ingest_changes:
+        await auth.verify_change_ingest_token(api_as_admin_request, credentials, temp_config)
+    assert api_key_cannot_ingest_changes.value.status_code == 401
+
+    monkeypatch.setattr(temp_config.security, "CHANGE_INGEST_TOKEN", "")
+    assert await auth.verify_change_ingest_token(request, admin_credentials, temp_config) is True
+    with pytest.raises(HTTPException) as missing_change_token:
+        await auth.verify_change_ingest_token(request, change_credentials, temp_config)
+    assert missing_change_token.value.status_code == 401
+
 
 @pytest.mark.asyncio
 async def test_url_security_edge_cases_private_policy_and_dns_cache(

@@ -1,0 +1,61 @@
+pipeline {
+    agent any
+
+    environment {
+        DEPLOY_SERVICE = "checkout"
+        DEPLOY_ENVIRONMENT = "production"
+    }
+
+    stages {
+        stage("Deploy") {
+            steps {
+                echo "Replace this stage with the real deployment"
+            }
+        }
+    }
+
+    post {
+        success {
+            withCredentials([
+                string(
+                    credentialsId: "webhookwise-change-ingest-token",
+                    variable: "CHANGE_INGEST_TOKEN"
+                )
+            ]) {
+                sh '''
+                    set -eu
+                    payload="$(jq -n \
+                      --arg external_id "${BUILD_TAG}-${DEPLOY_SERVICE}-${DEPLOY_ENVIRONMENT}" \
+                      --arg source "jenkins" \
+                      --arg service "$DEPLOY_SERVICE" \
+                      --arg project "$JOB_NAME" \
+                      --arg environment "$DEPLOY_ENVIRONMENT" \
+                      --arg version_from "${GIT_PREVIOUS_SUCCESSFUL_COMMIT:-}" \
+                      --arg version_to "${GIT_COMMIT:-$BUILD_NUMBER}" \
+                      --arg actor "${BUILD_USER_ID:-jenkins}" \
+                      --arg started_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                      --arg source_url "$BUILD_URL" \
+                      '{
+                        external_id: $external_id,
+                        source: $source,
+                        change_type: "deployment",
+                        service: $service,
+                        project: $project,
+                        environment: $environment,
+                        version_from: $version_from,
+                        version_to: $version_to,
+                        actor: $actor,
+                        status: "succeeded",
+                        started_at: $started_at,
+                        source_url: $source_url
+                      }')"
+                    curl --fail-with-body --retry 3 --retry-all-errors \
+                      -X POST "${WEBHOOKWISE_URL%/}/v1/changes" \
+                      -H "Authorization: Bearer $CHANGE_INGEST_TOKEN" \
+                      -H "Content-Type: application/json" \
+                      --data "$payload"
+                '''
+            }
+        }
+    }
+}

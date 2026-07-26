@@ -148,6 +148,270 @@ async def test_report_includes_previous_window_and_operator_health(session: Asyn
 
 
 @pytest.mark.asyncio
+async def test_product_value_stats_include_mtta_mttr_and_honest_samples(session: AsyncSession) -> None:
+    from datetime import timedelta
+
+    from models import Incident
+    from services.operations.periodic_report import collect_report_stats
+
+    now = utcnow()
+    session.add_all(
+        [
+            Incident(
+                title="first timed incident",
+                status="closed",
+                workflow_status="resolved",
+                started_at=now - timedelta(hours=4),
+                acknowledged_at=now - timedelta(hours=3, minutes=30),
+                resolved_at=now - timedelta(hours=3),
+                alert_count=2,
+            ),
+            Incident(
+                title="second timed incident",
+                status="closed",
+                workflow_status="resolved",
+                started_at=now - timedelta(hours=3),
+                acknowledged_at=now - timedelta(hours=2),
+                resolved_at=now - timedelta(hours=1),
+                alert_count=2,
+            ),
+            Incident(
+                title="unacknowledged incident",
+                status="active",
+                workflow_status="open",
+                started_at=now - timedelta(hours=1),
+                alert_count=2,
+            ),
+            Incident(
+                title="invalid negative timing",
+                status="closed",
+                workflow_status="resolved",
+                started_at=now - timedelta(hours=1),
+                acknowledged_at=now - timedelta(hours=2),
+                resolved_at=now - timedelta(hours=2),
+                alert_count=2,
+            ),
+            Incident(
+                title="merged source shell",
+                status="closed",
+                workflow_status="resolved",
+                started_at=now - timedelta(hours=6),
+                acknowledged_at=now - timedelta(hours=5),
+                resolved_at=now - timedelta(hours=4),
+                alert_count=0,
+            ),
+        ]
+    )
+    await session.commit()
+
+    stats = await collect_report_stats(session, window_days=7)
+
+    assert stats["mtta"] == {
+        "average_minutes": 45.0,
+        "p50_minutes": 45.0,
+        "sample_size": 2,
+    }
+    assert stats["mttr"] == {
+        "average_minutes": 90.0,
+        "p50_minutes": 90.0,
+        "sample_size": 2,
+    }
+
+
+@pytest.mark.asyncio
+async def test_product_value_stats_use_terminal_and_human_review_denominators(session: AsyncSession) -> None:
+    from datetime import timedelta
+
+    from models import (
+        DeepAnalysis,
+        Incident,
+        IncidentIntelligenceFeedback,
+        RunbookExecution,
+        WebhookEvent,
+    )
+    from services.operations.periodic_report import collect_report_stats
+
+    now = utcnow()
+    incidents = [
+        Incident(
+            title=f"incident {index}",
+            status="closed",
+            workflow_status="resolved",
+            started_at=now - timedelta(hours=index + 1),
+            alert_count=2,
+        )
+        for index in range(3)
+    ]
+    session.add_all(incidents)
+    event = WebhookEvent(source="grafana", timestamp=now, duplicate_count=1)
+    session.add(event)
+    await session.flush()
+
+    session.add_all(
+        [
+            DeepAnalysis(webhook_event_id=event.id, status="completed", created_at=now),
+            DeepAnalysis(webhook_event_id=event.id, status="completed", created_at=now),
+            DeepAnalysis(webhook_event_id=event.id, status="failed", created_at=now),
+            DeepAnalysis(webhook_event_id=event.id, status="pending", created_at=now),
+            # One reviewed incident may have several candidate changes. It is
+            # still one denominator member and one confirmed incident.
+            IncidentIntelligenceFeedback(
+                incident_id=incidents[0].id,
+                recommendation_type="change",
+                candidate_ref="change:1",
+                verdict="relevant",
+                actor="tester",
+                created_at=now,
+                updated_at=now,
+            ),
+            IncidentIntelligenceFeedback(
+                incident_id=incidents[0].id,
+                recommendation_type="change",
+                candidate_ref="change:2",
+                verdict="irrelevant",
+                actor="tester",
+                created_at=now,
+                updated_at=now,
+            ),
+            IncidentIntelligenceFeedback(
+                incident_id=incidents[1].id,
+                recommendation_type="change",
+                candidate_ref="change:3",
+                verdict="irrelevant",
+                actor="tester",
+                created_at=now,
+                updated_at=now,
+            ),
+            IncidentIntelligenceFeedback(
+                incident_id=incidents[0].id,
+                recommendation_type="runbook",
+                candidate_ref="runbook:1",
+                verdict="used",
+                actor="tester",
+                created_at=now,
+                updated_at=now,
+            ),
+            IncidentIntelligenceFeedback(
+                incident_id=incidents[1].id,
+                recommendation_type="runbook",
+                candidate_ref="runbook:2",
+                verdict="not_used",
+                actor="tester",
+                created_at=now,
+                updated_at=now,
+            ),
+            # "relevant" is intentionally not counted as actual adoption.
+            IncidentIntelligenceFeedback(
+                incident_id=incidents[2].id,
+                recommendation_type="runbook",
+                candidate_ref="runbook:3",
+                verdict="relevant",
+                actor="tester",
+                created_at=now,
+                updated_at=now,
+            ),
+            IncidentIntelligenceFeedback(
+                incident_id=incidents[0].id,
+                recommendation_type="similar_incident",
+                candidate_ref="incident:100",
+                verdict="used",
+                actor="tester",
+                created_at=now,
+                updated_at=now,
+            ),
+            IncidentIntelligenceFeedback(
+                incident_id=incidents[1].id,
+                recommendation_type="similar_incident",
+                candidate_ref="incident:101",
+                verdict="not_used",
+                actor="tester",
+                created_at=now,
+                updated_at=now,
+            ),
+            RunbookExecution(
+                incident_id=incidents[0].id,
+                candidate_ref="runbook:1",
+                title="Runbook one",
+                status="completed",
+                effectiveness="effective",
+                actor="tester",
+                started_at=now,
+                completed_at=now,
+                steps=[],
+            ),
+            RunbookExecution(
+                incident_id=incidents[1].id,
+                candidate_ref="runbook:2",
+                title="Runbook two",
+                status="completed",
+                effectiveness="ineffective",
+                actor="tester",
+                started_at=now,
+                completed_at=now,
+                steps=[],
+            ),
+            RunbookExecution(
+                incident_id=incidents[2].id,
+                candidate_ref="runbook:3",
+                title="Runbook three",
+                status="in_progress",
+                actor="tester",
+                started_at=now,
+                steps=[],
+            ),
+        ]
+    )
+    await session.commit()
+
+    stats = await collect_report_stats(session, window_days=7)
+
+    assert stats["deep_analysis_success"] == {
+        "completed": 2,
+        "terminal": 3,
+        "pending": 1,
+        "rate_pct": 66.7,
+    }
+    assert stats["confirmed_change_association"] == {
+        "confirmed_incidents": 1,
+        "reviewed_incidents": 2,
+        "rate_pct": 50.0,
+    }
+    assert stats["runbook_adoption"] == {"used": 1, "sample_size": 2, "rate_pct": 50.0}
+    assert stats["similar_incident_adoption"] == {
+        "used": 1,
+        "sample_size": 2,
+        "rate_pct": 50.0,
+    }
+    assert stats["runbook_executions"] == {
+        "started": 3,
+        "completed": 2,
+        "effective": 1,
+        "effectiveness_sample_size": 2,
+        "effective_rate_pct": 50.0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_product_value_stats_return_none_for_zero_denominators(session: AsyncSession) -> None:
+    from services.operations.periodic_report import collect_report_stats
+
+    stats = await collect_report_stats(session, window_days=7)
+
+    assert stats["mtta"] == {"average_minutes": None, "p50_minutes": None, "sample_size": 0}
+    assert stats["mttr"] == {"average_minutes": None, "p50_minutes": None, "sample_size": 0}
+    assert stats["deep_analysis_success"]["terminal"] == 0
+    assert stats["deep_analysis_success"]["rate_pct"] is None
+    assert stats["confirmed_change_association"]["reviewed_incidents"] == 0
+    assert stats["confirmed_change_association"]["rate_pct"] is None
+    assert stats["runbook_adoption"]["sample_size"] == 0
+    assert stats["runbook_adoption"]["rate_pct"] is None
+    assert stats["similar_incident_adoption"]["sample_size"] == 0
+    assert stats["similar_incident_adoption"]["rate_pct"] is None
+    assert stats["runbook_executions"]["effectiveness_sample_size"] == 0
+    assert stats["runbook_executions"]["effective_rate_pct"] is None
+
+
+@pytest.mark.asyncio
 async def test_weekly_report_no_op_when_disabled(temp_config) -> None:
     from services.operations.periodic_report import generate_and_send_report
 
@@ -180,9 +444,31 @@ def test_build_summary_is_deterministic_and_human_readable() -> None:
         "ai_cost_usd": 1.23,
         "ai_calls": 60,
         "cache_hit_pct": 25.0,
+        "mtta": {"average_minutes": 12.5, "p50_minutes": 10.0, "sample_size": 8},
+        "mttr": {"average_minutes": 45.0, "p50_minutes": 40.0, "sample_size": 6},
+        "deep_analysis_success": {"completed": 9, "terminal": 10, "pending": 1, "rate_pct": 90.0},
+        "confirmed_change_association": {
+            "confirmed_incidents": 2,
+            "reviewed_incidents": 4,
+            "rate_pct": 50.0,
+        },
+        "runbook_adoption": {"used": 3, "sample_size": 4, "rate_pct": 75.0},
+        "similar_incident_adoption": {"used": 2, "sample_size": 4, "rate_pct": 50.0},
+        "runbook_executions": {
+            "started": 3,
+            "completed": 2,
+            "effective": 1,
+            "effectiveness_sample_size": 2,
+            "effective_rate_pct": 50.0,
+        },
     }
     text = _build_summary(stats)
     assert "100" in text and "40.0%" in text and "prometheus" in text and "$1.23" in text
+    assert "MTTA avg 12.5m / P50 10.0m (n=8)" in text
+    assert "Deep-analysis success: 90.0% (9/10 terminal; 1 pending)" in text
+    assert "Human-confirmed change association: 50.0% (2/4 reviewed incidents)" in text
+    assert "runbooks 75.0% (3/4 reviewed)" in text
+    assert "Runbook executions: 3 started / 2 completed" in text
 
 
 @pytest.mark.parametrize(

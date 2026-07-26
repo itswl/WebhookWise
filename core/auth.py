@@ -157,3 +157,97 @@ async def verify_admin_write(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Admin write permission required",
     )
+
+
+async def verify_change_ingest_token(
+    request: Request,
+    auth: HTTPAuthorizationCredentials | None = _AUTH_DEPENDENCY,
+    config: AppConfig = _CONFIG_DEPENDENCY,
+) -> bool:
+    """Verify a least-privilege credential for normalized change ingestion.
+
+    ``ADMIN_WRITE_KEY`` remains accepted as an operator fallback, but the
+    management ``API_KEY`` intentionally does not grant this write capability.
+    """
+    credentials = _token_candidates(
+        request,
+        auth,
+        "x-change-ingest-token",
+        "x-admin-write-key",
+    )
+    change_ingest_token = config.security.CHANGE_INGEST_TOKEN
+    admin_write_key = config.security.ADMIN_WRITE_KEY
+
+    if any(
+        _matches_any_configured_token(credential, change_ingest_token, admin_write_key) for credential in credentials
+    ):
+        return True
+
+    client_ip = request.client.host if request.client else "unknown"
+    if logger.isEnabledFor(logging.WARNING):
+        try:
+            body_bytes = await request.body()
+        except RuntimeError:
+            body_bytes = b""
+        logger.warning(
+            "[Auth] Change ingestion rejected: IP=%s, URL=%s, Method=%s, Headers=%s, Body=%s",
+            client_ip,
+            request.url.path,
+            request.method,
+            redact_headers(dict(request.headers)),
+            _body_meta(body_bytes),
+        )
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or missing change ingest token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def verify_feishu_card_callback(
+    request: Request,
+    config: AppConfig = _CONFIG_DEPENDENCY,
+) -> bool:
+    """Verify a Feishu card callback with its dedicated verification token."""
+    if not config.notifications.FEISHU_CARD_ACTIONS_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Feishu card actions are disabled",
+        )
+    verification_token = config.security.FEISHU_CARD_VERIFICATION_TOKEN.strip()
+    if not verification_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Feishu card callback verification is not configured",
+        )
+    body = await request.body()
+    if not body or len(body) > 131_072:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Feishu card callback body",
+        )
+    try:
+        payload = await request.json()
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Feishu card callback JSON",
+        ) from error
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Feishu card callback payload",
+        )
+    header_value = payload.get("header")
+    header_token = header_value.get("token") if isinstance(header_value, dict) else None
+    supplied_token = str(header_token or payload.get("token") or "").strip()
+    if not supplied_token or not hmac.compare_digest(supplied_token, verification_token):
+        client_ip = request.client.host if request.client else "unknown"
+        logger.warning("[Auth] Feishu card callback verification failed: IP=%s", client_ip)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Feishu callback verification token",
+        )
+    request.state.feishu_card_payload = payload
+    request.state.feishu_card_body = body
+    return True

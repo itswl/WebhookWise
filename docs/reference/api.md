@@ -20,8 +20,9 @@ The default output directory is `build/openapi`. Pass `--output-dir <dir>` to wr
 
 ## Incident intelligence
 
-`GET /v1/incidents/{incident_id}/intelligence` returns three independently
-ranked groups:
+`GET /v1/incidents/{incident_id}/intelligence` returns a compact command
+summary, a derived service profile, active runbook executions, and three
+independently ranked groups:
 
 - similar quiet or closed incidents;
 - deployment, configuration, feature-flag, and infrastructure changes near the
@@ -33,15 +34,35 @@ The endpoint does not call an LLM and does not execute a remediation. Operators
 can label a candidate with
 `POST /v1/incidents/{incident_id}/intelligence/feedback`.
 
+Published runbooks are tracked as manual operator checklists:
+
+```text
+GET  /v1/incidents/{incident_id}/runbook-executions
+POST /v1/incidents/{incident_id}/runbook-executions
+PUT  /v1/incidents/{incident_id}/runbook-executions/{execution_id}
+```
+
+WebhookWise extracts structured Markdown steps but never executes commands.
+
+Change and service read APIs are:
+
+```text
+GET /v1/changes/{change_id}/impact
+GET /v1/services
+GET /v1/service-profile?service=<name>&environment=<env>
+```
+
+The change assessment is an explainable association signal. Insufficient
+samples return an unknown result rather than low risk.
+
 CI/CD and change systems can idempotently ingest a normalized change through
 `POST /v1/changes`. The `(source, external_id)` pair is the idempotency key.
-Management read and write credentials are both required:
+Use the dedicated least-privilege change-ingestion token:
 
 ```bash
 curl -X POST http://localhost:8000/v1/changes \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
-  -H "X-Admin-Write-Key: $ADMIN_WRITE_KEY" \
+  -H "Authorization: Bearer $CHANGE_INGEST_TOKEN" \
   -d '{
     "external_id": "deploy-20260725-42",
     "source": "github-actions",
@@ -55,6 +76,17 @@ curl -X POST http://localhost:8000/v1/changes \
     "source_url": "https://github.example/actions/runs/42"
   }'
 ```
+
+`X-Change-Ingest-Token` is also accepted when a system cannot set a Bearer
+header. `ADMIN_WRITE_KEY` remains a supported operator fallback, while
+`API_KEY` alone is intentionally insufficient. See
+[Change-event integrations](../integrations/change-events.md) for GitHub
+Actions, GitLab CI, Jenkins, and Argo CD examples.
+
+The optional Feishu custom-app callback is
+`POST /v1/integrations/feishu/card-actions`. It uses a dedicated Feishu
+verification token and signed action values instead of management API keys.
+See [Feishu interactive incident cards](../integrations/feishu-interactive-cards.md).
 
 ## Read-only MCP server
 

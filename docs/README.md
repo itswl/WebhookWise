@@ -24,6 +24,9 @@ These documents are layered by use case to avoid mixing architecture, operations
 | Document | Purpose |
 | --- | --- |
 | [reference/api.md](reference/api.md) | OpenAPI viewing, export, and regeneration notes. |
+| [features/incident-response-loop.md](features/incident-response-loop.md) | Change impact, service profiles, command summary, manual runbooks, and value reporting. |
+| [integrations/change-events.md](integrations/change-events.md) | Change-event contract and CI/CD integration examples. |
+| [integrations/feishu-interactive-cards.md](integrations/feishu-interactive-cards.md) | Optional Feishu custom-app cards with signed, idempotent incident actions. |
 | [../deploy/k8s/README.md](../deploy/k8s/README.md) | Kubernetes manifest usage notes. |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Development and submission process. |
 | [../CHANGELOG.md](../CHANGELOG.md) | Version change records. |
