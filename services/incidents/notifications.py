@@ -12,25 +12,100 @@ from core.datetime_utils import utcnow
 from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
 from models import ForwardOutbox, Incident, WebhookEvent
 from services.forwarding.policies import ForwardDeliveryPolicy
+from services.notifications.feishu_actions import build_incident_action_value
 from services.webhooks.types import ForwardOutboxStatus
 
 
-def _incident_card(incident: Incident) -> dict[str, Any]:
+def _incident_card(
+    incident: Incident,
+    *,
+    interactive_actions: bool = False,
+    dashboard_url: str = "",
+) -> dict[str, Any]:
+    elements: list[dict[str, Any]] = [
+        {
+            "tag": "markdown",
+            "content": (
+                f"**Source:** {incident.source or 'unknown'}\n"
+                f"**Alerts:** {incident.alert_count}\n"
+                f"**Started:** {incident.started_at.isoformat()}\n"
+                f"**Importance:** {incident.top_importance or '?'}"
+            ),
+        }
+    ]
+    if interactive_actions:
+        elements.append(
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "Acknowledge"},
+                        "type": "primary",
+                        "value": build_incident_action_value("acknowledge", int(incident.id)),
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "Resolve"},
+                        "type": "danger",
+                        "confirm": {
+                            "title": {"tag": "plain_text", "content": "Resolve incident?"},
+                            "text": {
+                                "tag": "plain_text",
+                                "content": "This closes the incident and records the Feishu operator.",
+                            },
+                        },
+                        "value": build_incident_action_value("resolve", int(incident.id)),
+                    },
+                ],
+            }
+        )
+        elements.append(
+            {
+                "tag": "form",
+                "name": f"incident-note-{incident.id}",
+                "elements": [
+                    {
+                        "tag": "input",
+                        "name": "note",
+                        "placeholder": {
+                            "tag": "plain_text",
+                            "content": "Add incident evidence or a handoff note",
+                        },
+                    },
+                    {
+                        "tag": "button",
+                        "name": "submit-note",
+                        "text": {"tag": "plain_text", "content": "Add note"},
+                        "form_action_type": "submit",
+                        "value": build_incident_action_value("add_note", int(incident.id)),
+                    },
+                ],
+            }
+        )
+    if dashboard_url:
+        elements.append(
+            {
+                "tag": "action",
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "Open WebhookWise"},
+                        "type": "default",
+                        "url": dashboard_url,
+                    }
+                ],
+            }
+        )
     return {
         "msg_type": "interactive",
         "card": {
+            "config": {
+                "enable_forward": False,
+                "update_multi": True,
+            },
             "header": {"title": {"tag": "plain_text", "content": f"🚨 {incident.title[:80]}"}},
-            "elements": [
-                {
-                    "tag": "markdown",
-                    "content": (
-                        f"**Source:** {incident.source or 'unknown'}\n"
-                        f"**Alerts:** {incident.alert_count}\n"
-                        f"**Started:** {incident.started_at.isoformat()}\n"
-                        f"**Importance:** {incident.top_importance or '?'}"
-                    ),
-                }
-            ],
+            "elements": elements,
         },
     }
 
@@ -40,8 +115,21 @@ async def queue_incident_notifications(
     incidents: list[Incident],
 ) -> list[int]:
     """Insert idempotent Feishu intents in the incident transaction."""
-    cfg = get_config_manager().notifications
-    target_url = str(cfg.DEEP_ANALYSIS_FEISHU_WEBHOOK or cfg.WEEKLY_REPORT_FEISHU_WEBHOOK or "").strip()
+    app_config = get_config_manager()
+    cfg = app_config.notifications
+    app_enabled = bool(
+        cfg.FEISHU_CARD_ACTIONS_ENABLED
+        and cfg.FEISHU_APP_ID.strip()
+        and cfg.FEISHU_APP_SECRET.strip()
+        and cfg.FEISHU_INCIDENT_CHAT_ID.strip()
+        and app_config.security.FEISHU_CARD_VERIFICATION_TOKEN.strip()
+        and app_config.security.FEISHU_CARD_ACTION_SECRET.strip()
+    )
+    target_url = (
+        f"feishu-app://{cfg.FEISHU_INCIDENT_CHAT_ID.strip()}"
+        if app_enabled
+        else str(cfg.DEEP_ANALYSIS_FEISHU_WEBHOOK or cfg.WEEKLY_REPORT_FEISHU_WEBHOOK or "").strip()
+    )
     if not target_url:
         return []
 
@@ -64,23 +152,27 @@ async def queue_incident_notifications(
             original_event_id=None,
             forward_rule_id=None,
             rule_name="system:incident-created",
-            target_type="feishu",
+            target_type="feishu_app" if app_enabled else "feishu",
             target_url=target_url,
             target_name="incident-notification",
-            channel_name="feishu",
+            channel_name="feishu_app" if app_enabled else "feishu",
             event_type="incident_created",
             status=ForwardOutboxStatus.PENDING,
             attempts=0,
             max_attempts=policy.max_attempts,
             next_attempt_at=now,
-            formatted_payload=_incident_card(incident),
+            formatted_payload=_incident_card(
+                incident,
+                interactive_actions=app_enabled,
+                dashboard_url=str(cfg.DASHBOARD_PUBLIC_URL or "").strip(),
+            ),
             created_at=now,
             updated_at=now,
         )
         session.add(record)
         await session.flush()
         outbox_ids.append(int(record.id))
-        FORWARD_OUTBOX_RECORDS_TOTAL.labels("feishu", "created").inc()
+        FORWARD_OUTBOX_RECORDS_TOTAL.labels("feishu_app" if app_enabled else "feishu", "created").inc()
     return outbox_ids
 
 

@@ -56,3 +56,39 @@ class IntelligenceFeedbackRequest(BaseModel):
     verdict: RecommendationVerdict
     comment: str | None = Field(default=None, max_length=4000)
     actor: str = Field(default="operator", min_length=1, max_length=100)
+
+
+class RunbookExecutionStartRequest(BaseModel):
+    """Start or retrieve one idempotent incident runbook execution."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    candidate_ref: str = Field(min_length=1, max_length=500)
+    actor: str = Field(default="operator", min_length=1, max_length=100)
+
+
+class RunbookExecutionUpdateRequest(BaseModel):
+    """Update explicit runbook progress without executing external commands."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    status: Literal["in_progress", "completed", "failed", "abandoned"] | None = None
+    step_index: int | None = Field(default=None, ge=0, le=29)
+    step_completed: bool | None = None
+    effectiveness: Literal["effective", "ineffective", "unknown"] | None = None
+    notes: str | None = Field(default=None, max_length=4000)
+    actor: str = Field(default="operator", min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def _validate_update(self) -> RunbookExecutionUpdateRequest:
+        if (self.step_index is None) != (self.step_completed is None):
+            raise ValueError("step_index and step_completed must be provided together")
+        has_action = (
+            self.status is not None
+            or self.step_index is not None
+            or self.effectiveness is not None
+            or "notes" in self.model_fields_set
+        )
+        if not has_action:
+            raise ValueError("At least one runbook execution field must be provided")
+        return self

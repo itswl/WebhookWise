@@ -100,7 +100,7 @@ const IncidentsModule = (function () {
             html += '</div>';
 
             // Expandable detail (hidden by default)
-            html += '<div class="incident-detail" id="incident-detail-' + row.id + '" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-light);"></div>';
+            html += '<div class="incident-detail" id="incident-detail-' + row.id + '" onclick="event.stopPropagation()" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-light);"></div>';
             html += '</div>';
         }
 
@@ -156,16 +156,18 @@ const IncidentsModule = (function () {
     }
 
     function formatRelativeOffset(offsetSecs) {
-        if (offsetSecs <= 0) return '+0s';
-        if (offsetSecs < 60) return '+' + Math.round(offsetSecs) + 's';
-        var mins = Math.floor(offsetSecs / 60);
-        var secs = Math.round(offsetSecs % 60);
+        if (!Number.isFinite(offsetSecs) || Math.abs(offsetSecs) < 1) return '+0s';
+        var sign = offsetSecs < 0 ? '-' : '+';
+        var absoluteSecs = Math.abs(offsetSecs);
+        if (absoluteSecs < 60) return sign + Math.round(absoluteSecs) + 's';
+        var mins = Math.floor(absoluteSecs / 60);
+        var secs = Math.round(absoluteSecs % 60);
         if (mins < 60) {
-            return '+' + mins + 'm' + (secs > 0 ? ' ' + secs + 's' : '');
+            return sign + mins + 'm' + (secs > 0 ? ' ' + secs + 's' : '');
         }
         var hours = Math.floor(mins / 60);
         mins = mins % 60;
-        return '+' + hours + 'h' + (mins > 0 ? ' ' + mins + 'm' : '');
+        return sign + hours + 'h' + (mins > 0 ? ' ' + mins + 'm' : '');
     }
 
     function impClass(importance) {
@@ -173,6 +175,148 @@ const IncidentsModule = (function () {
         if (importance === 'medium') return 'medium';
         if (importance === 'low') return 'success';
         return 'outline';
+    }
+
+    function displayText(value) {
+        if (value == null) return '';
+        if (Array.isArray(value)) {
+            return value.map(displayText).filter(Boolean).join('；');
+        }
+        if (typeof value === 'object') {
+            return displayText(
+                value.summary || value.text || value.title || value.description || value.label || value.value
+            );
+        }
+        return String(value);
+    }
+
+    function firstDefined(object, keys) {
+        if (!object || typeof object !== 'object') return null;
+        for (var i = 0; i < keys.length; i++) {
+            if (object[keys[i]] !== undefined && object[keys[i]] !== null) {
+                return object[keys[i]];
+            }
+        }
+        return null;
+    }
+
+    function finiteNumber(value) {
+        if (value === null || value === undefined || value === '') return null;
+        var number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    }
+
+    function encodedReference(value) {
+        return encodeURIComponent(String(value || '')).replace(/'/g, '%27');
+    }
+
+    function runbookExecutions(data) {
+        var value = data && data.intelligence && data.intelligence.runbook_executions;
+        if (!value) return [];
+        return Array.isArray(value) ? value : [value];
+    }
+
+    function runbookStepText(step, index) {
+        return displayText(step && (step.text || step.title || step.label || step.description)) ||
+            t('incidents.runbook.stepFallback', { value: index + 1 });
+    }
+
+    function isRunbookStepComplete(step) {
+        return !!(step && (step.completed === true || step.done === true || step.status === 'completed'));
+    }
+
+    function runbookProgress(execution) {
+        var steps = Array.isArray(execution && execution.steps) ? execution.steps : [];
+        var completed = steps.filter(isRunbookStepComplete).length;
+        return {
+            steps: steps,
+            completed: completed,
+            total: steps.length,
+            percent: steps.length ? Math.round(completed * 100 / steps.length) : 0
+        };
+    }
+
+    function activeRunbookExecution(data) {
+        var executions = runbookExecutions(data);
+        for (var i = 0; i < executions.length; i++) {
+            if (executions[i].status === 'in_progress') return executions[i];
+        }
+        return null;
+    }
+
+    function executionForCandidate(data, candidateRef) {
+        var executions = runbookExecutions(data);
+        for (var i = 0; i < executions.length; i++) {
+            if (String(executions[i].candidate_ref || '') === String(candidateRef || '')) {
+                return executions[i];
+            }
+        }
+        return null;
+    }
+
+    function changeImpactLevel(assessment) {
+        var raw = String(firstDefined(assessment, ['level', 'risk_level', 'risk']) || 'unknown').toLowerCase();
+        return ['high', 'medium', 'low'].indexOf(raw) >= 0 ? raw : 'unknown';
+    }
+
+    function renderChangeImpact(change, compact) {
+        var assessment = change && change.impact_assessment;
+        if (!assessment || typeof assessment !== 'object') {
+            return compact
+                ? '<span class="incident-impact-badge impact-unknown">' +
+                    t('incidents.changeImpact.pending') + '</span>'
+                : '';
+        }
+
+        var level = changeImpactLevel(assessment);
+        var summary = displayText(firstDefined(assessment, ['summary', 'conclusion', 'description']));
+        var before = finiteNumber(firstDefined(assessment, ['before_alert_count', 'alerts_before']));
+        var after = finiteNumber(firstDefined(assessment, ['after_alert_count', 'alerts_after']));
+        var deltaValue = firstDefined(assessment, ['alert_delta', 'alert_count_delta']);
+        var delta = finiteNumber(deltaValue);
+        if (delta === null && before !== null && after !== null) {
+            delta = after - before;
+        }
+
+        var html = '<div class="incident-change-impact' + (compact ? ' is-compact' : '') + '">';
+        html += '<div class="incident-change-impact-head"><span class="incident-impact-badge impact-' + level + '">' +
+            t('incidents.changeImpact.level.' + level) + '</span>';
+        if (summary) html += '<span class="incident-change-impact-summary">' + escapeHtml(summary) + '</span>';
+        html += '</div>';
+
+        if (!compact) {
+            var metrics = [];
+            if (before !== null && after !== null) {
+                metrics.push(t('incidents.changeImpact.beforeAfter', { before: before, after: after }));
+            }
+            if (delta !== null) {
+                metrics.push(t('incidents.changeImpact.alertDelta', {
+                    value: (delta > 0 ? '+' : '') + delta
+                }));
+            }
+            var newIdentities = finiteNumber(firstDefined(
+                assessment, ['new_identity_count', 'new_alert_identity_count']
+            ));
+            if (newIdentities !== null) {
+                metrics.push(t('incidents.changeImpact.newIdentities', { value: newIdentities }));
+            }
+            var linkedIncidents = finiteNumber(firstDefined(
+                assessment, ['linked_incident_count', 'incident_count']
+            ));
+            if (linkedIncidents !== null) {
+                metrics.push(t('incidents.changeImpact.linkedIncidents', { value: linkedIncidents }));
+            }
+            if (assessment.recovered_after_rollback === true) {
+                metrics.push(t('incidents.changeImpact.rollbackRecovered'));
+            }
+            if (metrics.length) {
+                html += '<div class="incident-change-impact-metrics">' +
+                    metrics.map(function (metric) {
+                        return '<span>' + escapeHtml(metric) + '</span>';
+                    }).join('') + '</div>';
+            }
+        }
+        return html + '</div>';
     }
 
     function intelligenceReason(reason) {
@@ -194,18 +338,24 @@ const IncidentsModule = (function () {
     }
 
     function intelligenceFeedbackButtons(incidentId, recommendationType, candidateRef, verdict) {
-        var encodedRef = encodeURIComponent(String(candidateRef || ''));
+        var encodedRef = encodedReference(candidateRef);
+        var adoptionFeedback = recommendationType === 'runbook' ||
+            recommendationType === 'similar_incident';
+        var positiveVerdict = adoptionFeedback ? 'used' : 'relevant';
+        var negativeVerdict = adoptionFeedback ? 'not_used' : 'irrelevant';
+        var positiveLabel = adoptionFeedback ? 'incidents.intelligence.used' : 'incidents.intelligence.relevant';
+        var negativeLabel = adoptionFeedback ? 'incidents.intelligence.notUsed' : 'incidents.intelligence.irrelevant';
         var relevantClass = verdict === 'relevant' || verdict === 'used' ? ' active' : '';
         var irrelevantClass = verdict === 'irrelevant' || verdict === 'not_used' ? ' active' : '';
         return '<div class="incident-intelligence-feedback">' +
             '<button class="btn btn-sm incident-intelligence-feedback-btn' + relevantClass + '" ' +
             'onclick="event.stopPropagation(); IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
-            recommendationType + '\',\'' + encodedRef + '\',\'relevant\')">✓ ' +
-            t('incidents.intelligence.relevant') + '</button>' +
+            recommendationType + '\',\'' + encodedRef + '\',\'' + positiveVerdict + '\')">✓ ' +
+            t(positiveLabel) + '</button>' +
             '<button class="btn btn-sm incident-intelligence-feedback-btn' + irrelevantClass + '" ' +
             'onclick="event.stopPropagation(); IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
-            recommendationType + '\',\'' + encodedRef + '\',\'irrelevant\')">× ' +
-            t('incidents.intelligence.irrelevant') + '</button>' +
+            recommendationType + '\',\'' + encodedRef + '\',\'' + negativeVerdict + '\')">× ' +
+            t(negativeLabel) + '</button>' +
             '</div>';
     }
 
@@ -243,30 +393,43 @@ const IncidentsModule = (function () {
             html += '<p><span>' + t('incidents.intelligence.actor') + ':</span> ' +
                 escapeHtml(item.actor) + '</p>';
         }
+        html += renderChangeImpact(item, false);
         html += '<div class="incident-intelligence-reasons">' + intelligenceReasons(item.reasons) + '</div>';
         html += intelligenceFeedbackButtons(incidentId, 'change', item.candidate_ref, item.feedback);
         return html + '</article>';
     }
 
-    function renderRunbook(item, incidentId) {
+    function renderRunbook(item, incidentId, data) {
+        var execution = executionForCandidate(data, item.candidate_ref);
+        var encodedRef = encodedReference(item.candidate_ref);
         var html = '<article class="incident-intelligence-card">';
         html += '<div class="incident-intelligence-card-head"><strong>' + escapeHtml(item.title || '') +
             '</strong>' + intelligenceScore(item.score) + '</div>';
         if (item.excerpt) html += '<p class="incident-intelligence-excerpt">' + escapeHtml(item.excerpt) + '</p>';
         html += '<div class="incident-intelligence-reasons">' + intelligenceReasons(item.reasons) + '</div>';
+        if (execution) {
+            var progress = runbookProgress(execution);
+            html += '<div class="incident-runbook-card-progress">' +
+                t('incidents.runbook.progress', { completed: progress.completed, total: progress.total }) +
+                '</div>';
+        } else {
+            html += '<button type="button" class="btn btn-sm incident-runbook-start" ' +
+                'onclick="event.stopPropagation(); IncidentsModule.startRunbookExecution(' + incidentId +
+                ',\'' + encodedRef + '\')">▶ ' + t('incidents.runbook.start') + '</button>';
+        }
         html += intelligenceFeedbackButtons(incidentId, 'runbook', item.candidate_ref, item.feedback);
         return html + '</article>';
     }
 
-    function renderIntelligence(data) {
+    function renderIntelligence(data, embedded) {
+        var heading = embedded ? '' : '<div class="incident-intelligence-title">✨ ' +
+            t('incidents.intelligence.title') + '</div>';
         if (data.intelligenceLoading) {
-            return '<section class="incident-intelligence"><div class="incident-intelligence-title">✨ ' +
-                t('incidents.intelligence.title') + '</div><div class="incident-intelligence-loading">' +
+            return '<section class="incident-intelligence">' + heading + '<div class="incident-intelligence-loading">' +
                 t('common.loading') + '</div></section>';
         }
         if (data.intelligenceError) {
-            return '<section class="incident-intelligence"><div class="incident-intelligence-title">✨ ' +
-                t('incidents.intelligence.title') + '</div><div class="incident-intelligence-empty">' +
+            return '<section class="incident-intelligence">' + heading + '<div class="incident-intelligence-empty">' +
                 t('incidents.intelligence.unavailable') + '</div></section>';
         }
         var intelligence = data.intelligence || {};
@@ -291,7 +454,7 @@ const IncidentsModule = (function () {
             }
         ];
         var html = '<section class="incident-intelligence">';
-        html += '<div class="incident-intelligence-title">✨ ' + t('incidents.intelligence.title') + '</div>';
+        html += heading;
         html += '<p class="incident-intelligence-note">' + t('incidents.intelligence.note') + '</p>';
         html += '<div class="incident-intelligence-grid">';
         groups.forEach(function (group) {
@@ -300,7 +463,7 @@ const IncidentsModule = (function () {
                 html += '<div class="incident-intelligence-empty">' + t('incidents.intelligence.empty') + '</div>';
             } else {
                 group.items.forEach(function (item) {
-                    html += group.render(item, data.id);
+                    html += group.render(item, data.id, data);
                 });
             }
             html += '</div>';
@@ -308,75 +471,442 @@ const IncidentsModule = (function () {
         return html + '</div></section>';
     }
 
+    function renderSupportingEvidence(data) {
+        var intelligence = data.intelligence || {};
+        var count = (intelligence.similar_incidents || []).length +
+            (intelligence.related_changes || []).length +
+            (intelligence.recommended_runbooks || []).length;
+        return '<details class="incident-supporting-details" onclick="event.stopPropagation()">' +
+            '<summary>✨ ' + t('incidents.evidence.title') +
+            '<span class="incident-supporting-count">' + count + '</span></summary>' +
+            renderIntelligence(data, true) + '</details>';
+    }
+
+    function safeHttpUrl(value) {
+        if (!value) return '';
+        try {
+            var parsed = new URL(String(value));
+            return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function timestampOffsetSeconds(timestamp, rootTimestamp) {
+        var current = Date.parse(timestamp || '');
+        var root = Date.parse(rootTimestamp || '');
+        return Number.isFinite(current) && Number.isFinite(root) ? (current - root) / 1000 : 0;
+    }
+
+    function buildIncidentTimeline(members, changes) {
+        var timeline = [];
+        members.forEach(function (member) {
+            timeline.push({ kind: 'alert', timestamp: member.timestamp, value: member });
+        });
+        changes.forEach(function (change) {
+            timeline.push({ kind: 'change', timestamp: change.started_at, value: change });
+        });
+        timeline.sort(function (left, right) {
+            var leftTime = Date.parse(left.timestamp || '');
+            var rightTime = Date.parse(right.timestamp || '');
+            if (!Number.isFinite(leftTime)) return 1;
+            if (!Number.isFinite(rightTime)) return -1;
+            if (leftTime === rightTime) return left.kind === 'change' ? -1 : 1;
+            return leftTime - rightTime;
+        });
+        return timeline;
+    }
+
+    function renderChangeTimelineNode(change, rootTimestamp) {
+        var offset = formatRelativeOffset(timestampOffsetSeconds(change.started_at, rootTimestamp));
+        var sourceUrl = safeHttpUrl(change.source_url);
+        var html = '<div class="tree-node incident-timeline-change-node">';
+        html += '<div class="tree-indicator incident-timeline-change-indicator">🚀</div>';
+        html += '<article class="incident-timeline-change">';
+        html += '<div class="incident-timeline-change-head"><div><span class="incident-timeline-change-badge">' +
+            t('incidents.timeline.changeMarker') + '</span><strong>' + changeTitle(change) + '</strong></div>' +
+            '<span class="incident-timeline-offset">' + escapeHtml(offset) + '</span></div>';
+        html += renderChangeImpact(change, true);
+        if (change.version_from || change.version_to) {
+            html += '<div class="incident-timeline-change-version"><span>' +
+                t('incidents.intelligence.version') + '</span> ' +
+                escapeHtml(change.version_from || '—') + ' → ' + escapeHtml(change.version_to || '—') + '</div>';
+        }
+        var metadata = [change.source, change.environment, change.actor].filter(Boolean);
+        if (metadata.length) {
+            html += '<div class="incident-timeline-change-meta">' +
+                metadata.map(function (value) { return escapeHtml(value); }).join(' · ') + '</div>';
+        }
+        html += '<div class="incident-timeline-change-footer"><span>' +
+            escapeHtml(change.started_at ? change.started_at.replace('T', ' ').slice(0, 19) : '') +
+            (change.status ? ' · ' + escapeHtml(change.status) : '') + '</span><span>' +
+            t('incidents.intelligence.score', { value: Math.round(Number(change.score || 0) * 100) });
+        if (sourceUrl) {
+            html += ' · <a href="' + escapeHtml(sourceUrl) +
+                '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();">' +
+                t('incidents.timeline.viewChange') + '</a>';
+        }
+        return html + '</span></div></article></div>';
+    }
+
+    function uniqueIncidentSources(members) {
+        var sources = {};
+        (members || []).forEach(function (member) {
+            var source = String(member.source || '').trim();
+            if (source) sources[source] = true;
+        });
+        return Object.keys(sources);
+    }
+
+    function renderIncidentToolbar(data, members) {
+        var workflowStatus = data.workflow_status || 'open';
+        var terminal = workflowStatus === 'resolved' || workflowStatus === 'ignored';
+        var sources = uniqueIncidentSources(members);
+        var secondaryActions = [];
+
+        secondaryActions.push(
+            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.assign(' +
+            data.id + ')">👤 ' + t('alerts.action.assign') + '</button>'
+        );
+        secondaryActions.push(
+            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.feedback(' +
+            data.id + ',\'correct\')">👍 ' + t('alerts.action.feedbackCorrect') + '</button>'
+        );
+        secondaryActions.push(
+            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.feedback(' +
+            data.id + ',\'grouping_wrong\')">👎 ' + t('incidents.action.groupingWrong') + '</button>'
+        );
+        secondaryActions.push(
+            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.merge(' +
+            data.id + ')">🔗 ' + t('incidents.action.merge') + '</button>'
+        );
+        secondaryActions.push(
+            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.split(' +
+            data.id + ')">✂️ ' + t('incidents.action.split') + '</button>'
+        );
+        secondaryActions.push(
+            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.exportPostmortem(' +
+            data.id + ')">📄 ' + t('incidents.action.postmortem') + '</button>'
+        );
+        if (sources.length) {
+            secondaryActions.push(
+                '<button type="button" class="btn btn-sm btn-warn" onclick="event.stopPropagation(); ' +
+                'IncidentsModule.silenceIncidentSources(' + data.id + ')">🔕 ' +
+                t('incidents.action.silenceAll') + ' (' + sources.length + ')</button>'
+            );
+        }
+        if (terminal || data.status === 'closed') {
+            secondaryActions.push(
+                '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' +
+                data.id + ')">🔄 ' + t('incidents.action.reopen') + '</button>'
+            );
+        }
+
+        var html = '<div class="incident-command-bar">';
+        html += '<div class="incident-command-meta">';
+        html += '<strong>' + escapeHtml(t('alerts.workflow.' + workflowStatus)) + '</strong>';
+        html += '<span>👤 ' + t('incidents.owner') + ': ' +
+            escapeHtml(data.assignee || t('incidents.unassigned')) +
+            (data.team ? ' / ' + escapeHtml(data.team) : '') + '</span>';
+        html += '<span>⏰ ' + t('incidents.sla') + ': ' +
+            escapeHtml(data.sla_due_at ? data.sla_due_at.replace('T', ' ').slice(0, 19) : t('incidents.notSet')) +
+            '</span></div>';
+        html += '<div class="incident-command-actions alert-primary-actions">';
+        if (workflowStatus === 'open') {
+            html += '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); ' +
+                'IncidentsModule.updateWorkflow(' + data.id + ',\'acknowledged\')">👋 ' +
+                t('alerts.action.acknowledge') + '</button>';
+        }
+        if (!terminal) {
+            html += '<button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation(); ' +
+                'IncidentsModule.updateWorkflow(' + data.id + ',\'resolved\')">✅ ' +
+                t('alerts.action.resolve') + '</button>';
+        }
+        html += '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.addNote(' +
+            data.id + ')">📝 ' + t('alerts.action.notes') + '</button>';
+        html += '<details class="alert-action-menu incident-action-menu" onclick="event.stopPropagation()">' +
+            '<summary class="btn btn-sm alert-more-trigger">••• ' + t('alerts.action.more') +
+            '<span class="alert-action-count">' + secondaryActions.length + '</span></summary>' +
+            '<div class="alert-secondary-actions">' + secondaryActions.join('') + '</div></details>';
+        return html + '</div></div>';
+    }
+
+    function renderProgressBar(progress) {
+        return '<div class="incident-runbook-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" ' +
+            'aria-valuenow="' + progress.percent + '">' +
+            '<div class="incident-runbook-progress-track"><span style="width:' + progress.percent +
+            '%"></span></div><strong>' +
+            escapeHtml(t('incidents.runbook.progress', {
+                completed: progress.completed,
+                total: progress.total
+            })) + '</strong></div>';
+    }
+
+    function renderServiceProfile(profile) {
+        if (!profile || typeof profile !== 'object' || !Object.keys(profile).length) return '';
+        var service = displayText(firstDefined(profile, ['service', 'name'])) || t('incidents.serviceProfile.unknown');
+        var facts = [];
+        var alertCount = firstDefined(profile, ['alert_count_30d', 'alerts_30d', 'alert_count']);
+        var incidentCount = firstDefined(profile, ['incident_count_30d', 'incidents_30d', 'incident_count']);
+        var mttr = firstDefined(profile, [
+            'average_mttr_minutes', 'mttr_minutes', 'mean_time_to_resolve_minutes'
+        ]);
+        var owner = displayText(firstDefined(profile, ['historical_owners', 'owner', 'team']));
+        var rootCause = displayText(firstDefined(profile, ['common_root_causes', 'top_root_causes', 'common_root_cause']));
+        if (alertCount != null) facts.push(t('incidents.serviceProfile.alerts', { value: alertCount }));
+        if (incidentCount != null) facts.push(t('incidents.serviceProfile.incidents', { value: incidentCount }));
+        if (mttr != null) facts.push(t('incidents.serviceProfile.mttr', { value: mttr }));
+        if (owner) facts.push(t('incidents.serviceProfile.owner', { value: owner }));
+        if (rootCause) facts.push(t('incidents.serviceProfile.rootCause', { value: rootCause }));
+        var health = profile.health && typeof profile.health === 'object' ? profile.health : {};
+        var healthLabel = displayText(health.label);
+        return '<div class="incident-service-profile"><strong>🧭 ' +
+            t('incidents.serviceProfile.title') + ' · ' + escapeHtml(service) +
+            (healthLabel ? ' <span class="incident-service-health health-' +
+                escapeHtml(healthLabel) + '">' +
+                t('incidents.serviceProfile.health.' + healthLabel) +
+                (health.score != null ? ' ' + escapeHtml(health.score) : '') + '</span>' : '') +
+            '</strong><div>' +
+            facts.slice(0, 5).map(function (fact) {
+                return '<span>' + escapeHtml(fact) + '</span>';
+            }).join('') + '</div></div>';
+    }
+
+    function renderCommandSummary(data) {
+        var intelligence = data.intelligence || {};
+        var command = intelligence.command_summary || {};
+        var summary = data.summary_analysis || {};
+        var members = data.members || [];
+        var firstMember = members[0] || {};
+        var changes = intelligence.related_changes || [];
+        var change = changes[0] || null;
+        var executions = runbookExecutions(data);
+        var execution = activeRunbookExecution(data);
+        var runbooks = intelligence.recommended_runbooks || [];
+        var recommendedRunbook = null;
+        for (var runbookIndex = 0; runbookIndex < runbooks.length; runbookIndex++) {
+            if (!executionForCandidate(data, runbooks[runbookIndex].candidate_ref)) {
+                recommendedRunbook = runbooks[runbookIndex];
+                break;
+            }
+        }
+
+        var happened = displayText(firstDefined(command, ['what_happened', 'summary'])) ||
+            displayText(summary.summary) || displayText(firstMember.summary) || displayText(data.title);
+        var cause = displayText(firstDefined(command, ['likely_cause', 'most_likely_cause', 'root_cause'])) ||
+            displayText(summary.root_cause);
+        var nextAction = displayText(firstDefined(command, [
+            'next_action', 'next_actions', 'next_steps', 'recommended_action', 'recommendation'
+        ]));
+        if (!nextAction && Array.isArray(summary.recommendations)) {
+            nextAction = displayText(summary.recommendations[0]);
+        }
+        if (!nextAction && recommendedRunbook) nextAction = displayText(recommendedRunbook.title);
+
+        var html = '<section class="incident-command-summary" id="incident-command-' + data.id + '">';
+        html += renderIncidentToolbar(data, members);
+        html += '<div class="incident-command-grid">';
+
+        html += '<article class="incident-command-card"><div class="incident-command-label">📣 ' +
+            t('incidents.command.whatHappened') + '</div><div class="incident-command-body">' +
+            escapeHtml(happened || t('incidents.command.noSummary')) + '</div>';
+        var impactText = displayText(firstDefined(command, ['impact'])) || displayText(summary.impact);
+        if (impactText) {
+            html += '<div class="incident-command-card-meta"><strong>' + t('incidents.command.impact') +
+                ':</strong> ' + escapeHtml(impactText) + '</div>';
+        }
+        html += '</article>';
+
+        html += '<article class="incident-command-card"><div class="incident-command-label">🧩 ' +
+            t('incidents.command.likelyCause') + '</div><div class="incident-command-body">' +
+            escapeHtml(cause || t('incidents.command.noCause')) + '</div>';
+        var confidence = firstDefined(command, ['confidence']);
+        if (confidence == null) confidence = summary.confidence;
+        if (confidence != null && Number.isFinite(Number(confidence))) {
+            html += '<div class="incident-command-card-meta">' + t('incidents.confidence') + ': ' +
+                Math.round(Number(confidence) * 100) + '%</div>';
+        }
+        html += '</article>';
+
+        html += '<article class="incident-command-card"><div class="incident-command-label">🚀 ' +
+            t('incidents.command.recentChange') + '</div>';
+        if (change) {
+            html += '<div class="incident-command-body">' + changeTitle(change) + '</div>';
+            if (change.version_from || change.version_to) {
+                html += '<div class="incident-command-card-meta">' +
+                    escapeHtml(change.version_from || '—') + ' → ' + escapeHtml(change.version_to || '—') +
+                    '</div>';
+            }
+            html += renderChangeImpact(change, true);
+        } else {
+            var commandChange = displayText(firstDefined(
+                command, ['recent_change', 'recent_related_change', 'related_change']
+            ));
+            html += '<div class="incident-command-body is-muted">' +
+                escapeHtml(commandChange || (
+                    data.intelligenceLoading ? t('common.loading') : t('incidents.command.noChange')
+                )) + '</div>';
+        }
+        html += '</article>';
+
+        html += '<article class="incident-command-card"><div class="incident-command-label">🛠️ ' +
+            t('incidents.command.nextAction') + '</div>';
+        if (execution) {
+            var progress = runbookProgress(execution);
+            html += '<div class="incident-command-body">' + escapeHtml(execution.title || nextAction ||
+                t('incidents.runbook.untitled')) + '</div>' + renderProgressBar(progress);
+        } else {
+            html += '<div class="incident-command-body' + (nextAction ? '' : ' is-muted') + '">' +
+                escapeHtml(nextAction || (
+                    data.intelligenceLoading ? t('common.loading') : t('incidents.command.noAction')
+                )) + '</div>';
+            if (recommendedRunbook) {
+                html += '<button type="button" class="btn btn-sm incident-runbook-start" ' +
+                    'onclick="event.stopPropagation(); IncidentsModule.startRunbookExecution(' + data.id +
+                    ',\'' + encodedReference(recommendedRunbook.candidate_ref) + '\')">▶ ' +
+                    t('incidents.runbook.start') + '</button>';
+            }
+        }
+        if (executions.length > 1) {
+            html += '<div class="incident-command-card-meta">' +
+                t('incidents.runbook.executionCount', { value: executions.length }) + '</div>';
+        }
+        html += '</article></div>';
+        html += renderServiceProfile(intelligence.service_profile);
+        return html + '</section>';
+    }
+
+    function renderRunbookExecution(execution, incidentId) {
+        var progress = runbookProgress(execution);
+        var executionId = Number(execution.id);
+        var terminal = ['completed', 'failed', 'abandoned'].indexOf(execution.status) >= 0;
+        var html = '<article class="incident-runbook-execution">';
+        html += '<div class="incident-runbook-execution-head"><div><span>📘</span><strong>' +
+            escapeHtml(execution.title || t('incidents.runbook.untitled')) + '</strong></div>' +
+            '<span class="incident-runbook-status status-' +
+            escapeHtml(String(execution.status || 'in_progress')) + '">' +
+            t('incidents.runbook.status.' + (execution.status || 'in_progress')) + '</span></div>';
+        html += '<div class="incident-runbook-meta">' +
+            escapeHtml(execution.actor || 'operator') +
+            (execution.started_at ? ' · ' + escapeHtml(execution.started_at.replace('T', ' ').slice(0, 19)) : '') +
+            '</div>';
+        html += renderProgressBar(progress);
+        html += '<div class="incident-runbook-steps">';
+        if (!progress.steps.length) {
+            html += '<div class="incident-intelligence-empty">' + t('incidents.runbook.noSteps') + '</div>';
+        } else {
+            progress.steps.forEach(function (step, index) {
+                var completed = isRunbookStepComplete(step);
+                html += '<button type="button" class="incident-runbook-step' +
+                    (completed ? ' is-complete' : '') + '" aria-pressed="' + completed + '"' +
+                    (terminal ? ' disabled' : '') +
+                    ' onclick="event.stopPropagation(); IncidentsModule.toggleRunbookStep(' + incidentId + ',' +
+                    executionId + ',' + index + ',' + (!completed) + ')"><span>' +
+                    (completed ? '✓' : (index + 1)) + '</span><strong>' +
+                    escapeHtml(runbookStepText(step, index)) + '</strong></button>';
+            });
+        }
+        html += '</div>';
+        if (execution.notes) {
+            html += '<p class="incident-runbook-notes">' + escapeHtml(execution.notes) + '</p>';
+        }
+        html += '<div class="incident-runbook-actions">';
+        if (!terminal) {
+            html += '<button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation(); ' +
+                'IncidentsModule.completeRunbookExecution(' + incidentId + ',' + executionId + ')">✅ ' +
+                t('incidents.runbook.complete') + '</button>';
+            html += '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); ' +
+                'IncidentsModule.updateRunbookExecution(' + incidentId + ',' + executionId +
+                ',{status:\'abandoned\'})">× ' + t('incidents.runbook.abandon') + '</button>';
+        } else if (execution.status === 'failed') {
+            html += '<button type="button" class="btn btn-sm btn-primary" ' +
+                'onclick="event.stopPropagation(); IncidentsModule.updateRunbookExecution(' + incidentId + ',' +
+                executionId + ',{status:\'in_progress\'})">↻ ' +
+                t('incidents.runbook.resume') + '</button>';
+        } else if (execution.status === 'completed') {
+            html += '<button type="button" class="btn btn-sm' +
+                (execution.effectiveness === 'effective' ? ' active' : '') +
+                '" onclick="event.stopPropagation(); IncidentsModule.updateRunbookExecution(' + incidentId + ',' +
+                executionId + ',{effectiveness:\'effective\'})">👍 ' +
+                t('incidents.runbook.effective') + '</button>';
+            html += '<button type="button" class="btn btn-sm' +
+                (execution.effectiveness === 'ineffective' ? ' active' : '') +
+                '" onclick="event.stopPropagation(); IncidentsModule.updateRunbookExecution(' + incidentId + ',' +
+                executionId + ',{effectiveness:\'ineffective\'})">👎 ' +
+                t('incidents.runbook.ineffective') + '</button>';
+        }
+        html += '<span class="incident-runbook-manual-note">' +
+            t('incidents.runbook.manualOnly') + '</span></div>';
+        return html + '</article>';
+    }
+
+    function renderRunbookExecutions(data) {
+        var executions = runbookExecutions(data);
+        if (!executions.length) return '';
+        var html = '<section class="incident-runbook-section"><div class="incident-section-title">📘 ' +
+            t('incidents.runbook.executionTitle') + '</div>';
+        executions.slice(0, 3).forEach(function (execution) {
+            html += renderRunbookExecution(execution, data.id);
+        });
+        return html + '</section>';
+    }
+
+    function renderOperatorNotes(notes) {
+        if (!notes.length) return '';
+        var html = '<details class="incident-supporting-details incident-notes" onclick="event.stopPropagation()">' +
+            '<summary>📝 ' + t('incidents.notes.title') +
+            '<span class="incident-supporting-count">' + notes.length + '</span></summary><div>';
+        notes.forEach(function (note) {
+            html += '<div class="incident-note"><span>' + escapeHtml(note.actor) + ':</span> ' +
+                escapeHtml(note.body) + '</div>';
+        });
+        return html + '</div></details>';
+    }
+
     function renderDetail(data) {
-        var impEmoji = { high: '🔴', medium: '🟠', low: '🟢' };
         var members = data.members || [];
         var html = '';
 
-        html += '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:0.75rem; margin-bottom:1rem; background:var(--bg-base); border-radius:6px;">';
-        html += '<strong>Workflow: ' + escapeHtml((data.workflow_status || 'open').replace('_', ' ')) + '</strong>';
-        html += '<span style="font-size:0.8rem; color:var(--text-muted);">Owner: ' + escapeHtml(data.assignee || 'Unassigned') + (data.team ? ' / ' + escapeHtml(data.team) : '') + '</span>';
-        html += '<span style="font-size:0.8rem; color:var(--text-muted);">SLA: ' + escapeHtml(data.sla_due_at ? data.sla_due_at.replace('T', ' ').slice(0, 19) : 'Not set') + '</span>';
-        if ((data.workflow_status || 'open') === 'open') html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.updateWorkflow(' + data.id + ',\'acknowledged\')">👋 Acknowledge</button>';
-        if (data.workflow_status !== 'resolved' && data.workflow_status !== 'ignored') html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.updateWorkflow(' + data.id + ',\'resolved\')">✅ Resolve</button>';
-        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.assign(' + data.id + ')">👤 Assign / SLA</button>';
-        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.addNote(' + data.id + ')">📝 Add note</button>';
-        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.feedback(' + data.id + ',\'correct\')">👍 AI correct</button>';
-        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.feedback(' + data.id + ',\'grouping_wrong\')">👎 Grouping wrong</button>';
-        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.merge(' + data.id + ')">🔗 Merge</button>';
-        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.split(' + data.id + ')">✂️ Split</button>';
-        html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.exportPostmortem(' + data.id + ')">📄 ' + t('incidents.action.postmortem') + '</button>';
-        html += '</div>';
-
-        var notes = data.notes || [];
-        if (notes.length) {
-            html += '<div style="margin-bottom:1rem;"><strong style="font-size:0.8rem;">Operator notes</strong>';
-            notes.forEach(function (note) {
-                html += '<div style="font-size:0.78rem; padding:5px 0; border-bottom:1px solid var(--border-light);"><span style="color:var(--text-muted);">' + escapeHtml(note.actor) + ':</span> ' + escapeHtml(note.body) + '</div>';
-            });
-            html += '</div>';
+        html += renderCommandSummary(data);
+        html += renderRunbookExecutions(data);
+        if (data.summary_status === 'failed') {
+            html += '<div class="incident-summary-state is-warning">⚠️ ' +
+                t('incidents.summaryFailed') + '</div>';
+        } else if (data.summary_status === 'pending' || data.summary_status === 'retrying' ||
+                   data.summary_status === 'processing') {
+            html += '<div class="incident-summary-state">💬 ' + t('incidents.summaryPending') + '</div>';
         }
+        html += renderOperatorNotes(data.notes || []);
+        html += renderSupportingEvidence(data);
 
-        // Summary analysis section
-        var summary = data.summary_analysis || {};
-        if (summary.summary) {
-            html += '<div style="background:var(--bg-base); border-radius:6px; padding:0.75rem 1rem; margin-bottom:1rem; border-left:3px solid var(--primary);">';
-            html += '<div style="font-weight:600; margin-bottom:0.25rem; font-size:0.85rem;">🧠 ' + t('incidents.llmSummary') + '</div>';
-            html += '<div style="font-size:0.85rem; color:var(--text-main); line-height:1.4;">' + escapeHtml(String(summary.summary || '')) + '</div>';
-            if (summary.root_cause) {
-                html += '<div style="margin-top:0.4rem; font-size:0.82rem;"><span style="color:var(--text-muted);">' + t('incidents.rootCause') + ':</span> <strong>' + escapeHtml(String(summary.root_cause)) + '</strong></div>';
-            }
-            if (summary.confidence) {
-                html += '<div style="margin-top:0.4rem; font-size:0.78rem; color:var(--text-muted);">' + t('incidents.confidence') + ': ' + Number(summary.confidence).toFixed(2) + '</div>';
-            }
-            html += '</div>';
-        } else if (data.summary_status === 'failed') {
-            html += '<div style="padding:0.5rem; margin-bottom:1rem; font-size:0.82rem; color:var(--warning);">⚠️ ' + t('incidents.summaryFailed') + '</div>';
-        } else if (data.summary_status === 'pending' || data.summary_status === 'retrying' || data.summary_status === 'processing') {
-            html += '<div style="padding:0.5rem; margin-bottom:1rem; font-size:0.82rem; color:var(--text-muted);">💬 ' + t('incidents.summaryPending') + '</div>';
-        }
-
-        html += renderIntelligence(data);
-
-        // Member alert timeline
-        if (members.length) {
-            html += '<div style="font-weight:600; font-size:0.8rem; color:var(--text-muted); margin-bottom:0.75rem; text-transform:uppercase; letter-spacing:0.04em;">📅 ' + t('incidents.timeline') + ' (' + members.length + ')</div>';
+        // Chronological alert and suspected-change timeline
+        var relatedChanges = (data.intelligence && data.intelligence.related_changes) || [];
+        var timelineItems = buildIncidentTimeline(members, relatedChanges);
+        if (timelineItems.length) {
+            html += '<div style="font-weight:600; font-size:0.8rem; color:var(--text-muted); margin-bottom:0.75rem; text-transform:uppercase; letter-spacing:0.04em;">📅 ' +
+                t('incidents.timeline') + ' · ' + t('incidents.timeline.counts', {
+                    alerts: members.length,
+                    changes: relatedChanges.length
+                }) + '</div>';
             
             // Timeline tree list
             html += '<div class="incident-tree" style="display:flex; flex-direction:column; gap:0.75rem; position:relative; padding-left:1.5rem; border-left:2px solid var(--border); margin-left:0.75rem;">';
             
             var firstMember = members[0];
+            var rootTimestamp = firstMember ? firstMember.timestamp : data.started_at;
             
-            for (var i = 0; i < members.length; i++) {
-                var m = members[i];
-                var isRootAlert = (i === 0);
+            for (var i = 0; i < timelineItems.length; i++) {
+                var timelineItem = timelineItems[i];
+                if (timelineItem.kind === 'change') {
+                    html += renderChangeTimelineNode(timelineItem.value, rootTimestamp);
+                    continue;
+                }
+                var m = timelineItem.value;
+                var isRootAlert = !!firstMember && m.id === firstMember.id;
                 
                 // Calculate relative offset
-                var offsetSecs = 0;
-                if (m.timestamp && firstMember.timestamp) {
-                    offsetSecs = (new Date(m.timestamp) - new Date(firstMember.timestamp)) / 1000;
-                }
-                var offsetStr = isRootAlert ? 'Root 首发' : formatRelativeOffset(offsetSecs);
+                var offsetSecs = timestampOffsetSeconds(m.timestamp, rootTimestamp);
+                var offsetStr = isRootAlert ? t('incidents.timeline.root') : formatRelativeOffset(offsetSecs);
                 
                 // Icon and color
                 var dotColor = isRootAlert ? 'var(--primary, #6366f1)' : (m.importance === 'high' ? 'var(--danger, #ef4444)' : (m.importance === 'medium' ? 'var(--warning, #f59e0b)' : 'var(--success, #10b981)'));
@@ -391,15 +921,15 @@ const IncidentsModule = (function () {
                 html += '</div>';
                 
                 // Card contents
-                var rootBadge = isRootAlert ? '<span class="badge badge-high" style="font-size:0.65rem; padding:1px 6px; background:var(--primary); color:white; font-weight:bold; border-radius:4px; margin-right:4px;">🏆 Root Cause 首发</span>' : '';
-                var dupBadge = m.is_duplicate ? '<span class="badge badge-outline" style="font-size:0.65rem; padding:1px 4px; margin-left:4px;">duplicate</span>' : '';
+                var rootBadge = isRootAlert ? '<span class="badge badge-high" style="font-size:0.65rem; padding:1px 6px; background:var(--primary); color:white; font-weight:bold; border-radius:4px; margin-right:4px;">🏆 ' + t('incidents.timeline.rootAlert') + '</span>' : '';
+                var dupBadge = m.is_duplicate ? '<span class="badge badge-outline" style="font-size:0.65rem; padding:1px 4px; margin-left:4px;">' + t('incidents.timeline.duplicate') + '</span>' : '';
                 
                 html += '<div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border); border-radius:6px; padding:0.6rem 0.85rem; display:flex; flex-direction:column; gap:4px;">' +
                     '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">' +
                     '<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">' +
                     rootBadge +
                     '<span style="font-size:0.8rem; font-weight:600; color:var(--text-main);">#' + m.id + '</span>' +
-                    '<span class="badge badge-' + impClass(m.importance) + '" style="font-size:0.7rem; font-weight:600;">' + dotIcon + ' ' + escapeHtml(m.importance || 'unknown') + '</span>' +
+                    '<span class="badge badge-' + impClass(m.importance) + '" style="font-size:0.7rem; font-weight:600;">' + dotIcon + ' ' + escapeHtml(m.importance || t('common.unknown')) + '</span>' +
                     dupBadge +
                     '<span style="font-size:0.72rem; color:var(--text-muted); font-weight:500;">' + escapeHtml(m.source || '') + '</span>' +
                     '</div>' +
@@ -414,7 +944,7 @@ const IncidentsModule = (function () {
                 
                 html += '<div style="font-size:0.7rem; color:var(--text-muted); display:flex; justify-content:space-between;">' +
                     '<span>' + escapeHtml(m.timestamp ? m.timestamp.replace('T', ' ').slice(0, 19) : '') + '</span>' +
-                    '<span>Status: ' + escapeHtml(m.forward_status || 'ingested') + '</span>' +
+                    '<span>' + t('incidents.timeline.status') + ': ' + escapeHtml(m.forward_status || 'ingested') + '</span>' +
                     '</div>';
                 
                 html += '</div></div>'; // close tree-node and card contents
@@ -423,34 +953,13 @@ const IncidentsModule = (function () {
             html += '</div>'; // close incident-tree timeline
         }
 
-        // Action: silence all sources in this incident
-        if (members.length) {
-            var sources = {};
-            members.forEach(function (m) {
-                var s = (m.source || '').trim();
-                if (s) sources[s] = true;
-            });
-            var uniqueSources = Object.keys(sources);
-            if (uniqueSources.length) {
-                html += '<div style="margin-top:1rem; padding-top:0.75rem; border-top:1px solid var(--border-light);">';
-                html += '<button class="btn btn-sm btn-warn" onclick="IncidentsModule.silenceIncidentSources(' + data.id + ')" style="font-size:0.75rem;">🔕 ' + t('incidents.action.silenceAll') + ' (' + uniqueSources.length + ')</button>';
-                html += '</div>';
-            }
-        }
-
         return html;
     }
 
     function silenceIncidentSources(id) {
         var data = _detailCache[id];
         if (!data) return;
-        var members = data.members || [];
-        var sources = {};
-        members.forEach(function (m) {
-            var s = (m.source || '').trim();
-            if (s) sources[s] = true;
-        });
-        var uniqueSources = Object.keys(sources);
+        var uniqueSources = uniqueIncidentSources(data.members || []);
         // Open the silence form pre-filled with the first source. The operator
         // can add more criteria before saving.
         if (typeof showQuickSilenceForm === 'function' && uniqueSources.length) {
@@ -558,6 +1067,50 @@ const IncidentsModule = (function () {
         }
     }
 
+    async function startRunbookExecution(id, encodedCandidateRef) {
+        var candidateRef = decodeURIComponent(encodedCandidateRef || '');
+        if (!candidateRef) return;
+        try {
+            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/runbook-executions', {
+                method: 'POST',
+                body: JSON.stringify({ candidate_ref: candidateRef, actor: 'dashboard' })
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            await loadIntelligence(id);
+        } catch (e) {
+            alert(t('incidents.runbook.startFailed') + ': ' + (e.message || e));
+        }
+    }
+
+    async function updateRunbookExecution(id, executionId, changes) {
+        var body = Object.assign({}, changes || {}, { actor: 'dashboard' });
+        try {
+            var resp = await API.authenticatedFetch(
+                '/v1/incidents/' + id + '/runbook-executions/' + executionId,
+                { method: 'PUT', body: JSON.stringify(body) }
+            );
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            await loadIntelligence(id);
+        } catch (e) {
+            alert(t('incidents.runbook.updateFailed') + ': ' + (e.message || e));
+        }
+    }
+
+    async function toggleRunbookStep(id, executionId, stepIndex, completed) {
+        await updateRunbookExecution(id, executionId, {
+            step_index: stepIndex,
+            step_completed: completed
+        });
+    }
+
+    async function completeRunbookExecution(id, executionId) {
+        var notes = prompt(t('incidents.runbook.completionNotes'), '');
+        if (notes === null) return;
+        var changes = { status: 'completed', effectiveness: 'unknown' };
+        if (notes.trim()) changes.notes = notes.trim();
+        await updateRunbookExecution(id, executionId, changes);
+    }
+
     async function merge(id) {
         var value = prompt('Incident IDs to merge into #' + id + ' (comma separated)', '');
         if (!value) return;
@@ -652,7 +1205,7 @@ const IncidentsModule = (function () {
         }
         h += '<span style="color:var(--text-muted); font-size:0.8rem;">▶</span>';
         h += '</div>';
-        h += '<div class="incident-detail" id="incident-detail-' + row.id + '" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-light);"></div>';
+        h += '<div class="incident-detail" id="incident-detail-' + row.id + '" onclick="event.stopPropagation()" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-light);"></div>';
         h += '</div>';
         return h;
     }
@@ -671,6 +1224,10 @@ const IncidentsModule = (function () {
         addNote: addNote,
         feedback: feedback,
         intelligenceFeedback: intelligenceFeedback,
+        startRunbookExecution: startRunbookExecution,
+        updateRunbookExecution: updateRunbookExecution,
+        toggleRunbookStep: toggleRunbookStep,
+        completeRunbookExecution: completeRunbookExecution,
         merge: merge,
         split: split,
         exportPostmortem: exportPostmortem,

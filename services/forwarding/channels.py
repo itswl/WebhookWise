@@ -132,6 +132,29 @@ class _FeishuChannel:
         return False
 
 
+class _FeishuAppChannel:
+    """Interactive-card delivery through a fixed-host Feishu custom app."""
+
+    name = "feishu_app"
+
+    def matches(self, record: ForwardOutbox) -> bool:
+        return str(record.channel_name or record.target_type or "") == self.name
+
+    async def deliver(self, record: ForwardOutbox) -> ForwardResult:
+        from services.notifications.feishu_app_transport import send_to_feishu_app
+
+        target = str(record.target_url or "")
+        chat_id = target.removeprefix("feishu-app://")
+        return await send_to_feishu_app(
+            chat_id,
+            _build_http_payload(record),
+            idempotency_key=str(record.idempotency_key or "") or None,
+        )
+
+    def needs_followup_on_success(self, record: ForwardOutbox, result: ForwardResult) -> bool:
+        return False
+
+
 def _build_bot_markdown_payload(record: ForwardOutbox, builder: Any) -> JsonObject:
     """Payload for markdown bot channels (DingTalk / WeCom).
 
@@ -234,6 +257,7 @@ class _WebhookChannel:
 # three keyed on their bot URL shapes); webhook is the fallback.
 _CHANNELS: tuple[ForwardChannel, ...] = (
     _OpenClawChannel(),
+    _FeishuAppChannel(),
     _FeishuChannel(),
     _DingTalkChannel(),
     _WeComChannel(),

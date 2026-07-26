@@ -274,6 +274,113 @@ def test_incident_intelligence_is_wired() -> None:
         assert "'incidents.intelligence.runbooks'" in js
 
 
+def test_incident_timeline_includes_suspected_change_markers() -> None:
+    incidents = _static_js("incidents.js")
+    css = _static_css("components.css")
+
+    assert "buildIncidentTimeline" in incidents
+    assert "renderChangeTimelineNode" in incidents
+    assert "data.intelligence.related_changes" in incidents
+    assert "safeHttpUrl" in incidents
+    assert "timelineItem.kind === 'change'" in incidents
+    assert ".incident-timeline-change" in css
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        js = _static_js(dict_name)
+        assert "'incidents.timeline.counts'" in js
+        assert "'incidents.timeline.changeMarker'" in js
+        assert "'incidents.timeline.viewChange'" in js
+
+
+def test_incident_command_summary_is_wired() -> None:
+    incidents = _static_js("incidents.js")
+    css = _static_css("components.css")
+
+    assert "renderCommandSummary" in incidents
+    assert "command_summary" in incidents
+    assert "service_profile" in incidents
+    assert "incident-command-grid" in incidents
+    assert ".incident-command-summary" in css
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in css
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        js = _static_js(dict_name)
+        assert "'incidents.command.whatHappened'" in js
+        assert "'incidents.command.likelyCause'" in js
+        assert "'incidents.command.recentChange'" in js
+        assert "'incidents.command.nextAction'" in js
+        assert "'incidents.serviceProfile.title'" in js
+
+
+def test_incident_secondary_actions_are_collapsed() -> None:
+    incidents = _static_js("incidents.js")
+    css = _static_css("components.css")
+
+    assert "renderIncidentToolbar" in incidents
+    assert "secondaryActions" in incidents
+    assert "alert-action-menu incident-action-menu" in incidents
+    assert "alert-action-count" in incidents
+    assert ".incident-action-menu" in css
+    assert "IncidentsModule.silenceIncidentSources" in incidents
+
+
+def test_incident_change_impact_is_rendered() -> None:
+    incidents = _static_js("incidents.js")
+    css = _static_css("components.css")
+
+    assert "renderChangeImpact" in incidents
+    assert "impact_assessment" in incidents
+    assert "before_alert_count" in incidents
+    assert "new_identity_count" in incidents
+    assert ".incident-impact-badge.impact-high" in css
+    assert ".incident-change-impact-metrics" in css
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        js = _static_js(dict_name)
+        assert "'incidents.changeImpact.level.high'" in js
+        assert "'incidents.changeImpact.beforeAfter'" in js
+        assert "'incidents.changeImpact.rollbackRecovered'" in js
+
+
+def test_incident_runbook_execution_is_wired() -> None:
+    incidents = _static_js("incidents.js")
+    css = _static_css("components.css")
+
+    assert "'/v1/incidents/' + id + '/runbook-executions'" in incidents
+    assert "'/v1/incidents/' + id + '/runbook-executions/' + executionId" in incidents
+    assert "startRunbookExecution" in incidents
+    assert "toggleRunbookStep" in incidents
+    assert "completeRunbookExecution" in incidents
+    assert "step_index" in incidents
+    assert "step_completed" in incidents
+    assert ".incident-runbook-progress" in css
+    assert ".incident-runbook-step" in css
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        js = _static_js(dict_name)
+        assert "'incidents.runbook.start'" in js
+        assert "'incidents.runbook.progress'" in js
+        assert "'incidents.runbook.manualOnly'" in js
+
+
+def test_incident_detail_interactions_do_not_toggle_parent_card() -> None:
+    incidents = _static_js("incidents.js")
+    css = _static_css("components.css")
+
+    assert incidents.count('class="incident-detail"') >= 2
+    assert incidents.count('onclick="event.stopPropagation()"') >= 2
+    assert ".incident-detail" in css
+    assert "cursor: default" in css
+
+
+def test_incident_static_i18n_keys_exist_in_both_dictionaries() -> None:
+    incidents = _static_js("incidents.js")
+    keys = set(re.findall(r"\bt\(\s*'([^']+)'", incidents))
+    incident_keys = {key for key in keys if key.startswith("incidents.") and not key.endswith(".")}
+
+    assert incident_keys
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        dictionary = _static_js(dict_name)
+        missing = [key for key in sorted(incident_keys) if f"'{key}':" not in dictionary]
+        assert missing == []
+
+
 def test_action_center_routes_noise_view_items() -> None:
     # Action Center items render generically off severity/view (no kind
     # whitelist), so flapping_identity (view="noise") only needs the open-details

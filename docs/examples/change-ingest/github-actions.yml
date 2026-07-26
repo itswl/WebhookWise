@@ -1,0 +1,78 @@
+name: Report deployment to WebhookWise
+
+on:
+  workflow_call:
+    inputs:
+      webhookwise_url:
+        description: WebhookWise base URL
+        required: true
+        type: string
+      service:
+        description: Deployed service name
+        required: true
+        type: string
+      environment:
+        description: Deployment environment
+        required: true
+        type: string
+      version_from:
+        description: Previously deployed version
+        required: false
+        type: string
+        default: ""
+      version_to:
+        description: Newly deployed version
+        required: true
+        type: string
+    secrets:
+      change_ingest_token:
+        required: true
+
+jobs:
+  report-change:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Submit normalized change
+        env:
+          WEBHOOKWISE_URL: ${{ inputs.webhookwise_url }}
+          CHANGE_INGEST_TOKEN: ${{ secrets.change_ingest_token }}
+          SERVICE: ${{ inputs.service }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          VERSION_FROM: ${{ inputs.version_from }}
+          VERSION_TO: ${{ inputs.version_to }}
+          ACTOR: ${{ github.actor }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          payload="$(jq -n \
+            --arg external_id "${RUN_ID}-${RUN_ATTEMPT}-${SERVICE}-${DEPLOY_ENVIRONMENT}" \
+            --arg source "github-actions" \
+            --arg service "$SERVICE" \
+            --arg project "$REPOSITORY" \
+            --arg environment "$DEPLOY_ENVIRONMENT" \
+            --arg version_from "$VERSION_FROM" \
+            --arg version_to "$VERSION_TO" \
+            --arg actor "$ACTOR" \
+            --arg started_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg source_url "$SOURCE_URL" \
+            '{
+              external_id: $external_id,
+              source: $source,
+              change_type: "deployment",
+              service: $service,
+              project: $project,
+              environment: $environment,
+              version_from: $version_from,
+              version_to: $version_to,
+              actor: $actor,
+              status: "succeeded",
+              started_at: $started_at,
+              source_url: $source_url
+            }')"
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            -X POST "${WEBHOOKWISE_URL%/}/v1/changes" \
+            -H "Authorization: Bearer $CHANGE_INGEST_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "$payload"

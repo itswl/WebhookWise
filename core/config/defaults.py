@@ -93,6 +93,11 @@ class SecurityConfig(StaticSettings):
     WEBHOOK_SECRET: str = Field(default="")
     API_KEY: str = Field(default="")
     ADMIN_WRITE_KEY: str = Field(default="")
+    CHANGE_INGEST_TOKEN: str = Field(default="")
+    FEISHU_CARD_VERIFICATION_TOKEN: str = Field(default="")
+    FEISHU_CARD_ACTION_SECRET: str = Field(default="")
+    FEISHU_ALLOWED_TENANT_KEYS: str = Field(default="")
+    FEISHU_ALLOWED_OPERATOR_OPEN_IDS: str = Field(default="")
     MAX_WEBHOOK_BODY_BYTES: int = Field(default=1048576, gt=0)
     HSTS_INCLUDE_SUBDOMAINS: bool = Field(default=False)
     WEBHOOK_RATE_LIMIT_PER_MINUTE: int = Field(default=0, ge=0)
@@ -300,6 +305,11 @@ class NotificationConfig(StaticSettings):
 
     DEEP_ANALYSIS_FEISHU_WEBHOOK: str = Field(default="")
     FEISHU_WEBHOOK_TIMEOUT_SECONDS: int = Field(default=10, gt=0)
+    FEISHU_CARD_ACTIONS_ENABLED: bool = Field(default=False)
+    FEISHU_APP_ID: str = Field(default="")
+    FEISHU_APP_SECRET: str = Field(default="")
+    FEISHU_INCIDENT_CHAT_ID: str = Field(default="")
+    FEISHU_CARD_ACTION_TTL_SECONDS: int = Field(default=604800, ge=60, le=2592000)
     AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600, gt=0)
     DASHBOARD_PUBLIC_URL: str = Field(default="")
 

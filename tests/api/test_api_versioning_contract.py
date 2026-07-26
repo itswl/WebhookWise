@@ -56,11 +56,17 @@ def test_business_api_routes_are_v1_only() -> None:
         "/v1/incidents/{incident_id}",
         "/v1/incidents/{incident_id}/intelligence",
         "/v1/incidents/{incident_id}/intelligence/feedback",
+        "/v1/incidents/{incident_id}/runbook-executions",
+        "/v1/incidents/{incident_id}/runbook-executions/{execution_id}",
         "/v1/incidents/{incident_id}/summary",
         "/v1/incidents/{incident_id}/summarize",
         "/v1/incidents/{incident_id}/close",
         "/v1/incidents/{incident_id}/reopen",
         "/v1/changes",
+        "/v1/changes/{change_id}/impact",
+        "/v1/services",
+        "/v1/service-profile",
+        "/v1/integrations/feishu/card-actions",
         "/v1/outbox",
         "/v1/admin/dead-letters",
         "/v1/admin/dead-letters/{event_id}",
@@ -85,6 +91,8 @@ def test_v1_routes_have_explicit_auth_contract() -> None:
     from api.app import app
 
     webhook_ingest_paths = {"/v1/webhook", "/v1/webhook/{source}"}
+    change_ingest_paths = {"/v1/changes"}
+    feishu_callback_paths = {"/v1/integrations/feishu/card-actions"}
 
     seen_v1 = 0
     for route in _iter_effective_routes(app):
@@ -99,6 +107,18 @@ def test_v1_routes_have_explicit_auth_contract() -> None:
         dependency_names = set(ordered_dependency_names)
         if path in webhook_ingest_paths:
             assert {"check_rate_limit_dep", "verify_webhook_auth_dep"} <= dependency_names
+        elif path in change_ingest_paths:
+            assert {"check_admin_rate_limit_dep", "verify_change_ingest_token"} <= dependency_names
+            assert "verify_api_key" not in dependency_names
+            assert ordered_dependency_names.index("check_admin_rate_limit_dep") < ordered_dependency_names.index(
+                "verify_change_ingest_token"
+            ), path
+        elif path in feishu_callback_paths:
+            assert {"check_admin_rate_limit_dep", "verify_feishu_card_callback"} <= dependency_names
+            assert "verify_api_key" not in dependency_names
+            assert ordered_dependency_names.index("check_admin_rate_limit_dep") < ordered_dependency_names.index(
+                "verify_feishu_card_callback"
+            ), path
         else:
             assert "verify_api_key" in dependency_names, path
             # Every authenticated admin/read route carries the per-IP admin rate
@@ -172,9 +192,11 @@ def test_business_api_modules_live_under_v1_package() -> None:
         "ai_usage.py",
         "changes.py",
         "deep_analysis.py",
+        "feishu_actions.py",
         "forwarding.py",
         "incidents.py",
         "reanalysis.py",
+        "services.py",
         "webhook.py",
     }
 

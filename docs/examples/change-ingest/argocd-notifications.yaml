@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-notifications-secret
+  namespace: argocd
+stringData:
+  webhookwise-change-token: replace-with-change-ingest-token
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+data:
+  service.webhook.webhookwise: |
+    url: https://webhookwise.example.com
+    headers:
+      - name: Authorization
+        value: Bearer $webhookwise-change-token
+      - name: Content-Type
+        value: application/json
+
+  template.webhookwise-change: |
+    webhook:
+      webhookwise:
+        method: POST
+        path: /v1/changes
+        body: |
+          {
+            "external_id": "argocd-{{.app.metadata.name}}-{{.app.status.sync.revision}}",
+            "source": "argocd",
+            "change_type": "deployment",
+            "project": "{{.app.spec.project}}",
+            "environment": "production",
+            "service": "{{.app.metadata.name}}",
+            "version_to": "{{.app.status.sync.revision}}",
+            "actor": "{{.app.status.operationState.operation.initiatedBy.username}}",
+            "status": "{{.app.status.operationState.phase}}",
+            "started_at": "{{.app.status.operationState.startedAt}}",
+            "finished_at": "{{.app.status.operationState.finishedAt}}",
+            "source_url": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
+          }
+
+  trigger.webhookwise-on-deployed: |
+    - description: Report a successful and healthy deployment to WebhookWise
+      send:
+        - webhookwise-change
+      when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: example-service
+  namespace: argocd
+  annotations:
+    notifications.argoproj.io/subscribe.webhookwise-on-deployed.webhookwise: ""
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/example/example-service.git
+    targetRevision: main
+    path: deploy
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: example-service

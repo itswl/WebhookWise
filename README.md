@@ -37,6 +37,7 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 | Escalation-lite | Optional auto-SLA per importance arms the SLA-breach escalation card (@all / dedicated webhook) for unacknowledged incidents; status-flapping identities are detected and can be muted while they oscillate. |
 | Learn loop | Resolved incidents sediment into KB drafts; published KB entries are attached to outgoing Feishu alert cards and one-click incident postmortem drafts (Markdown) close the review loop. |
 | Incident intelligence | Incident detail ranks similar resolved incidents, suspected recent changes, and published runbooks with explicit evidence and operator feedback. |
+| Incident response loop | A compact command summary, change impact, derived service profiles, manual runbook progress, optional signed Feishu actions, and product-value reporting connect detection to reusable knowledge. |
 | Transactional Outbox | Processing results and forwarding intent are written to the database in the same transaction, then delivered and retried asynchronously by the Worker. |
 | OTel-first observability | The application emits telemetry over OTLP; the local stack integrates Alloy, Prometheus, Tempo, Loki, and Pyroscope. |
 
@@ -74,6 +75,7 @@ At a minimum you need to replace:
 | --- | --- |
 | `API_KEY` | Token for read access to the management API. |
 | `ADMIN_WRITE_KEY` | Token for management actions such as writes, replays, forwarding, and re-analysis. |
+| `CHANGE_INGEST_TOKEN` | Least-privilege token for CI/CD systems that only submit change events. |
 | `WEBHOOK_SECRET` | Webhook HMAC-SHA256 signing key and ingress token. |
 | `OPENAI_API_KEY` | Optional; fill in when enabling AI analysis. |
 
