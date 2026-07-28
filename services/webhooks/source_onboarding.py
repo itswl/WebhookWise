@@ -17,7 +17,8 @@ from models.source_connection import SourceConnection
 from schemas.onboarding import SourceConnectionCreateRequest, SourceConnectionUpdateRequest
 from services.operations.audit_logger import add_audit
 
-_TOKEN_PREFIX = "whsrc_"
+# This is a public prefix; generated credentials include a random secret suffix.
+_TOKEN_PREFIX = "whsrc_"  # nosec B105
 _MAX_SHAPE_DEPTH = 4
 _MAX_SHAPE_KEYS = 100
 _MAX_LIST_SAMPLES = 5
