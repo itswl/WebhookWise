@@ -15,6 +15,7 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 | --- | --- |
 | Start the local environment | [Quick Start](#quick-start) |
 | View the API | After startup, visit `http://localhost:8000/docs`; for export notes see [docs/reference/api.md](docs/reference/api.md) |
+| Understand the full system | [docs/architecture/system-overview.md](docs/architecture/system-overview.md) |
 | Understand module boundaries | [docs/architecture/boundaries.md](docs/architecture/boundaries.md) |
 | Open the observability stack | [docs/operations/observability/local-lab/README.md](docs/operations/observability/local-lab/README.md) |
 | Query observability data | [docs/operations/observability/query-tools.md](docs/operations/observability/query-tools.md) |
@@ -40,29 +41,40 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 | Incident response loop | A compact command summary, change impact, derived service profiles, manual runbook progress, optional signed Feishu actions, and product-value reporting connect detection to reusable knowledge. |
 | Response and learning workspace | A prioritized work queue, structured resolution evidence, recurrence review, knowledge-gap discovery, and bounded feedback calibration turn incident handling into reusable operational knowledge. |
 | Guided inbound onboarding | Source-scoped, revocable credentials and a first-event wizard connect new senders without sharing the global webhook secret. |
-| Read-only alert quality center | Scores source payload completeness and highlights unstable identities, unmatched recoveries, timestamp anomalies, Schema drift, and response gaps without changing source configuration. |
+| Read-only alert quality center | Scores source payload completeness and highlights unstable identities, unmatched recoveries, timestamp anomalies, schema drift, and response gaps without changing source configuration. |
 | Transactional Outbox | Processing results and forwarding intent are written to the database in the same transaction, then delivered and retried asynchronously by the Worker. |
-| OTel-first observability | The application emits telemetry over OTLP; the local stack integrates Alloy, Prometheus, Tempo, Loki, and Pyroscope. |
+| OTel-first observability | The application emits telemetry over OTLP; Alloy routes metrics, logs, and traces to Prometheus, Loki, and Tempo, while Pyroscope, Beyla, Alertmanager, and Grafana complete the diagnostic loop. |
 
 ## System Flow
 
 ```mermaid
 flowchart LR
-    source["Webhook sources"] --> api["FastAPI /v1/webhook"]
-    api --> accepted["200 OK / queued"]
-    api --> queue["TaskIQ / Redis Stream"]
-    queue --> worker["Worker pipeline"]
-    worker --> normalize["Normalize"]
-    normalize --> dedup["Dedup / noise"]
-    dedup --> analyze["AI / rule / OpenClaw"]
-    analyze --> outbox["Forward Outbox"]
-    outbox --> targets["Webhook / Feishu / DingTalk / WeCom / OpenClaw"]
-    worker --> db["PostgreSQL"]
-    worker --> redis["Redis"]
-    api --> otel["OpenTelemetry"]
-    worker --> otel
-    otel --> obs["Alloy / Prometheus / Tempo / Loki / Pyroscope"]
+    sources["Alert sources<br/>global or source-scoped credentials"]
+    api["FastAPI ingress<br/>authenticate, rate limit, enqueue"]
+    queue["Redis Stream / TaskIQ"]
+    worker["Worker pipeline"]
+    process["Normalize -> identify -> deduplicate<br/>analyze -> reduce noise"]
+    db["PostgreSQL<br/>events, incidents, knowledge"]
+    outbox["Transactional outbox"]
+    targets["Webhook / Feishu / DingTalk<br/>WeCom / OpenClaw"]
+    response["Response center<br/>investigation and resolution"]
+    learning["Recurrence, postmortem,<br/>KB drafts, calibration"]
+
+    sources --> api
+    api -->|"200 after queue acceptance"| queue
+    queue --> worker
+    worker --> process
+    process --> db
+    process --> outbox
+    outbox --> targets
+    db --> response
+    response --> learning
+    learning -->|"bounded evidence and ranking feedback"| response
 ```
+
+For process topology, persistence relationships, scheduler duties, security
+boundaries, and the complete observability flow, see
+[System Architecture](docs/architecture/system-overview.md).
 
 ## Quick Start
 
@@ -222,6 +234,7 @@ Application images must use a release tag or digest; avoid using `latest`. For m
 ├── api/                  # FastAPI routes, request/response binding, and auth dependencies
 ├── adapters/             # External Webhook payload normalization and plugin registration
 ├── alembic/              # Database migrations
+├── contracts/            # Stable normalized payload and cross-module contracts
 ├── core/                 # Runtime infrastructure such as config, logging, auth, Redis, OTel, and HTTP client
 ├── db/                   # SQLAlchemy engine/session lifecycle
 ├── deploy/               # Compose, Kubernetes, and observability deployment resources
@@ -233,8 +246,11 @@ Application images must use a release tag or digest; avoid using `latest`. For m
 ├── services/
 │   ├── analysis/         # AI/rule/OpenClaw analysis, caching, and usage
 │   ├── forwarding/       # Forwarding rules, Outbox, remote delivery, and retries
+│   ├── incidents/        # Grouping, response, intelligence, recurrence, runbooks, and postmortems
+│   ├── kb/               # Knowledge ingestion, retrieval, and incident sedimentation
 │   ├── notifications/    # Notification channels and message formatting
 │   ├── operations/       # TaskIQ tasks, scheduling, recovery, and maintenance
+│   ├── silences/         # Silence and maintenance-window policies
 │   └── webhooks/         # Webhook ingest, pipeline, queries, and commands
 ├── templates/            # Dashboard HTML and static assets
 └── tests/
@@ -282,7 +298,7 @@ For the complete documentation entry point, see [docs/README.md](docs/README.md)
 
 | Category | Documents |
 | --- | --- |
-| Architecture | [Module Boundaries](docs/architecture/boundaries.md) |
+| Architecture | [System Architecture](docs/architecture/system-overview.md), [Module Boundaries](docs/architecture/boundaries.md) |
 | Operations | [Observability](docs/operations/observability/overview.md), [Grafana Dashboards](docs/operations/observability/dashboards.md), [Query Tools](docs/operations/observability/query-tools.md), [Troubleshooting](docs/operations/troubleshooting.md) |
 | Reference | [API Docs](docs/reference/api.md), [Kubernetes](deploy/k8s/README.md), [Contributing Guide](CONTRIBUTING.md), [Changelog](CHANGELOG.md) |
 

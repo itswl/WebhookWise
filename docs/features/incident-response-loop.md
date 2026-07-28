@@ -2,9 +2,18 @@
 
 WebhookWise keeps the product focused on one operational loop:
 
-```text
-alert ingest -> noise reduction -> incident grouping -> investigation
-             -> operator response -> reusable knowledge
+```mermaid
+flowchart LR
+    ingest["Alert ingest"]
+    reduce["Identity, deduplication,<br/>silence, and noise reduction"]
+    group["Incident grouping"]
+    investigate["Similar incidents, changes,<br/>runbooks, and deep analysis"]
+    respond["Operator response<br/>acknowledge, assign, SLA, checklist"]
+    resolve["Verified resolution"]
+    knowledge["Postmortem, recurrence review,<br/>and reusable knowledge"]
+
+    ingest --> reduce --> group --> investigate --> respond --> resolve --> knowledge
+    knowledge -->|"bounded ranking feedback"| investigate
 ```
 
 The incident detail page turns that loop into a compact command surface. The
@@ -17,6 +26,10 @@ first screen shows a deterministic four-part command summary:
 
 The full evidence remains available below the summary, but it is collapsed by
 default so the primary actions are not buried by diagnostics.
+
+For the runtime processes, persistence map, and the relationship between this
+loop and alert-quality diagnostics, see
+[System Architecture](../architecture/system-overview.md).
 
 ## Change impact assessment
 

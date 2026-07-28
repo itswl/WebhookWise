@@ -127,7 +127,7 @@ GET /v1/alert-quality/overview?window_days=7&source_limit=100
 ```
 
 The response includes per-source scores, field coverage, recovery matching,
-identity stability, Schema drift, unattended-incident findings, example event
+identity stability, schema drift, unattended-incident findings, example event
 IDs, and explicit scan bounds. It never mutates the source or offers a repair
 action. See [Alert Quality Center](../features/alert-quality-center.md).
 

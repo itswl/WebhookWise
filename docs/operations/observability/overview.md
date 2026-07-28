@@ -2,30 +2,44 @@
 
 WebhookWise is OTel-first:
 
-```text
-API / Worker / Scheduler
-  -> OpenTelemetry SDK (logs, traces, metrics)
-  -> OTLP HTTP or gRPC
-  -> Grafana Alloy
-      -> Metrics: Prometheus-compatible backend
-      -> Traces: Tempo / Jaeger
-      -> Logs: Loki
-  -> Pyroscope SDK
-      -> Profiles: Pyroscope
-Dashboard browser
-  -> Grafana Faro Web SDK
-  -> Alloy faro.receiver
-      -> Logs: Loki
-      -> Traces: Tempo
-webhook-service container
-  -> Grafana Beyla eBPF auto-instrumentation
-  -> Alloy OTLP receiver
-k6
-  -> Prometheus remote write
-      -> Dashboard / Alerting: Grafana
+```mermaid
+flowchart LR
+    app["API / Worker / Scheduler<br/>OpenTelemetry SDK"]
+    browser["Dashboard browser<br/>Faro Web SDK"]
+    beyla["Beyla eBPF<br/>API auto-instrumentation"]
+    pyrosdk["API / Worker / Scheduler<br/>Pyroscope SDK"]
+    k6["k6"]
+
+    alloy["Grafana Alloy<br/>OTLP and Faro receivers"]
+    prometheus["Prometheus"]
+    loki["Loki"]
+    tempo["Tempo"]
+    pyroscope["Pyroscope"]
+    alertmanager["Alertmanager"]
+    grafana["Grafana"]
+    webhookwise["WebhookWise<br/>Alertmanager ingress"]
+
+    app -->|"OTLP metrics, logs, traces"| alloy
+    browser -->|"Faro events and traces"| alloy
+    beyla -->|"OTLP metrics and traces"| alloy
+    alloy --> prometheus
+    alloy --> loki
+    alloy --> tempo
+    pyrosdk -->|"profiles"| pyroscope
+    k6 -->|"Prometheus remote write"| prometheus
+    prometheus -->|"alert rules"| alertmanager
+    alertmanager -->|"firing and resolved webhook"| webhookwise
+    grafana --> prometheus
+    grafana --> loki
+    grafana --> tempo
+    grafana --> pyroscope
 ```
 
 Application code only emits telemetry. It does not expose `/metrics`, tail application files into Loki, write Loki directly, or depend on `prometheus_client`. Profiles are the one direct backend SDK integration because Python profile export is still more mature through Pyroscope than through a stable OTel profiles SDK.
+
+For the full business-process topology and how observability joins the business
+Compose network, see
+[System Architecture](../../architecture/system-overview.md#observability-topology).
 
 ## Application Signals
 
