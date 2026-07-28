@@ -68,9 +68,7 @@ class _SourceAccumulator:
     unique_dedup_keys: set[str] = field(default_factory=set)
     identity_anchors: set[str] = field(default_factory=set)
     schema_fingerprints: set[str] = field(default_factory=set)
-    identity_states: dict[str, list[tuple[datetime, bool]]] = field(
-        default_factory=lambda: defaultdict(list)
-    )
+    identity_states: dict[str, list[tuple[datetime, bool]]] = field(default_factory=lambda: defaultdict(list))
     issue_samples: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     unattended_incidents: int = 0
 
@@ -185,11 +183,7 @@ def _as_int(value: object) -> int:
 def _finding_list(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
-    return [
-        cast(dict[str, object], item)
-        for item in value
-        if isinstance(item, dict)
-    ]
+    return [cast(dict[str, object], item) for item in value if isinstance(item, dict)]
 
 
 def _finding(
@@ -249,10 +243,7 @@ async def _unattended_by_source(
             .group_by(Incident.source, Incident.source_connection_id)
         )
     ).all()
-    return {
-        _source_key(source, source_connection_id): int(count or 0)
-        for source, source_connection_id, count in rows
-    }
+    return {_source_key(source, source_connection_id): int(count or 0) for source, source_connection_id, count in rows}
 
 
 def _credential_state(connection: SourceConnection | None) -> str:
@@ -347,7 +338,12 @@ def _source_findings(accumulator: _SourceAccumulator, *, start: datetime, now: d
     identity_churn_rate = round(dedup_key_count / total * 100, 1) if total else 0.0
     anchor_limit = max(3, total // 5)
     duplicate_rate = accumulator.duplicate_count / total if total else 0.0
-    if total >= 10 and identity_churn_rate >= 80 and duplicate_rate <= 0.1 and len(accumulator.identity_anchors) <= anchor_limit:
+    if (
+        total >= 10
+        and identity_churn_rate >= 80
+        and duplicate_rate <= 0.1
+        and len(accumulator.identity_anchors) <= anchor_limit
+    ):
         findings.append(
             _finding(
                 accumulator,
@@ -497,11 +493,7 @@ async def get_alert_quality_overview(
     now = utcnow()
     start = now - timedelta(days=window_days)
     total_events = int(
-        (
-            await session.execute(
-                select(func.count(WebhookEvent.id)).where(WebhookEvent.timestamp >= start)
-            )
-        ).scalar_one()
+        (await session.execute(select(func.count(WebhookEvent.id)).where(WebhookEvent.timestamp >= start))).scalar_one()
         or 0
     )
     events = (
@@ -526,9 +518,7 @@ async def get_alert_quality_overview(
     connection_rows = list(
         (
             await session.execute(
-                select(SourceConnection)
-                .order_by(SourceConnection.id.desc())
-                .limit(_MAX_CONNECTION_SCAN + 1)
+                select(SourceConnection).order_by(SourceConnection.id.desc()).limit(_MAX_CONNECTION_SCAN + 1)
             )
         )
         .scalars()
@@ -669,11 +659,7 @@ async def get_alert_quality_overview(
     )
     source_total = len(source_payloads)
     visible_sources = source_payloads[:source_limit]
-    scored_sources = [
-        _as_int(item["quality_score"])
-        for item in source_payloads
-        if item["quality_score"] is not None
-    ]
+    scored_sources = [_as_int(item["quality_score"]) for item in source_payloads if item["quality_score"] is not None]
     event_count = sum(accumulator.event_count for accumulator in accumulators.values())
     missing_identity = sum(accumulator.missing_identity for accumulator in accumulators.values())
     missing_service = sum(accumulator.missing_service for accumulator in accumulators.values())
