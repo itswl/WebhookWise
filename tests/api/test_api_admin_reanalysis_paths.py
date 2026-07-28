@@ -152,6 +152,7 @@ async def test_admin_dead_letter_listing_retry_and_replay_paths(
     event = SimpleNamespace(
         id=1,
         source="prometheus",
+        source_connection_id=77,
         headers={"Authorization": "redacted"},
         client_ip="203.0.113.10",
         request_id="req-1",
@@ -268,6 +269,7 @@ async def test_admin_dead_letter_listing_retry_and_replay_paths(
     assert replay["success"] is True
     assert replay["event_id"] == 1
     assert enqueued[-1]["source_name"] == "prometheus"
+    assert enqueued[-1]["source_connection_id"] == 77
     assert enqueued[-1]["raw_body"] == '{"alertname":"HighCPU"}'
 
     replay_missing = await admin.replay_single_dead_letter(3, session=Session())  # type: ignore[arg-type]

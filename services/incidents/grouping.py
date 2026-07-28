@@ -122,7 +122,22 @@ def _dimensions_conflict(left: Mapping[str, str], right: Mapping[str, object]) -
     return any(key in left and right.get(key) and str(right[key]) != left[key] for key in identity_keys)
 
 
+def _source_connection_conflicts(
+    left_connection_id: int | None,
+    right_connection_id: int | None,
+) -> bool:
+    """Keep managed-source traffic inside its explicit connection boundary."""
+    return (
+        left_connection_id is not None or right_connection_id is not None
+    ) and left_connection_id != right_connection_id
+
+
 def _event_pair_score(left: WebhookEvent, right: WebhookEvent) -> float:
+    if _source_connection_conflicts(
+        left.source_connection_id,
+        right.source_connection_id,
+    ):
+        return 0.0
     same_source = str(left.source or "") == str(right.source or "")
     left_rule = _event_rule_name(left)
     right_rule = _event_rule_name(right)
@@ -141,6 +156,11 @@ def _event_pair_score(left: WebhookEvent, right: WebhookEvent) -> float:
 
 
 def _incident_correlation_score(event: WebhookEvent, incident: Incident) -> float:
+    if _source_connection_conflicts(
+        event.source_connection_id,
+        incident.source_connection_id,
+    ):
+        return 0.0
     same_source = str(event.source or "") == str(incident.source or "")
     event_dimensions = _correlation_dimensions(event)
     incident_dimensions = incident.correlation_dimensions or {}
@@ -212,6 +232,7 @@ async def run_incident_grouping() -> dict[str, Any]:
         )
 
         created_incidents: list[Incident] = []
+        recurrence_inputs: list[tuple[Incident, WebhookEvent]] = []
         candidates: list[WebhookEvent] = []
         updated = 0
         recovered = 0
@@ -236,9 +257,20 @@ async def run_incident_grouping() -> dict[str, Any]:
                 recoverable_incidents.append(match)
                 created_incidents.append(match)
                 _add_event_to_incident(session, match, candidate)
+                recurrence_inputs.append((match, candidate))
 
             if _add_event_to_incident(session, match, event) and match not in created_incidents:
                 updated += 1
+
+        if recurrence_inputs:
+            from services.incidents.recurrence import detect_incident_recurrence
+
+            for incident, representative_event in recurrence_inputs:
+                await detect_incident_recurrence(
+                    session,
+                    incident,
+                    representative_event,
+                )
 
         closed = await _close_quiet_incidents(session, now)
 
@@ -328,6 +360,11 @@ def _find_recovery_incident(event: WebhookEvent, incidents: list[Incident]) -> I
     for incident in incidents:
         if incident.status not in {"active", "quiet"} or incident.alert_count >= _MAX_MEMBERS_PER_INCIDENT:
             continue
+        if _source_connection_conflicts(
+            event.source_connection_id,
+            incident.source_connection_id,
+        ):
+            continue
         if incident.started_at > event_timestamp:
             continue
         score = (
@@ -360,6 +397,7 @@ def _create_incident_from_event(event: WebhookEvent) -> Incident:
         title=title,
         status="active",
         source=event.source,
+        source_connection_id=event.source_connection_id,
         started_at=timestamp,
         updated_at=timestamp,
         alert_count=0,
@@ -377,6 +415,11 @@ def _add_event_to_incident(
 ) -> bool:
     """Add one member and return whether the membership was accepted."""
     if incident.alert_count >= _MAX_MEMBERS_PER_INCIDENT or incident.id is None or event.id is None:
+        return False
+    if _source_connection_conflicts(
+        event.source_connection_id,
+        incident.source_connection_id,
+    ):
         return False
     score = _incident_correlation_score(event, incident)
     timestamp = event.timestamp or utcnow()

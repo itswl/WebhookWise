@@ -58,10 +58,17 @@ def test_business_api_routes_are_v1_only() -> None:
         "/v1/incidents/{incident_id}/intelligence/feedback",
         "/v1/incidents/{incident_id}/runbook-executions",
         "/v1/incidents/{incident_id}/runbook-executions/{execution_id}",
+        "/v1/incidents/{incident_id}/resolution",
+        "/v1/incidents/{incident_id}/recurrence",
+        "/v1/incidents/{incident_id}/recurrence/confirm",
+        "/v1/incidents/{incident_id}/recurrence/dismiss",
         "/v1/incidents/{incident_id}/summary",
         "/v1/incidents/{incident_id}/summarize",
         "/v1/incidents/{incident_id}/close",
         "/v1/incidents/{incident_id}/reopen",
+        "/v1/response-center/work-queue",
+        "/v1/response-center/knowledge-gaps",
+        "/v1/alert-quality/overview",
         "/v1/changes",
         "/v1/changes/{change_id}/impact",
         "/v1/services",
@@ -75,6 +82,13 @@ def test_business_api_routes_are_v1_only() -> None:
         "/v1/admin/dead-letters/replay-all",
         "/v1/admin/outbox/{outbox_id}/retry",
         "/v1/admin/suppressed",
+        "/v1/onboarding/source-types",
+        "/v1/onboarding/sources",
+        "/v1/onboarding/sources/{connection_id}",
+        "/v1/onboarding/sources/{connection_id}/status",
+        "/v1/onboarding/sources/{connection_id}/rotate",
+        "/v1/onboarding/sources/{connection_id}/revoke",
+        "/v1/source-webhooks/{public_id}",
         "/v1/ai-usage",
         "/v1/prompt",
         "/v1/prompt/reload",
@@ -91,6 +105,7 @@ def test_v1_routes_have_explicit_auth_contract() -> None:
     from api.app import app
 
     webhook_ingest_paths = {"/v1/webhook", "/v1/webhook/{source}"}
+    source_ingest_paths = {"/v1/source-webhooks/{public_id}"}
     change_ingest_paths = {"/v1/changes"}
     feishu_callback_paths = {"/v1/integrations/feishu/card-actions"}
 
@@ -107,6 +122,12 @@ def test_v1_routes_have_explicit_auth_contract() -> None:
         dependency_names = set(ordered_dependency_names)
         if path in webhook_ingest_paths:
             assert {"check_rate_limit_dep", "verify_webhook_auth_dep"} <= dependency_names
+        elif path in source_ingest_paths:
+            assert {"check_rate_limit_dep", "verify_source_connection_dep"} <= dependency_names
+            assert "verify_api_key" not in dependency_names
+            assert ordered_dependency_names.index("check_rate_limit_dep") < ordered_dependency_names.index(
+                "verify_source_connection_dep"
+            ), path
         elif path in change_ingest_paths:
             assert {"check_admin_rate_limit_dep", "verify_change_ingest_token"} <= dependency_names
             assert "verify_api_key" not in dependency_names
@@ -174,9 +195,40 @@ def test_incident_mutations_require_admin_write_permission() -> None:
         "/incidents/{incident_id}/close",
         "/incidents/{incident_id}/reopen",
         "/incidents/{incident_id}/intelligence/feedback",
+        "/incidents/{incident_id}/resolution",
+        "/incidents/{incident_id}/recurrence/confirm",
+        "/incidents/{incident_id}/recurrence/dismiss",
     }
     for path in mutation_paths:
-        route = next(route for route in incidents_router.routes if str(getattr(route, "path", "")) == path)
+        route = next(
+            route
+            for route in incidents_router.routes
+            if str(getattr(route, "path", "")) == path
+            and set(getattr(route, "methods", set())) & {"POST", "PUT", "PATCH", "DELETE"}
+        )
+        dependency_names = {
+            getattr(dependency.call, "__name__", str(dependency.call))
+            for dependency in getattr(route, "dependant", object()).dependencies
+        }
+        assert "verify_admin_write" in dependency_names, path
+
+
+def test_onboarding_mutations_require_admin_write_permission() -> None:
+    from api.v1.onboarding import onboarding_router
+
+    mutation_paths = {
+        "/onboarding/sources",
+        "/onboarding/sources/{connection_id}",
+        "/onboarding/sources/{connection_id}/rotate",
+        "/onboarding/sources/{connection_id}/revoke",
+    }
+    for path in mutation_paths:
+        route = next(
+            route
+            for route in onboarding_router.routes
+            if str(getattr(route, "path", "")) == path
+            and set(getattr(route, "methods", set())) & {"POST", "PUT", "PATCH", "DELETE"}
+        )
         dependency_names = {
             getattr(dependency.call, "__name__", str(dependency.call))
             for dependency in getattr(route, "dependant", object()).dependencies

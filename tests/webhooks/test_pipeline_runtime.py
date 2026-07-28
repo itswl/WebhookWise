@@ -496,7 +496,11 @@ async def test_handle_webhook_ingest_and_raw_ingest_outcomes(
         return pipeline_runtime.PipelineProcessingResult(True)
 
     monkeypatch.setattr(pipeline, "parse_request", parse_ok)
-    monkeypatch.setattr(pipeline, "generate_event_keys", lambda *_args: ("hash", "dedup"))
+    monkeypatch.setattr(
+        pipeline,
+        "generate_event_keys",
+        lambda *_args, **_kwargs: ("hash", "dedup"),
+    )
     monkeypatch.setattr(pipeline_orchestrator, "run_processing_pipeline", run_suppressed)
     await pipeline._handle_raw_ingest(
         pipeline.EventEnvelope({}, {"ok": True}, b"{}", "prometheus", "ts", "req"),

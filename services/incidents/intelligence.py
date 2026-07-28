@@ -25,6 +25,10 @@ from models import (
 )
 from services.incidents.change_impact import assess_change_impact
 from services.incidents.grouping import _correlation_dimensions, _event_rule_name
+from services.incidents.recommendation_calibration import (
+    RecommendationCalibration,
+    get_recommendation_calibrations,
+)
 from services.incidents.runbooks import load_runbook_execution_responses
 from services.incidents.service_profiles import get_service_profile
 from services.operations.audit_logger import add_audit
@@ -117,8 +121,20 @@ def _profile(incident: Incident, events: list[WebhookEvent]) -> _IncidentProfile
     metrics: set[str] = set()
     resources: set[str] = set()
     texts: list[str] = [incident.title]
-    if isinstance(incident.summary_analysis, dict):
-        texts.extend(str(value) for value in incident.summary_analysis.values())
+    summary = incident.summary_analysis if isinstance(incident.summary_analysis, dict) else {}
+    confirmed = incident.resolution_record if isinstance(incident.resolution_record, dict) else {}
+    texts.extend(
+        str(value)
+        for value in (
+            summary.get("summary"),
+            summary.get("timeline_summary"),
+            confirmed.get("root_cause") or summary.get("root_cause"),
+            confirmed.get("impact") or summary.get("impact"),
+            confirmed.get("resolution"),
+            confirmed.get("follow_ups") if "follow_ups" in confirmed else summary.get("recommendations"),
+        )
+        if value
+    )
     for event in events:
         for key, value in _correlation_dimensions(event).items():
             if value:
@@ -224,21 +240,34 @@ def _summary_field(incident: Incident, key: str) -> object:
     return summary.get(key) if isinstance(summary, dict) else None
 
 
+def _resolution_field(incident: Incident, key: str) -> object:
+    resolution = incident.resolution_record or {}
+    return resolution.get(key) if isinstance(resolution, dict) else None
+
+
 async def _similar_incidents(
     session: AsyncSession,
     incident: Incident,
     current_profile: _IncidentProfile,
     feedback: Mapping[tuple[str, str], str],
+    calibration: RecommendationCalibration,
     limit: int,
 ) -> list[dict[str, object]]:
+    historical_filters = [
+        Incident.id != incident.id,
+        Incident.status.in_(["quiet", "closed"]),
+    ]
+    service = current_profile.dimensions.get("service", "")
+    environment = current_profile.dimensions.get("environment", "")
+    if service:
+        historical_filters.append(Incident.correlation_dimensions["service"].as_string() == service)
+    if environment:
+        historical_filters.append(Incident.correlation_dimensions["environment"].as_string() == environment)
     candidates = list(
         (
             await session.execute(
                 select(Incident)
-                .where(
-                    Incident.id != incident.id,
-                    Incident.status.in_(["quiet", "closed"]),
-                )
+                .where(*historical_filters)
                 .order_by(Incident.started_at.desc(), Incident.id.desc())
                 .limit(_MAX_HISTORICAL_INCIDENTS)
             )
@@ -253,10 +282,11 @@ async def _similar_incidents(
     )
     ranked: list[tuple[float, dict[str, object]]] = []
     for candidate in candidates:
-        score, reasons = _similarity(
+        raw_score, reasons = _similarity(
             current_profile,
             _profile(candidate, members.get(int(candidate.id), [])),
         )
+        score = calibration.apply(raw_score)
         if score < 0.20 or not reasons:
             continue
         candidate_ref = f"incident:{candidate.id}"
@@ -269,11 +299,18 @@ async def _similar_incidents(
                     "title": candidate.title,
                     "status": candidate.status,
                     "score": round(score, 3),
+                    "raw_score": round(raw_score, 3),
+                    "calibration": calibration.as_dict(),
                     "reasons": reasons,
                     "started_at": utc_isoformat(candidate.started_at),
                     "resolved_at": utc_isoformat(candidate.resolved_at or candidate.ended_at),
-                    "root_cause": _summary_field(candidate, "root_cause"),
-                    "resolution": _summary_field(candidate, "recommendations"),
+                    "root_cause": _resolution_field(candidate, "root_cause") or _summary_field(candidate, "root_cause"),
+                    "resolution": _resolution_field(candidate, "resolution")
+                    or (
+                        _resolution_field(candidate, "follow_ups")
+                        if _resolution_field(candidate, "follow_ups") is not None
+                        else _summary_field(candidate, "recommendations")
+                    ),
                     "feedback": feedback.get(("similar_incident", candidate_ref)),
                 },
             )
@@ -331,6 +368,7 @@ async def _related_changes(
     incident: Incident,
     current_profile: _IncidentProfile,
     feedback: Mapping[tuple[str, str], str],
+    calibration: RecommendationCalibration,
     limit: int,
 ) -> list[dict[str, object]]:
     window_end = incident.ended_at or incident.resolved_at or utcnow()
@@ -358,7 +396,8 @@ async def _related_changes(
     )
     ranked: list[tuple[float, dict[str, object]]] = []
     for change in candidates:
-        score, reasons, offset_minutes = _change_score(incident, current_profile, change)
+        raw_score, reasons, offset_minutes = _change_score(incident, current_profile, change)
+        score = calibration.apply(raw_score)
         if score < 0.25:
             continue
         candidate_ref = f"change:{change.id}"
@@ -380,6 +419,8 @@ async def _related_changes(
                     "started_at": utc_isoformat(change.started_at),
                     "source_url": change.source_url,
                     "score": round(score, 3),
+                    "raw_score": round(raw_score, 3),
+                    "calibration": calibration.as_dict(),
                     "offset_minutes": round(offset_minutes),
                     "reasons": reasons,
                     "feedback": feedback.get(("change", candidate_ref)),
@@ -439,6 +480,7 @@ async def _recommended_runbooks(
     session: AsyncSession,
     current_profile: _IncidentProfile,
     feedback: Mapping[tuple[str, str], str],
+    calibration: RecommendationCalibration,
     limit: int,
 ) -> list[dict[str, object]]:
     documents = list(
@@ -458,7 +500,8 @@ async def _recommended_runbooks(
     )
     ranked: list[tuple[float, dict[str, object]]] = []
     for document in documents:
-        score, reasons, kind = _runbook_score(current_profile, document)
+        raw_score, reasons, kind = _runbook_score(current_profile, document)
+        score = calibration.apply(raw_score)
         if score < 0.10 or not reasons:
             continue
         candidate_ref = document.source_ref or f"kb:{document.id}"
@@ -472,6 +515,8 @@ async def _recommended_runbooks(
                     "source_ref": document.source_ref,
                     "source_kind": kind,
                     "score": round(score, 3),
+                    "raw_score": round(raw_score, 3),
+                    "calibration": calibration.as_dict(),
                     "reasons": reasons,
                     "excerpt": document.content.strip()[:360],
                     "feedback": feedback.get(("runbook", candidate_ref)),
@@ -604,9 +649,34 @@ async def get_incident_intelligence(
     members = await _incident_members(session, [incident_id], limit=100)
     current_profile = _profile(incident, members.get(incident_id, []))
     feedback = await _feedback_map(session, incident_id)
-    similar = await _similar_incidents(session, incident, current_profile, feedback, limit)
-    changes = await _related_changes(session, incident, current_profile, feedback, limit)
-    runbooks = await _recommended_runbooks(session, current_profile, feedback, limit)
+    calibrations = await get_recommendation_calibrations(
+        session,
+        service=current_profile.dimensions.get("service", ""),
+        environment=current_profile.dimensions.get("environment", ""),
+    )
+    similar = await _similar_incidents(
+        session,
+        incident,
+        current_profile,
+        feedback,
+        calibrations["similar_incident"],
+        limit,
+    )
+    changes = await _related_changes(
+        session,
+        incident,
+        current_profile,
+        feedback,
+        calibrations["change"],
+        limit,
+    )
+    runbooks = await _recommended_runbooks(
+        session,
+        current_profile,
+        feedback,
+        calibrations["runbook"],
+        limit,
+    )
     runbook_executions = await load_runbook_execution_responses(session, incident_id)
     service = current_profile.dimensions.get("service", "")
     service_profile = (
@@ -622,6 +692,8 @@ async def get_incident_intelligence(
     return {
         "incident_id": incident_id,
         "strategy": "deterministic_v1",
+        "calibration_strategy": "bounded_beta_shrinkage_v1",
+        "calibration": {recommendation_type: result.as_dict() for recommendation_type, result in calibrations.items()},
         "generated_at": utc_isoformat(utcnow()),
         "similar_incidents": similar,
         "related_changes": changes,
@@ -714,25 +786,59 @@ async def record_intelligence_feedback(
         return None
     recommendation_type = str(payload["recommendation_type"])
     candidate_ref = str(payload["candidate_ref"])
+    verdict = str(payload["verdict"])
+    comment = payload.get("comment")
+    actor = str(payload.get("actor") or "operator")
+    created = False
     feedback = (
         await session.execute(
-            select(IncidentIntelligenceFeedback).where(
+            select(IncidentIntelligenceFeedback)
+            .where(
                 IncidentIntelligenceFeedback.incident_id == incident_id,
                 IncidentIntelligenceFeedback.recommendation_type == recommendation_type,
                 IncidentIntelligenceFeedback.candidate_ref == candidate_ref,
             )
+            .with_for_update()
         )
     ).scalar_one_or_none()
     if feedback is None:
-        feedback = IncidentIntelligenceFeedback(
+        candidate = IncidentIntelligenceFeedback(
             incident_id=incident_id,
             recommendation_type=recommendation_type,
             candidate_ref=candidate_ref,
+            verdict=verdict,
+            comment=comment,
+            actor=actor,
         )
-        session.add(feedback)
-    feedback.verdict = str(payload["verdict"])
-    feedback.comment = payload.get("comment")
-    feedback.actor = str(payload.get("actor") or "operator")
+        try:
+            async with session.begin_nested():
+                session.add(candidate)
+                await session.flush()
+            feedback = candidate
+            created = True
+        except IntegrityError:
+            feedback = (
+                await session.execute(
+                    select(IncidentIntelligenceFeedback)
+                    .where(
+                        IncidentIntelligenceFeedback.incident_id == incident_id,
+                        IncidentIntelligenceFeedback.recommendation_type == recommendation_type,
+                        IncidentIntelligenceFeedback.candidate_ref == candidate_ref,
+                    )
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one()
+
+    unchanged = feedback.verdict == verdict and feedback.comment == comment and feedback.actor == actor
+    if unchanged and not created:
+        await session.commit()
+        return feedback
+
+    feedback.verdict = verdict
+    feedback.comment = comment
+    feedback.actor = actor
+    feedback.updated_at = utcnow()
     await session.flush()
     add_audit(
         session,
@@ -741,7 +847,7 @@ async def record_intelligence_feedback(
         incident.title,
         "intel_feedback",
         f"Incident intelligence feedback: {recommendation_type}/{feedback.verdict}",
-        actor=feedback.actor,
+        actor=actor,
     )
     await session.commit()
     await session.refresh(feedback)

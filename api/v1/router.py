@@ -5,14 +5,17 @@ from fastapi import APIRouter, Depends
 from api.v1.activity import activity_router
 from api.v1.admin import admin_router
 from api.v1.ai_usage import ai_usage_router
+from api.v1.alert_quality import alert_quality_router
 from api.v1.changes import changes_router
 from api.v1.decision_trace import decision_trace_router
 from api.v1.deep_analysis import deep_analysis_router
 from api.v1.feishu_actions import feishu_actions_router
 from api.v1.forwarding import forwarding_router
 from api.v1.incidents import incidents_router
+from api.v1.onboarding import onboarding_router, source_ingress_router
 from api.v1.operations import operations_router
 from api.v1.reanalysis import reanalysis_router
+from api.v1.response_center import response_center_router
 from api.v1.sandbox import sandbox_router
 from api.v1.services import services_router
 from api.v1.silences import silences_router
@@ -35,10 +38,14 @@ v1_router.include_router(forwarding_router, dependencies=_admin_api_deps)
 v1_router.include_router(silences_router, dependencies=_admin_api_deps)
 v1_router.include_router(sandbox_router, dependencies=_admin_api_deps)
 v1_router.include_router(incidents_router, dependencies=_admin_api_deps)
+v1_router.include_router(response_center_router, dependencies=_admin_api_deps)
+v1_router.include_router(alert_quality_router, dependencies=_admin_api_deps)
 v1_router.include_router(services_router, dependencies=_admin_api_deps)
 v1_router.include_router(feishu_actions_router)
 v1_router.include_router(changes_router)
 v1_router.include_router(activity_router, dependencies=_admin_api_deps)
 v1_router.include_router(operations_router, dependencies=_admin_api_deps)
 v1_router.include_router(admin_router, dependencies=_admin_api_deps)
+v1_router.include_router(onboarding_router, dependencies=_admin_api_deps)
+v1_router.include_router(source_ingress_router)
 v1_router.include_router(webhook_router)

@@ -150,6 +150,7 @@ async def finalize_analysis_transaction(
                 input=SaveWebhookInput(
                     data=ctx.req_ctx.parsed_data,
                     source=ctx.req_ctx.source,
+                    source_connection_id=ctx.req_ctx.source_connection_id,
                     raw_payload=ctx.req_ctx.payload,
                     headers=ctx.req_ctx.headers,
                     client_ip=ctx.req_ctx.client_ip,

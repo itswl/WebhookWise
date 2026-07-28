@@ -26,8 +26,18 @@ class IngestResult:
     embedding_model: str
 
 
-def _content_hash(title: str, chunk_index: int, content: str) -> str:
-    return hashlib.sha256(f"{title}\x00{chunk_index}\x00{content}".encode()).hexdigest()
+def _content_hash(
+    title: str,
+    chunk_index: int,
+    content: str,
+    *,
+    source_ref: str | None,
+) -> str:
+    # A source reference is the durable document identity. Including it keeps
+    # two recurring incidents with the same title and content isolated instead
+    # of letting the global unique hash move a chunk between documents.
+    identity = source_ref or title
+    return hashlib.sha256(f"{identity}\x00{title}\x00{chunk_index}\x00{content}".encode()).hexdigest()
 
 
 def chunk_text(text: str, max_chars: int) -> list[str]:
@@ -82,7 +92,7 @@ async def ingest_document(
     vectors, model = await embed_texts(chunks)
     now_hashes: list[str] = []
     for idx, (chunk, vector) in enumerate(zip(chunks, vectors, strict=True)):
-        chash = _content_hash(title, idx, chunk)
+        chash = _content_hash(title, idx, chunk, source_ref=source_ref)
         now_hashes.append(chash)
         stmt = pg_insert(KBDocument).values(
             title=title,
@@ -109,10 +119,11 @@ async def ingest_document(
         )
         await session.execute(stmt)
 
-    # Prune stale chunks of this title (e.g. the doc got shorter on re-ingest).
-    await session.execute(
-        delete(KBDocument).where(KBDocument.title == title, KBDocument.content_hash.notin_(now_hashes))
-    )
+    # Prune stale chunks from this source document (e.g. it got shorter on
+    # re-ingest). Source references are the durable document identity; falling
+    # back to title preserves compatibility for ad-hoc documents without one.
+    document_scope = KBDocument.source_ref == source_ref if source_ref is not None else KBDocument.title == title
+    await session.execute(delete(KBDocument).where(document_scope, KBDocument.content_hash.notin_(now_hashes)))
     logger.info("[KB] Ingested document title=%s chunks=%d model=%s", title, len(chunks), model)
     return IngestResult(title=title, chunks=len(chunks), embedding_model=model)
 

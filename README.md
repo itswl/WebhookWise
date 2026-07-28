@@ -38,6 +38,9 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 | Learn loop | Resolved incidents sediment into KB drafts; published KB entries are attached to outgoing Feishu alert cards and one-click incident postmortem drafts (Markdown) close the review loop. |
 | Incident intelligence | Incident detail ranks similar resolved incidents, suspected recent changes, and published runbooks with explicit evidence and operator feedback. |
 | Incident response loop | A compact command summary, change impact, derived service profiles, manual runbook progress, optional signed Feishu actions, and product-value reporting connect detection to reusable knowledge. |
+| Response and learning workspace | A prioritized work queue, structured resolution evidence, recurrence review, knowledge-gap discovery, and bounded feedback calibration turn incident handling into reusable operational knowledge. |
+| Guided inbound onboarding | Source-scoped, revocable credentials and a first-event wizard connect new senders without sharing the global webhook secret. |
+| Read-only alert quality center | Scores source payload completeness and highlights unstable identities, unmatched recoveries, timestamp anomalies, Schema drift, and response gaps without changing source configuration. |
 | Transactional Outbox | Processing results and forwarding intent are written to the database in the same transaction, then delivered and retried asynchronously by the Worker. |
 | OTel-first observability | The application emits telemetry over OTLP; the local stack integrates Alloy, Prometheus, Tempo, Loki, and Pyroscope. |
 

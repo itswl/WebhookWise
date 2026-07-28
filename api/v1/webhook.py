@@ -154,7 +154,12 @@ async def _receive_and_enqueue_webhook(
         )
         return too_large_response
 
-    backpressure = await check_ingress_backpressure(source_hint=source_hint, raw_body=raw_body)
+    source_scope = str(getattr(state, "webhook_source_scope", "") or source_hint)
+    backpressure = await check_ingress_backpressure(
+        source_hint=source_hint,
+        raw_body=raw_body,
+        namespace=source_scope if source_scope != source_hint else None,
+    )
     if backpressure.suppressed:
         src = sanitize_source(source_hint)
         WEBHOOK_RECEIVED_TOTAL.labels(source=src, status="ingress_suppressed").inc()
@@ -216,6 +221,9 @@ async def _receive_and_enqueue_webhook(
         "received_at": received_at,
         "traceparent": trace_headers.get("traceparent"),
     }
+    source_connection_id = getattr(state, "source_connection_id", None)
+    if isinstance(source_connection_id, int):
+        task_kwargs["source_connection_id"] = source_connection_id
     enqueue_started = time.perf_counter()
     enqueue_status = "success"
     try:
@@ -283,9 +291,10 @@ async def receive_webhook(
     )
     path_source = request.path_params.get("source")
     source_hint = _normalize_source_hint(path_source or source or request.headers.get("x-webhook-source"))
+    source_scope = str(getattr(request.state, "webhook_source_scope", "") or source_hint)
     external_request_id = str(request.headers.get("x-request-id") or "").strip()
     request_id = _ingress_request_id(
-        source_hint,
+        source_scope,
         external_request_id,
         getattr(request.state, "request_id", "") or generate_trace_id(),
     )

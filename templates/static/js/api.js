@@ -9,9 +9,7 @@ const API = {
         write: ''
     },
     _localStorageKeys: {
-        read: 'webhookwise_dashboard_api_key'
-    },
-    _sessionStorageKeys: {
+        read: 'webhookwise_dashboard_api_key',
         write: 'webhookwise_dashboard_admin_write_key'
     },
     _authStorageInitialized: false,
@@ -42,7 +40,7 @@ const API = {
         await this.initAuthStorage();
         const value = String(token || '');
         this._tokenCache.write = value;
-        this.persistSessionToken(this._sessionStorageKeys.write, value);
+        this.persistLocalToken(this._localStorageKeys.write, value);
     },
 
     async clearTokens() {
@@ -50,7 +48,12 @@ const API = {
         this._tokenCache.read = '';
         this._tokenCache.write = '';
         this.persistLocalToken(this._localStorageKeys.read, '');
-        this.persistSessionToken(this._sessionStorageKeys.write, '');
+        this.persistLocalToken(this._localStorageKeys.write, '');
+        try {
+            window.sessionStorage?.removeItem(this._localStorageKeys.write);
+        } catch (_error) {
+            // Older releases used sessionStorage; cleanup is best effort.
+        }
         this.clearLegacyPersistedTokens();
     },
 
@@ -68,9 +71,9 @@ const API = {
         try {
             const storage = window.localStorage;
             this._tokenCache.read = storage?.getItem(this._localStorageKeys.read) || '';
-            this._tokenCache.write = window.sessionStorage?.getItem(this._sessionStorageKeys.write) || '';
-            // Remove the admin key persisted by older dashboard releases.
-            storage?.removeItem(this._sessionStorageKeys.write);
+            this._tokenCache.write = storage?.getItem(this._localStorageKeys.write) || '';
+            // Remove the session-scoped copy used by older dashboard releases.
+            window.sessionStorage?.removeItem(this._localStorageKeys.write);
         } catch (error) {
             // Fall back to page memory when browser privacy settings block local storage.
             console.warn('Browser local storage is unavailable; credentials will not survive a reload', error);
@@ -91,21 +94,6 @@ const API = {
         } catch (error) {
             // Keep the in-memory token usable even if local storage is unavailable.
             console.warn('Failed to update browser credentials', error);
-        }
-    },
-
-    persistSessionToken(key, value) {
-        try {
-            const storage = window.sessionStorage;
-            if (!storage) return;
-            if (value) {
-                storage.setItem(key, value);
-            } else {
-                storage.removeItem(key);
-            }
-        } catch (error) {
-            // Keep the in-memory admin token usable when session storage is unavailable.
-            console.warn('Failed to update session credentials', error);
         }
     },
 
@@ -410,6 +398,174 @@ const API = {
         const response = await this.authenticatedFetch('/v1/incidents?' + queryParams.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();
+    },
+
+    async getIncident(id) {
+        const response = await this.authenticatedFetch('/v1/incidents/' + encodeURIComponent(id));
+        return await this.parseJsonResponse(response);
+    },
+
+    async getIncidentResolution(id) {
+        const response = await this.authenticatedFetch(
+            '/v1/incidents/' + encodeURIComponent(id) + '/resolution'
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async saveIncidentResolution(id, resolution) {
+        const response = await this.authenticatedFetch(
+            '/v1/incidents/' + encodeURIComponent(id) + '/resolution',
+            { method: 'PUT', body: JSON.stringify(resolution || {}) }
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async closeIncident(id, resolution = {}) {
+        const response = await this.authenticatedFetch(
+            '/v1/incidents/' + encodeURIComponent(id) + '/close',
+            { method: 'POST', body: JSON.stringify(resolution || {}) }
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async getIncidentRecurrence(id) {
+        const response = await this.authenticatedFetch(
+            '/v1/incidents/' + encodeURIComponent(id) + '/recurrence'
+        );
+        if (response.status === 404) return { success: true, data: null };
+        return await this.parseJsonResponse(response);
+    },
+
+    async reviewIncidentRecurrence(id, decision, review = {}) {
+        const action = decision === 'confirm' ? 'confirm' : 'dismiss';
+        const response = await this.authenticatedFetch(
+            '/v1/incidents/' + encodeURIComponent(id) + '/recurrence/' + action,
+            { method: 'POST', body: JSON.stringify(review || {}) }
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async recordIncidentIntelligenceFeedback(id, feedback) {
+        const response = await this.authenticatedFetch(
+            '/v1/incidents/' + encodeURIComponent(id) + '/intelligence/feedback',
+            { method: 'POST', body: JSON.stringify(feedback || {}) }
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async getResponseWorkQueue(params = {}) {
+        const query = new URLSearchParams();
+        if (params.bucket) query.set('bucket', params.bucket);
+        if (params.actor) query.set('actor', params.actor);
+        if (params.limit) query.set('limit', params.limit);
+        if (params.offset != null) query.set('offset', params.offset);
+        if (params.sla_risk_minutes) query.set('sla_risk_minutes', params.sla_risk_minutes);
+        const response = await this.authenticatedFetch(
+            '/v1/response-center/work-queue?' + query.toString()
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async getKnowledgeGaps(params = {}) {
+        const query = new URLSearchParams();
+        if (params.window_days) query.set('window_days', params.window_days);
+        if (params.limit) query.set('limit', params.limit);
+        const response = await this.authenticatedFetch(
+            '/v1/response-center/knowledge-gaps?' + query.toString()
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async getAlertQuality(params = {}) {
+        const query = new URLSearchParams();
+        if (params.window_days) query.set('window_days', params.window_days);
+        if (params.source_limit) query.set('source_limit', params.source_limit);
+        const response = await this.authenticatedFetch(
+            '/v1/alert-quality/overview?' + query.toString()
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    // ========== Inbound source onboarding API ==========
+
+    async getInboundSourceTypes() {
+        const response = await this.authenticatedFetch('/v1/onboarding/source-types');
+        return await this.parseJsonResponse(response);
+    },
+
+    async getInboundSources() {
+        const response = await this.authenticatedFetch('/v1/onboarding/sources');
+        return await this.parseJsonResponse(response);
+    },
+
+    async createInboundSource(source) {
+        const response = await this.authenticatedFetch('/v1/onboarding/sources', {
+            method: 'POST',
+            body: JSON.stringify(source || {})
+        });
+        return await this.parseJsonResponse(response);
+    },
+
+    async getInboundSource(id) {
+        const response = await this.authenticatedFetch(
+            '/v1/onboarding/sources/' + encodeURIComponent(id)
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async updateInboundSource(id, changes) {
+        const response = await this.authenticatedFetch(
+            '/v1/onboarding/sources/' + encodeURIComponent(id),
+            { method: 'PATCH', body: JSON.stringify(changes || {}) }
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async getInboundSourceStatus(id) {
+        const response = await this.authenticatedFetch(
+            '/v1/onboarding/sources/' + encodeURIComponent(id) + '/status'
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async rotateInboundSource(id, actor = 'dashboard') {
+        const response = await this.authenticatedFetch(
+            '/v1/onboarding/sources/' + encodeURIComponent(id) + '/rotate',
+            { method: 'POST', body: JSON.stringify({ actor: actor }) }
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async revokeInboundSource(id, actor = 'dashboard') {
+        const response = await this.authenticatedFetch(
+            '/v1/onboarding/sources/' + encodeURIComponent(id) + '/revoke',
+            { method: 'POST', body: JSON.stringify({ actor: actor }) }
+        );
+        return await this.parseJsonResponse(response);
+    },
+
+    async sendInboundSourceEvent(publicId, sourceToken, payload) {
+        const response = await fetch('/v1/source-webhooks/' + encodeURIComponent(publicId), {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + sourceToken,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        return await this.parseJsonResponse(response);
+    },
+
+    async testIntegrationTarget(templateId, targetUrl, name = 'Onboarding verification') {
+        const response = await this.authenticatedFetch('/v1/integrations/test', {
+            method: 'POST',
+            body: JSON.stringify({
+                template_id: templateId,
+                name: name,
+                target_url: targetUrl || ''
+            })
+        });
+        return await this.parseJsonResponse(response);
     },
 
     /**

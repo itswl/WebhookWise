@@ -231,6 +231,7 @@ async def resolve_noise_context(
             dict(ctx.req_ctx.parsed_data),
             analysis_result,
             policy=dependencies.noise_policy,
+            source_connection_id=ctx.req_ctx.source_connection_id,
         )
 
     return analysis_result, noise, dedup_result
