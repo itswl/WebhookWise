@@ -4,22 +4,31 @@ WebhookWise is a modular monolith with separate deployable processes. The code
 is not intended to be a microservice split, and it should not mix generic
 "layered" buckets with feature ownership without an explicit reason.
 
+For the runtime topology, asynchronous processing sequence, durable data map,
+product learning loop, and observability topology, see
+[System Architecture](system-overview.md).
+
 ## Module Ownership
 
 | Path | Owns | Must not own |
 |:---|:---|:---|
 | `api/` | HTTP routes, request/response binding, auth dependency wiring | Business workflows, database transaction orchestration, external delivery logic |
-| `services/webhooks/` | Webhook ingest and processing orchestration, pipeline stages, webhook queries and commands | Provider-specific HTTP clients unrelated to webhook processing |
+| `services/webhooks/` | Webhook ingest and processing orchestration, pipeline stages, source onboarding, alert-quality read models, webhook queries and commands | Incident policy, provider-specific HTTP clients unrelated to webhook processing |
+| `services/incidents/` | Incident grouping, intelligence, response queue, resolution evidence, recurrence review, runbook progress, postmortems, and service profiles | Ingress authentication, notification transport clients, generic scheduler lifecycle |
 | `services/analysis/` | AI/rule/OpenClaw analysis policies, prompt loading, cache and usage tracking | FastAPI route handling, notification channel formatting |
 | `services/forwarding/` | Forwarding rules, transactional outbox, delivery retry, remote target dispatch | Source webhook normalization |
 | `services/notifications/` | Notification channel abstractions, target detection, message formatting | Pipeline orchestration or persistence decisions |
+| `services/kb/` | Knowledge ingestion, embedding, retrieval, publication boundaries, and incident sedimentation | Automatically publishing unreviewed incident knowledge |
+| `services/silences/` | Silence lookup, maintenance-window materialization, and suppression reporting | Webhook parsing or forwarding transport |
 | `services/operations/` | TaskIQ tasks, schedulers, outbox scans, data maintenance jobs | Request parsing or domain decisions hidden inside background tasks |
 | `adapters/` | Inbound ecosystem normalization and plugin registry | Business orchestration, notification target detection, or target delivery side effects |
+| `contracts/` | Stable normalized payload keys and cross-module data contracts | Database access, runtime configuration, or workflow orchestration |
 | `models/` | SQLAlchemy persistence schema | Domain decision logic beyond simple model helpers |
 | `schemas/` | Pydantic API contracts | ORM behavior or service orchestration |
 | `db/` | Engine/session lifecycle | Domain repositories or API dependencies |
 | `core/` | Cross-cutting runtime glue: config, logging, metrics, tracing, auth, shared clients | Feature-specific business policy |
 | `core/web/` | FastAPI middleware and startup validation | Domain workflows or persistence decisions |
+| `templates/` | Dashboard structure, presentation, browser-side routing, API binding, and local browser credential state | Server-side business rules or embedded shared-secret defaults |
 
 New webhook source support should normally add an adapter plus tests, then wire
 existing `services/webhooks/` pipeline behavior. A new business capability

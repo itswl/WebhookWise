@@ -15,6 +15,33 @@ The endpoint requires the normal read API credential. It exposes no write
 method and does not edit source connections, silences, forwarding rules,
 alerts, or incidents.
 
+## Read-model flow
+
+```mermaid
+flowchart LR
+    connections["Managed source inventory<br/>credential state and schema fingerprint"]
+    events["Recent webhook events<br/>identity, fields, timestamps, recovery"]
+    incidents["Incident state<br/>assignment and acknowledgement"]
+    quality["Bounded alert-quality read model"]
+    findings["Per-source score, findings,<br/>evidence, and recommendations"]
+    api["GET /v1/alert-quality/overview"]
+    dashboard["Read-only dashboard view"]
+    boundary["No source, event, incident,<br/>silence, or routing writes"]
+
+    connections --> quality
+    events --> quality
+    incidents --> quality
+    dashboard -->|"authenticated refresh"| api
+    api --> quality
+    quality --> findings --> api
+    api --> dashboard
+    quality -.->|"enforced boundary"| boundary
+```
+
+The service selects only the columns required for its checks and bounds every
+inventory or event scan. It does not create a second quality table, update the
+source, or apply a recommendation automatically.
+
 ## Checks
 
 The bounded scan currently reports:
@@ -27,7 +54,7 @@ The bounded scan currently reports:
 - conservative identity-churn detection for a small set of alert anchors
   producing mostly unique deduplication keys;
 - repeatedly firing identities without a later recovery signal;
-- recent payload Schema drift recorded by a managed source connection;
+- recent payload schema drift recorded by a managed source connection;
 - incidents still unacknowledged and unassigned after two hours;
 - enabled managed sources with no event in the selected window.
 
