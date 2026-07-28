@@ -81,14 +81,19 @@ def _fallback_body_hash(source: str, raw_body: bytes) -> str:
     return f"body:{digest}"
 
 
-def _ingress_identity(source_hint: str, raw_body: bytes) -> str:
+def _ingress_identity(
+    source_hint: str,
+    raw_body: bytes,
+    *,
+    namespace: str | None = None,
+) -> str:
     try:
         loaded = json.loads(raw_body)
         payload = loaded if isinstance(loaded, dict) else {}
         if not payload:
             return _fallback_body_hash(source_hint, raw_body)
         normalized = normalize_webhook_event(payload, source_hint)
-        return f"alert:{generate_alert_hash(dict(normalized.data), normalized.source)}"
+        return f"alert:{generate_alert_hash(dict(normalized.data), normalized.source, namespace=namespace)}"
     except (AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
         logger.debug("[IngressBackpressure] Unable to parse ingress identity, falling back to body hash: %s", e)
         return _fallback_body_hash(source_hint, raw_body)
@@ -100,6 +105,7 @@ async def check_ingress_backpressure(
     raw_body: bytes,
     policy: IngressPolicy | None = None,
     redis_eval_int_func: Any | None = None,
+    namespace: str | None = None,
 ) -> IngressBackpressureResult:
     """Return whether this request should be dropped before any DB write."""
     policy = policy or IngressPolicy.from_config()
@@ -107,7 +113,7 @@ async def check_ingress_backpressure(
     if threshold <= 0:
         return IngressBackpressureResult(False, "", 0, threshold)
 
-    identity = _ingress_identity(source_hint, raw_body)
+    identity = _ingress_identity(source_hint, raw_body, namespace=namespace)
     key = f"ingress:webhook:{identity}"
     try:
         if redis_eval_int_func is None:

@@ -30,6 +30,7 @@ def _archive_row(event: WebhookEvent, archived_at: datetime) -> dict[str, object
         "id": event.id,
         "request_id": event.request_id,
         "source": event.source,
+        "source_connection_id": event.source_connection_id,
         "client_ip": event.client_ip,
         "timestamp": event.timestamp,
         "raw_payload": event.raw_payload,

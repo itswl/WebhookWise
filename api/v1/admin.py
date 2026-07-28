@@ -194,6 +194,7 @@ async def _enqueue_dead_letter_event(event: WebhookEvent) -> None:
     _, raw_body = await load_event_payload(event)
     await process_webhook_task.kiq(
         source_name=event.source or "unknown",
+        source_connection_id=event.source_connection_id,
         raw_headers=headers,
         raw_body=raw_body,
         client_ip=event.client_ip or "admin-replay",

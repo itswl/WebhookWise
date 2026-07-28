@@ -290,5 +290,19 @@ def test_cross_source_service_identity_and_recovery_detection() -> None:
         parsed_data={"RuleName": "HighLatency", "labels": {"service": "checkout", "environment": "stage"}},
     )
     assert _event_pair_score(prometheus, stage) == 0.0
+    managed_a = WebhookEvent(
+        source="grafana",
+        source_connection_id=101,
+        timestamp=now,
+        parsed_data={"AlertName": "CheckoutErrors", "service": "checkout", "env": "prod"},
+    )
+    managed_b = WebhookEvent(
+        source="grafana",
+        source_connection_id=202,
+        timestamp=now,
+        parsed_data={"AlertName": "CheckoutErrors", "service": "checkout", "env": "prod"},
+    )
+    assert _event_pair_score(managed_a, managed_b) == 0.0
+    assert _event_pair_score(grafana, managed_a) == 0.0
     assert _is_recovery_event(recovered) is True
     assert _is_recovery_event(broken) is False

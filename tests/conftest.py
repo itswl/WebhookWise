@@ -175,6 +175,7 @@ def inline_webhook_task_runner(monkeypatch: pytest.MonkeyPatch):
         received_at: str | None = None,
         ingest_retry_count: int = 0,
         traceparent: str | None = None,
+        source_connection_id: int | None = None,
     ) -> None:
         await handle_webhook_ingest(
             source=source_name or "unknown",
@@ -183,6 +184,7 @@ def inline_webhook_task_runner(monkeypatch: pytest.MonkeyPatch):
             client_ip=client_ip or "",
             request_id=request_id,
             received_at=received_at,
+            source_connection_id=source_connection_id,
         )
 
     monkeypatch.setattr(process_webhook_task, "kiq", run_task_inline)

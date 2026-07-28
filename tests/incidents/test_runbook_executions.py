@@ -325,7 +325,11 @@ async def test_updates_copy_steps_enforce_state_machine_and_store_effectiveness_
 async def test_failed_execution_can_resume_then_be_abandoned(
     db_session: AsyncSession,
 ) -> None:
-    from services.incidents.runbooks import start_runbook_execution, update_runbook_execution
+    from services.incidents.runbooks import (
+        RunbookExecutionConflictError,
+        start_runbook_execution,
+        update_runbook_execution,
+    )
 
     incident_id, candidate_ref = await _seed_incident_and_runbook(db_session)
     execution, _created = await start_runbook_execution(
@@ -343,6 +347,14 @@ async def test_failed_execution_can_resume_then_be_abandoned(
     )
     assert execution.status == "in_progress"
     assert execution.effectiveness == "unknown"
+    with pytest.raises(RunbookExecutionConflictError, match="terminal status"):
+        await update_runbook_execution(
+            db_session,
+            incident_id=incident_id,
+            execution_id=int(execution.id),
+            changes={"effectiveness": "effective"},
+            actor="alice",
+        )
 
     execution = await update_runbook_execution(
         db_session,
@@ -362,7 +374,7 @@ async def test_failed_execution_can_resume_then_be_abandoned(
         actor="alice",
     )
     assert execution.status == "in_progress"
-    assert execution.effectiveness == "ineffective"
+    assert execution.effectiveness is None
     assert execution.completed_at is None
 
     execution = await update_runbook_execution(

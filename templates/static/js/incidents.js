@@ -15,6 +15,7 @@ const IncidentsModule = (function () {
     var _nextCursor = null;
     var _hasMore = false;
     var _loaded = false;
+    var _focusIncidentId = null;
 
     var STATUS_BADGES = {
         active: { label: 'Active', cls: 'badge-high', icon: '🔥' },
@@ -75,6 +76,7 @@ const IncidentsModule = (function () {
             html += '<span style="font-weight:600; font-size:1rem; color:var(--text-main);">' + escapeHtml(row.title) + '</span>';
             html += '<span class="badge ' + badge.cls + '" style="font-size:0.65rem;">' + badge.label + '</span>';
             html += '<span class="badge badge-outline" style="font-size:0.65rem;">' + escapeHtml((row.workflow_status || 'open').replace('_', ' ')) + '</span>';
+            html += renderRecurrenceBadge(row.recurrence || row.recurrence_candidate);
             html += '</div>';
             html += '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">';
             html += '<span>' + escapeHtml(row.source || '') + '</span> · ';
@@ -91,9 +93,10 @@ const IncidentsModule = (function () {
             html += '</div>';
             // Action buttons: close / reopen (stop propagation so they don't toggle the card)
             if (row.status === 'active' || row.status === 'quiet') {
-                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.closeIncident(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">✅</button>';
+                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">✅</button>';
             }
             if (row.status === 'closed') {
+                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;">✏️</button>';
                 html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">🔄</button>';
             }
             html += '<span style="color:var(--text-muted); font-size:0.8rem;">▶</span>';
@@ -105,6 +108,11 @@ const IncidentsModule = (function () {
         }
 
         container.innerHTML = html;
+        if (_focusIncidentId) {
+            var focusId = _focusIncidentId;
+            _focusIncidentId = null;
+            focusLoadedIncident(focusId);
+        }
     }
 
     var _detailCache = {};
@@ -129,9 +137,11 @@ const IncidentsModule = (function () {
             var result = await resp.json();
             var data = result.data || {};
             data.intelligenceLoading = true;
+            data.recurrenceLoading = true;
             _detailCache[id] = data;
             detailEl.innerHTML = renderDetail(data);
             loadIntelligence(id);
+            loadRecurrence(id);
         } catch (e) {
             detailEl.innerHTML = '<div style="color:var(--danger); padding:0.5rem;">' + t('common.loadFailed') + ': ' + escapeHtml(String(e && e.message || e)) + '</div>';
         }
@@ -151,6 +161,23 @@ const IncidentsModule = (function () {
             data.intelligenceError = true;
         }
         data.intelligenceLoading = false;
+        var detailEl = document.getElementById('incident-detail-' + id);
+        if (detailEl) detailEl.innerHTML = renderDetail(data);
+    }
+
+    async function loadRecurrence(id) {
+        var data = _detailCache[id];
+        if (!data) return;
+        try {
+            var result = await API.getIncidentRecurrence(id);
+            var recurrence = result.data || null;
+            data.recurrence = recurrence && recurrence.recurrence === null ? null : recurrence;
+            data.recurrenceError = false;
+        } catch (_error) {
+            data.recurrence = null;
+            data.recurrenceError = true;
+        }
+        data.recurrenceLoading = false;
         var detailEl = document.getElementById('incident-detail-' + id);
         if (detailEl) detailEl.innerHTML = renderDetail(data);
     }
@@ -331,46 +358,109 @@ const IncidentsModule = (function () {
         }).join('');
     }
 
-    function intelligenceScore(score) {
-        return '<span class="incident-intelligence-score">' +
-            t('incidents.intelligence.score', { value: Math.round(Number(score || 0) * 100) }) +
-            '</span>';
+    function calibrationExplanation(item) {
+        var calibration = item && item.calibration;
+        if (!calibration || typeof calibration !== 'object') return '';
+        var parts = [];
+        var reasonCode = String(calibration.reason || '');
+        var knownReasons = {
+            missing_service_scope: true,
+            insufficient_sample: true,
+            bounded_bayesian_adjustment: true
+        };
+        var explanation = knownReasons[reasonCode]
+            ? t('incidents.intelligence.calibration.reason.' + reasonCode)
+            : displayText(calibration.explanation || calibration.summary);
+        if (explanation) parts.push(explanation);
+        var sampleSize = finiteNumber(firstDefined(calibration, [
+            'sample_size', 'samples', 'feedback_sample_size'
+        ]));
+        if (sampleSize !== null) {
+            parts.push(t('incidents.intelligence.calibration.samples', { value: sampleSize }));
+        }
+        var adjustment = finiteNumber(firstDefined(calibration, ['adjustment', 'score_adjustment']));
+        if (adjustment !== null && adjustment !== 0) {
+            parts.push(t('incidents.intelligence.calibration.adjustment', {
+                value: (adjustment > 0 ? '+' : '') + Math.round(adjustment * 100)
+            }));
+        }
+        var strategy = String(calibration.strategy || '').toLowerCase();
+        if (calibration.applied === true &&
+                (strategy.indexOf('shrink') >= 0 || strategy.indexOf('bayesian') >= 0)) {
+            parts.push(t('incidents.intelligence.calibration.shrunk'));
+        }
+        return parts.join(' · ');
     }
 
-    function intelligenceFeedbackButtons(incidentId, recommendationType, candidateRef, verdict) {
-        var encodedRef = encodedReference(candidateRef);
-        var adoptionFeedback = recommendationType === 'runbook' ||
-            recommendationType === 'similar_incident';
-        var positiveVerdict = adoptionFeedback ? 'used' : 'relevant';
-        var negativeVerdict = adoptionFeedback ? 'not_used' : 'irrelevant';
-        var positiveLabel = adoptionFeedback ? 'incidents.intelligence.used' : 'incidents.intelligence.relevant';
-        var negativeLabel = adoptionFeedback ? 'incidents.intelligence.notUsed' : 'incidents.intelligence.irrelevant';
-        var relevantClass = verdict === 'relevant' || verdict === 'used' ? ' active' : '';
-        var irrelevantClass = verdict === 'irrelevant' || verdict === 'not_used' ? ' active' : '';
-        return '<div class="incident-intelligence-feedback">' +
-            '<button class="btn btn-sm incident-intelligence-feedback-btn' + relevantClass + '" ' +
-            'onclick="event.stopPropagation(); IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
-            recommendationType + '\',\'' + encodedRef + '\',\'' + positiveVerdict + '\')">✓ ' +
-            t(positiveLabel) + '</button>' +
-            '<button class="btn btn-sm incident-intelligence-feedback-btn' + irrelevantClass + '" ' +
-            'onclick="event.stopPropagation(); IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
-            recommendationType + '\',\'' + encodedRef + '\',\'' + negativeVerdict + '\')">× ' +
-            t(negativeLabel) + '</button>' +
-            '</div>';
+    function intelligenceScore(item) {
+        var score = typeof item === 'object' ? item.score : item;
+        var rawScore = typeof item === 'object' ? finiteNumber(item.raw_score) : null;
+        var explanation = typeof item === 'object' ? calibrationExplanation(item) : '';
+        var label = t('incidents.intelligence.score', {
+            value: Math.round(Number(score || 0) * 100)
+        });
+        if (!explanation && rawScore === null) {
+            return '<span class="incident-intelligence-score">' + label + '</span>';
+        }
+        var detail = explanation;
+        if (rawScore !== null) {
+            detail = t('incidents.intelligence.calibration.raw', {
+                value: Math.round(rawScore * 100)
+            }) + (detail ? ' · ' + detail : '');
+        }
+        var calibrationLabel = item && item.calibration && item.calibration.applied === false
+            ? t('incidents.intelligence.notAdjusted')
+            : t('incidents.intelligence.calibrated');
+        return '<details class="incident-intelligence-calibration" onclick="event.stopPropagation()">' +
+            '<summary class="incident-intelligence-score">' + label + ' · ' +
+            calibrationLabel + '</summary><p>' +
+            escapeHtml(detail || t('incidents.intelligence.calibration.default')) +
+            '</p></details>';
+    }
+
+    function intelligenceFeedbackState(verdict) {
+        if (!verdict) return '';
+        var key = {
+            relevant: 'incidents.intelligence.relevant',
+            irrelevant: 'incidents.intelligence.irrelevant',
+            used: 'incidents.intelligence.used',
+            not_used: 'incidents.intelligence.notUsed'
+        }[verdict];
+        return key ? '<span class="incident-intelligence-feedback-state">✓ ' + t(key) + '</span>' : '';
+    }
+
+    function intelligenceFeedbackControls(incidentId, recommendationType, candidateRef, verdict) {
+        if (!candidateRef) return '';
+        var change = recommendationType === 'change';
+        var positive = change ? 'relevant' : 'used';
+        var negative = change ? 'irrelevant' : 'not_used';
+        var encoded = encodedReference(candidateRef);
+        return '<details class="incident-intelligence-feedback" onclick="event.stopPropagation()">' +
+            '<summary>' + t('incidents.intelligence.feedbackAction') + '</summary><div>' +
+            '<button type="button" class="btn btn-sm' + (verdict === positive ? ' active' : '') +
+            '" onclick="IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
+            recommendationType + '\',\'' + encoded + '\',\'' + positive + '\')">👍 ' +
+            t(change ? 'incidents.intelligence.relevant' : 'incidents.intelligence.used') + '</button>' +
+            '<button type="button" class="btn btn-sm' + (verdict === negative ? ' active' : '') +
+            '" onclick="IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
+            recommendationType + '\',\'' + encoded + '\',\'' + negative + '\')">👎 ' +
+            t(change ? 'incidents.intelligence.irrelevant' : 'incidents.intelligence.notUsed') +
+            '</button></div></details>';
     }
 
     function renderSimilarIncident(item, incidentId) {
         var resolution = Array.isArray(item.resolution) ? item.resolution.join('；') : (item.resolution || '');
         var html = '<article class="incident-intelligence-card">';
         html += '<div class="incident-intelligence-card-head"><strong>#' + item.incident_id + ' ' +
-            escapeHtml(item.title || '') + '</strong>' + intelligenceScore(item.score) + '</div>';
+            escapeHtml(item.title || '') + '</strong>' + intelligenceScore(item) + '</div>';
         if (item.root_cause) {
             html += '<p><span>' + t('incidents.rootCause') + ':</span> ' + escapeHtml(String(item.root_cause)) + '</p>';
         } else if (resolution) {
             html += '<p>' + escapeHtml(String(resolution)) + '</p>';
         }
         html += '<div class="incident-intelligence-reasons">' + intelligenceReasons(item.reasons) + '</div>';
-        html += intelligenceFeedbackButtons(
+        html += intelligenceFeedbackState(item.feedback);
+        html += intelligenceFeedbackControls(
             incidentId, 'similar_incident', item.candidate_ref, item.feedback
         );
         return html + '</article>';
@@ -384,7 +474,7 @@ const IncidentsModule = (function () {
     function renderRelatedChange(item, incidentId) {
         var html = '<article class="incident-intelligence-card">';
         html += '<div class="incident-intelligence-card-head"><strong>' + changeTitle(item) +
-            '</strong>' + intelligenceScore(item.score) + '</div>';
+            '</strong>' + intelligenceScore(item) + '</div>';
         if (item.version_from || item.version_to) {
             html += '<p><span>' + t('incidents.intelligence.version') + ':</span> ' +
                 escapeHtml(item.version_from || '—') + ' → ' + escapeHtml(item.version_to || '—') + '</p>';
@@ -395,7 +485,10 @@ const IncidentsModule = (function () {
         }
         html += renderChangeImpact(item, false);
         html += '<div class="incident-intelligence-reasons">' + intelligenceReasons(item.reasons) + '</div>';
-        html += intelligenceFeedbackButtons(incidentId, 'change', item.candidate_ref, item.feedback);
+        html += intelligenceFeedbackState(item.feedback);
+        html += intelligenceFeedbackControls(
+            incidentId, 'change', item.candidate_ref, item.feedback
+        );
         return html + '</article>';
     }
 
@@ -404,7 +497,7 @@ const IncidentsModule = (function () {
         var encodedRef = encodedReference(item.candidate_ref);
         var html = '<article class="incident-intelligence-card">';
         html += '<div class="incident-intelligence-card-head"><strong>' + escapeHtml(item.title || '') +
-            '</strong>' + intelligenceScore(item.score) + '</div>';
+            '</strong>' + intelligenceScore(item) + '</div>';
         if (item.excerpt) html += '<p class="incident-intelligence-excerpt">' + escapeHtml(item.excerpt) + '</p>';
         html += '<div class="incident-intelligence-reasons">' + intelligenceReasons(item.reasons) + '</div>';
         if (execution) {
@@ -417,7 +510,10 @@ const IncidentsModule = (function () {
                 'onclick="event.stopPropagation(); IncidentsModule.startRunbookExecution(' + incidentId +
                 ',\'' + encodedRef + '\')">▶ ' + t('incidents.runbook.start') + '</button>';
         }
-        html += intelligenceFeedbackButtons(incidentId, 'runbook', item.candidate_ref, item.feedback);
+        html += intelligenceFeedbackState(item.feedback);
+        html += intelligenceFeedbackControls(
+            incidentId, 'runbook', item.candidate_ref, item.feedback
+        );
         return html + '</article>';
     }
 
@@ -558,6 +654,48 @@ const IncidentsModule = (function () {
         return Object.keys(sources);
     }
 
+    function recurrenceStatus(value) {
+        if (!value || typeof value !== 'object') return '';
+        return String(value.status || value.review_status || 'pending').toLowerCase();
+    }
+
+    function renderRecurrenceBadge(recurrence) {
+        if (!recurrence || typeof recurrence !== 'object') return '';
+        var status = recurrenceStatus(recurrence);
+        return '<span class="incident-recurrence-badge status-' +
+            escapeHtml(status || 'pending') + '">↻ ' +
+            t('incidents.recurrence.badge.' + (status || 'pending')) + '</span>';
+    }
+
+    function renderRecurrenceReview(data) {
+        var recurrence = data.recurrence;
+        if (!recurrence || typeof recurrence !== 'object') return '';
+        var status = recurrenceStatus(recurrence);
+        var previous = recurrence.previous_incident || {};
+        var html = '<div class="incident-recurrence-review">' +
+            '<div class="incident-recurrence-copy">' + renderRecurrenceBadge(recurrence) +
+            '<div><strong>' + escapeHtml(t('incidents.recurrence.title')) + '</strong><span>' +
+            escapeHtml(t('incidents.recurrence.previous', {
+                id: previous.id || '—',
+                title: previous.title || t('incidents.recurrence.unknownPrevious')
+            })) + '</span></div></div>';
+        if (status === 'pending') {
+            html += '<div class="incident-recurrence-actions">' +
+                '<button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation(); ' +
+                'IncidentsModule.reviewRecurrence(' + data.id + ',\'confirm\')">✓ ' +
+                t('incidents.recurrence.confirm') + '</button>' +
+                '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); ' +
+                'IncidentsModule.reviewRecurrence(' + data.id + ',\'dismiss\')">× ' +
+                t('incidents.recurrence.dismiss') + '</button></div>';
+        } else if (recurrence.reviewed_by) {
+            html += '<span class="incident-recurrence-reviewed">' +
+                escapeHtml(t('incidents.recurrence.reviewedBy', {
+                    value: recurrence.reviewed_by
+                })) + '</span>';
+        }
+        return html + '</div>';
+    }
+
     function renderIncidentToolbar(data, members) {
         var workflowStatus = data.workflow_status || 'open';
         var terminal = workflowStatus === 'resolved' || workflowStatus === 'ignored';
@@ -597,6 +735,10 @@ const IncidentsModule = (function () {
         }
         if (terminal || data.status === 'closed') {
             secondaryActions.push(
+                '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' +
+                data.id + ')">✏️ ' + t('resolution.edit') + '</button>'
+            );
+            secondaryActions.push(
                 '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' +
                 data.id + ')">🔄 ' + t('incidents.action.reopen') + '</button>'
             );
@@ -619,7 +761,7 @@ const IncidentsModule = (function () {
         }
         if (!terminal) {
             html += '<button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.updateWorkflow(' + data.id + ',\'resolved\')">✅ ' +
+                'IncidentsModule.openResolutionModal(' + data.id + ')">✅ ' +
                 t('alerts.action.resolve') + '</button>';
         }
         html += '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.addNote(' +
@@ -705,6 +847,7 @@ const IncidentsModule = (function () {
 
         var html = '<section class="incident-command-summary" id="incident-command-' + data.id + '">';
         html += renderIncidentToolbar(data, members);
+        html += renderRecurrenceReview(data);
         html += '<div class="incident-command-grid">';
 
         html += '<article class="incident-command-card"><div class="incident-command-label">📣 ' +
@@ -972,13 +1115,7 @@ const IncidentsModule = (function () {
     }
 
     async function closeIncident(id) {
-        try {
-            var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/close', { method: 'POST' });
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            load();  // Refresh the list
-        } catch (e) {
-            alert(t('incidents.action.closeFailed') + ': ' + (e && e.message || e));
-        }
+        return openResolutionModal(id);
     }
 
     async function reopenIncident(id) {
@@ -991,35 +1128,385 @@ const IncidentsModule = (function () {
         }
     }
 
-    async function updateWorkflow(id, status) {
+    async function updateWorkflow(id, status, skipReload) {
         try {
             var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/workflow', {
                 method: 'PUT', body: JSON.stringify({ workflow_status: status })
             });
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             delete _detailCache[id];
-            await load();
+            if (!skipReload) await load();
+            return true;
         } catch (e) {
             alert('Workflow update failed: ' + (e.message || e));
+            throw e;
         }
     }
 
-    async function assign(id) {
+    async function assign(id, suggestedOwner, skipReload) {
         var data = _detailCache[id] || {};
-        var assignee = prompt('Assignee (leave empty to unassign)', data.assignee || '');
-        if (assignee === null) return;
-        var team = prompt('Team (leave empty to clear)', data.team || '');
-        if (team === null) return;
-        var sla = prompt('SLA in minutes (leave empty to keep current SLA)', '');
-        if (sla === null) return;
-        var body = { assignee: assignee, team: team };
-        if (sla.trim()) body.sla_minutes = Number(sla);
+        var assignee = String(suggestedOwner || '').trim();
+        var body;
+        if (assignee) {
+            body = { assignee: assignee };
+        } else {
+            assignee = prompt('Assignee (leave empty to unassign)', data.assignee || '');
+            if (assignee === null) return false;
+            var team = prompt('Team (leave empty to clear)', data.team || '');
+            if (team === null) return false;
+            var sla = prompt('SLA in minutes (leave empty to keep current SLA)', '');
+            if (sla === null) return false;
+            body = { assignee: assignee, team: team };
+            if (sla.trim()) body.sla_minutes = Number(sla);
+        }
         try {
             var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/workflow', { method: 'PUT', body: JSON.stringify(body) });
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             delete _detailCache[id];
+            if (!skipReload) await load();
+            return true;
+        } catch (e) {
+            alert('Assignment failed: ' + (e.message || e));
+            throw e;
+        }
+    }
+
+    function operatorIdentity(data) {
+        try {
+            var saved = window.localStorage.getItem('webhookwise_operator_name');
+            if (saved) return saved;
+        } catch (_error) {
+            // Browser storage is optional; fall back to incident ownership.
+        }
+        return String(data && (data.assignee || data.team) || 'dashboard').trim() || 'dashboard';
+    }
+
+    function setResolutionValue(id, value) {
+        var element = document.getElementById(id);
+        if (element) element.value = value == null ? '' : String(value);
+    }
+
+    function resolutionEnvelope(payload) {
+        var data = payload && payload.data || {};
+        return data.resolution || data;
+    }
+
+    function renderResolutionCompleteness(completeness) {
+        var container = document.getElementById('incidentResolutionProgress');
+        if (!container) return;
+        if (!completeness || typeof completeness !== 'object') {
+            container.innerHTML = '';
+            return;
+        }
+        var percent = Math.max(0, Math.min(100, Number(completeness.percent || 0)));
+        var missing = Array.isArray(completeness.missing_fields)
+            ? completeness.missing_fields.length
+            : 0;
+        container.innerHTML = '<div><span style="width:' + percent + '%"></span></div><strong>' +
+            escapeHtml(t('resolution.completeness', {
+                percent: Math.round(percent),
+                missing: missing
+            })) + '</strong>';
+    }
+
+    function relatedChangeLabel(change) {
+        var identity = change.service || change.external_id || ('#' + change.change_id);
+        var version = change.version_from || change.version_to
+            ? ' · ' + (change.version_from || '—') + ' → ' + (change.version_to || '—')
+            : '';
+        return String(change.change_type || 'change') + ' · ' + String(identity) + version;
+    }
+
+    function resolutionFeedbackHtml(data, record) {
+        var intelligence = data.intelligence || {};
+        var similar = (intelligence.similar_incidents || [])[0];
+        var executions = runbookExecutions(data);
+        var execution = executions.find(function (item) {
+            return item.status === 'completed' && (!item.effectiveness || item.effectiveness === 'unknown');
+        });
+        if (!similar && !execution) return '';
+        var html = '<details class="resolution-feedback"><summary>✨ ' +
+            t('resolution.feedback.title') + '</summary><div>';
+        if (similar) {
+            html += '<label class="form-group"><span class="form-label">' +
+                t('resolution.feedback.similar', { id: similar.incident_id }) +
+                '</span><select class="form-input" id="incidentResolutionSimilarFeedback" data-candidate-ref="' +
+                escapeHtml(encodedReference(similar.candidate_ref)) + '">' +
+                '<option value="">' + t('resolution.feedback.notSure') + '</option>' +
+                '<option value="used"' + (similar.feedback === 'used' ? ' selected' : '') + '>' +
+                t('incidents.intelligence.used') + '</option>' +
+                '<option value="not_used"' + (similar.feedback === 'not_used' ? ' selected' : '') + '>' +
+                t('incidents.intelligence.notUsed') + '</option></select></label>';
+        }
+        if (execution) {
+            html += '<label class="form-group"><span class="form-label">' +
+                t('resolution.feedback.runbook', {
+                    value: escapeHtml(execution.title || t('incidents.runbook.untitled'))
+                }) + '</span><select class="form-input" id="incidentResolutionRunbookFeedback" ' +
+                'data-execution-id="' + Number(execution.id) + '">' +
+                '<option value="unknown">' + t('runbookCompletion.unknown') + '</option>' +
+                '<option value="effective">' + t('incidents.runbook.effective') + '</option>' +
+                '<option value="ineffective">' + t('incidents.runbook.ineffective') +
+                '</option></select></label>';
+        }
+        return html + '<p>' + t('resolution.feedback.hint') + '</p></div></details>';
+    }
+
+    function populateResolutionModal(data, envelope) {
+        var record = envelope.record || {};
+        var intelligence = data.intelligence || {};
+        var changes = intelligence.related_changes || [];
+        var association = record.change_association || 'unknown';
+        var selectedChangeId = record.related_change_id || '';
+
+        setResolutionValue('incidentResolutionId', data.id);
+        var categorySelector = document.getElementById('incidentResolutionCategory');
+        if (categorySelector && record.root_cause_category &&
+                !Array.from(categorySelector.options).some(function (option) {
+                    return option.value === record.root_cause_category;
+                })) {
+            var savedCategory = document.createElement('option');
+            savedCategory.value = record.root_cause_category;
+            savedCategory.textContent = record.root_cause_category;
+            categorySelector.appendChild(savedCategory);
+        }
+        setResolutionValue('incidentResolutionCategory', record.root_cause_category || '');
+        setResolutionValue('incidentResolutionRootCause', record.root_cause || '');
+        setResolutionValue('incidentResolutionBody', record.resolution || '');
+        setResolutionValue('incidentResolutionImpact', record.impact || '');
+        setResolutionValue(
+            'incidentResolutionOwner',
+            record.owner || data.assignee || data.team || ''
+        );
+        setResolutionValue('incidentResolutionRecoveryEvidence', record.recovery_evidence || '');
+        setResolutionValue(
+            'incidentResolutionFollowUps',
+            Array.isArray(record.follow_ups) ? record.follow_ups.join('\n') : ''
+        );
+        setResolutionValue('incidentResolutionChangeAssociation', association);
+
+        var selector = document.getElementById('incidentResolutionRelatedChangeId');
+        if (selector) {
+            selector.innerHTML = '<option value="">' +
+                escapeHtml(t('resolution.relatedChangeNone')) + '</option>';
+            changes.forEach(function (change) {
+                if (!change.change_id) return;
+                var option = document.createElement('option');
+                option.value = String(change.change_id);
+                option.textContent = relatedChangeLabel(change);
+                option.dataset.candidateRef = String(change.candidate_ref || '');
+                selector.appendChild(option);
+            });
+            if (selectedChangeId && !Array.from(selector.options).some(function (option) {
+                return option.value === String(selectedChangeId);
+            })) {
+                var savedChange = document.createElement('option');
+                savedChange.value = String(selectedChangeId);
+                savedChange.textContent = t('resolution.relatedChangeSaved', {
+                    id: selectedChangeId
+                });
+                savedChange.dataset.candidateRef = 'change:' + selectedChangeId;
+                selector.appendChild(savedChange);
+            }
+            selector.value = String(selectedChangeId || '');
+            selector.disabled = association === 'ruled_out' || association === 'unknown';
+        }
+        var associationSelector = document.getElementById('incidentResolutionChangeAssociation');
+        if (associationSelector) {
+            associationSelector.onchange = function () {
+                var value = associationSelector.value;
+                selector.disabled = value === 'ruled_out' || value === 'unknown';
+                if (selector.disabled) selector.value = '';
+            };
+        }
+        var subtitle = document.getElementById('incidentResolutionSubtitle');
+        if (subtitle) subtitle.textContent = '#' + data.id + ' · ' + (data.title || '');
+        var feedback = document.getElementById('incidentResolutionRecommendationFeedback');
+        if (feedback) feedback.innerHTML = resolutionFeedbackHtml(data, record);
+        renderResolutionCompleteness(envelope.completeness);
+    }
+
+    async function openResolutionModal(id) {
+        var modal = document.getElementById('incidentResolutionModal');
+        var error = document.getElementById('incidentResolutionError');
+        if (!modal) return;
+        if (error) error.textContent = '';
+        modal.classList.add('active');
+        var subtitle = document.getElementById('incidentResolutionSubtitle');
+        if (subtitle) subtitle.textContent = t('common.loading');
+        try {
+            var detail = _detailCache[id];
+            if (!detail) {
+                var detailPayload = await API.getIncident(id);
+                detail = detailPayload.data || {};
+                _detailCache[id] = detail;
+            }
+            if (!detail.intelligence) {
+                try {
+                    var intelligenceResponse = await API.authenticatedFetch(
+                        '/v1/incidents/' + id + '/intelligence'
+                    );
+                    if (intelligenceResponse.ok) {
+                        var intelligencePayload = await intelligenceResponse.json();
+                        detail.intelligence = intelligencePayload.data || {};
+                    }
+                } catch (_error) {
+                    detail.intelligence = {};
+                }
+            }
+            var resolutionPayload = await API.getIncidentResolution(id);
+            populateResolutionModal(detail, resolutionEnvelope(resolutionPayload));
+            document.getElementById('incidentResolutionRootCause')?.focus();
+        } catch (e) {
+            if (error) error.textContent = t('common.loadFailed') + ': ' + (e.message || String(e));
+        }
+    }
+
+    function closeResolutionModal() {
+        document.getElementById('incidentResolutionModal')?.classList.remove('active');
+    }
+
+    function resolutionFormPayload() {
+        var id = Number(document.getElementById('incidentResolutionId')?.value || 0);
+        var data = _detailCache[id] || {};
+        var association = document.getElementById('incidentResolutionChangeAssociation')?.value || 'unknown';
+        var rawChangeId = document.getElementById('incidentResolutionRelatedChangeId')?.value || '';
+        var relatedChangeId = rawChangeId ? Number(rawChangeId) : null;
+        if (['confirmed', 'suspected'].includes(association) && !relatedChangeId) {
+            throw new Error(t('resolution.relatedChangeRequired'));
+        }
+        if (association === 'ruled_out' || association === 'unknown') relatedChangeId = null;
+        var followUps = String(document.getElementById('incidentResolutionFollowUps')?.value || '')
+            .split('\n')
+            .map(function (item) { return item.trim(); })
+            .filter(Boolean);
+        return {
+            root_cause_category: document.getElementById('incidentResolutionCategory')?.value || null,
+            root_cause: document.getElementById('incidentResolutionRootCause')?.value.trim() || null,
+            resolution: document.getElementById('incidentResolutionBody')?.value.trim() || null,
+            impact: document.getElementById('incidentResolutionImpact')?.value.trim() || null,
+            change_association: association,
+            related_change_id: relatedChangeId,
+            recovery_evidence: document.getElementById('incidentResolutionRecoveryEvidence')?.value.trim() || null,
+            owner: document.getElementById('incidentResolutionOwner')?.value.trim() || null,
+            follow_ups: Array.from(new Set(followUps)),
+            actor: operatorIdentity(data)
+        };
+    }
+
+    function setResolutionBusy(busy) {
+        ['incidentResolutionDraftBtn', 'incidentResolutionCloseBtn'].forEach(function (id) {
+            var button = document.getElementById(id);
+            if (!button) return;
+            button.disabled = !!busy;
+            button.classList.toggle('is-busy', !!busy);
+        });
+    }
+
+    async function saveResolutionDraft() {
+        var id = Number(document.getElementById('incidentResolutionId')?.value || 0);
+        var error = document.getElementById('incidentResolutionError');
+        if (error) error.textContent = '';
+        setResolutionBusy(true);
+        try {
+            var result = await API.saveIncidentResolution(id, resolutionFormPayload());
+            renderResolutionCompleteness(resolutionEnvelope(result).completeness);
+            if (error) {
+                error.classList.add('is-success');
+                error.textContent = t('resolution.saved');
+            }
+        } catch (e) {
+            if (error) {
+                error.classList.remove('is-success');
+                error.textContent = e.message || String(e);
+            }
+        } finally {
+            setResolutionBusy(false);
+        }
+    }
+
+    async function submitResolutionFeedback(id, payload) {
+        var data = _detailCache[id] || {};
+        var tasks = [];
+        var association = payload.change_association;
+        var changeSelector = document.getElementById('incidentResolutionRelatedChangeId');
+        var selectedOption = changeSelector && changeSelector.selectedOptions[0];
+        var changeRef = selectedOption && selectedOption.dataset.candidateRef;
+        if (changeRef && ['confirmed', 'ruled_out'].includes(association)) {
+            tasks.push(API.recordIncidentIntelligenceFeedback(id, {
+                recommendation_type: 'change',
+                candidate_ref: changeRef,
+                verdict: association === 'confirmed' ? 'relevant' : 'irrelevant',
+                actor: operatorIdentity(data)
+            }));
+        }
+        var similar = document.getElementById('incidentResolutionSimilarFeedback');
+        if (similar && similar.value) {
+            tasks.push(API.recordIncidentIntelligenceFeedback(id, {
+                recommendation_type: 'similar_incident',
+                candidate_ref: decodeURIComponent(similar.dataset.candidateRef || ''),
+                verdict: similar.value,
+                actor: operatorIdentity(data)
+            }));
+        }
+        var runbook = document.getElementById('incidentResolutionRunbookFeedback');
+        if (runbook && runbook.value !== 'unknown') {
+            tasks.push(updateRunbookExecution(
+                id,
+                Number(runbook.dataset.executionId),
+                { status: 'completed', effectiveness: runbook.value },
+                true
+            ));
+        }
+        var results = await Promise.allSettled(tasks);
+        return results.filter(function (item) { return item.status === 'rejected'; }).length;
+    }
+
+    async function submitResolution() {
+        var id = Number(document.getElementById('incidentResolutionId')?.value || 0);
+        var error = document.getElementById('incidentResolutionError');
+        if (error) error.textContent = '';
+        setResolutionBusy(true);
+        try {
+            var payload = resolutionFormPayload();
+            var result = await API.closeIncident(id, payload);
+            var feedbackFailures = await submitResolutionFeedback(id, payload);
+            delete _detailCache[id];
+            closeResolutionModal();
             await load();
-        } catch (e) { alert('Assignment failed: ' + (e.message || e)); }
+            if (typeof ResponseCenterModule !== 'undefined') {
+                ResponseCenterModule.loadWorkQueue();
+            }
+            if (feedbackFailures) {
+                window.alert(t('resolution.feedback.partialFailure', {
+                    value: feedbackFailures
+                }));
+            }
+            return result;
+        } catch (e) {
+            if (error) {
+                error.classList.remove('is-success');
+                error.textContent = e.message || String(e);
+            }
+            return null;
+        } finally {
+            setResolutionBusy(false);
+        }
+    }
+
+    async function reviewRecurrence(id, decision) {
+        var data = _detailCache[id] || {};
+        try {
+            var result = await API.reviewIncidentRecurrence(id, decision, {
+                actor: operatorIdentity(data)
+            });
+            data.recurrence = result.data || null;
+            _detailCache[id] = data;
+            var detail = document.getElementById('incident-detail-' + id);
+            if (detail) detail.innerHTML = renderDetail(data);
+        } catch (e) {
+            alert(t('incidents.recurrence.reviewFailed') + ': ' + (e.message || e));
+        }
     }
 
     async function addNote(id) {
@@ -1082,7 +1569,7 @@ const IncidentsModule = (function () {
         }
     }
 
-    async function updateRunbookExecution(id, executionId, changes) {
+    async function updateRunbookExecution(id, executionId, changes, skipReload) {
         var body = Object.assign({}, changes || {}, { actor: 'dashboard' });
         try {
             var resp = await API.authenticatedFetch(
@@ -1090,9 +1577,13 @@ const IncidentsModule = (function () {
                 { method: 'PUT', body: JSON.stringify(body) }
             );
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            await loadIntelligence(id);
+            if (!skipReload) await loadIntelligence(id);
+            return true;
         } catch (e) {
-            alert(t('incidents.runbook.updateFailed') + ': ' + (e.message || e));
+            if (!skipReload) {
+                alert(t('incidents.runbook.updateFailed') + ': ' + (e.message || e));
+            }
+            throw e;
         }
     }
 
@@ -1103,12 +1594,53 @@ const IncidentsModule = (function () {
         });
     }
 
-    async function completeRunbookExecution(id, executionId) {
-        var notes = prompt(t('incidents.runbook.completionNotes'), '');
-        if (notes === null) return;
-        var changes = { status: 'completed', effectiveness: 'unknown' };
-        if (notes.trim()) changes.notes = notes.trim();
-        await updateRunbookExecution(id, executionId, changes);
+    function completeRunbookExecution(id, executionId) {
+        setResolutionValue('runbookCompletionIncidentId', id);
+        setResolutionValue('runbookCompletionExecutionId', executionId);
+        setResolutionValue('runbookCompletionEffectiveness', 'unknown');
+        var data = _detailCache[id] || {};
+        var execution = runbookExecutions(data).find(function (item) {
+            return Number(item.id) === Number(executionId);
+        });
+        setResolutionValue('runbookCompletionNotes', execution && execution.notes || '');
+        var error = document.getElementById('runbookCompletionError');
+        if (error) error.textContent = '';
+        document.getElementById('runbookCompletionModal')?.classList.add('active');
+        document.getElementById('runbookCompletionEffectiveness')?.focus();
+    }
+
+    function closeRunbookCompletionModal() {
+        document.getElementById('runbookCompletionModal')?.classList.remove('active');
+    }
+
+    async function submitRunbookCompletion() {
+        var id = Number(document.getElementById('runbookCompletionIncidentId')?.value || 0);
+        var executionId = Number(document.getElementById('runbookCompletionExecutionId')?.value || 0);
+        var effectiveness = document.getElementById('runbookCompletionEffectiveness')?.value || 'unknown';
+        var notes = document.getElementById('runbookCompletionNotes')?.value.trim() || '';
+        var button = document.getElementById('runbookCompletionSubmitBtn');
+        var error = document.getElementById('runbookCompletionError');
+        if (error) error.textContent = '';
+        if (button) {
+            button.disabled = true;
+            button.classList.add('is-busy');
+        }
+        try {
+            var changes = {
+                status: 'completed',
+                effectiveness: effectiveness
+            };
+            if (notes) changes.notes = notes;
+            await updateRunbookExecution(id, executionId, changes);
+            closeRunbookCompletionModal();
+        } catch (e) {
+            if (error) error.textContent = e.message || String(e);
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.classList.remove('is-busy');
+            }
+        }
     }
 
     async function merge(id) {
@@ -1157,6 +1689,58 @@ const IncidentsModule = (function () {
         } catch (e) { alert('Split failed: ' + (e.message || e)); }
     }
 
+    async function focusLoadedIncident(id) {
+        var data = _detailCache[id];
+        var row = _rows.find(function (item) { return Number(item.id) === Number(id); });
+        if (!data && !row) {
+            try {
+                var payload = await API.getIncident(id);
+                data = payload.data || {};
+                _detailCache[id] = data;
+                _rows.unshift({
+                    id: data.id,
+                    title: data.title,
+                    status: data.status,
+                    workflow_status: data.workflow_status,
+                    source: data.source,
+                    alert_count: data.alert_count,
+                    started_at: data.started_at,
+                    top_importance: data.top_importance,
+                    assignee: data.assignee,
+                    team: data.team,
+                    sla_due_at: data.sla_due_at
+                });
+                render();
+                row = _rows[0];
+            } catch (e) {
+                alert(t('common.loadFailed') + ': ' + (e.message || e));
+                return;
+            }
+        }
+        var detail = document.getElementById('incident-detail-' + id);
+        if (!detail) return;
+        if (!data) {
+            await toggle(id);
+        } else {
+            data.intelligenceLoading = !data.intelligence;
+            data.recurrenceLoading = !data.recurrence;
+            detail.style.display = 'block';
+            detail.innerHTML = renderDetail(data);
+            if (data.intelligenceLoading) loadIntelligence(id);
+            if (data.recurrenceLoading) loadRecurrence(id);
+        }
+        document.getElementById('incident-' + id)?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+        });
+    }
+
+    function openFromQueue(id) {
+        _focusIncidentId = Number(id);
+        if (typeof switchMainTab === 'function') switchMainTab('alerts');
+        if (typeof setInboxView === 'function') setInboxView('incidents');
+    }
+
     function search() {
         var term = (document.getElementById('incidentSearchInput') || {}).value || '';
         term = term.trim().toLowerCase();
@@ -1167,7 +1751,8 @@ const IncidentsModule = (function () {
 
         var filtered = _rows.filter(function (r) {
             return (r.title || '').toLowerCase().indexOf(term) >= 0 ||
-                   (r.source || '').toLowerCase().indexOf(term) >= 0;
+                   (r.source || '').toLowerCase().indexOf(term) >= 0 ||
+                   String(r.id) === term.replace(/^#/, '');
         });
 
         var html = '';
@@ -1191,6 +1776,7 @@ const IncidentsModule = (function () {
         h += '<span style="font-weight:600; font-size:1rem; color:var(--text-main);">' + escapeHtml(row.title) + '</span>';
         h += '<span class="badge ' + badge.cls + '" style="font-size:0.65rem;">' + badge.label + '</span>';
         h += '<span class="badge badge-outline" style="font-size:0.65rem;">' + escapeHtml((row.workflow_status || 'open').replace('_', ' ')) + '</span>';
+        h += renderRecurrenceBadge(row.recurrence || row.recurrence_candidate);
         h += '</div>';
         h += '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">';
         h += '<span>' + escapeHtml(row.source || '') + '</span> · ';
@@ -1198,9 +1784,10 @@ const IncidentsModule = (function () {
         h += '<span>' + (row.started_at ? row.started_at.slice(0, 16).replace('T', ' ') : '?') + '</span>';
         h += '</div></div>';
         if (row.status === 'active' || row.status === 'quiet') {
-            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.closeIncident(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">✅</button>';
+            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">✅</button>';
         }
         if (row.status === 'closed') {
+            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;">✏️</button>';
             h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">🔄</button>';
         }
         h += '<span style="color:var(--text-muted); font-size:0.8rem;">▶</span>';
@@ -1218,6 +1805,10 @@ const IncidentsModule = (function () {
         search: search,
         toggleStatus: toggleStatus,
         closeIncident: closeIncident,
+        openResolutionModal: openResolutionModal,
+        closeResolutionModal: closeResolutionModal,
+        saveResolutionDraft: saveResolutionDraft,
+        submitResolution: submitResolution,
         reopenIncident: reopenIncident,
         updateWorkflow: updateWorkflow,
         assign: assign,
@@ -1228,6 +1819,10 @@ const IncidentsModule = (function () {
         updateRunbookExecution: updateRunbookExecution,
         toggleRunbookStep: toggleRunbookStep,
         completeRunbookExecution: completeRunbookExecution,
+        closeRunbookCompletionModal: closeRunbookCompletionModal,
+        submitRunbookCompletion: submitRunbookCompletion,
+        reviewRecurrence: reviewRecurrence,
+        openFromQueue: openFromQueue,
         merge: merge,
         split: split,
         exportPostmortem: exportPostmortem,

@@ -15,6 +15,32 @@ def test_generate_hash_uses_adapter_identity_not_payload_noise() -> None:
     assert generate_alert_hash(first, "prometheus") == generate_alert_hash(second, "prometheus")
 
 
+def test_managed_source_namespace_isolates_same_normalized_alert() -> None:
+    payload = with_alert_identity(
+        {"message": "checkout failed"},
+        AlertIdentity(
+            source="grafana",
+            name="CheckoutErrors",
+            resource="checkout-api",
+            severity="critical",
+        ),
+    )
+
+    first_hash, first_dedup = generate_event_keys(
+        payload,
+        "grafana",
+        namespace="source-connection:1",
+    )
+    second_hash, second_dedup = generate_event_keys(
+        payload,
+        "grafana",
+        namespace="source-connection:2",
+    )
+
+    assert first_hash != second_hash
+    assert first_dedup != second_dedup
+
+
 def test_generate_hash_falls_back_to_payload_when_identity_missing() -> None:
     first = generate_alert_hash({"value": 95}, "custom")
     second = generate_alert_hash({"value": 99}, "custom")

@@ -21,6 +21,7 @@ class WebhookEventSummary(BaseModel):
     id: int
     request_id: str | None = None
     source: str
+    source_connection_id: int | None = None
     client_ip: str | None = None
     ai_analysis: dict[str, Any] | None = Field(default=None, exclude=True)
     outbox_forward_status: str | None = Field(default=None, exclude=True)

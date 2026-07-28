@@ -37,6 +37,7 @@ def _parse_received_at(value: str | None) -> datetime | None:
 async def record_raw_ingest_dead_letter(
     *,
     source: str,
+    source_connection_id: int | None = None,
     raw_headers: dict[str, str],
     raw_body: str,
     client_ip: str,
@@ -61,6 +62,7 @@ async def record_raw_ingest_dead_letter(
     event.fill_fields(
         WebhookEventInput(
             source=source or "unknown",
+            source_connection_id=source_connection_id,
             request_id=request_id,
             client_ip=client_ip or "",
             raw_payload=raw_body.encode("utf-8"),

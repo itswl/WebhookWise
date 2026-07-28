@@ -111,14 +111,27 @@ async def build_postmortem_markdown(session: AsyncSession, incident_id: int) -> 
         lines.append(f"- **Escalated (SLA breach):** {_fmt(incident.escalated_at)}")
 
     summary = incident.summary_analysis if isinstance(incident.summary_analysis, dict) else {}
-    for heading, key in (
-        ("Summary", "summary"),
-        ("Root cause", "root_cause"),
-        ("Impact", "impact"),
+    confirmed = incident.resolution_record if isinstance(incident.resolution_record, dict) else {}
+    if confirmed.get("owner"):
+        lines.append(f"- **Resolution owner:** {str(confirmed['owner']).strip()}")
+    for heading, value in (
+        ("Summary", summary.get("summary")),
+        ("Root cause category", confirmed.get("root_cause_category")),
+        ("Root cause", confirmed.get("root_cause") or summary.get("root_cause")),
+        ("Impact", confirmed.get("impact") or summary.get("impact")),
+        ("Resolution", confirmed.get("resolution")),
+        ("Recovery evidence", confirmed.get("recovery_evidence")),
     ):
-        value = str(summary.get(key) or "").strip()
-        if value:
-            lines += ["", f"## {heading}", "", value]
+        text_value = str(value or "").strip()
+        if text_value:
+            lines += ["", f"## {heading}", "", text_value]
+    association = str(confirmed.get("change_association") or "").strip()
+    if association:
+        related_change_id = confirmed.get("related_change_id")
+        change_text = association
+        if isinstance(related_change_id, int):
+            change_text = f"{association} (change #{related_change_id})"
+        lines += ["", "## Change association", "", change_text]
 
     lines += ["", "## Timeline", ""]
     if member_rows:
@@ -177,12 +190,16 @@ async def build_postmortem_markdown(session: AsyncSession, incident_id: int) -> 
                 lines += ["", f"> {execution.notes.strip()}"]
             lines.append("")
 
-    raw_recommendations = summary.get("recommendations")
+    confirmed_follow_ups = confirmed.get("follow_ups")
+    has_confirmed_follow_ups = isinstance(confirmed_follow_ups, list)
+    raw_recommendations = confirmed_follow_ups if has_confirmed_follow_ups else summary.get("recommendations")
     recommendation_items = raw_recommendations if isinstance(raw_recommendations, list) else []
     recommendations = [str(r).strip() for r in recommendation_items if str(r).strip()]
     lines += ["", "## Action items", ""]
     if recommendations:
         lines += [f"- [ ] {r}" for r in recommendations]
+    elif has_confirmed_follow_ups:
+        lines.append("_No follow-ups recorded._")
     else:
         lines.append("- [ ] _Fill in follow-ups._")
 

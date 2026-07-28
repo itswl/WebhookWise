@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.datetime_utils import utcnow
@@ -126,6 +128,62 @@ async def test_sweep_drafts_summarized_incidents_once(
     # Idempotent: the drafted incident is now excluded, so a second sweep is a no-op.
     second = await incident_sediment.run_pending_kb_drafts()
     assert second["drafted"] == 0
+
+
+@pytest.mark.asyncio
+async def test_pending_sweep_refreshes_human_facts_only_while_draft(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from services.kb.incident_sediment import _incidents_pending_sediment
+
+    async with db_session_factory.begin() as session:
+        incident = await _add_incident(
+            session,
+            title="GPU OOM",
+            status="closed",
+            summary=_SUMMARY,
+        )
+        await draft_kb_from_incident(session, int(incident.id))
+
+    async with db_session_factory.begin() as session:
+        incident = await session.get(Incident, int(incident.id))
+        assert incident is not None
+        latest_document_update = await session.scalar(
+            select(func.max(KBDocument.updated_at)).where(KBDocument.source_ref == f"incident:{incident.id}")
+        )
+        assert latest_document_update is not None
+        incident.resolution_record = {
+            "root_cause": "A human-confirmed CUDA allocator leak",
+            "resolution": "Deployed the allocator fix",
+            "actor": "alice",
+        }
+        incident.resolution_record_updated_at = latest_document_update + timedelta(microseconds=1)
+        await session.flush()
+        assert await _incidents_pending_sediment(session, 5) == [int(incident.id)]
+        assert await draft_kb_from_incident(session, int(incident.id)) is True
+
+    async with db_session_factory.begin() as session:
+        rows = list(
+            (await session.execute(select(KBDocument).where(KBDocument.source_ref == f"incident:{incident.id}")))
+            .scalars()
+            .all()
+        )
+        blob = "\n".join(row.content for row in rows)
+        assert "A human-confirmed CUDA allocator leak" in blob
+        assert "A model server leaked GPU memory" not in blob
+        assert await _incidents_pending_sediment(session, 5) == []
+
+        assert await publish_kb_draft(session, f"incident:{incident.id}") >= 1
+        incident = await session.get(Incident, int(incident.id))
+        assert incident is not None
+        incident.resolution_record = {
+            **incident.resolution_record,
+            "root_cause": "A later correction requiring manual publication",
+        }
+        incident.resolution_record_updated_at = utcnow() + timedelta(seconds=2)
+        await session.flush()
+        assert await _incidents_pending_sediment(session, 5) == []
+        assert await draft_kb_from_incident(session, int(incident.id)) is False
 
 
 @pytest.mark.asyncio

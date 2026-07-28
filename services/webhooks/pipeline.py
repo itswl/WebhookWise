@@ -61,6 +61,7 @@ def parse_request(
     raw_body: bytes,
     source: str | None,
     ts: str | None,
+    source_connection_id: int | None = None,
 ) -> WebhookRequestContext:
     from adapters.ecosystem_adapters import normalize_webhook_event
 
@@ -72,6 +73,7 @@ def parse_request(
     return WebhookRequestContext(
         client_ip=client_ip,
         source=norm.source,
+        source_connection_id=source_connection_id,
         payload=raw_body,
         parsed_data=norm.data,
         webhook_full_data={
@@ -117,6 +119,7 @@ async def handle_webhook_ingest(
     client_ip: str = "",
     request_id: str | None = None,
     received_at: str | None = None,
+    source_connection_id: int | None = None,
     dependencies: pipeline_runtime.WebhookPipelineDependencies | None = None,
 ) -> None:
     """Process a newly ingested webhook without pre-writing it to PostgreSQL."""
@@ -149,6 +152,7 @@ async def handle_webhook_ingest(
             source=source,
             event_ts=received_at or utc_isoformat(utcnow()),
             request_id=request_id,
+            source_connection_id=source_connection_id,
         )
         await _handle_raw_ingest(
             env,
@@ -249,12 +253,22 @@ async def _handle_raw_ingest(
                         envelope.raw_body,
                         envelope.source,
                         envelope.event_ts,
+                        envelope.source_connection_id,
                     )
                 except _PARSE_ERRORS as exc:
                     set_span_error(parse_span, exc)
                     raise
 
-            alert_hash, dedup_key = generate_event_keys(req_ctx.parsed_data, req_ctx.source)
+            identity_namespace = (
+                f"source-connection:{req_ctx.source_connection_id}"
+                if req_ctx.source_connection_id is not None
+                else None
+            )
+            alert_hash, dedup_key = generate_event_keys(
+                req_ctx.parsed_data,
+                req_ctx.source,
+                namespace=identity_namespace,
+            )
             set_log_context(alert_hash=alert_hash, webhook_source=req_ctx.source or "unknown", request_id=request_id)
             ctx = WebhookProcessContext(
                 event_id=None,

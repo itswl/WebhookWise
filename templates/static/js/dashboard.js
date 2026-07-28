@@ -80,6 +80,9 @@ async function initDashboard() {
     if (typeof RoutingModule !== 'undefined') {
         RoutingModule.init();
     }
+    if (typeof ResponseCenterModule !== 'undefined') {
+        ResponseCenterModule.init();
+    }
 
     // Bind global events
     bindGlobalEvents();
@@ -167,6 +170,12 @@ function bindGlobalEvents() {
         if (e.target.classList.contains('modal')) {
             if (e.target.id === 'authModal') {
                 closeAuthModal();
+            } else if (e.target.id === 'incidentResolutionModal' &&
+                       typeof IncidentsModule !== 'undefined') {
+                IncidentsModule.closeResolutionModal();
+            } else if (e.target.id === 'runbookCompletionModal' &&
+                       typeof IncidentsModule !== 'undefined') {
+                IncidentsModule.closeRunbookCompletionModal();
             } else {
                 e.target.classList.remove('active');
             }
@@ -180,6 +189,12 @@ function bindGlobalEvents() {
             document.querySelectorAll('.modal.active').forEach(modal => {
                 if (modal.id === 'authModal') {
                     closeAuthModal();
+                } else if (modal.id === 'incidentResolutionModal' &&
+                           typeof IncidentsModule !== 'undefined') {
+                    IncidentsModule.closeResolutionModal();
+                } else if (modal.id === 'runbookCompletionModal' &&
+                           typeof IncidentsModule !== 'undefined') {
+                    IncidentsModule.closeRunbookCompletionModal();
                 } else {
                     modal.classList.remove('active');
                 }
@@ -203,6 +218,10 @@ function bindGlobalEvents() {
  * @param {string} tabId - Tab ID
  */
 function switchMainTab(tabId) {
+    if (currentTab === 'routing' && tabId !== 'routing' &&
+            typeof IngressSetupModule !== 'undefined') {
+        IngressSetupModule.deactivate();
+    }
     currentTab = tabId;
 
     // Update the navbar active state
@@ -264,6 +283,7 @@ function switchMainTab(tabId) {
 function setInboxView(view) {
     const views = {
         alerts: 'inboxViewAlerts',
+        'work-queue': 'inboxViewWorkQueue',
         incidents: 'inboxViewIncidents',
         investigations: 'inboxViewInvestigations'
     };
@@ -276,7 +296,9 @@ function setInboxView(view) {
         button.classList.toggle('active', button.getAttribute('data-inbox-view') === currentInboxView);
     });
 
-    if (currentInboxView === 'incidents' && typeof IncidentsModule !== 'undefined') {
+    if (currentInboxView === 'work-queue' && typeof ResponseCenterModule !== 'undefined') {
+        ResponseCenterModule.loadWorkQueue();
+    } else if (currentInboxView === 'incidents' && typeof IncidentsModule !== 'undefined') {
         IncidentsModule.load();
     } else if (currentInboxView === 'investigations' && typeof DeepAnalysesModule !== 'undefined') {
         DeepAnalysesModule.load();
@@ -292,7 +314,12 @@ function openInboxIncidents() {
 }
 
 function setOperationsView(view) {
-    const views = { actions: 'actionCenterTab', noise: 'noiseCenterTab', kb: 'kbDraftsTab' };
+    const views = {
+        actions: 'actionCenterTab',
+        noise: 'noiseCenterTab',
+        kb: 'kbDraftsTab',
+        gaps: 'knowledgeGapsTab'
+    };
     currentOperationsView = views[view] ? view : 'actions';
     Object.keys(views).forEach(function (key) {
         const element = document.getElementById(views[key]);
@@ -305,6 +332,8 @@ function setOperationsView(view) {
         if (typeof NoiseCenterModule !== 'undefined') NoiseCenterModule.load();
     } else if (currentOperationsView === 'kb') {
         if (typeof KbDraftsModule !== 'undefined') KbDraftsModule.load();
+    } else if (currentOperationsView === 'gaps') {
+        if (typeof ResponseCenterModule !== 'undefined') ResponseCenterModule.loadKnowledgeGaps();
     } else if (typeof ActionCenterModule !== 'undefined') {
         ActionCenterModule.load();
     }

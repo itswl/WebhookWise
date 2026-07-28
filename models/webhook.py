@@ -28,6 +28,7 @@ from db.session import Base
 @dataclass(frozen=True, slots=True)
 class WebhookEventInput:
     source: str
+    source_connection_id: int | None = None
     request_id: str | None = None
     client_ip: str | None = None
     timestamp: datetime | None = None
@@ -59,6 +60,11 @@ class WebhookEvent(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     request_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     source: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_connection_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("source_connections.id", ondelete="SET NULL"),
+        index=True,
+    )
     client_ip: Mapped[str | None] = mapped_column(String(50))
     timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow(), index=True)
 
@@ -130,6 +136,7 @@ class WebhookEvent(Base):
     def fill_fields(self, data: WebhookEventInput) -> None:
         """Fill the mutable event columns through an explicit typed surface."""
         self.source = data.source
+        self.source_connection_id = data.source_connection_id
         self.request_id = data.request_id
         self.client_ip = data.client_ip
         self.timestamp = data.timestamp or self.timestamp or utcnow()
@@ -163,6 +170,7 @@ class ArchivedWebhookEvent(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     request_id: Mapped[str | None] = mapped_column(String(64), index=True)
     source: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_connection_id: Mapped[int | None] = mapped_column(Integer, index=True)
     client_ip: Mapped[str | None] = mapped_column(String(50))
     timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
 

@@ -16,6 +16,8 @@ const RoutingModule = (function () {
         silences: 'routingViewSilences',
         sandbox: 'routingViewSandbox',
         audit: 'routingViewAudit',
+        ingress: 'routingViewIngress',
+        quality: 'routingViewQuality',
         integrations: 'routingViewIntegrations'
     };
 
@@ -29,13 +31,22 @@ const RoutingModule = (function () {
             if (typeof SandboxModule !== 'undefined') SandboxModule.load();
         } else if (view === 'audit') {
             if (typeof RuleAuditModule !== 'undefined') RuleAuditModule.load();
+        } else if (view === 'ingress') {
+            if (typeof IngressSetupModule !== 'undefined') IngressSetupModule.load();
+        } else if (view === 'quality') {
+            if (typeof AlertQualityModule !== 'undefined') AlertQualityModule.load();
         } else if (view === 'integrations') {
             if (typeof IntegrationsModule !== 'undefined') IntegrationsModule.load();
         }
     }
 
     function setView(view) {
-        currentView = VIEWS[view] ? view : 'rules';
+        const nextView = VIEWS[view] ? view : 'rules';
+        if (currentView === 'ingress' && nextView !== 'ingress' &&
+                typeof IngressSetupModule !== 'undefined') {
+            IngressSetupModule.deactivate();
+        }
+        currentView = nextView;
         Object.keys(VIEWS).forEach(function (key) {
             const el = document.getElementById(VIEWS[key]);
             if (el) el.style.display = key === currentView ? 'block' : 'none';

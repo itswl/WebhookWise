@@ -1,5 +1,8 @@
 """Operator workflow, feedback, incident editing, and integration catalog tests."""
 
+from datetime import UTC, datetime
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -148,3 +151,46 @@ async def test_action_center_rule_remediation_returns_an_undo_command(
     assert result["undo"] == {"action": "disable_rule", "resource_id": rule.id}
     persisted = await session.get(ForwardRule, rule.id)
     assert persisted is not None and persisted.enabled is True
+
+
+@pytest.mark.asyncio
+async def test_action_center_replay_preserves_managed_source_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.operations.remediation import _enqueue_event
+
+    enqueued: list[dict[str, object]] = []
+
+    async def load_payload(_event: object) -> tuple[dict[str, object], str]:
+        return {}, '{"alertname":"CheckoutErrors"}'
+
+    async def enqueue(**kwargs: object) -> None:
+        enqueued.append(dict(kwargs))
+
+    monkeypatch.setattr("services.webhooks.repository.load_event_payload", load_payload)
+    monkeypatch.setattr("services.operations.tasks.process_webhook_task.kiq", enqueue)
+    event = SimpleNamespace(
+        source="grafana",
+        source_connection_id=42,
+        headers={},
+        raw_payload=None,
+        client_ip="203.0.113.10",
+        request_id="managed-replay",
+        timestamp=datetime(2026, 7, 26, tzinfo=UTC),
+        retry_count=1,
+    )
+
+    await _enqueue_event(event)
+
+    assert enqueued == [
+        {
+            "source_name": "grafana",
+            "source_connection_id": 42,
+            "raw_headers": {},
+            "raw_body": '{"alertname":"CheckoutErrors"}',
+            "client_ip": "203.0.113.10",
+            "request_id": "managed-replay",
+            "received_at": "2026-07-26T00:00:00Z",
+            "ingest_retry_count": 1,
+        }
+    ]

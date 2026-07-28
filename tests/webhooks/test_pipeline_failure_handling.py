@@ -33,6 +33,7 @@ async def test_raw_ingest_failure_schedules_retry(monkeypatch: pytest.MonkeyPatc
         request_id="req-raw",
         received_at="2026-05-13T12:00:00+08:00",
         ingest_retry_count=0,
+        source_connection_id=77,
         err=httpx.ConnectError("network down"),
     )
 
@@ -46,6 +47,7 @@ async def test_raw_ingest_failure_schedules_retry(monkeypatch: pytest.MonkeyPatc
         "received_at": "2026-05-13T12:00:00+08:00",
         "ingest_retry_count": 1,
         "traceparent": None,
+        "source_connection_id": 77,
     }
 
 
@@ -76,6 +78,7 @@ async def test_raw_ingest_non_retryable_failure_records_dead_letter(monkeypatch:
         request_id="req-bad",
         received_at=None,
         ingest_retry_count=0,
+        source_connection_id=77,
         err=err,
     )
 
@@ -89,4 +92,5 @@ async def test_raw_ingest_non_retryable_failure_records_dead_letter(monkeypatch:
         "retry_count": 0,
         "retryable": False,
         "err": err,
+        "source_connection_id": 77,
     }

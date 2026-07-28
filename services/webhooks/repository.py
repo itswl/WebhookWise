@@ -25,6 +25,7 @@ class EventEnvelope:
     source: str | None
     event_ts: str | None
     request_id: str | None = None
+    source_connection_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -145,12 +146,23 @@ async def load_event_payload(event: WebhookEvent) -> tuple[dict[str, Any] | None
     return parsed_data, raw_text
 
 
-async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minutes: int) -> list[AlertContext]:
+async def list_recent_alert_contexts(
+    alert_hash: str,
+    now: datetime,
+    window_minutes: int,
+    *,
+    source_connection_id: int | None = None,
+) -> list[AlertContext]:
     async with session_scope() as session:
         # Project only the 6 columns AlertContext needs. Loading the full entity
         # pulled raw_payload (LargeBinary) + headers (JSONB) for up to 100 rows on
         # every non-duplicate alert (this runs per-alert on the noise path) — pure
         # waste, since the scorer only reads these fields.
+        source_scope_filter = (
+            WebhookEvent.source_connection_id == source_connection_id
+            if source_connection_id is not None
+            else WebhookEvent.source_connection_id.is_(None)
+        )
         stmt = (
             select(
                 WebhookEvent.id,
@@ -164,6 +176,7 @@ async def list_recent_alert_contexts(alert_hash: str, now: datetime, window_minu
                 WebhookEvent.timestamp >= now - timedelta(minutes=window_minutes),
                 WebhookEvent.timestamp <= now,
                 WebhookEvent.alert_hash != alert_hash,
+                source_scope_filter,
             )
             .order_by(WebhookEvent.timestamp.desc())
             .limit(100)

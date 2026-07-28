@@ -132,7 +132,12 @@ class DedupResult:
         return self.action == DedupAction.RECHAIN
 
 
-def generate_event_keys(data: Mapping[str, Any], source: str) -> tuple[str, str]:
+def generate_event_keys(
+    data: Mapping[str, Any],
+    source: str,
+    *,
+    namespace: str | None = None,
+) -> tuple[str, str]:
     """Extract identity once and generate both alert_hash and dedup_key."""
     from adapters.normalized import extract_alert_identity
 
@@ -140,6 +145,8 @@ def generate_event_keys(data: Mapping[str, Any], source: str) -> tuple[str, str]
     if identity:
         alert_key_fields: dict[str, object] = dict(identity)
         alert_key_fields.setdefault("source", source.strip().lower())
+        if namespace:
+            alert_key_fields["namespace"] = namespace
         alert_hash = hashlib.sha256(json.dumps_bytes(alert_key_fields, sort_keys=True)).hexdigest()
 
         dedup_key_fields: dict[str, object] = {}
@@ -158,6 +165,8 @@ def generate_event_keys(data: Mapping[str, Any], source: str) -> tuple[str, str]
         resource_bucket = resource_dedup_bucket(data)
         if resource_bucket:
             dedup_key_fields["resource_risk_bucket"] = resource_bucket
+        if namespace:
+            dedup_key_fields["namespace"] = namespace
 
         dedup_key = (
             hashlib.sha256(json.dumps_bytes(dedup_key_fields, sort_keys=True)).hexdigest()
@@ -168,13 +177,20 @@ def generate_event_keys(data: Mapping[str, Any], source: str) -> tuple[str, str]
 
     logger.debug("No alert identity produced by the adapter; falling back to a full-payload hash source=%s", source)
     fallback_key_fields: dict[str, object] = {"source": source.strip().lower(), "payload": data}
+    if namespace:
+        fallback_key_fields["namespace"] = namespace
     fallback_hash = hashlib.sha256(json.dumps_bytes(fallback_key_fields, sort_keys=True)).hexdigest()
     return fallback_hash, fallback_hash
 
 
-def generate_alert_hash(data: Mapping[str, Any], source: str) -> str:
+def generate_alert_hash(
+    data: Mapping[str, Any],
+    source: str,
+    *,
+    namespace: str | None = None,
+) -> str:
     """Convenience wrapper — returns only the alert_hash portion of generate_event_keys."""
-    return generate_event_keys(data, source)[0]
+    return generate_event_keys(data, source, namespace=namespace)[0]
 
 
 def _dedup_window_seconds() -> int:
