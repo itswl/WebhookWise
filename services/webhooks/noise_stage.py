@@ -33,6 +33,7 @@ async def compute_noise(
     analysis: AnalysisResult,
     *,
     policy: NoiseReductionPolicy | None = None,
+    source_connection_id: int | None = None,
 ) -> NoiseReductionContext:
     started = time.perf_counter()
     metric_source = sanitize_source(source)
@@ -44,7 +45,12 @@ async def compute_noise(
             return NoiseReductionContext("standalone", None, 0.0, False, "Smart noise reduction is not enabled", 0, ())
         now = utcnow()
         try:
-            recent = await list_recent_alert_contexts(alert_hash, now, policy.window_minutes)
+            recent = await list_recent_alert_contexts(
+                alert_hash,
+                now,
+                policy.window_minutes,
+                source_connection_id=source_connection_id,
+            )
         except _NOISE_CONTEXT_ERRORS as e:
             logger.warning("[Pipeline] Failed to load recent alert context, noise reduction will be skipped: %s", e)
             recent = []

@@ -615,7 +615,60 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     assert 'id="authModal"' in dashboard_html
     assert 'id="authApiKey"' in dashboard_html
     assert 'id="authAdminWriteKey"' in dashboard_html
-    assert "ADMIN_WRITE_KEY is kept only for the current tab session" in dashboard_html
+    assert "API_KEY and ADMIN_WRITE_KEY are saved in this browser" in dashboard_html
+
+
+def test_dashboard_incident_learning_workspace_static_contracts() -> None:
+    api_js = (PROJECT_ROOT / "templates/static/js/api.js").read_text()
+    dashboard_js = (PROJECT_ROOT / "templates/static/js/dashboard.js").read_text()
+    incidents_js = (PROJECT_ROOT / "templates/static/js/incidents.js").read_text()
+    ingress_js = (PROJECT_ROOT / "templates/static/js/ingress-setup.js").read_text()
+    response_center_js = (PROJECT_ROOT / "templates/static/js/response-center.js").read_text()
+    routing_js = (PROJECT_ROOT / "templates/static/js/routing.js").read_text()
+    dashboard_html = (PROJECT_ROOT / "templates/dashboard.html").read_text()
+
+    assert 'id="responseWorkQueueList"' in dashboard_html
+    assert 'id="knowledgeGapsList"' in dashboard_html
+    assert 'id="incidentResolutionModal"' in dashboard_html
+    assert 'id="ingressSetupWizard"' in dashboard_html
+
+    assert "query.set('offset', params.offset)" in api_js
+    assert "const shouldAppend = append === true" in response_center_js
+    assert "actor.addEventListener('change', function ()" in response_center_js
+    assert "priority_reasons" in response_center_js
+    assert "responseQueueLoadMore" in response_center_js
+
+    assert "IncidentsModule.intelligenceFeedback" in incidents_js
+    assert "record.root_cause || ''" in incidents_js
+    assert "savedChange.dataset.candidateRef = 'change:' + selectedChangeId" in incidents_js
+    assert "resolution.feedback.partialFailure" in incidents_js
+    assert "t('resolution.edit')" in incidents_js
+
+    assert "deactivate: clearSensitive" in ingress_js
+    assert "sourceToken = ''" in ingress_js
+    assert ".setItem(" not in ingress_js
+    assert "credential_state" in ingress_js
+    assert "IngressSetupModule.deactivate()" in routing_js
+    assert "IngressSetupModule.deactivate()" in dashboard_js
+
+
+def test_dashboard_alert_quality_center_is_read_only() -> None:
+    dashboard = (PROJECT_ROOT / "templates" / "dashboard.html").read_text()
+    routing_js = (PROJECT_ROOT / "templates" / "static" / "js" / "routing.js").read_text()
+    quality_js = (PROJECT_ROOT / "templates" / "static" / "js" / "alert-quality.js").read_text()
+    api_js = (PROJECT_ROOT / "templates" / "static" / "js" / "api.js").read_text()
+
+    assert 'data-routing-view="quality"' in dashboard
+    assert 'id="routingViewQuality"' in dashboard
+    assert "/static/js/alert-quality.js" in dashboard
+    assert "AlertQualityModule.load()" in routing_js
+    assert "/v1/alert-quality/overview?" in api_js
+    assert "read-only diagnostics" in quality_js
+    assert "API.getAlertQuality" in quality_js
+    assert "createInboundSource" not in quality_js
+    assert "updateInboundSource" not in quality_js
+    assert "rotateInboundSourceToken" not in quality_js
+    assert "revokeInboundSource" not in quality_js
 
 
 def test_dashboard_authentication_retries_after_modal_save() -> None:
@@ -667,7 +720,7 @@ context.openAuthModal = async (mode) => {{
     subprocess.run([node, "-e", script], text=True, capture_output=True, check=True)
 
 
-def test_dashboard_read_token_is_local_and_write_token_is_session_scoped() -> None:
+def test_dashboard_read_and_write_tokens_are_saved_in_local_storage() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for dashboard crypto behavior test")
@@ -708,11 +761,11 @@ vm.runInNewContext(source + '\\nthis.__API = API;', context, {{ filename: 'api.j
   if (localValues.get('webhookwise_dashboard_api_key') !== 'secret-token') {{
     throw new Error('read token was not saved in local storage');
   }}
-  if (localValues.has('webhookwise_dashboard_admin_write_key')) {{
-    throw new Error('write token must not be saved in local storage');
+  if (localValues.get('webhookwise_dashboard_admin_write_key') !== 'write-token') {{
+    throw new Error('write token was not saved in local storage');
   }}
-  if (sessionValues.get('webhookwise_dashboard_admin_write_key') !== 'write-token') {{
-    throw new Error('write token was not saved in session storage');
+  if (sessionValues.has('webhookwise_dashboard_admin_write_key')) {{
+    throw new Error('obsolete session-scoped write token was not removed');
   }}
 
   api._tokenCache.read = '';

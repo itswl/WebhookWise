@@ -210,6 +210,7 @@ class WebhookRequestContext:
     parsed_data: WebhookData
     webhook_full_data: WebhookData
     headers: JsonObject = field(default_factory=dict)
+    source_connection_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

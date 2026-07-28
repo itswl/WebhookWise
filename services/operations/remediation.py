@@ -90,6 +90,7 @@ async def _enqueue_event(event: WebhookEvent) -> None:
         raw_body = (decompress_payload(bytes(raw)) or "") if isinstance(raw, (bytes, bytearray)) else str(raw or "")
     await process_webhook_task.kiq(
         source_name=event.source or "unknown",
+        source_connection_id=event.source_connection_id,
         raw_headers=headers,
         raw_body=raw_body,
         client_ip=event.client_ip or "action-center-replay",

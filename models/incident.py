@@ -34,6 +34,11 @@ class Incident(Base):
     )  # active | quiet | closed
 
     source: Mapped[str | None] = mapped_column(String(100))
+    source_connection_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("source_connections.id", ondelete="SET NULL"),
+        index=True,
+    )
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime)
 
@@ -75,6 +80,17 @@ class Incident(Base):
     )
     summary_next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime)
     summary_last_error: Mapped[str | None] = mapped_column(Text)
+
+    # Human-confirmed resolution facts. This deliberately stays separate from
+    # ``summary_analysis``: the latter is generated, while this record is the
+    # operator-owned source of truth used by postmortems and KB sedimentation.
+    resolution_record: Mapped[dict[str, object]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'"),
+        nullable=False,
+    )
+    resolution_record_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow())
@@ -129,4 +145,55 @@ class IncidentMember(Base):
     __table_args__ = (
         UniqueConstraint("event_id", name="uq_incident_members_event_id"),
         Index("ix_incident_members_incident_timestamp", "incident_id", "event_timestamp"),
+    )
+
+
+class IncidentRecurrence(Base):
+    """A suspected recurrence linking a new incident to one resolved incident.
+
+    Detection only creates ``pending`` rows. An operator can confirm or dismiss
+    the association, but neither transition reopens the historical incident.
+    """
+
+    __tablename__ = "incident_recurrences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    previous_incident_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    recurring_incident_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="pending",
+        server_default="pending",
+        nullable=False,
+    )
+    match_details: Mapped[dict[str, object]] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'"),
+        nullable=False,
+    )
+    detected_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow())
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reviewed_by: Mapped[str | None] = mapped_column(String(100))
+    review_note: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "recurring_incident_id",
+            name="uq_incident_recurrences_recurring_incident",
+        ),
+        Index(
+            "ix_incident_recurrences_status_detected",
+            "status",
+            "detected_at",
+        ),
     )

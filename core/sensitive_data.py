@@ -24,6 +24,7 @@ SENSITIVE_HEADER_NAMES = {
     "x-hub-signature",
     "x-hub-signature-256",
     "x-slack-signature",
+    "x-source-token",
     "x-webhook-signature",
 }
 

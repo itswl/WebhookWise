@@ -5,6 +5,29 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+### Added
+
+- Incident response work queue with explainable priority, ownership, SLA-risk,
+  and recovery-confirmation buckets.
+- Operator-owned resolution drafts, non-blocking completeness guidance, and
+  human-confirmed postmortem/knowledge sedimentation.
+- Reviewable incident recurrence detection with idempotent confirm and dismiss
+  actions that never reopen incidents automatically.
+- Knowledge-gap discovery for frequent, severe, or slow incident patterns
+  without a proven effective runbook.
+- Conservative, service-scoped recommendation calibration from explicit
+  feedback and runbook outcomes, while retaining raw scores and explanations.
+- Guided inbound-source onboarding with per-source credentials, one-time token
+  display, rotation/revocation, first-event evidence, and payload-shape drift
+  tracking. Managed-source identity is preserved through deduplication,
+  grouping, recurrence, response views, and archival so identical vendors
+  remain isolated by connection.
+- Read-only Alert Quality Center with explainable source scoring, normalized
+  field coverage, recovery matching, identity-churn and stale-recovery checks,
+  timestamp validation, Schema drift evidence, unattended-incident visibility,
+  and bounded scan metadata. It provides upstream recommendations without
+  source mutations or automated repair actions.
+
 ## [3.4.0] - 2026-07-16
 
 ### Added

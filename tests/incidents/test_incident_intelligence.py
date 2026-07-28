@@ -82,6 +82,11 @@ async def test_intelligence_ranks_matching_history_changes_and_published_runbook
             "root_cause": "Database connection pool saturation",
             "recommendations": ["Roll back the checkout release"],
         },
+        resolution_record={
+            "root_cause": "A human-confirmed database pool leak",
+            "resolution": "Restarted the pooler and deployed the fixed release",
+            "actor": "alice",
+        },
     )
     unrelated = Incident(
         title="billing queue depth",
@@ -169,6 +174,8 @@ async def test_intelligence_ranks_matching_history_changes_and_published_runbook
     assert result is not None
     assert result["strategy"] == "deterministic_v1"
     assert result["similar_incidents"][0]["incident_id"] == matching.id
+    assert result["similar_incidents"][0]["root_cause"] == "A human-confirmed database pool leak"
+    assert result["similar_incidents"][0]["resolution"] == "Restarted the pooler and deployed the fixed release"
     assert all(item["incident_id"] != unrelated.id for item in result["similar_incidents"])
     assert [item["external_id"] for item in result["related_changes"]] == ["deploy-42"]
     assert [item["source_ref"] for item in result["recommended_runbooks"]] == ["wiki:checkout-rollback"]
@@ -186,7 +193,7 @@ async def test_intelligence_ranks_matching_history_changes_and_published_runbook
 async def test_change_ingestion_is_idempotent_and_feedback_is_returned(
     db_session: AsyncSession,
 ) -> None:
-    from models import ChangeEvent, Incident
+    from models import AuditLog, ChangeEvent, Incident
     from services.incidents.intelligence import (
         get_incident_intelligence,
         record_intelligence_feedback,
@@ -229,8 +236,26 @@ async def test_change_ingestion_is_idempotent_and_feedback_is_returned(
             "comment": "Confirmed by deploy timeline",
         },
     )
+    repeated_feedback = await record_intelligence_feedback(
+        db_session,
+        int(incident.id),
+        {
+            "recommendation_type": "change",
+            "candidate_ref": f"change:{second.id}",
+            "verdict": "relevant",
+            "actor": "tester",
+            "comment": "Confirmed by deploy timeline",
+        },
+    )
     result = await get_incident_intelligence(db_session, int(incident.id))
     count = await db_session.scalar(select(func.count(ChangeEvent.id)))
+    feedback_audit_count = await db_session.scalar(
+        select(func.count(AuditLog.id)).where(
+            AuditLog.resource_type == "incident",
+            AuditLog.resource_id == incident.id,
+            AuditLog.action == "intel_feedback",
+        )
+    )
 
     assert first_created is True
     assert second_created is False
@@ -238,6 +263,9 @@ async def test_change_ingestion_is_idempotent_and_feedback_is_returned(
     assert second.version_to == "v2"
     assert count == 1
     assert feedback is not None
+    assert repeated_feedback is not None
+    assert repeated_feedback.id == feedback.id
+    assert feedback_audit_count == 1
     assert result is not None
     assert result["related_changes"][0]["feedback"] == "relevant"
 

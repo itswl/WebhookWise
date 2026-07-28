@@ -10,6 +10,7 @@ from sqlalchemy.orm import load_only
 
 from core.datetime_utils import utc_isoformat
 from models import Incident, IncidentMember, WebhookEvent
+from models.incident import IncidentRecurrence
 from services.operations.workflow import list_notes
 from services.pagination import apply_cursor_window, trim_cursor_window
 
@@ -20,6 +21,7 @@ _INCIDENT_ROW_ATTRS = (
     Incident.title,
     Incident.status,
     Incident.source,
+    Incident.source_connection_id,
     Incident.started_at,
     Incident.ended_at,
     Incident.alert_count,
@@ -62,6 +64,26 @@ async def list_incidents(
     result = await session.execute(query)
     page_window = trim_cursor_window(list(result.scalars().all()), page_size, lambda i: i.id)
     rows = [_incident_row(i) for i in page_window.rows]
+    row_by_id = {int(row["id"]): row for row in rows}
+    if row_by_id:
+        recurrence_rows = (
+            await session.execute(
+                select(
+                    IncidentRecurrence.id,
+                    IncidentRecurrence.recurring_incident_id,
+                    IncidentRecurrence.previous_incident_id,
+                    IncidentRecurrence.status,
+                ).where(IncidentRecurrence.recurring_incident_id.in_(row_by_id))
+            )
+        ).all()
+        for row in rows:
+            row["recurrence_candidate"] = None
+        for recurrence in recurrence_rows:
+            row_by_id[int(recurrence.recurring_incident_id)]["recurrence_candidate"] = {
+                "recurrence_id": int(recurrence.id),
+                "status": recurrence.status,
+                "previous_incident_id": int(recurrence.previous_incident_id),
+            }
     return rows, page_window.has_more, page_window.next_cursor
 
 
@@ -132,6 +154,7 @@ def _incident_row(incident: Incident) -> dict[str, Any]:
         "title": incident.title,
         "status": incident.status,
         "source": incident.source,
+        "source_connection_id": incident.source_connection_id,
         "started_at": utc_isoformat(incident.started_at),
         "ended_at": utc_isoformat(incident.ended_at),
         "alert_count": incident.alert_count,

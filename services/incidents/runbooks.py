@@ -369,6 +369,10 @@ async def update_runbook_execution(
         normalized_effectiveness = str(effectiveness)
         if normalized_effectiveness not in _EFFECTIVENESS_VALUES:
             raise RunbookExecutionConflictError("Unsupported runbook effectiveness value")
+        if normalized_effectiveness in {"effective", "ineffective"} and target_status not in _TERMINAL_STATUSES:
+            raise RunbookExecutionConflictError(
+                "Runbook effectiveness can only be rated after the execution reaches a terminal status"
+            )
         if execution.effectiveness != normalized_effectiveness:
             execution.effectiveness = normalized_effectiveness
             changed_fields.add("effectiveness")
@@ -388,6 +392,10 @@ async def update_runbook_execution(
     if current_status != target_status:
         execution.status = target_status
         execution.completed_at = now if target_status in _TERMINAL_STATUSES else None
+        if target_status == "in_progress" and execution.effectiveness is not None:
+            execution.effectiveness = None
+            changed_fields.add("effectiveness")
+            summaries.append("effectiveness reset after resume")
         changed_fields.add("status")
         summaries.append(f"status {current_status}->{target_status}")
 

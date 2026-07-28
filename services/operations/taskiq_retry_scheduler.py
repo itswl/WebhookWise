@@ -43,10 +43,18 @@ async def _schedule_by_time(schedule_id: str, delay_seconds: int, task: Any, **k
     await task.kicker().with_schedule_id(schedule_id).schedule_by_time(dynamic_schedule_source, run_at, **kwargs)
 
 
-def _raw_ingest_schedule_id(request_id: str | None, source: str | None, raw_body: str | None) -> str:
+def _raw_ingest_schedule_id(
+    request_id: str | None,
+    source: str | None,
+    raw_body: str | None,
+    source_connection_id: int | None = None,
+) -> str:
     if request_id:
         return f"webhook-ingest-retry:{request_id}"
-    seed = f"{source or 'unknown'}\0{raw_body or ''}".encode("utf-8", errors="replace")
+    seed = f"{source or 'unknown'}\0{source_connection_id or ''}\0{raw_body or ''}".encode(
+        "utf-8",
+        errors="replace",
+    )
     return f"webhook-ingest-retry:{hashlib.sha256(seed).hexdigest()[:32]}"
 
 
@@ -61,6 +69,7 @@ async def schedule_webhook_ingest_retry(
     received_at: str | None,
     ingest_retry_count: int,
     traceparent: str | None = None,
+    source_connection_id: int | None = None,
 ) -> None:
     """Schedule a raw webhook retry without requiring a pre-existing DB event."""
     from services.operations.tasks import process_webhook_task
@@ -74,10 +83,15 @@ async def schedule_webhook_ingest_retry(
         "received_at": received_at,
         "ingest_retry_count": ingest_retry_count,
     }
+    if source_connection_id is not None:
+        kwargs["source_connection_id"] = source_connection_id
     if traceparent:
         kwargs["traceparent"] = traceparent
     await _schedule_by_time(
-        _raw_ingest_schedule_id(request_id, source, raw_body), delay_seconds, process_webhook_task, **kwargs
+        _raw_ingest_schedule_id(request_id, source, raw_body, source_connection_id),
+        delay_seconds,
+        process_webhook_task,
+        **kwargs,
     )
 
 

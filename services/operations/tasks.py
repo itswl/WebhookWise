@@ -60,6 +60,7 @@ _REPORT_CRON_OFFSET = "Asia/Shanghai"
 @dataclass(slots=True)
 class _WebhookTaskContext:
     source: str
+    source_connection_id: int | None
     raw_headers: dict[str, str]
     raw_body: str
     client_ip: str
@@ -112,6 +113,7 @@ async def _handle_raw_webhook_failure(
     ingest_retry_count: int,
     err: Exception,
     traceparent: str | None = None,
+    source_connection_id: int | None = None,
 ) -> None:
     from core.observability.metrics import WEBHOOK_DEAD_LETTER_TOTAL, WEBHOOK_PROCESSING_STATUS_TOTAL
     from core.retry_policies import retry_policy
@@ -141,6 +143,7 @@ async def _handle_raw_webhook_failure(
                 received_at=received_at,
                 ingest_retry_count=next_retry_count,
                 traceparent=traceparent,
+                source_connection_id=source_connection_id,
             )
             WEBHOOK_PROCESSING_STATUS_TOTAL.labels(status="retry").inc()
             logger.error(
@@ -166,6 +169,7 @@ async def _handle_raw_webhook_failure(
 
     event_id = await record_raw_ingest_dead_letter(
         source=source,
+        source_connection_id=source_connection_id,
         raw_headers=raw_headers,
         raw_body=raw_body,
         client_ip=client_ip,
@@ -279,6 +283,7 @@ def _build_webhook_task_context(
     *,
     client_ip: str | None,
     source_name: str,
+    source_connection_id: int | None = None,
     raw_headers: dict[str, str] | None,
     raw_body: str | None,
     request_id: str | None,
@@ -294,6 +299,7 @@ def _build_webhook_task_context(
     )
     return _WebhookTaskContext(
         source=source_name or "unknown",
+        source_connection_id=source_connection_id,
         raw_headers=raw_headers or {},
         raw_body=raw_body or "",
         client_ip=client_ip or "",
@@ -370,6 +376,7 @@ async def process_webhook_task(
     received_at: str | None = None,
     ingest_retry_count: int = 0,
     traceparent: str | None = None,
+    source_connection_id: int | None = None,
 ) -> None:
     """Process a raw ingested webhook."""
     from services.webhooks.pipeline import handle_webhook_ingest
@@ -377,6 +384,7 @@ async def process_webhook_task(
     ctx = _build_webhook_task_context(
         client_ip=client_ip,
         source_name=source_name,
+        source_connection_id=source_connection_id,
         raw_headers=raw_headers,
         raw_body=raw_body,
         request_id=request_id,
@@ -411,6 +419,7 @@ async def process_webhook_task(
                     client_ip=ctx.client_ip,
                     request_id=ctx.request_id,
                     received_at=ctx.received_at,
+                    source_connection_id=ctx.source_connection_id,
                 )
             except _TASK_PROCESSING_ERRORS as e:
                 await _handle_raw_webhook_failure(
@@ -422,6 +431,7 @@ async def process_webhook_task(
                     received_at=ctx.received_at,
                     ingest_retry_count=ctx.ingest_retry_count,
                     traceparent=ctx.trace_headers["traceparent"] or ctx.traceparent,
+                    source_connection_id=ctx.source_connection_id,
                     err=e,
                 )
                 outcome = "raw_failure_handled"

@@ -44,6 +44,25 @@ PUT  /v1/incidents/{incident_id}/runbook-executions/{execution_id}
 
 WebhookWise extracts structured Markdown steps but never executes commands.
 
+The operator response and learning APIs are:
+
+```text
+GET /v1/response-center/work-queue
+GET /v1/response-center/knowledge-gaps
+
+GET /v1/incidents/{incident_id}/resolution
+PUT /v1/incidents/{incident_id}/resolution
+
+GET  /v1/incidents/{incident_id}/recurrence
+POST /v1/incidents/{incident_id}/recurrence/confirm
+POST /v1/incidents/{incident_id}/recurrence/dismiss
+```
+
+Resolution completeness is advisory, recurrence decisions never reopen an
+incident, and recommendation candidates retain both raw and conservatively
+calibrated scores. See
+[Incident learning workspace](../features/incident-learning-workspace.md).
+
 Change and service read APIs are:
 
 ```text
@@ -87,6 +106,30 @@ The optional Feishu custom-app callback is
 `POST /v1/integrations/feishu/card-actions`. It uses a dedicated Feishu
 verification token and signed action values instead of management API keys.
 See [Feishu interactive incident cards](../integrations/feishu-interactive-cards.md).
+
+New senders can use a dedicated, revocable source credential instead of the
+global webhook secret:
+
+```text
+GET  /v1/onboarding/source-types
+GET  /v1/onboarding/sources
+POST /v1/onboarding/sources
+POST /v1/source-webhooks/{public_id}
+```
+
+See [Inbound source onboarding](../integrations/inbound-source-onboarding.md)
+for the full lifecycle and sender configuration.
+
+Alert-source quality is available through a read-only endpoint:
+
+```text
+GET /v1/alert-quality/overview?window_days=7&source_limit=100
+```
+
+The response includes per-source scores, field coverage, recovery matching,
+identity stability, Schema drift, unattended-incident findings, example event
+IDs, and explicit scan bounds. It never mutates the source or offers a repair
+action. See [Alert Quality Center](../features/alert-quality-center.md).
 
 ## Read-only MCP server
 

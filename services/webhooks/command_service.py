@@ -36,6 +36,7 @@ class SaveWebhookResult:
 class SaveWebhookInput:
     data: WebhookData
     source: str = "unknown"
+    source_connection_id: int | None = None
     raw_payload: bytes | None = None
     headers: HeadersDict | None = None
     client_ip: str | None = None
@@ -109,6 +110,7 @@ def _fill_duplicate_event(
     event.fill_fields(
         WebhookEventInput(
             source=payload.source,
+            source_connection_id=payload.source_connection_id,
             request_id=payload.request_id,
             client_ip=payload.client_ip,
             parsed_data=payload.data,
@@ -138,6 +140,7 @@ def _fill_completed_event(
     event.fill_fields(
         WebhookEventInput(
             source=payload.source,
+            source_connection_id=payload.source_connection_id,
             request_id=payload.request_id,
             client_ip=payload.client_ip,
             raw_payload=payload.raw_payload,
@@ -337,7 +340,14 @@ async def _resolve_duplicate_status(
     if is_duplicate is not None or skip_duplicate_lookup:
         return _DuplicateStatus(bool(is_duplicate), original_event, original_event_id)
 
-    alert_hash = generate_alert_hash(dict(payload.data), payload.source)
+    namespace = (
+        f"source-connection:{payload.source_connection_id}" if payload.source_connection_id is not None else None
+    )
+    alert_hash = generate_alert_hash(
+        dict(payload.data),
+        payload.source,
+        namespace=namespace,
+    )
     check = await check_duplicate_event(
         alert_hash,
         session=session,
@@ -352,7 +362,18 @@ async def _resolve_duplicate_status(
 
 async def save_webhook_data(*, input: SaveWebhookInput) -> SaveWebhookResult:
     if input.alert_hash is None:
-        object.__setattr__(input, "alert_hash", generate_alert_hash(dict(input.data), input.source))
+        namespace = (
+            f"source-connection:{input.source_connection_id}" if input.source_connection_id is not None else None
+        )
+        object.__setattr__(
+            input,
+            "alert_hash",
+            generate_alert_hash(
+                dict(input.data),
+                input.source,
+                namespace=namespace,
+            ),
+        )
     try:
         async with session_scope() as session:
             return await save_webhook_data_in_session(session, input=input)
@@ -364,17 +385,36 @@ async def save_webhook_data(*, input: SaveWebhookInput) -> SaveWebhookResult:
 async def save_webhook_data_in_session(session: AsyncSession, *, input: SaveWebhookInput) -> SaveWebhookResult:
     """Persist webhook data using an existing transaction/session."""
     if input.alert_hash is None:
-        object.__setattr__(input, "alert_hash", generate_alert_hash(dict(input.data), input.source))
+        namespace = (
+            f"source-connection:{input.source_connection_id}" if input.source_connection_id is not None else None
+        )
+        object.__setattr__(
+            input,
+            "alert_hash",
+            generate_alert_hash(
+                dict(input.data),
+                input.source,
+                namespace=namespace,
+            ),
+        )
     payload = SaveWebhookInput(
         data=input.data,
         source=input.source,
+        source_connection_id=input.source_connection_id,
         raw_payload=await _stored_raw_payload(input.raw_payload),
         headers=redact_headers(input.headers),
         client_ip=input.client_ip,
         request_id=input.request_id,
         ai_analysis=input.ai_analysis,
         forward_status=input.forward_status,
-        alert_hash=input.alert_hash or generate_alert_hash(dict(input.data), input.source),
+        alert_hash=input.alert_hash
+        or generate_alert_hash(
+            dict(input.data),
+            input.source,
+            namespace=(
+                f"source-connection:{input.source_connection_id}" if input.source_connection_id is not None else None
+            ),
+        ),
         dedup_key=input.dedup_key,
         prev_alert_id=input.prev_alert_id,
     )

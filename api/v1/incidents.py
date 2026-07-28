@@ -9,10 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import fail_response, internal_error_response, ok_response
 from core.auth import verify_admin_write, verify_api_key
-from core.datetime_utils import utcnow
+from core.datetime_utils import utc_isoformat, utcnow
 from core.logger import get_logger
 from core.webhook_security import check_admin_rate_limit_dep
 from db.session import get_db_session
+from schemas.incident_resolution import (
+    IncidentRecurrenceReviewRequest,
+    IncidentResolutionRequest,
+)
 from schemas.intelligence import (
     IntelligenceFeedbackRequest,
     RunbookExecutionStartRequest,
@@ -26,6 +30,20 @@ from services.incidents.queries import (
     get_incident_detail,
     get_incident_summary,
     list_incidents,
+)
+from services.incidents.recurrence import (
+    RecurrenceConflictError,
+    RecurrenceNotFoundError,
+    get_incident_recurrence,
+    review_incident_recurrence,
+)
+from services.incidents.resolution import (
+    ResolutionRecordConflictError,
+    apply_resolution_record,
+    get_resolution_record,
+    lock_incident_for_resolution,
+    resolution_record_response,
+    save_resolution_record,
 )
 from services.incidents.runbooks import (
     RunbookExecutionConflictError,
@@ -223,6 +241,171 @@ async def update_runbook_execution_endpoint(
 
 
 @incidents_router.get(
+    "/incidents/{incident_id}/resolution",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
+)
+async def get_incident_resolution_endpoint(
+    incident_id: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Read the operator-owned resolution draft and its completeness."""
+    try:
+        data = await get_resolution_record(session, incident_id)
+        if data is None:
+            return fail_response(f"Incident {incident_id} not found", 404)
+        return ok_response(http_status=200, data=data)
+    except _INCIDENT_ERRORS as error:
+        logger.error(
+            "Failed to read incident resolution id=%s: %s",
+            incident_id,
+            error,
+            exc_info=True,
+        )
+        return internal_error_response()
+
+
+@incidents_router.put(
+    "/incidents/{incident_id}/resolution",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_admin_write)],
+)
+async def save_incident_resolution_endpoint(
+    incident_id: int,
+    request: IncidentResolutionRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Save a partial resolution draft; completeness never gates closure."""
+    try:
+        changes = request.model_dump(exclude_unset=True, exclude={"actor"})
+        if not changes:
+            existing = await get_resolution_record(session, incident_id)
+            if existing is None:
+                return fail_response(f"Incident {incident_id} not found", 404)
+            return ok_response(
+                http_status=200,
+                message="incident resolution draft unchanged",
+                data=existing,
+            )
+        saved = await save_resolution_record(
+            session,
+            incident_id,
+            changes=changes,
+            actor=request.actor,
+        )
+        if saved is None:
+            return fail_response(f"Incident {incident_id} not found", 404)
+        incident, changed = saved
+        return ok_response(
+            http_status=200,
+            message=("incident resolution draft saved" if changed else "incident resolution draft unchanged"),
+            data=resolution_record_response(incident),
+        )
+    except ResolutionRecordConflictError as error:
+        return fail_response(str(error), 409)
+    except _INCIDENT_ERRORS as error:
+        logger.error(
+            "Failed to save incident resolution id=%s: %s",
+            incident_id,
+            error,
+            exc_info=True,
+        )
+        return internal_error_response()
+
+
+@incidents_router.get(
+    "/incidents/{incident_id}/recurrence",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
+)
+async def get_incident_recurrence_endpoint(
+    incident_id: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Read a pending or reviewed recurrence association."""
+    try:
+        data = await get_incident_recurrence(session, incident_id)
+        if data is None:
+            return fail_response(f"Incident {incident_id} not found", 404)
+        return ok_response(http_status=200, data=data)
+    except _INCIDENT_ERRORS as error:
+        logger.error(
+            "Failed to read incident recurrence id=%s: %s",
+            incident_id,
+            error,
+            exc_info=True,
+        )
+        return internal_error_response()
+
+
+async def _review_recurrence_endpoint(
+    incident_id: int,
+    request: IncidentRecurrenceReviewRequest,
+    session: AsyncSession,
+    decision: str,
+) -> JSONResponse:
+    try:
+        data, changed = await review_incident_recurrence(
+            session,
+            incident_id,
+            decision=decision,
+            actor=request.actor,
+            note=request.note,
+        )
+        return ok_response(
+            http_status=200,
+            message=(f"incident recurrence {decision}" if changed else f"incident recurrence already {decision}"),
+            data=data,
+        )
+    except RecurrenceNotFoundError as error:
+        return fail_response(str(error), 404)
+    except RecurrenceConflictError as error:
+        return fail_response(str(error), 409)
+    except _INCIDENT_ERRORS as error:
+        logger.error(
+            "Failed to review incident recurrence id=%s decision=%s: %s",
+            incident_id,
+            decision,
+            error,
+            exc_info=True,
+        )
+        return internal_error_response()
+
+
+@incidents_router.post(
+    "/incidents/{incident_id}/recurrence/confirm",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_admin_write)],
+)
+async def confirm_incident_recurrence_endpoint(
+    incident_id: int,
+    request: IncidentRecurrenceReviewRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Confirm a pending recurrence without reopening either incident."""
+    return await _review_recurrence_endpoint(
+        incident_id,
+        request,
+        session,
+        "confirmed",
+    )
+
+
+@incidents_router.post(
+    "/incidents/{incident_id}/recurrence/dismiss",
+    dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_admin_write)],
+)
+async def dismiss_incident_recurrence_endpoint(
+    incident_id: int,
+    request: IncidentRecurrenceReviewRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Dismiss a pending recurrence without mutating either incident."""
+    return await _review_recurrence_endpoint(
+        incident_id,
+        request,
+        session,
+        "dismissed",
+    )
+
+
+@incidents_router.get(
     "/incidents/{incident_id}",
     dependencies=[Depends(check_admin_rate_limit_dep), Depends(verify_api_key)],
 )
@@ -307,44 +490,74 @@ async def trigger_incident_summary_endpoint(incident_id: int) -> JSONResponse:
     response_model=None,
     dependencies=[Depends(verify_admin_write)],
 )
-async def close_incident_endpoint(incident_id: int, session: AsyncSession = Depends(get_db_session)) -> JSONResponse:
+async def close_incident_endpoint(
+    incident_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    request: IncidentResolutionRequest | None = None,
+) -> JSONResponse:
     """Mark an incident as closed (operator resolution).
 
     A closed incident no longer appears in the active list but is preserved
     for historical review. Re-opening is a separate call so closure is always
     an explicit operator action, not an automated side effect.
     """
-    from models import Incident
     from services.operations.audit_logger import add_audit
 
     try:
-        incident = await session.get(Incident, incident_id)
+        incident = await lock_incident_for_resolution(session, incident_id)
         if incident is None:
             return fail_response(f"Incident {incident_id} not found", 404)
-        incident.status = "closed"
-        incident.workflow_status = "resolved"
-        incident.resolved_at = utcnow()
-        incident.ended_at = incident.ended_at or utcnow()
-        if incident.summary_analysis is None and incident.alert_count >= 2:
-            incident.summary_status = "pending"
-            incident.summary_attempts = 0
-            incident.summary_next_attempt_at = utcnow()
-            incident.summary_last_error = None
-        elif incident.summary_analysis is None:
-            incident.summary_status = "skipped"
-            incident.summary_next_attempt_at = None
-            incident.summary_last_error = "singleton incidents are not summarized"
-        add_audit(
-            session,
-            "incident",
-            incident_id,
-            incident.title,
-            "closed",
-            f"Incident closed: {incident.title}",
-        )
+        actor = request.actor if request is not None else "dashboard"
+        if request is not None:
+            changes = request.model_dump(exclude_unset=True, exclude={"actor"})
+            if changes:
+                await apply_resolution_record(
+                    session,
+                    incident,
+                    changes=changes,
+                    actor=actor,
+                )
+        already_closed = incident.status == "closed" and incident.workflow_status == "resolved"
+        if not already_closed:
+            now = utcnow()
+            incident.status = "closed"
+            incident.workflow_status = "resolved"
+            incident.resolved_at = incident.resolved_at or now
+            incident.ended_at = incident.ended_at or now
+            if incident.summary_analysis is None and incident.alert_count >= 2:
+                incident.summary_status = "pending"
+                incident.summary_attempts = 0
+                incident.summary_next_attempt_at = now
+                incident.summary_last_error = None
+            elif incident.summary_analysis is None:
+                incident.summary_status = "skipped"
+                incident.summary_next_attempt_at = None
+                incident.summary_last_error = "singleton incidents are not summarized"
+            add_audit(
+                session,
+                "incident",
+                incident_id,
+                incident.title,
+                "closed",
+                f"Incident closed: {incident.title}",
+                actor=actor,
+            )
         await session.commit()
+        await session.refresh(incident)
         logger.info("[Incidents] Marked incident id=%s as closed", incident_id)
-        return ok_response(http_status=200, message="incident closed", data={"id": incident_id, "status": "closed"})
+        return ok_response(
+            http_status=200,
+            message="incident already closed" if already_closed else "incident closed",
+            data={
+                "id": incident_id,
+                "status": "closed",
+                "workflow_status": incident.workflow_status,
+                "resolved_at": utc_isoformat(incident.resolved_at),
+                "resolution": resolution_record_response(incident),
+            },
+        )
+    except ResolutionRecordConflictError as e:
+        return fail_response(str(e), 409)
     except _INCIDENT_ERRORS as e:
         logger.error("Failed to close incident id=%s: %s", incident_id, e, exc_info=True)
         return internal_error_response()

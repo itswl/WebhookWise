@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from models import KBDocument
 from services.kb.embedding import PLACEHOLDER_MODEL, embed_texts, is_placeholder_active
 from services.kb.retrieval import RetrievedChunk, _cosine, format_context, retrieve, retrieve_context
 from services.kb.store import chunk_text, count_documents, ingest_document
@@ -110,6 +112,37 @@ async def test_ingest_is_idempotent_by_content_hash(
 
     assert r1.chunks == r2.chunks
     assert total == r1.chunks  # re-ingest upserted, did not duplicate
+
+
+@pytest.mark.asyncio
+async def test_ingest_isolates_same_title_and_content_by_source_reference(
+    session_factory: async_sessionmaker[AsyncSession],
+    temp_config,
+) -> None:
+    temp_config.kb.KB_VECTOR_DIM = 64
+    async with session_factory.begin() as session:
+        await ingest_document(
+            session,
+            title="Incident resolution: checkout unavailable",
+            content="Restarted the checkout deployment.",
+            source_ref="incident:101",
+            status="published",
+        )
+        await ingest_document(
+            session,
+            title="Incident resolution: checkout unavailable",
+            content="Restarted the checkout deployment.",
+            source_ref="incident:202",
+            status="draft",
+        )
+
+    async with session_factory() as session:
+        rows = list((await session.execute(select(KBDocument).order_by(KBDocument.source_ref))).scalars().all())
+
+    assert [(row.source_ref, row.status) for row in rows] == [
+        ("incident:101", "published"),
+        ("incident:202", "draft"),
+    ]
 
 
 @pytest.mark.asyncio

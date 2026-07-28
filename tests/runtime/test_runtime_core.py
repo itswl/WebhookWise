@@ -847,6 +847,9 @@ async def test_retry_scheduler_schedules_tasks_and_best_effort_failures(
     assert retry_scheduler.compute_backoff_delay(5, initial_delay=5, max_delay=60, multiplier=2) == 60
     assert retry_scheduler._raw_ingest_schedule_id("req-1", "github", "{}") == "webhook-ingest-retry:req-1"
     assert retry_scheduler._raw_ingest_schedule_id(None, "github", "{}").startswith("webhook-ingest-retry:")
+    assert retry_scheduler._raw_ingest_schedule_id(None, "github", "{}", 1) != retry_scheduler._raw_ingest_schedule_id(
+        None, "github", "{}", 2
+    )
 
     await retry_scheduler.schedule_webhook_ingest_retry(
         delay_seconds=-1,
@@ -858,12 +861,14 @@ async def test_retry_scheduler_schedules_tasks_and_best_effort_failures(
         received_at="now",
         ingest_retry_count=2,
         traceparent="00-" + "a" * 32 + "-0123456789abcdef-01",
+        source_connection_id=77,
     )
     await retry_scheduler.schedule_forward_outbox(42, 3)
     await retry_scheduler.schedule_openclaw_poll(99, 4)
 
     assert deleted == ["webhook-ingest-retry:req-1", "forward-outbox:42", "openclaw-poll:99"]
     assert scheduled[0][2]["traceparent"]
+    assert scheduled[0][2]["source_connection_id"] == 77
     assert scheduled[1][2] == {"outbox_id": 42}
     assert scheduled[2][2] == {"analysis_id": 99}
 

@@ -31,7 +31,7 @@ class KBDocument(Base):
     source_ref: Mapped[str | None] = mapped_column(String(500))
     chunk_index: Mapped[int] = mapped_column(Integer, default=0)
     content: Mapped[str] = mapped_column(Text)
-    # Idempotency / dedup key: sha256 of (title + chunk_index + content).
+    # Idempotency key scoped to source_ref (or title when source_ref is absent).
     content_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
 
     # Stored embedding (list[float]) + the model that produced it. "placeholder"

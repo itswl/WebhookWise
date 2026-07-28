@@ -64,7 +64,8 @@
         <div id="alertsTab" class="tab-content" style="display: none;">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; margin:20px 0; flex-wrap:wrap; gap:12px;">
                 <div class="inbox-view-switch" style="display:flex; gap:8px; align-items:center;">
-                    <button class="btn inbox-view-btn active" data-inbox-view="alerts" data-i18n="inbox.view.alerts">Alerts</button>
+                <button class="btn inbox-view-btn active" data-inbox-view="alerts" data-i18n="inbox.view.alerts">Alerts</button>
+                    <button class="btn inbox-view-btn" data-inbox-view="work-queue" data-i18n="inbox.view.workQueue">Work queue</button>
                     <button class="btn inbox-view-btn" data-inbox-view="incidents" data-i18n="inbox.view.incidents">Incidents</button>
                     <button class="btn inbox-view-btn" data-inbox-view="investigations" data-i18n="inbox.view.investigations">Investigations</button>
                 </div>
@@ -180,6 +181,40 @@
                 </select>
             </div>
             </div>
+
+        <!-- Inbox: compact incident response work queue -->
+        <div id="inboxViewWorkQueue" style="display: none;">
+            <div class="response-work-queue">
+                <div class="response-view-header">
+                    <div>
+                        <div class="section-title" data-i18n="response.queue.title">Incident work queue</div>
+                        <p data-i18n="response.queue.subtitle">Prioritized incidents with one clear next action.</p>
+                    </div>
+                    <label class="response-actor-field">
+                        <span data-i18n="response.queue.actor">My operator name</span>
+                        <input id="responseQueueActor" class="filter-input" type="text"
+                               data-i18n-placeholder="response.queue.actorPlaceholder"
+                               placeholder="e.g. alice" autocomplete="name">
+                    </label>
+                </div>
+                <div class="response-bucket-switch" role="tablist" data-i18n-aria-label="response.queue.bucketLabel"
+                     aria-label="Incident work queue filter">
+                    <button class="btn response-bucket-btn active" type="button" data-response-bucket="active"
+                            data-i18n="response.queue.bucket.active">Active</button>
+                    <button class="btn response-bucket-btn" type="button" data-response-bucket="my"
+                            data-i18n="response.queue.bucket.my">Mine</button>
+                    <button class="btn response-bucket-btn" type="button" data-response-bucket="unassigned"
+                            data-i18n="response.queue.bucket.unassigned">Unassigned</button>
+                    <button class="btn response-bucket-btn" type="button" data-response-bucket="sla_risk"
+                            data-i18n="response.queue.bucket.slaRisk">SLA risk</button>
+                    <button class="btn response-bucket-btn" type="button" data-response-bucket="needs_recovery"
+                            data-i18n="response.queue.bucket.needsRecovery">Verify recovery</button>
+                </div>
+                <div id="responseWorkQueueList">
+                    <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
+                </div>
+            </div>
+        </div>
 
         <!-- Inbox: Incidents view -->
         <div id="inboxViewIncidents" style="display: none;">
@@ -310,6 +345,8 @@
                     <div class="routing-view-switch" style="display: flex; gap: 8px; align-items: center;">
                         <button class="btn routing-view-btn active" data-routing-view="rules" data-i18n="routing.view.rules">Forward Rules</button>
                         <button class="btn routing-view-btn" data-routing-view="silences" data-i18n="routing.view.silences">Silences</button>
+                        <button class="btn routing-view-btn" data-routing-view="ingress" data-i18n="routing.view.ingress">Inbound setup</button>
+                        <button class="btn routing-view-btn" data-routing-view="quality" data-i18n="routing.view.quality">Alert quality</button>
                         <button class="btn routing-view-btn" data-routing-view="integrations" data-i18n="routing.view.integrations">Integrations</button>
                     </div>
                 </div>
@@ -369,6 +406,45 @@
                             <div class="spinner"></div>
                             <p data-i18n="common.loading">Loading...</p>
                         </div>
+                    </div>
+                </div>
+
+                <!-- View: guided inbound source setup -->
+                <div id="routingViewIngress" style="display:none;">
+                    <div class="section-header response-view-header">
+                        <div>
+                            <div class="section-title" data-i18n="ingress.title">Inbound setup</div>
+                            <p data-i18n="ingress.subtitle">Create a scoped source credential and verify the complete ingest path.</p>
+                        </div>
+                        <button class="btn" type="button" onclick="IngressSetupModule.reset()">
+                            ↻ <span data-i18n="ingress.restart">Start over</span>
+                        </button>
+                    </div>
+                    <div id="ingressSetupWizard"></div>
+                </div>
+
+                <!-- View: read-only alert source quality diagnostics -->
+                <div id="routingViewQuality" style="display:none;">
+                    <div class="section-header response-view-header alert-quality-header">
+                        <div>
+                            <div class="alert-quality-title-line">
+                                <div class="section-title" data-i18n="quality.title">Alert quality center</div>
+                                <span class="alert-quality-readonly">🔒 <span data-i18n="quality.readOnly">Read-only</span></span>
+                            </div>
+                            <p data-i18n="quality.subtitle">Inspect alert identity, field coverage, recovery matching, schema drift, and response hygiene. This view never changes source configuration.</p>
+                        </div>
+                        <label class="alert-quality-window">
+                            <span data-i18n="quality.window">Window</span>
+                            <select id="alertQualityWindow" class="filter-input">
+                                <option value="1" data-i18n="quality.window.1d">24 hours</option>
+                                <option value="7" selected data-i18n="quality.window.7d">7 days</option>
+                                <option value="30" data-i18n="quality.window.30d">30 days</option>
+                                <option value="90" data-i18n="quality.window.90d">90 days</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div id="alertQualityContent">
+                        <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
                     </div>
                 </div>
 
@@ -445,6 +521,7 @@
                 <button class="btn operations-view-btn active" type="button" data-operations-view="actions" data-i18n="operations.view.actions">Action queue</button>
                 <button class="btn operations-view-btn" type="button" data-operations-view="noise" data-i18n="operations.view.noise">Noise optimization</button>
                 <button class="btn operations-view-btn" type="button" data-operations-view="kb" data-i18n="operations.view.kb">Knowledge drafts</button>
+                <button class="btn operations-view-btn" type="button" data-operations-view="gaps" data-i18n="operations.view.gaps">Knowledge gaps</button>
             </div>
 
         <!-- Noise Center view -->
@@ -511,8 +588,173 @@
                 <div id="kbDraftsList"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
             </div>
         </div>
+
+        <!-- Knowledge gaps derived from repeated incidents and missing outcomes -->
+        <div id="knowledgeGapsTab" class="operations-view" style="display: none;">
+            <div style="padding:20px 0;">
+                <div class="section-header response-view-header">
+                    <div>
+                        <div class="section-title" data-i18n="knowledgeGaps.title">Knowledge gaps</div>
+                        <p data-i18n="knowledgeGaps.subtitle">Repeated work that lacks a proven runbook or complete resolution evidence.</p>
+                    </div>
+                    <div class="response-header-actions">
+                        <select id="knowledgeGapWindow" class="filter-input" onchange="ResponseCenterModule.loadKnowledgeGaps()">
+                            <option value="7" data-i18n="knowledgeGaps.window.7d">7 days</option>
+                            <option value="30" selected data-i18n="knowledgeGaps.window.30d">30 days</option>
+                            <option value="90" data-i18n="knowledgeGaps.window.90d">90 days</option>
+                        </select>
+                        <button class="btn" type="button" onclick="ResponseCenterModule.loadKnowledgeGaps()">
+                            🔄 <span data-i18n="common.refresh">Refresh</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="knowledgeGapsList">
+                    <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
+                </div>
+            </div>
+        </div>
         </div>
 
+    </div>
+
+    <!-- Structured incident resolution: all fields are optional so closure is never blocked. -->
+    <div class="modal" id="incidentResolutionModal" role="dialog" aria-modal="true"
+         aria-labelledby="incidentResolutionTitle">
+        <div class="modal-content modal-content-wide incident-resolution-modal">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title" id="incidentResolutionTitle" data-i18n="resolution.title">Resolve incident</h2>
+                    <p class="modal-subtitle" id="incidentResolutionSubtitle"></p>
+                </div>
+                <button class="btn btn-icon" type="button" onclick="IncidentsModule.closeResolutionModal()"
+                        data-i18n-aria-label="common.close" aria-label="Close">×</button>
+            </div>
+            <div class="modal-body">
+                <input id="incidentResolutionId" type="hidden">
+                <div class="resolution-progress" id="incidentResolutionProgress"></div>
+                <div class="resolution-form-grid">
+                    <label class="form-group">
+                        <span class="form-label" data-i18n="resolution.rootCauseCategory">Root-cause category</span>
+                        <select class="form-input" id="incidentResolutionCategory">
+                            <option value="" data-i18n="resolution.option.unknown">Not confirmed</option>
+                            <option value="change" data-i18n="resolution.category.change">Change / deployment</option>
+                            <option value="capacity" data-i18n="resolution.category.capacity">Capacity</option>
+                            <option value="dependency" data-i18n="resolution.category.dependency">Dependency</option>
+                            <option value="configuration" data-i18n="resolution.category.configuration">Configuration</option>
+                            <option value="software" data-i18n="resolution.category.software">Software defect</option>
+                            <option value="infrastructure" data-i18n="resolution.category.infrastructure">Infrastructure</option>
+                            <option value="false_positive" data-i18n="resolution.category.falsePositive">False positive</option>
+                            <option value="other" data-i18n="resolution.category.other">Other</option>
+                        </select>
+                    </label>
+                    <label class="form-group">
+                        <span class="form-label" data-i18n="resolution.changeAssociation">Change association</span>
+                        <select class="form-input" id="incidentResolutionChangeAssociation">
+                            <option value="unknown" data-i18n="resolution.option.unknown">Not confirmed</option>
+                            <option value="confirmed" data-i18n="resolution.change.confirm">Confirmed</option>
+                            <option value="suspected" data-i18n="resolution.change.suspected">Suspected</option>
+                            <option value="ruled_out" data-i18n="resolution.change.ruledOut">Ruled out</option>
+                        </select>
+                    </label>
+                </div>
+                <label class="form-group">
+                    <span class="form-label" data-i18n="resolution.relatedChange">Related change</span>
+                    <select class="form-input" id="incidentResolutionRelatedChangeId">
+                        <option value="" data-i18n="resolution.relatedChangeNone">No change selected</option>
+                    </select>
+                </label>
+                <label class="form-group">
+                    <span class="form-label" data-i18n="resolution.rootCause">Root cause</span>
+                    <textarea class="form-input" id="incidentResolutionRootCause" rows="3"
+                              data-i18n-placeholder="resolution.rootCausePlaceholder"
+                              placeholder="What caused the incident? You can complete this later."></textarea>
+                </label>
+                <label class="form-group">
+                    <span class="form-label" data-i18n="resolution.resolution">Resolution</span>
+                    <textarea class="form-input" id="incidentResolutionBody" rows="3"
+                              data-i18n-placeholder="resolution.resolutionPlaceholder"
+                              placeholder="What restored or mitigated the service?"></textarea>
+                </label>
+                <div class="resolution-form-grid">
+                    <label class="form-group">
+                        <span class="form-label" data-i18n="resolution.impact">Impact</span>
+                        <input class="form-input" id="incidentResolutionImpact" type="text"
+                               data-i18n-placeholder="resolution.impactPlaceholder"
+                               placeholder="Users, scope, or duration">
+                    </label>
+                    <label class="form-group">
+                        <span class="form-label" data-i18n="resolution.owner">Owner</span>
+                        <input class="form-input" id="incidentResolutionOwner" type="text"
+                               data-i18n-placeholder="resolution.ownerPlaceholder"
+                               placeholder="Operator or team">
+                    </label>
+                </div>
+                <label class="form-group">
+                    <span class="form-label" data-i18n="resolution.recoveryEvidence">Recovery evidence</span>
+                    <input class="form-input" id="incidentResolutionRecoveryEvidence" type="text"
+                           data-i18n-placeholder="resolution.recoveryPlaceholder"
+                           placeholder="Metric, check, or alert recovery that verifies the fix">
+                </label>
+                <label class="form-group">
+                    <span class="form-label" data-i18n="resolution.followUps">Follow-ups</span>
+                    <textarea class="form-input" id="incidentResolutionFollowUps" rows="2"
+                              data-i18n-placeholder="resolution.followUpsPlaceholder"
+                              placeholder="One item per line"></textarea>
+                </label>
+                <div id="incidentResolutionRecommendationFeedback"></div>
+                <p class="resolution-optional-note" data-i18n="resolution.optional">
+                    Every field is optional. Resolve now and complete the record later if the incident is time-sensitive.
+                </p>
+                <div class="form-error" id="incidentResolutionError" role="alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" type="button" onclick="IncidentsModule.closeResolutionModal()"
+                        data-i18n="common.cancel">Cancel</button>
+                <button class="btn" id="incidentResolutionDraftBtn" type="button"
+                        onclick="IncidentsModule.saveResolutionDraft()" data-i18n="resolution.saveDraft">Save draft</button>
+                <button class="btn btn-primary" id="incidentResolutionCloseBtn" type="button"
+                        onclick="IncidentsModule.submitResolution()" data-i18n="resolution.resolveNow">Resolve incident</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Runbook completion captures usefulness at the natural decision point. -->
+    <div class="modal" id="runbookCompletionModal" role="dialog" aria-modal="true"
+         aria-labelledby="runbookCompletionTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="runbookCompletionTitle" data-i18n="runbookCompletion.title">Complete runbook</h2>
+                <button class="btn btn-icon" type="button" onclick="IncidentsModule.closeRunbookCompletionModal()"
+                        data-i18n-aria-label="common.close" aria-label="Close">×</button>
+            </div>
+            <div class="modal-body">
+                <input id="runbookCompletionIncidentId" type="hidden">
+                <input id="runbookCompletionExecutionId" type="hidden">
+                <label class="form-group">
+                    <span class="form-label" data-i18n="runbookCompletion.effectiveness">Was this runbook effective?</span>
+                    <select class="form-input" id="runbookCompletionEffectiveness">
+                        <option value="unknown" data-i18n="runbookCompletion.unknown">Not sure yet</option>
+                        <option value="effective" data-i18n="incidents.runbook.effective">Effective</option>
+                        <option value="ineffective" data-i18n="incidents.runbook.ineffective">Ineffective</option>
+                    </select>
+                </label>
+                <label class="form-group">
+                    <span class="form-label" data-i18n="runbookCompletion.notes">Completion notes</span>
+                    <textarea class="form-input" id="runbookCompletionNotes" rows="4"
+                              data-i18n-placeholder="runbookCompletion.notesPlaceholder"
+                              placeholder="What worked, what did not, and any missing step"></textarea>
+                </label>
+                <div class="form-error" id="runbookCompletionError" role="alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" type="button" onclick="IncidentsModule.closeRunbookCompletionModal()"
+                        data-i18n="common.cancel">Cancel</button>
+                <button class="btn btn-primary" id="runbookCompletionSubmitBtn" type="button"
+                        onclick="IncidentsModule.submitRunbookCompletion()" data-i18n="incidents.runbook.complete">
+                    Complete runbook
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Credentials modal -->
@@ -541,7 +783,7 @@
                     <span id="authWriteStatus" data-i18n="auth.writeNotSaved">ADMIN_WRITE_KEY: not saved</span>
                 </div>
                 <p style="margin: 14px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="auth.storageNote">
-                    API_KEY is saved in this browser. ADMIN_WRITE_KEY is kept only for the current tab session and is cleared when the tab closes. Use “Clear credentials” to remove both. They are never written to server config.
+                    API_KEY and ADMIN_WRITE_KEY are saved in this browser until you clear them. Use “Clear credentials” to remove both. They are never written to server config.
                 </p>
             </div>
             <div class="modal-footer">
@@ -927,12 +1169,15 @@
     <script defer src="/static/js/incidents.js"></script>
     <script defer src="/static/js/rule-audit.js"></script>
     <script defer src="/static/js/integrations.js"></script>
+    <script defer src="/static/js/alert-quality.js"></script>
     <script defer src="/static/js/routing.js"></script>
     <script defer src="/static/js/deep-analyses.js"></script>
     <script defer src="/static/js/decision-trace.js"></script>
     <script defer src="/static/js/action-center.js"></script>
     <script defer src="/static/js/noise-center.js"></script>
     <script defer src="/static/js/kb-drafts.js"></script>
+    <script defer src="/static/js/response-center.js"></script>
+    <script defer src="/static/js/ingress-setup.js"></script>
     <script defer src="/static/js/dashboard.js"></script>
 </body>
 </html>
