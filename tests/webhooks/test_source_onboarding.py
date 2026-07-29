@@ -230,6 +230,7 @@ async def test_scoped_ingress_authenticates_and_forces_configured_source(
         return {
             "success": True,
             "message": "Webhook received and queued for processing",
+            "outcome": "queued",
             "event_id": None,
             "request_id": "managed-request-1",
         }
@@ -296,6 +297,7 @@ async def test_scoped_ingress_does_not_retry_queued_alert_when_status_tracking_f
         return {
             "success": True,
             "message": "Webhook received and queued for processing",
+            "outcome": "queued",
             "event_id": None,
             "request_id": "managed-request-2",
         }

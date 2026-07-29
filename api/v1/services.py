@@ -25,12 +25,13 @@ async def list_service_profiles_endpoint(
 ) -> JSONResponse:
     """List services discovered from recent non-empty incidents."""
     try:
-        rows = await list_service_profiles(session, window_days=window_days, limit=limit)
+        rows = await list_service_profiles(session, window_days=window_days, limit=limit + 1)
+        has_more = len(rows) > limit
         return ok_response(
             http_status=200,
-            data=rows,
+            data=rows[:limit],
             pagination={
-                "has_more": False,
+                "has_more": has_more,
                 "next_cursor": None,
                 "page_size": limit,
             },

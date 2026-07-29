@@ -47,7 +47,17 @@ async def _run_after_commit_actions(session: AsyncSession) -> None:
 def _discard_after_commit_actions(session: AsyncSession) -> None:
     info = getattr(session, "info", None)
     if isinstance(info, dict):
-        info.pop(_AFTER_COMMIT_ACTIONS_KEY, None)
+        dropped = info.pop(_AFTER_COMMIT_ACTIONS_KEY, None)
+        if dropped:
+            # A handler queued post-commit side effects (e.g. cross-worker
+            # cache invalidation) but left the transaction open — usually a
+            # read AFTER the final commit re-opening autobegin. The actions are
+            # dropped by design; make the degradation visible instead of
+            # silently falling back to cache TTLs.
+            _logger.warning(
+                "[DB] Discarding %d after-commit action(s) from a session left in a transaction",
+                len(dropped) if hasattr(dropped, "__len__") else 1,
+            )
 
 
 def _advisory_lock_classid(key: str) -> int:

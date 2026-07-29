@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import internal_error_response, ok_response
 from api.v1.webhook import JSONDict, receive_webhook
+from core.app_context import get_config_manager
 from core.auth import verify_admin_write
 from core.logger import get_logger
 from core.webhook_security import check_rate_limit_dep
@@ -124,15 +125,16 @@ async def list_sources_endpoint(
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     try:
-        rows = await list_source_connections(session, limit=limit)
+        rows = await list_source_connections(session, limit=limit + 1)
+        has_more = len(rows) > limit
         data: list[dict[str, object]] = []
-        for connection in rows:
+        for connection in rows[:limit]:
             item = source_connection_dict(connection)
             item["webhook_url"] = _webhook_url(request, connection.public_id)
             data.append(item)
         return ok_response(
             data=data,
-            pagination={"has_more": False, "next_cursor": None, "page_size": limit},
+            pagination={"has_more": has_more, "next_cursor": None, "page_size": limit},
         )
     except _ONBOARDING_ERRORS as error:
         logger.error("Failed to list inbound sources: %s", error, exc_info=True)
@@ -304,6 +306,23 @@ async def receive_managed_source_webhook(
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONDict | JSONResponse:
     """Receive a webhook through a revocable source-scoped credential."""
+    # Content-Length pre-check, mirroring the main ingress path: reject
+    # oversized requests from the header before buffering the body.
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared = int(content_length)
+        except ValueError:
+            declared = None
+        max_body_bytes = get_config_manager().security.MAX_WEBHOOK_BODY_BYTES
+        if declared is not None and max_body_bytes and declared > max_body_bytes:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "success": False,
+                    "error": f"Request body too large: {declared} bytes (max {max_body_bytes})",
+                },
+            )
     raw_body = await request.body()
     request.state.raw_body = raw_body
     request.state.source_connection_id = int(connection.id)
@@ -313,7 +332,9 @@ async def receive_managed_source_webhook(
         isinstance(result, dict)
         and result.get("success")
         and result.get("request_id")
-        and "suppressed" not in str(result.get("message") or "").lower()
+        # Structured outcome, not display-copy sniffing: only genuinely queued
+        # events advance the connection's onboarding state.
+        and result.get("outcome") == "queued"
     ):
         connection_id = int(connection.id)
         request_id = str(result["request_id"])
