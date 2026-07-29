@@ -4,11 +4,20 @@ import json
 from datetime import timedelta
 from typing import Any, cast
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.datetime_utils import utcnow
+from core.datetime_utils import utc_isoformat, utcnow
 from models import Incident, IncidentMember, SourceConnection, WebhookEvent
+from services.webhooks import alert_quality
 from services.webhooks.alert_quality import get_alert_quality_overview
+
+
+@pytest.fixture(autouse=True)
+def _clear_overview_cache():
+    alert_quality._reset_overview_cache_for_tests()
+    yield
+    alert_quality._reset_overview_cache_for_tests()
 
 
 def _connection(*, public_id: str, name: str, source_type: str = "grafana") -> SourceConnection:
@@ -249,3 +258,72 @@ async def test_alert_quality_flags_conservative_identity_churn_for_unmanaged_sou
         "identity_anchors": 1,
         "duplicate_rate": 0.0,
     }
+
+
+async def test_alert_quality_serves_cached_overview_without_requerying(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = _connection(public_id="src_quality_cache", name="Cached Grafana")
+    db_session.add(connection)
+    await db_session.flush()
+    db_session.add(
+        _event(
+            connection_id=int(connection.id),
+            request_id="quality-cache-event",
+            hours_ago=1,
+            parsed_data=_complete_payload(),
+            dedup_key="cache-event-key",
+        )
+    )
+    await db_session.flush()
+
+    executed_statements = 0
+    original_execute = db_session.execute
+
+    async def counting_execute(*args: Any, **kwargs: Any) -> Any:
+        nonlocal executed_statements
+        executed_statements += 1
+        return await original_execute(*args, **kwargs)
+
+    monkeypatch.setattr(db_session, "execute", counting_execute)
+
+    first = await get_alert_quality_overview(db_session, window_days=7, source_limit=100)
+    statements_after_first_call = executed_statements
+    second = await get_alert_quality_overview(db_session, window_days=7, source_limit=100)
+
+    assert statements_after_first_call > 0
+    assert executed_statements == statements_after_first_call
+    assert second == first
+
+
+async def test_alert_quality_sets_truncation_flags_when_scan_cap_is_hit(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(alert_quality, "_MAX_PAYLOAD_SCAN_EVENTS", 2)
+    events = [
+        _event(
+            connection_id=None,
+            request_id=f"quality-cap-{index}",
+            hours_ago=index + 1,
+            parsed_data=_complete_payload(),
+            dedup_key=f"cap-key-{index}",
+        )
+        for index in range(5)
+    ]
+    db_session.add_all(events)
+    await db_session.flush()
+
+    result = await get_alert_quality_overview(db_session, window_days=7, source_limit=100)
+
+    scan = cast(dict[str, Any], result["scan"])
+    summary = cast(dict[str, Any], result["summary"])
+    assert scan["event_limit"] == 2
+    assert scan["event_truncated"] is True
+    assert summary["events_in_window"] == 5
+    assert summary["events_scanned"] == 2
+    source = cast(list[dict[str, Any]], result["sources"])[0]
+    assert source["event_count"] == 5
+    expected_oldest_scanned = sorted((event.timestamp for event in events), reverse=True)[1]
+    assert scan["oldest_scanned_event_at"] == utc_isoformat(expected_oldest_scanned)

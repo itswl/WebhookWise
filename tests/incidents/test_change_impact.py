@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
 from models import ChangeEvent, Incident, WebhookEvent
+from services.incidents import change_impact
 from services.incidents.change_impact import assess_change_impact, get_change_impact
 
 
@@ -94,7 +95,58 @@ async def test_change_impact_explains_matching_before_after_growth(
     assert result["after_alert_count"] == 2
     assert result["new_identity_count"] == 1
     assert result["linked_incident_count"] == 1
+    assert result["truncated"] is False
     assert "not proof of causation" in str(result["summary"])
+
+
+@pytest.mark.asyncio
+async def test_change_impact_busy_after_window_keeps_delta_non_negative(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # With a shared budget of 4 rows the old single ascending query returned
+    # 3 before + 1 after (delta -2); per-side caps must keep the delta >= 0.
+    monkeypatch.setattr(change_impact, "_MAX_WINDOW_EVENTS", 4)
+    started_at = utcnow() - timedelta(hours=2)
+    change = ChangeEvent(
+        source="github",
+        external_id="deploy-busy",
+        change_type="deployment",
+        service="checkout",
+        environment="prod",
+        started_at=started_at,
+        status="succeeded",
+    )
+    db_session.add(change)
+    db_session.add_all(
+        [
+            _event(
+                timestamp=started_at - timedelta(minutes=20 - index),
+                service="checkout",
+                dedup_key=f"before-{index}",
+            )
+            for index in range(3)
+        ]
+    )
+    db_session.add_all(
+        [
+            _event(
+                timestamp=started_at + timedelta(minutes=1 + index),
+                service="checkout",
+                dedup_key=f"after-{index}",
+            )
+            for index in range(5)
+        ]
+    )
+    await db_session.commit()
+
+    result = await assess_change_impact(db_session, change)
+
+    assert result["truncated"] is True
+    assert {"code": "window_truncated", "value": True} in result["evidence"]
+    assert int(result["alert_delta"]) >= 0
+    assert result["before_alert_count"] == 2
+    assert result["after_alert_count"] == 2
 
 
 @pytest.mark.asyncio
