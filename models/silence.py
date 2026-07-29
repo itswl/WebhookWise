@@ -42,6 +42,15 @@ class Silence(Base):
     # Set when an operator lifts the silence (soft state; "active" is derived).
     lifted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Maintenance-window occurrence identity (NULL for ordinary silences).
+    # The schedule digest makes an EDITED window a new identity, so the sweep
+    # retires the old occurrence and materializes the new schedule instead of
+    # being blocked by its own lifted row. Cleared when the sweep retires a
+    # row; kept on operator lifts so a hand-lifted occurrence stays lifted.
+    mw_window_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mw_occurrence_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    mw_schedule_digest: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
     __table_args__ = (
         # Serves the active-silences lookup (the hot path: read on every forward
         # decision). Partial index over not-yet-lifted rows ordered by expiry.
@@ -49,6 +58,18 @@ class Silence(Base):
             "idx_silences_active",
             "expires_at",
             postgresql_where=text("lifted_at IS NULL"),
+        ),
+        # One materialized silence per (window, date, schedule): concurrent
+        # sweeps (scheduler + API mutations) race to a unique violation, not a
+        # duplicate row.
+        Index(
+            "uq_silences_mw_occurrence",
+            "mw_window_id",
+            "mw_occurrence_date",
+            "mw_schedule_digest",
+            unique=True,
+            postgresql_where=text("mw_window_id IS NOT NULL"),
+            sqlite_where=text("mw_window_id IS NOT NULL"),
         ),
     )
 

@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from models import MaintenanceWindow, Silence
+from services.silences import maintenance_windows as mw
 from services.silences import store
 from services.silences.maintenance_windows import (
     MAINTENANCE_CREATED_BY,
     active_occurrence,
     occurrence_marker,
     parse_days_of_week,
+    schedule_digest,
     sweep_maintenance_windows,
 )
 
@@ -84,6 +86,24 @@ def test_occurrence_crossing_midnight_belongs_to_start_day() -> None:
     assert occ.occurrence_date == date(2026, 7, 18)
 
 
+def test_occurrence_keeps_real_length_across_dst_gap() -> None:
+    """Spring-forward: 2026-03-08 America/New_York has no 02:xx wall hour.
+
+    A 02:30+60min window must not collapse to zero length — the start
+    normalizes forward and the end is start + duration in absolute time.
+    """
+    window = _window(
+        days_of_week="7",  # 2026-03-08 is a Sunday
+        start_minute=2 * 60 + 30,
+        duration_minutes=60,
+        timezone="America/New_York",
+    )
+    # 03:30 EDT == 07:30 UTC; probe mid-window at 07:45 UTC.
+    occ = active_occurrence(window, datetime(2026, 3, 8, 7, 45))
+    assert occ is not None
+    assert (occ.ends_at - occ.starts_at) == timedelta(minutes=60)
+
+
 @pytest.mark.asyncio
 async def test_sweep_materializes_active_window_idempotently(session: AsyncSession) -> None:
     window = _window()
@@ -100,6 +120,9 @@ async def test_sweep_materializes_active_window_idempotently(session: AsyncSessi
     assert created.match_source == "zabbix"
     assert created.comment.startswith(occurrence_marker(int(window.id), date(2026, 7, 19)))
     assert created.expires_at == datetime(2026, 7, 18, 20, 0)
+    assert created.mw_window_id == int(window.id)
+    assert created.mw_occurrence_date == "2026-07-19"
+    assert created.mw_schedule_digest == schedule_digest(window)
 
     # Second sweep of the same occurrence is a no-op.
     result = await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)
@@ -129,6 +152,7 @@ async def test_sweep_lifts_silence_when_window_disabled(session: AsyncSession) -
     assert result == {"created": 0, "lifted": 1}
     silence = (await session.execute(select(Silence))).scalars().one()
     assert silence.lifted_at is not None
+    assert silence.mw_window_id is None  # identity cleared on retire
 
 
 @pytest.mark.asyncio
@@ -145,6 +169,68 @@ async def test_sweep_lifts_silence_when_window_deleted(session: AsyncSession) ->
 
 
 @pytest.mark.asyncio
+async def test_extending_live_window_takes_effect_in_one_sweep(session: AsyncSession) -> None:
+    """P0 regression: editing a live window retires the old occurrence and
+    materializes the new schedule in the SAME sweep."""
+    window = _window()  # 02:00–04:00 CST
+    session.add(window)
+    await session.flush()
+    await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)
+
+    window.duration_minutes = 240  # extend to 02:00–06:00 CST
+    await session.flush()
+    result = await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)
+    assert result == {"created": 1, "lifted": 1}
+
+    rows = list((await session.execute(select(Silence).order_by(Silence.id))).scalars().all())
+    assert len(rows) == 2
+    retired, current = rows
+    assert retired.lifted_at is not None and retired.mw_window_id is None
+    assert current.lifted_at is None
+    assert current.expires_at == datetime(2026, 7, 18, 22, 0)  # 06:00 CST
+    assert current.mw_schedule_digest == schedule_digest(window)
+
+
+@pytest.mark.asyncio
+async def test_moving_window_later_rematerializes_when_it_opens(session: AsyncSession) -> None:
+    """P0 regression: moving a live window later mutes again once the new
+    schedule opens, instead of being blocked by its own lifted row."""
+    window = _window()  # 02:00–04:00 CST
+    session.add(window)
+    await session.flush()
+    await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)  # 02:30 CST
+
+    window.start_minute = 3 * 60  # move to 03:00–05:00 CST
+    await session.flush()
+    # Sweep at 02:40 CST: new schedule not open yet → old occurrence retired.
+    result = await sweep_maintenance_windows(session, now=datetime(2026, 7, 18, 18, 40))
+    assert result == {"created": 0, "lifted": 1}
+    # Sweep at 03:30 CST: new schedule open → re-materialized.
+    result = await sweep_maintenance_windows(session, now=datetime(2026, 7, 18, 19, 30))
+    assert result == {"created": 1, "lifted": 0}
+    live = [s for s in (await session.execute(select(Silence))).scalars().all() if s.lifted_at is None]
+    assert len(live) == 1
+    assert live[0].expires_at == datetime(2026, 7, 18, 21, 0)  # 05:00 CST
+
+
+@pytest.mark.asyncio
+async def test_reenabling_window_rematerializes_same_day(session: AsyncSession) -> None:
+    window = _window()
+    session.add(window)
+    await session.flush()
+    await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)
+
+    window.enabled = False
+    await session.flush()
+    await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)
+
+    window.enabled = True
+    await session.flush()
+    result = await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)
+    assert result == {"created": 1, "lifted": 0}
+
+
+@pytest.mark.asyncio
 async def test_operator_lifted_occurrence_is_not_resurrected(session: AsyncSession) -> None:
     """Lifting a maintenance silence by hand must stick for that occurrence."""
     window = _window()
@@ -157,6 +243,41 @@ async def test_operator_lifted_occurrence_is_not_resurrected(session: AsyncSessi
 
     result = await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)
     assert result == {"created": 0, "lifted": 0}
+
+
+@pytest.mark.asyncio
+async def test_concurrent_duplicate_insert_is_swallowed(session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A racing sweep's identical INSERT degrades to a skipped unique violation."""
+    window = _window()
+    session.add(window)
+    await session.flush()
+    await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)
+
+    async def never_tracked(*args: object, **kwargs: object) -> bool:
+        return False  # simulate the check racing ahead of a concurrent insert
+
+    monkeypatch.setattr(mw, "_occurrence_already_tracked", never_tracked)
+    result = await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)
+    assert result == {"created": 0, "lifted": 0}
+    assert len(list((await session.execute(select(Silence))).scalars().all())) == 1
+
+
+@pytest.mark.asyncio
+async def test_comment_edit_no_longer_breaks_occurrence_tracking(session: AsyncSession) -> None:
+    """The comment is a label; identity lives in columns."""
+    window = _window()
+    session.add(window)
+    await session.flush()
+    await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)
+
+    silence = (await session.execute(select(Silence))).scalars().one()
+    silence.comment = "operator scribbled over this"
+    await session.flush()
+
+    result = await sweep_maintenance_windows(session, now=_INSIDE_SUNDAY_WINDOW_UTC)
+    assert result == {"created": 0, "lifted": 0}
+    refreshed = (await session.execute(select(Silence))).scalars().one()
+    assert refreshed.lifted_at is None  # still live, not orphan-lifted
 
 
 @pytest.mark.asyncio
