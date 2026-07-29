@@ -74,8 +74,12 @@ def test_release_workflow_publishes_versioned_ghcr_image() -> None:
     assert "DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}" in workflow
     assert "IMAGE_PLATFORMS: linux/amd64,linux/arm64" in workflow
     assert "ci-gate:" in workflow
-    assert "--workflow ci.yml" in workflow
-    assert '--commit "$RELEASE_SHA"' in workflow
+    # The gate dereferences annotated tags to their commit and queries runs
+    # via plain REST (github.sha for an annotated tag push is the TAG OBJECT,
+    # which never matches any CI run's head_sha).
+    assert 'gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_SHA}"' in workflow
+    assert "actions/runs?head_sha=${release_commit}" in workflow
+    assert '.github/workflows/ci.yml" and .head_branch == "main"' in workflow
     assert "Waiting for ci.yml to pass" in workflow
     assert "docker/setup-qemu-action@v3" in workflow
     assert "Log in to Docker Hub" in workflow
