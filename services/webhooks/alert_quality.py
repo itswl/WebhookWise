@@ -7,12 +7,14 @@ only; it never mutates source connections, alerts, incidents, or routing rules.
 
 from __future__ import annotations
 
+import asyncio
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.normalized import extract_alert_identity
@@ -24,7 +26,8 @@ from services.incidents.grouping import is_recovery_payload
 from services.webhooks.decisioning import extract_forward_match_fields
 from services.webhooks.source_onboarding import payload_schema_fingerprint
 
-_MAX_EVENT_SCAN = 20_000
+_MAX_PAYLOAD_SCAN_EVENTS = 2_000
+_PAYLOAD_SCAN_YIELD_EVERY = 200
 _MAX_CONNECTION_SCAN = 500
 _RECOVERY_LOOKUP_CHUNK = 500
 _MAX_ISSUE_SAMPLES = 5
@@ -46,6 +49,17 @@ _TIMESTAMP_KEYS = frozenset(
     }
 )
 
+# Per-process TTL cache for the whole overview result. The dashboard Quality
+# tab can be polled by several sessions at once and this is the most expensive
+# read path in the service; a result up to 60 seconds stale is acceptable for
+# read-only diagnostics. Keyed by the request parameters.
+_OVERVIEW_CACHE_TTL_SECONDS = 60.0
+_OVERVIEW_CACHE: dict[tuple[int, int], tuple[float, dict[str, object]]] = {}
+
+
+def _reset_overview_cache_for_tests() -> None:
+    _OVERVIEW_CACHE.clear()
+
 
 @dataclass(slots=True)
 class _SourceAccumulator:
@@ -55,6 +69,7 @@ class _SourceAccumulator:
     source_connection_id: int | None = None
     connection: SourceConnection | None = None
     event_count: int = 0
+    scanned_count: int = 0
     duplicate_count: int = 0
     recovery_count: int = 0
     matched_recovery_count: int = 0
@@ -294,6 +309,9 @@ def _source_findings(accumulator: _SourceAccumulator, *, start: datetime, now: d
             ]
         return []
 
+    # Payload-derived signals only see the bounded scan, so their rates use the
+    # scanned-row denominator, not the full-window event count.
+    scanned = accumulator.scanned_count
     findings: list[dict[str, object]] = []
     field_rules = (
         ("missing_identity", accumulator.missing_identity, 25),
@@ -304,7 +322,7 @@ def _source_findings(accumulator: _SourceAccumulator, *, start: datetime, now: d
     )
     for code, count, maximum_penalty in field_rules:
         if count:
-            evidence: dict[str, object] = {"events_scanned": total}
+            evidence: dict[str, object] = {"events_scanned": scanned}
             if code == "timestamp_anomaly":
                 evidence["max_offset_seconds"] = accumulator.max_timestamp_offset_seconds
             findings.append(
@@ -312,7 +330,7 @@ def _source_findings(accumulator: _SourceAccumulator, *, start: datetime, now: d
                     accumulator,
                     code=code,
                     count=count,
-                    denominator=total,
+                    denominator=scanned,
                     maximum_penalty=maximum_penalty,
                     evidence=evidence,
                 )
@@ -335,11 +353,11 @@ def _source_findings(accumulator: _SourceAccumulator, *, start: datetime, now: d
         )
 
     dedup_key_count = len(accumulator.unique_dedup_keys)
-    identity_churn_rate = round(dedup_key_count / total * 100, 1) if total else 0.0
-    anchor_limit = max(3, total // 5)
+    identity_churn_rate = round(dedup_key_count / scanned * 100, 1) if scanned else 0.0
+    anchor_limit = max(3, scanned // 5)
     duplicate_rate = accumulator.duplicate_count / total if total else 0.0
     if (
-        total >= 10
+        scanned >= 10
         and identity_churn_rate >= 80
         and duplicate_rate <= 0.1
         and len(accumulator.identity_anchors) <= anchor_limit
@@ -349,7 +367,7 @@ def _source_findings(accumulator: _SourceAccumulator, *, start: datetime, now: d
                 accumulator,
                 code="identity_churn",
                 count=dedup_key_count,
-                denominator=total,
+                denominator=scanned,
                 maximum_penalty=15,
                 evidence={
                     "unique_dedup_keys": dedup_key_count,
@@ -430,6 +448,7 @@ def _source_payload(
     findings: list[dict[str, object]],
 ) -> dict[str, object]:
     total = accumulator.event_count
+    scanned = accumulator.scanned_count
     penalty = sum(_as_int(item["penalty"]) for item in findings)
     score = max(0, 100 - penalty) if total else None
     if score is None:
@@ -454,10 +473,10 @@ def _source_payload(
         "event_count": total,
         "last_event_at": utc_isoformat(accumulator.last_event_at),
         "coverage": {
-            "stable_identity": _coverage(total - accumulator.missing_identity, total),
-            "service": _coverage(total - accumulator.missing_service, total),
-            "environment": _coverage(total - accumulator.missing_environment, total),
-            "severity": _coverage(total - accumulator.missing_severity, total),
+            "stable_identity": _coverage(scanned - accumulator.missing_identity, scanned),
+            "service": _coverage(scanned - accumulator.missing_service, scanned),
+            "environment": _coverage(scanned - accumulator.missing_environment, scanned),
+            "severity": _coverage(scanned - accumulator.missing_severity, scanned),
         },
         "recovery": {
             "events": accumulator.recovery_count,
@@ -489,13 +508,32 @@ async def get_alert_quality_overview(
     window_days: int = 7,
     source_limit: int = 100,
 ) -> dict[str, object]:
-    """Return bounded, explainable alert quality diagnostics."""
+    """Return bounded, explainable alert quality diagnostics.
+
+    The full result is cached in-process for a short TTL so dashboard polling
+    cannot repeatedly trigger the payload scan.
+    """
+    cache_key = (int(window_days), int(source_limit))
+    cached = _OVERVIEW_CACHE.get(cache_key)
+    if cached is not None and time.monotonic() < cached[0]:
+        return cached[1]
+
     now = utcnow()
     start = now - timedelta(days=window_days)
-    total_events = int(
-        (await session.execute(select(func.count(WebhookEvent.id)).where(WebhookEvent.timestamp >= start))).scalar_one()
-        or 0
-    )
+    totals_rows = (
+        await session.execute(
+            select(
+                WebhookEvent.source,
+                WebhookEvent.source_connection_id,
+                func.count(WebhookEvent.id).label("total"),
+                func.sum(WebhookEvent.is_duplicate.cast(Integer)).label("duplicates"),
+                func.max(WebhookEvent.timestamp).label("last_seen"),
+            )
+            .where(WebhookEvent.timestamp >= start)
+            .group_by(WebhookEvent.source, WebhookEvent.source_connection_id)
+        )
+    ).all()
+    total_events = sum(int(row.total or 0) for row in totals_rows)
     events = (
         await session.execute(
             select(
@@ -503,16 +541,14 @@ async def get_alert_quality_overview(
                 WebhookEvent.source,
                 WebhookEvent.source_connection_id,
                 WebhookEvent.timestamp,
-                WebhookEvent.created_at,
                 WebhookEvent.parsed_data,
                 WebhookEvent.ai_analysis,
                 WebhookEvent.alert_hash,
                 WebhookEvent.dedup_key,
-                WebhookEvent.is_duplicate,
             )
             .where(WebhookEvent.timestamp >= start)
             .order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
-            .limit(_MAX_EVENT_SCAN)
+            .limit(_MAX_PAYLOAD_SCAN_EVENTS)
         )
     ).all()
     connection_rows = list(
@@ -538,8 +574,23 @@ async def get_alert_quality_overview(
             connection=connection,
         )
 
+    for row in totals_rows:
+        key = _source_key(row.source, row.source_connection_id)
+        accumulator = accumulators.get(key)
+        if accumulator is None:
+            source = _normalized_source(row.source)
+            accumulator = _SourceAccumulator(key=key, source=source, display_name=source)
+            accumulators[key] = accumulator
+        accumulator.event_count = int(row.total or 0)
+        accumulator.duplicate_count = int(row.duplicates or 0)
+        accumulator.last_event_at = row.last_seen
+
     recovery_events: dict[int, _SourceAccumulator] = {}
-    for event in events:
+    for index, event in enumerate(events):
+        if index and index % _PAYLOAD_SCAN_YIELD_EVERY == 0:
+            # The payload inspection below is pure CPU on the request's event
+            # loop; yield periodically so a full scan cannot stall ingress.
+            await asyncio.sleep(0)
         key = _source_key(event.source, event.source_connection_id)
         accumulator = accumulators.get(key)
         if accumulator is None:
@@ -547,10 +598,8 @@ async def get_alert_quality_overview(
             accumulator = _SourceAccumulator(key=key, source=source, display_name=source)
             accumulators[key] = accumulator
 
-        accumulator.event_count += 1
-        accumulator.duplicate_count += int(bool(event.is_duplicate))
-        event_timestamp = event.timestamp or event.created_at or now
-        accumulator.last_event_at = max(accumulator.last_event_at or event_timestamp, event_timestamp)
+        accumulator.scanned_count += 1
+        event_timestamp = event.timestamp or now
         parsed_data = event.parsed_data if isinstance(event.parsed_data, dict) else {}
         analysis = event.ai_analysis if isinstance(event.ai_analysis, dict) else {}
         stored_identity = extract_alert_identity(parsed_data) or {}
@@ -660,7 +709,7 @@ async def get_alert_quality_overview(
     source_total = len(source_payloads)
     visible_sources = source_payloads[:source_limit]
     scored_sources = [_as_int(item["quality_score"]) for item in source_payloads if item["quality_score"] is not None]
-    event_count = sum(accumulator.event_count for accumulator in accumulators.values())
+    scanned_events = sum(accumulator.scanned_count for accumulator in accumulators.values())
     missing_identity = sum(accumulator.missing_identity for accumulator in accumulators.values())
     missing_service = sum(accumulator.missing_service for accumulator in accumulators.values())
     missing_environment = sum(accumulator.missing_environment for accumulator in accumulators.values())
@@ -683,7 +732,7 @@ async def get_alert_quality_overview(
         ),
     )
 
-    return {
+    overview: dict[str, object] = {
         "window": {
             "days": window_days,
             "start": utc_isoformat(start),
@@ -695,14 +744,14 @@ async def get_alert_quality_overview(
             "scored_source_count": len(scored_sources),
             "no_data_source_count": source_total - len(scored_sources),
             "events_in_window": total_events,
-            "events_scanned": event_count,
+            "events_scanned": scanned_events,
             "finding_count": sum(severity_counts.values()),
             "severity_counts": severity_counts,
             "field_coverage": {
-                "stable_identity": _coverage(event_count - missing_identity, event_count),
-                "service": _coverage(event_count - missing_service, event_count),
-                "environment": _coverage(event_count - missing_environment, event_count),
-                "severity": _coverage(event_count - missing_severity, event_count),
+                "stable_identity": _coverage(scanned_events - missing_identity, scanned_events),
+                "service": _coverage(scanned_events - missing_service, scanned_events),
+                "environment": _coverage(scanned_events - missing_environment, scanned_events),
+                "severity": _coverage(scanned_events - missing_severity, scanned_events),
             },
             "recovery": {
                 "events": recovery_count,
@@ -713,7 +762,7 @@ async def get_alert_quality_overview(
         "top_findings": top_findings,
         "sources": visible_sources,
         "scan": {
-            "event_limit": _MAX_EVENT_SCAN,
+            "event_limit": _MAX_PAYLOAD_SCAN_EVENTS,
             "event_truncated": total_events > len(events),
             "connection_limit": _MAX_CONNECTION_SCAN,
             "connection_truncated": connection_truncated,
@@ -724,6 +773,8 @@ async def get_alert_quality_overview(
         },
         "read_only": True,
     }
+    _OVERVIEW_CACHE[cache_key] = (time.monotonic() + _OVERVIEW_CACHE_TTL_SECONDS, overview)
+    return overview
 
 
 __all__ = ["get_alert_quality_overview"]

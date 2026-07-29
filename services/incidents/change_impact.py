@@ -114,24 +114,46 @@ async def assess_change_impact(
     now = utcnow()
     observed_end = min(planned_end, now)
 
-    events = list(
+    # Fetch each side of the change instant separately: one ascending query
+    # over the whole window spends its entire row budget on the earliest rows,
+    # so a busy window drops the "after" side and biases alert_delta negative
+    # (a bad deploy would score as an improvement).
+    side_limit = max(1, _MAX_WINDOW_EVENTS // 2)
+    before_rows = list(
         (
             await session.execute(
                 select(WebhookEvent)
                 .where(
                     WebhookEvent.timestamp >= start,
-                    WebhookEvent.timestamp <= observed_end,
+                    WebhookEvent.timestamp < change.started_at,
                 )
-                .order_by(WebhookEvent.timestamp, WebhookEvent.id)
-                .limit(_MAX_WINDOW_EVENTS)
+                .order_by(WebhookEvent.timestamp.desc(), WebhookEvent.id.desc())
+                .limit(side_limit)
             )
         )
         .scalars()
         .all()
     )
-    matching_events = [event for event in events if _matches_dimensions(_correlation_dimensions(event), expected)]
-    before = [event for event in matching_events if event.timestamp < change.started_at]
-    after = [event for event in matching_events if event.timestamp >= change.started_at]
+    before_rows.reverse()
+    after_rows = list(
+        (
+            await session.execute(
+                select(WebhookEvent)
+                .where(
+                    WebhookEvent.timestamp >= change.started_at,
+                    WebhookEvent.timestamp <= observed_end,
+                )
+                .order_by(WebhookEvent.timestamp, WebhookEvent.id)
+                .limit(side_limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    window_truncated = len(before_rows) >= side_limit or len(after_rows) >= side_limit
+    before = [event for event in before_rows if _matches_dimensions(_correlation_dimensions(event), expected)]
+    after = [event for event in after_rows if _matches_dimensions(_correlation_dimensions(event), expected)]
+    matching_events = before + after
     before_identities = {_event_identity(event) for event in before}
     after_identities = {_event_identity(event) for event in after}
     new_identities = after_identities - before_identities
@@ -244,6 +266,8 @@ async def assess_change_impact(
         )
     if recovered_after_rollback:
         evidence.append({"code": "recovered_after_rollback", "value": True})
+    if window_truncated:
+        evidence.append({"code": "window_truncated", "value": True})
     if not expected:
         evidence.append({"code": "missing_change_identity", "value": True})
     elif insufficient_data:
@@ -280,6 +304,7 @@ async def assess_change_impact(
         "summary": summary,
         "identity_dimensions": expected,
         "window_minutes": window_minutes,
+        "truncated": window_truncated,
         "before_alert_count": len(before),
         "after_alert_count": len(after),
         "alert_delta": alert_delta,
