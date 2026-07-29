@@ -1,9 +1,14 @@
+import argparse
 import asyncio
 import http.client
 import os
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+LOCAL_HEARTBEAT_FILE_DEFAULT = "/tmp/webhookwise-heartbeat"  # noqa: S108 - pods mount an emptyDir at /tmp
+LOCAL_HEARTBEAT_MAX_AGE_SECONDS = 120.0
 
 
 def _expected_migration_heads() -> set[str]:
@@ -72,7 +77,31 @@ def _check_api() -> None:
         conn.close()
 
 
-def main() -> int:
+def _local_heartbeat_is_fresh() -> bool:
+    """Process-local liveness: the runtime heartbeat loop touched its file recently.
+
+    Must stay free of DB/Redis/engine access so a dependency outage degrades
+    readiness only and never makes the kubelet restart otherwise-healthy pods.
+    """
+    path = (os.getenv("WEBHOOK_LOCAL_HEARTBEAT_FILE") or "").strip() or LOCAL_HEARTBEAT_FILE_DEFAULT
+    try:
+        mtime = os.stat(path).st_mtime
+    except OSError:
+        return False
+    return (time.time() - mtime) < LOCAL_HEARTBEAT_MAX_AGE_SECONDS
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="WebhookWise container health checks")
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="liveness-only mode: check the local heartbeat file without touching DB or Redis",
+    )
+    args = parser.parse_args(argv)
+    if args.live:
+        return 0 if _local_heartbeat_is_fresh() else 1
+
     run_mode = (os.getenv("RUN_MODE") or "").strip().lower()
     if run_mode in {"worker", "scheduler"}:
         asyncio.run(_check_background_process())

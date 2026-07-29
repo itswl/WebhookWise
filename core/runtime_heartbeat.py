@@ -15,6 +15,8 @@ logger = get_logger("runtime_heartbeat")
 
 _tasks: dict[str, asyncio.Task[None]] = {}
 
+DEFAULT_LOCAL_HEARTBEAT_FILE = "/tmp/webhookwise-heartbeat"  # noqa: S108 - pods mount an emptyDir at /tmp
+
 
 def _positive_int_env(name: str, default: int) -> int:
     try:
@@ -39,7 +41,26 @@ def runtime_heartbeat_key(role: str, *, hostname: str | None = None) -> str:
     return f"webhookwise:runtime-heartbeat:{normalized_role}:{node}"
 
 
+def local_heartbeat_file_path() -> str:
+    return (os.getenv("WEBHOOK_LOCAL_HEARTBEAT_FILE") or "").strip() or DEFAULT_LOCAL_HEARTBEAT_FILE
+
+
+def _touch_local_heartbeat() -> None:
+    """Refresh the file read by `scripts.healthcheck --live`.
+
+    Guarded independently of the Redis write: a Redis outage must degrade the
+    readiness signal only, never make the process look dead to the kubelet.
+    """
+    path = local_heartbeat_file_path()
+    try:
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(str(time.time()))
+    except OSError:
+        logger.warning("[Heartbeat] Failed to touch local heartbeat file path=%s", path, exc_info=True)
+
+
 async def _write_heartbeat(role: str) -> None:
+    _touch_local_heartbeat()
     await redis_setex_str(runtime_heartbeat_key(role), heartbeat_ttl_seconds(), str(time.time()))
 
 
@@ -49,7 +70,12 @@ async def start_runtime_heartbeat(role: str) -> None:
     if existing is not None and not existing.done():
         return
 
-    await _write_heartbeat(role)
+    try:
+        await _write_heartbeat(role)
+    except Exception:  # noqa: BLE001 - same rationale as the loop guard below
+        # A Redis blip at exactly boot time must not raise out of the startup
+        # hook and crashloop the process; TTL expiry is the failure signal.
+        logger.warning("[Heartbeat] Initial heartbeat write failed role=%s", role, exc_info=True)
 
     async def _run() -> None:
         while True:

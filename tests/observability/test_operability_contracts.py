@@ -195,8 +195,12 @@ def test_k8s_manifests_cover_runtime_and_avoid_latest_images() -> None:
     scheduler_container = by_kind_name[("Deployment", "webhookwise-scheduler")]["spec"]["template"]["spec"][
         "containers"
     ][0]
-    assert worker_container["livenessProbe"]["exec"]["command"] == ["python3", "-m", "scripts.healthcheck"]
-    assert scheduler_container["readinessProbe"]["exec"]["command"] == ["python3", "-m", "scripts.healthcheck"]
+    # Liveness must detect a wedged PROCESS only (local heartbeat file); the
+    # full DB+Redis dependency check belongs to readiness — a dependency blip
+    # must degrade readiness, never trigger a kubelet restart storm.
+    for container in (worker_container, scheduler_container):
+        assert container["livenessProbe"]["exec"]["command"] == ["python3", "-m", "scripts.healthcheck", "--live"]
+        assert container["readinessProbe"]["exec"]["command"] == ["python3", "-m", "scripts.healthcheck"]
 
 
 def test_k8s_docs_include_secret_and_image_promotion_workflow() -> None:

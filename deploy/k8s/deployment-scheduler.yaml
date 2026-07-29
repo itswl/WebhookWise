@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: wait-for-migrations
-          image: ghcr.io/itswl/webhookwise:3.4.0
+          image: ghcr.io/itswl/webhookwise:3.5.0
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
@@ -50,7 +50,7 @@ spec:
                 - ALL
       containers:
         - name: webhookwise-scheduler
-          image: ghcr.io/itswl/webhookwise:3.4.0
+          image: ghcr.io/itswl/webhookwise:3.5.0
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -68,9 +68,12 @@ spec:
               value: scheduler
             - name: OTEL_SERVICE_NAME
               value: webhookwise-scheduler
+          # Liveness only proves the process is alive (local heartbeat file).
+          # DB/Redis health belongs to readiness: a dependency blip must not
+          # make the kubelet restart the scheduler and amplify the outage.
           livenessProbe:
             exec:
-              command: ["python3", "-m", "scripts.healthcheck"]
+              command: ["python3", "-m", "scripts.healthcheck", "--live"]
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 3
