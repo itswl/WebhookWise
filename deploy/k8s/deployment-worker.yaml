@@ -98,9 +98,12 @@ spec:
             failureThreshold: 3
           # Give a slow cold start (deps connecting, OTel init) up to 2 minutes
           # before liveness starts counting, matching the api deployment.
+          # Startup, like liveness, must not be lethal during a dependency
+          # outage: a pod restarted mid-outage would otherwise crash-loop at
+          # startup. Readiness carries the full DB+Redis check.
           startupProbe:
             exec:
-              command: ["python3", "-m", "scripts.healthcheck"]
+              command: ["python3", "-m", "scripts.healthcheck", "--live"]
             periodSeconds: 5
             timeoutSeconds: 10
             failureThreshold: 24

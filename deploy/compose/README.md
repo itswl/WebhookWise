@@ -52,6 +52,7 @@ docker compose -p webhookwise-observability --env-file .env -f deploy/compose/do
 ```
 
 Enable the diagnostics profile temporarily when traces, continuous profiles, or eBPF signals are needed. It adds Tempo, Pyroscope, and Beyla:
+Beyla attaches to the app container's PID namespace — after a deploy recreates the app container, restart Beyla (`docker compose --profile diagnostics restart beyla`) or it silently stops observing.
 
 ```bash
 docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile diagnostics up -d --build
