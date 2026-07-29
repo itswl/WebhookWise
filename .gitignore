@@ -32,6 +32,8 @@ deploy/compose/backups/
 coverage.xml
 htmlcov/
 build/
+# The exported OpenAPI contract is tracked and CI-enforced.
+!build/openapi/
 .DS_Store
 .qoder/
 openclaw-main/
