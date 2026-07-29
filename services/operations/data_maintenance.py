@@ -13,6 +13,7 @@ from db.session import dml_rowcount, session_scope
 from models import (
     AIUsageLog,
     ArchivedWebhookEvent,
+    DecisionTrace,
     DeepAnalysis,
     ForwardOutbox,
     Incident,
@@ -249,7 +250,7 @@ async def cleanup_expired_operational_data(*, policy: DataMaintenancePolicy | No
     """Bound secondary tables and close quiet incidents that no longer need attention."""
     policy = policy or DataMaintenancePolicy.from_config()
     if not policy.enabled:
-        return {"archives": 0, "outboxes": 0, "ai_usage": 0, "incidents_closed": 0}
+        return {"archives": 0, "outboxes": 0, "ai_usage": 0, "decision_traces": 0, "incidents_closed": 0}
 
     now = utcnow()
     async with session_scope() as session:
@@ -268,6 +269,13 @@ async def cleanup_expired_operational_data(*, policy: DataMaintenancePolicy | No
         )
         ai_usage = await session.execute(
             delete(AIUsageLog).where(AIUsageLog.timestamp < _days_threshold(now, policy.ai_usage_retention_days))
+        )
+        # decision_trace: one JSONB row per event with no FK to prune through —
+        # time-based retention is the only thing bounding it.
+        decision_traces = await session.execute(
+            delete(DecisionTrace).where(
+                DecisionTrace.created_at < _days_threshold(now, policy.decision_trace_retention_days)
+            )
         )
         incidents = await session.execute(
             update(Incident)
@@ -288,6 +296,7 @@ async def cleanup_expired_operational_data(*, policy: DataMaintenancePolicy | No
         "archives": max(0, dml_rowcount(archives)),
         "outboxes": max(0, dml_rowcount(outboxes)),
         "ai_usage": max(0, dml_rowcount(ai_usage)),
+        "decision_traces": max(0, dml_rowcount(decision_traces)),
         "incidents_closed": max(0, dml_rowcount(incidents)),
     }
     if any(result.values()):

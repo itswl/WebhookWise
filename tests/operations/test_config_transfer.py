@@ -154,3 +154,46 @@ async def test_import_rejects_wrong_version(session: AsyncSession) -> None:
         await import_config(session, {"version": 99})
     with pytest.raises(ValueError, match="mapping"):
         await import_config(session, ["not-a-dict"])
+
+
+@pytest.mark.asyncio
+async def test_import_validates_entries_like_the_create_api(session: AsyncSession) -> None:
+    """Import must not smuggle what the API rejects: criteria-less silences
+    (a match-EVERYTHING global mute), invalid weekdays, oversize names, and
+    maintenance-materialized silences are per-entry errors, not rows."""
+    bundle = {
+        "version": 1,
+        "forward_rules": [
+            {"name": "x" * 101, "target_type": "webhook", "target_url": "https://example.com/hook"},
+        ],
+        "maintenance_windows": [
+            {
+                "name": "bad-days",
+                "days_of_week": "8,9",
+                "start_minute": 120,
+                "duration_minutes": 60,
+                "timezone": "Asia/Shanghai",
+                "match_source": "zabbix",
+            },
+            {
+                "name": "no-criteria",
+                "days_of_week": "7",
+                "start_minute": 120,
+                "duration_minutes": 60,
+                "timezone": "Asia/Shanghai",
+            },
+        ],
+        "silences": [
+            {"comment": "match everything"},  # no criteria → rejected
+            {"match_source": "mw", "comment": "smuggled", "created_by": "maintenance-window"},
+        ],
+    }
+    report = await import_config(session, bundle)
+    assert len(report["forward_rules"]["errors"]) == 1
+    assert len(report["maintenance_windows"]["errors"]) == 2
+    assert len(report["silences"]["errors"]) == 2
+    assert report["silences"]["created"] == 0
+    assert "derived state" in " ".join(report["silences"]["errors"])
+    # Nothing invalid landed.
+    assert (await session.execute(select(MaintenanceWindow))).scalars().all() == []
+    assert (await session.execute(select(Silence))).scalars().all() == []

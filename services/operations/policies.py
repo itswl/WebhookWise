@@ -37,6 +37,7 @@ class DataMaintenancePolicy:
     terminal_outbox_retention_days: int = 30
     ai_usage_retention_days: int = 90
     incident_auto_close_days: int = 7
+    decision_trace_retention_days: int = 90
 
     @classmethod
     def from_config(cls) -> DataMaintenancePolicy:
@@ -53,5 +54,6 @@ class DataMaintenancePolicy:
             archive_retention_days=int(cfg.ARCHIVE_RETENTION_DAYS),
             terminal_outbox_retention_days=int(cfg.TERMINAL_OUTBOX_RETENTION_DAYS),
             ai_usage_retention_days=int(cfg.AI_USAGE_RETENTION_DAYS),
+            decision_trace_retention_days=int(cfg.DECISION_TRACE_RETENTION_DAYS),
             incident_auto_close_days=int(cfg.INCIDENT_AUTO_CLOSE_DAYS),
         )
