@@ -90,15 +90,20 @@ jobs:
             exit 0
           fi
 
+          # For ANNOTATED tag pushes github.sha is the tag OBJECT, not the
+          # commit — dereference so we gate on the commit CI actually ran on.
+          release_commit="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_SHA}" --jq .sha)"
+          echo "Gating on commit ${release_commit} (ref sha ${RELEASE_SHA})"
+
           deadline=$((SECONDS + 1200))
           while true; do
+            # Plain REST query instead of `gh run list --commit` so the gate
+            # does not depend on the runner's gh feature set.
             runs_json="$(
-              gh run list \
-                --workflow ci.yml \
-                --branch main \
-                --commit "$RELEASE_SHA" \
-                --json conclusion,status,url \
-                --limit 10
+              gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${release_commit}&per_page=20" \
+                --jq '[.workflow_runs[]
+                       | select(.path == ".github/workflows/ci.yml" and .head_branch == "main")
+                       | {conclusion, status, url: .html_url}]'
             )"
 
             success_url="$(jq -r '[.[] | select(.status == "completed" and .conclusion == "success")] | .[0].url // ""' <<< "$runs_json")"
