@@ -46,7 +46,7 @@ def verify_signature(payload: bytes, signature: str, secret: str | None = None) 
 
     expected_signature = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
-    result = hmac.compare_digest(expected_signature, signature)
+    result = hmac.compare_digest(expected_signature.encode("utf-8"), signature.encode("utf-8"))
     if not result:
         logger.warning("[Auth] Signature comparison did not match")
     else:
@@ -65,7 +65,7 @@ def verify_timestamped_signature(timestamp: str, payload: bytes, signature: str,
         return False
     signed = timestamp.encode("utf-8") + b"." + payload
     expected = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
+    return hmac.compare_digest(expected.encode("utf-8"), signature.encode("utf-8"))
 
 
 class ReplayError(Exception):
@@ -142,7 +142,7 @@ def ensure_webhook_auth(headers: Mapping[str, str], raw_body: bytes, *, secret: 
     if resolved_secret:
         if not token:
             raise InvalidSignatureError()
-        if not hmac.compare_digest(token, resolved_secret):
+        if not hmac.compare_digest(token.encode("utf-8"), resolved_secret.encode("utf-8")):
             raise InvalidSignatureError()
 
 

@@ -16,11 +16,14 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from contracts.webhook_payload import JsonObject, WebhookData
-from services.notifications.markdown_summary import alert_markdown_summary
+from services.notifications.markdown_summary import alert_markdown_summary, truncate_utf8
 from services.webhooks.types import AnalysisResult
 
 _DINGTALK_HOST = "oapi.dingtalk.com"
 _DINGTALK_PATH_PREFIX = "/robot/send"
+
+# DingTalk caps a robot message body at 20000 bytes; budget below it.
+_MAX_TEXT_BYTES = 18000
 
 
 def is_dingtalk_url(url: str) -> bool:
@@ -39,4 +42,5 @@ def build_dingtalk_markdown(
 ) -> JsonObject:
     title, body = alert_markdown_summary(webhook_data, analysis_result, is_periodic_reminder=is_periodic_reminder)
     # DingTalk markdown wants the title repeated in the text for list previews.
-    return {"msgtype": "markdown", "markdown": {"title": title, "text": f"### {title}\n\n{body}"}}
+    text = truncate_utf8(f"### {title}\n\n{body}", _MAX_TEXT_BYTES)
+    return {"msgtype": "markdown", "markdown": {"title": title, "text": text}}

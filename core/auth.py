@@ -54,7 +54,10 @@ def _body_meta(body: bytes) -> dict[str, object]:
 def _matches_any_configured_token(credentials: str | None, *tokens: str) -> bool:
     if credentials is None:
         return False
-    return any(token and hmac.compare_digest(credentials, token) for token in tokens)
+    # Bytes compare: str compare_digest raises TypeError on non-ASCII input
+    # (latin-1-decoded headers can carry it), turning a 401 into a 500.
+    supplied = credentials.encode("utf-8")
+    return any(token and hmac.compare_digest(supplied, token.encode("utf-8")) for token in tokens)
 
 
 async def verify_api_key(
@@ -241,7 +244,9 @@ async def verify_feishu_card_callback(
     header_value = payload.get("header")
     header_token = header_value.get("token") if isinstance(header_value, dict) else None
     supplied_token = str(header_token or payload.get("token") or "").strip()
-    if not supplied_token or not hmac.compare_digest(supplied_token, verification_token):
+    if not supplied_token or not hmac.compare_digest(
+        supplied_token.encode("utf-8"), verification_token.encode("utf-8")
+    ):
         client_ip = request.client.host if request.client else "unknown"
         logger.warning("[Auth] Feishu card callback verification failed: IP=%s", client_ip)
         raise HTTPException(
