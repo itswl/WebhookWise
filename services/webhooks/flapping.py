@@ -17,6 +17,7 @@ heuristic over the DB): this is realtime oscillation within minutes.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,9 +25,10 @@ from typing import Any
 
 from redis.exceptions import RedisError
 
+from core import redis_client
 from core.datetime_utils import utcnow
 from core.logger import get_logger
-from core.redis_client import get_redis, redis_eval_int
+from core.redis_client import redis_eval_int
 
 logger = get_logger("webhooks.flapping")
 
@@ -54,7 +56,11 @@ end
 return flips
 """
 
-_FLAPPING_ERRORS = (RedisError, RuntimeError, OSError, TypeError, ValueError)
+_FLAPPING_ERRORS = (RedisError, RuntimeError, OSError, TimeoutError, TypeError, ValueError)
+
+# Hard budget for the per-event observation: the hot path must never wait out
+# a sick Redis's full socket timeout while holding pipeline resources.
+_OBSERVE_BUDGET_SECONDS = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,14 +88,18 @@ class FlappingStatus:
     flapping: bool
 
 
+def _rule_component(parsed_data: dict[str, Any] | None) -> str:
+    parsed = parsed_data if isinstance(parsed_data, dict) else {}
+    return str(parsed.get("RuleName") or parsed.get("AlertName") or parsed.get("alert_name") or "").strip()
+
+
 def flap_identity(source: str, parsed_data: dict[str, Any] | None) -> str:
     """The oscillating unit: source + upstream rule/alert name.
 
     Same identity a firing alert shares with its recovery counterpart (their
     dedup keys differ by status, so dedup_key is NOT usable here).
     """
-    parsed = parsed_data if isinstance(parsed_data, dict) else {}
-    rule = str(parsed.get("RuleName") or parsed.get("AlertName") or parsed.get("alert_name") or "").strip()
+    rule = _rule_component(parsed_data)
     return f"{source or 'unknown'}::{rule or 'unknown'}"
 
 
@@ -114,22 +124,31 @@ async def observe_flapping(
 
     policy = policy or FlappingPolicy.from_config()
     identity = flap_identity(source, parsed_data)
+    # No rule identity → unrelated alerts from the source would share one
+    # bucket and count flips TOGETHER (three independent monitors each doing
+    # one down/up would look like one flapping identity — and suppression
+    # would then mute the whole source). Don't observe at all.
+    if not _rule_component(parsed_data):
+        return FlappingStatus(identity=identity, flips=0, flapping=False)
     status = "recovery" if is_recovery_payload(parsed_data, ai_analysis) else "firing"
     now_ms = int((now or utcnow()).timestamp() * 1000)
     window_ms = policy.window_minutes * 60 * 1000
     digest = _digest(identity)
     try:
-        flips = await redis_eval_int(
-            _OBSERVE_LUA,
-            3,
-            _LAST_KEY.format(digest=digest),
-            _FLIPS_KEY.format(digest=digest),
-            ACTIVE_FLAPPING_KEY,
-            now_ms,
-            status,
-            window_ms,
-            policy.min_transitions,
-            identity,
+        flips = await asyncio.wait_for(
+            redis_eval_int(
+                _OBSERVE_LUA,
+                3,
+                _LAST_KEY.format(digest=digest),
+                _FLIPS_KEY.format(digest=digest),
+                ACTIVE_FLAPPING_KEY,
+                now_ms,
+                status,
+                window_ms,
+                policy.min_transitions,
+                identity,
+            ),
+            timeout=_OBSERVE_BUDGET_SECONDS,
         )
     except _FLAPPING_ERRORS as e:
         logger.warning("[Flapping] Observation failed (fail-open) identity=%s error=%s", identity, e)
@@ -151,7 +170,7 @@ async def list_active_flapping(limit: int = 20, *, now: datetime | None = None) 
     """Identities currently marked flapping (advisory, for the Action Center)."""
     now_ms = int((now or utcnow()).timestamp() * 1000)
     try:
-        client = get_redis()
+        client = redis_client.get_redis()
         await client.zremrangebyscore(ACTIVE_FLAPPING_KEY, "-inf", now_ms)
         rows = await client.zrevrange(ACTIVE_FLAPPING_KEY, 0, max(0, limit - 1), withscores=True)
     except _FLAPPING_ERRORS as e:
