@@ -7,7 +7,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-LOCAL_HEARTBEAT_FILE_DEFAULT = "/tmp/webhookwise-heartbeat"  # noqa: S108 - pods mount an emptyDir at /tmp
+LOCAL_HEARTBEAT_FILE_DEFAULT = "/tmp/webhookwise-heartbeat"  # noqa: S108  # nosec B108 - container-private /tmp (emptyDir)
 LOCAL_HEARTBEAT_MAX_AGE_SECONDS = 120.0
 
 
