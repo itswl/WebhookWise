@@ -31,7 +31,9 @@ deploy/compose/backups/
 .coverage
 coverage.xml
 htmlcov/
-build/
+# Exclude build children (not the directory itself, or the negation below
+# could never re-include anything inside it).
+build/*
 # The exported OpenAPI contract is tracked and CI-enforced.
 !build/openapi/
 .DS_Store
