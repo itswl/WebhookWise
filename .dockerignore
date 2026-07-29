@@ -40,3 +40,7 @@ coverage.xml
 htmlcov/
 .claude/
 .codex/
+# Server-side data dirs must never enter the build context (a root-owned
+# backups/ dir in the deploy checkout broke the context walk once).
+backups/
+build/
