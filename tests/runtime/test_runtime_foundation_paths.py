@@ -40,7 +40,7 @@ async def test_redis_stream_helpers_coerce_pending_and_lag_shapes(
     async def record_redis_operation(_operation: str, awaitable: object) -> object:
         return await awaitable  # type: ignore[misc]
 
-    monkeypatch.setattr(redis_streams, "get_redis", lambda: redis)
+    monkeypatch.setattr(redis_streams.redis_client, "get_redis", lambda: redis)
     monkeypatch.setattr(redis_streams, "record_redis_operation", record_redis_operation)
 
     assert await redis_streams.redis_xlen("stream:test") == 12

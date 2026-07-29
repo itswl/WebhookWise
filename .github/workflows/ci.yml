@@ -76,6 +76,11 @@ jobs:
       - run: bandit -r core api services models adapters db scripts contracts -x tests -q -s B106
       - run: pip-audit -r requirements.lock -r requirements-dev.lock
       - run: python scripts/observability/webhookwise_observe.py contract
+      # The committed OpenAPI export must match the live route table — new
+      # endpoints regenerate build/openapi via scripts/export_openapi.py.
+      - run: python scripts/export_openapi.py --check
+        env:
+          DATABASE_URL: postgresql+asyncpg://webhook_user:ci-placeholder@localhost:5432/webhooks_ci
       # -n auto parallelizes across runner cores; pytest-cov combines per-worker
       # coverage before evaluating --cov-fail-under.
       # --dist loadfile keeps each test file's tests on one worker in collection

@@ -4,11 +4,12 @@ import time
 from collections.abc import Awaitable
 from typing import Any, cast
 
-from core.redis_client import coerce_int, get_redis, record_redis_operation
+from core import redis_client
+from core.redis_client import coerce_int, record_redis_operation
 
 
 async def redis_xlen(stream: str) -> int:
-    raw = await record_redis_operation("xlen", get_redis().xlen(stream))
+    raw = await record_redis_operation("xlen", redis_client.get_redis().xlen(stream))
     return coerce_int(raw)
 
 
@@ -46,7 +47,7 @@ def _reset_backlog_cache_for_tests() -> None:
 async def redis_xpending_pending(stream: str, group: str) -> int:
     raw = await record_redis_operation(
         "xpending",
-        cast(Awaitable[object], cast(Any, get_redis()).xpending(stream, group)),
+        cast(Awaitable[object], cast(Any, redis_client.get_redis()).xpending(stream, group)),
     )
     if isinstance(raw, dict):
         try:
@@ -64,7 +65,7 @@ async def redis_xpending_pending(stream: str, group: str) -> int:
 async def redis_xinfo_group_lag(stream: str, group: str) -> int:
     raw = await record_redis_operation(
         "xinfo_groups",
-        cast(Awaitable[object], cast(Any, get_redis()).xinfo_groups(stream)),
+        cast(Awaitable[object], cast(Any, redis_client.get_redis()).xinfo_groups(stream)),
     )
     if not isinstance(raw, list):
         return 0

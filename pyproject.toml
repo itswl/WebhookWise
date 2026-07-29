@@ -1,6 +1,6 @@
 [project]
 name = "webhookwise"
-version = "3.4.0"
+version = "3.5.0"
 description = "Webhook ingestion, analysis, forwarding, and observability service."
 requires-python = ">=3.12"
 
@@ -27,7 +27,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["core", "api", "services", "models", "adapters", "db"]
+source = ["core", "api", "services", "models", "adapters", "db", "contracts"]
 omit = ["tests/*", "alembic/*", "scripts/*"]
 # Measure branch coverage, not just line coverage: error/degradation branches
 # dominate this codebase and line-only coverage doesn't prove both sides are
