@@ -106,7 +106,9 @@ def verify_incident_action_value(
         _canonical_action(value),
         hashlib.sha256,
     ).hexdigest()
-    if not supplied_signature or not hmac.compare_digest(supplied_signature, expected_signature):
+    if not supplied_signature or not hmac.compare_digest(
+        supplied_signature.encode("utf-8"), expected_signature.encode("utf-8")
+    ):
         raise FeishuActionError("Invalid Feishu card action signature")
     current_epoch = int(time.time()) if now_epoch is None else int(now_epoch)
     if expires_at < current_epoch:
@@ -166,7 +168,12 @@ def verify_callback_policy(payload: dict[str, Any], context: FeishuActionContext
         raise FeishuActionError("Unsupported Feishu callback event type")
     header = _nested_mapping(payload, "header")
     raw_create_time = header.get("create_time")
-    if raw_create_time not in (None, ""):
+    if raw_create_time in (None, ""):
+        # Freshness must not be sender-optional: without it the only replay
+        # bound on a harvested signed action is the action-value TTL.
+        if context.event_type == "card.action.trigger":
+            raise FeishuActionError("Missing Feishu callback timestamp")
+    else:
         try:
             create_time = int(str(raw_create_time))
         except ValueError as error:
@@ -257,7 +264,7 @@ async def process_incident_card_action(
             raise FeishuActionConflict("Feishu event id was reused with different content") from error
         return dict(existing.result or {})
 
-    incident = await session.get(Incident, incident_id)
+    incident = await session.get(Incident, incident_id, with_for_update=True)
     if incident is None:
         receipt.status = "rejected"
         receipt.completed_at = utcnow()

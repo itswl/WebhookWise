@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 from typing import Any
@@ -97,17 +98,22 @@ async def send_to_feishu_app(
         token = await _tenant_access_token(client)
         card = payload.get("card") if isinstance(payload.get("card"), dict) else payload
         headers = {"Authorization": f"Bearer {token}"}
+        body: dict[str, str] = {
+            "receive_id": receive_id,
+            "msg_type": "interactive",
+            "content": json.dumps(card, ensure_ascii=False, separators=(",", ":")),
+        }
         if idempotency_key:
-            headers["Idempotency-Key"] = idempotency_key
+            # Feishu's create-message dedup is the BODY `uuid` field (<=50
+            # chars) — an Idempotency-Key header is not part of its API, so a
+            # timeout-after-create retry would post a second live card. Hash
+            # the outbox key to stay within the length limit deterministically.
+            body["uuid"] = hashlib.sha1(idempotency_key.encode("utf-8"), usedforsecurity=False).hexdigest()
         response = await client.post(
             f"{_FEISHU_API_BASE}{_MESSAGE_PATH}",
             params={"receive_id_type": "chat_id"},
             headers=headers,
-            json={
-                "receive_id": receive_id,
-                "msg_type": "interactive",
-                "content": json.dumps(card, ensure_ascii=False, separators=(",", ":")),
-            },
+            json=body,
             timeout=config.FEISHU_WEBHOOK_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
