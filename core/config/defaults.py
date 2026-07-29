@@ -309,7 +309,10 @@ class NotificationConfig(StaticSettings):
     FEISHU_APP_ID: str = Field(default="")
     FEISHU_APP_SECRET: str = Field(default="")
     FEISHU_INCIDENT_CHAT_ID: str = Field(default="")
-    FEISHU_CARD_ACTION_TTL_SECONDS: int = Field(default=604800, ge=60, le=2592000)
+    # Signed card-action values expire after this TTL. One day (not the old
+    # seven): with mandatory callback freshness this is defense-in-depth
+    # against harvested action values being replayed under fresh event ids.
+    FEISHU_CARD_ACTION_TTL_SECONDS: int = Field(default=86400, ge=60, le=2592000)
     AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600, gt=0)
     DASHBOARD_PUBLIC_URL: str = Field(default="")
 
@@ -414,6 +417,9 @@ class MaintenanceConfig(StaticSettings):
     ARCHIVE_RETENTION_DAYS: int = Field(default=90, gt=0)
     TERMINAL_OUTBOX_RETENTION_DAYS: int = Field(default=30, gt=0)
     AI_USAGE_RETENTION_DAYS: int = Field(default=90, gt=0)
+    # decision_trace grows one JSONB row per event (duplicates and skips
+    # included) and previously had NO retention at all.
+    DECISION_TRACE_RETENTION_DAYS: int = Field(default=90, gt=0)
     INCIDENT_AUTO_CLOSE_DAYS: int = Field(default=7, gt=0)
     MAINTENANCE_HOUR: int = Field(default=3, ge=0, le=23)
 

@@ -5,6 +5,72 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+## [3.5.0] - 2026-07-29
+
+Rolls up the incident-response feature waves shipped since 3.4.0 plus a full
+adversarial code-review pass (42 findings; 1 P0, 12 P1) with fixes.
+
+### Added (feature waves since 3.4.0)
+- Feishu in-chat incident closed loop: interactive cards with verified,
+  signed, idempotent Acknowledge/Resolve/Add-note actions (`/v1/integrations/feishu/card-actions`).
+- Incident intelligence (similar incidents, related changes, runbook
+  suggestions), manual runbook executions, resolution records, recurrence
+  review; change ingestion (`/v1/changes`) with least-privilege tokens.
+- Source onboarding: scoped revocable per-source credentials
+  (`/v1/source-webhooks/{public_id}`), setup wizard, alert-quality overview.
+- Grafana bearer webhooks, dashboard credentials modal, Beyla profile,
+  compose split (root `compose.yaml` includes infra + app).
+
+### Fixed (review round)
+- Maintenance windows (P0): occurrence identity moved from a comment marker to
+  real columns with a schedule digest + partial unique index (migration 0023) —
+  editing a live window now retires and re-materializes in one sweep instead of
+  silently never muting again that day; concurrent sweeps can no longer create
+  duplicates; DST-gap starts keep their real duration; comment edits are
+  harmless.
+- KB card links: CJK bigram tokenization (Chinese content matching actually
+  works) and same-source alone no longer crosses the match threshold — no more
+  stapling the two newest same-source docs to every alert card.
+- Auto-SLA escalation: acknowledged incidents are never armed nor escalated
+  (no more @all pings at the person already working); timers arm from the wall
+  clock, not backfilled event timestamps.
+- Feishu actions: incident row now locked (`FOR UPDATE`) like the dashboard
+  path — concurrent card clicks cannot interleave into a contradictory state;
+  message idempotency moved from a non-Feishu `Idempotency-Key` header to the
+  body `uuid` field (no duplicate live cards on retry); callback `create_time`
+  is mandatory for card actions; action-value TTL default dropped 7d → 1d;
+  startup warns when tenant/operator allowlists are empty.
+- Flapping: identityless payloads (no rule name) are no longer observed —
+  unrelated alerts can't pool flips and mute a whole source; observation moved
+  OUT of the persist transaction with a 500ms hard budget (a sick Redis no
+  longer stretches every event's DB transaction); adoption counters get a
+  250ms budget on request paths.
+- Config import: entries validated through the same request schemas as the
+  create APIs (a criteria-less silence — i.e. a global mute — invalid weekdays,
+  or oversize fields are per-entry errors; DB-level rejects return 400 with the
+  report instead of 500); maintenance-materialized silences are not importable.
+- Auth: all user-facing token comparisons are bytes-based — a non-ASCII
+  Authorization header (or Feishu token) is a clean 401, no longer a 500.
+- Alert quality: cheap aggregates moved to SQL GROUP BY; the payload scan is
+  capped at 2k rows, yields the event loop, and is cached 60s — opening the
+  Quality tab can no longer stall webhook ingress.
+- Change impact: before/after windows are queried separately with a
+  `truncated` flag — busy windows no longer bias a bad deploy into "fewer
+  alerts".
+- decision_trace: time-based retention (`DECISION_TRACE_RETENTION_DAYS`,
+  default 90) — the table previously grew without bound.
+- k8s: worker/scheduler liveness probes now check only a local heartbeat file
+  (`healthcheck --live`); the full DB+Redis check moved to readiness — a
+  dependency blip degrades readiness instead of triggering a restart storm.
+- WeCom/DingTalk: message truncation is byte-aware (the WeCom 4096-byte limit
+  was being "guarded" by a character slice that never fired for Chinese).
+- Scoped source ingress: Content-Length pre-check before buffering; onboarding
+  state advances on a structured `outcome` field instead of sniffing display
+  copy; honest `has_more` pagination on onboarding/services lists.
+- Test infra: the autouse Redis mock now actually covers feature-adoption /
+  flapping / stream probes (module-attribute access instead of from-imports);
+  OpenAPI export is CI-enforced (`export_openapi.py --check`) and tracked.
+
 ### Added
 
 - Incident response work queue with explainable priority, ownership, SLA-risk,
