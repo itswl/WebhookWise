@@ -16,6 +16,22 @@ from services.webhooks.types import AnalysisResult
 
 _IMPORTANCE_LABEL = {"high": "🔴 高", "critical": "🔴 高", "medium": "🟡 中", "low": "🟢 低"}
 
+# Identity fragments come from upstream payloads; cap them so one long rule
+# name cannot blow a bot's byte limit on its own.
+_MAX_IDENTITY_CHARS = 120
+
+
+def truncate_utf8(text: str, max_bytes: int) -> str:
+    """Cut at a UTF-8 byte budget without splitting a multi-byte character.
+
+    Bot limits (WeCom 4096, DingTalk 20000) are BYTES; slicing by characters is
+    a no-op guard for CJK content (3 bytes per char).
+    """
+    encoded = str(text or "").encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return str(text or "")
+    return encoded[:max_bytes].decode("utf-8", "ignore")
+
 
 def _parsed(webhook_data: WebhookData) -> dict[str, Any]:
     parsed_obj = webhook_data.get("parsed_data") or webhook_data.get("body") or {}
@@ -46,8 +62,10 @@ def alert_markdown_summary(
 
     parsed = _parsed(webhook_data)
     source = str(webhook_data.get("source", "") or parsed.get("source", "") or "—")
-    rule_name = str(parsed.get("RuleName", "") or parsed.get("alert_name", "") or "")
-    event_type = str(analysis_result.get("event_type") or parsed.get("event_type", "") or parsed.get("Type", "") or "")
+    rule_name = str(parsed.get("RuleName", "") or parsed.get("alert_name", "") or "")[:_MAX_IDENTITY_CHARS]
+    event_type = str(analysis_result.get("event_type") or parsed.get("event_type", "") or parsed.get("Type", "") or "")[
+        :_MAX_IDENTITY_CHARS
+    ]
     summary = _strip_prefix(str(analysis_result.get("summary", "")), "事件摘要", "摘要")
     impact = _strip_prefix(str(analysis_result.get("impact_scope", "")), "影响范围", "影响")
     timestamp = str(webhook_data.get("timestamp", "") or "")

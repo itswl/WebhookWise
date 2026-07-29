@@ -11,14 +11,15 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from contracts.webhook_payload import JsonObject, WebhookData
-from services.notifications.markdown_summary import alert_markdown_summary
+from services.notifications.markdown_summary import alert_markdown_summary, truncate_utf8
 from services.webhooks.types import AnalysisResult
 
 _WECOM_HOST = "qyapi.weixin.qq.com"
 _WECOM_PATH_PREFIX = "/cgi-bin/webhook/send"
 
-# WeCom rejects markdown content above 4096 bytes; stay comfortably below.
-_MAX_CONTENT_CHARS = 3500
+# WeCom rejects markdown content above 4096 BYTES; budget below that. The cut
+# is byte-aware — a character count is a no-op guard for CJK (3 bytes/char).
+_MAX_CONTENT_BYTES = 4000
 
 
 def is_wecom_url(url: str) -> bool:
@@ -37,4 +38,4 @@ def build_wecom_markdown(
 ) -> JsonObject:
     title, body = alert_markdown_summary(webhook_data, analysis_result, is_periodic_reminder=is_periodic_reminder)
     content = f"### {title}\n\n{body}"
-    return {"msgtype": "markdown", "markdown": {"content": content[:_MAX_CONTENT_CHARS]}}
+    return {"msgtype": "markdown", "markdown": {"content": truncate_utf8(content, _MAX_CONTENT_BYTES)}}

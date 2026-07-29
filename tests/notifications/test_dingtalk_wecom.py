@@ -94,3 +94,21 @@ def test_bot_channels_build_native_payload_not_envelope() -> None:
     # instead of crashing (system records never target bot URLs today).
     bare = ForwardOutbox(idempotency_key="bare", target_type="webhook", target_url=_DINGTALK_URL)
     assert _build_bot_markdown_payload(bare, build_dingtalk_markdown) == {}
+
+
+def test_wecom_truncates_on_bytes_not_chars() -> None:
+    """4096 is a BYTE limit; 3500 CJK chars ≈ 10.5KB blew straight past it."""
+    webhook_data, analysis = _inputs()
+    analysis = cast(AnalysisResult, {**analysis, "summary": "显" * 400, "impact_scope": "存" * 600})
+    payload = build_wecom_markdown(webhook_data, analysis)
+    content = payload["markdown"]["content"]
+    assert len(content.encode("utf-8")) <= 4000
+    # No broken multi-byte character at the cut.
+    content.encode("utf-8").decode("utf-8")
+
+
+def test_dingtalk_caps_text_bytes() -> None:
+    webhook_data, analysis = _inputs()
+    analysis = cast(AnalysisResult, {**analysis, "summary": "爆" * 400})
+    payload = build_dingtalk_markdown(webhook_data, analysis)
+    assert len(payload["markdown"]["text"].encode("utf-8")) <= 18000
