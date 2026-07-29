@@ -91,6 +91,49 @@ jobs:
       # separately.
       - run: pytest -n auto --dist loadfile -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db --cov=contracts --cov-branch --cov-report=term --cov-report=xml --cov-fail-under=85
 
+  integration:
+    # Real-backend semantics (actual PostgreSQL + Redis): the classes of bug
+    # that SQLite/mocks structurally cannot catch (VARCHAR limits, FOR UPDATE,
+    # Lua execution). Small suite, tests/real_infra/, env-gated collection.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: webhookwise_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d webhookwise_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.lock -r requirements-dev.lock
+      - run: pytest -q tests/real_infra/
+        env:
+          REAL_INFRA_TESTS: "1"
+          DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/webhookwise_ci
+          REDIS_URL: redis://localhost:6379/0
+
   docker-e2e:
     needs: changes
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || needs.changes.outputs.docker_e2e == 'true'
