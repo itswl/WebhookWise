@@ -418,10 +418,19 @@ async def import_config_endpoint(
         bundle = yaml.safe_load(request.content)
     except yaml.YAMLError as e:
         return fail_response(f"Invalid YAML: {e}", 400)
+    from sqlalchemy.exc import DataError, IntegrityError
+
     try:
         report = await import_config(session, bundle, dry_run=request.dry_run)
     except ValueError as e:
         return fail_response(str(e), 400)
+    except (DataError, IntegrityError) as e:
+        # Entry validation should make this unreachable; if the DB still
+        # rejects the bundle, reject the request rather than 500 — nothing was
+        # applied (transaction rolls back).
+        await session.rollback()
+        logger.warning("[Admin] Config import rejected by the database: %s", e)
+        return fail_response("bundle rejected by database constraints; nothing was applied", 400)
 
     if request.dry_run:
         await session.rollback()

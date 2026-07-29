@@ -22,12 +22,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
 from core.logger import get_logger
 from models import ForwardRule, MaintenanceWindow, Silence
+from schemas.forwarding import ForwardRuleCreateRequest
+from schemas.silences import MaintenanceWindowCreateRequest, SilenceCreateRequest
 
 logger = get_logger("operations.config_transfer")
 
@@ -118,6 +121,13 @@ def _clean(entry: Any, fields: tuple[str, ...]) -> dict[str, Any]:
     return {field: entry[field] for field in fields if field in entry}
 
 
+def _validation_summary(label: str, error: ValidationError) -> str:
+    problems = "; ".join(
+        f"{'.'.join(str(loc) for loc in issue['loc']) or '<root>'}: {issue['msg']}" for issue in error.errors()[:3]
+    )
+    return f"{label}: {problems}"
+
+
 def _apply(row: Any, data: dict[str, Any]) -> bool:
     changed = False
     for field, value in data.items():
@@ -151,6 +161,10 @@ async def import_config(session: AsyncSession, bundle: Any, *, dry_run: bool = F
             name = str(data.get("name") or "").strip()
             if not name:
                 raise ValueError("forward rule without a name")
+            try:
+                data = dict(ForwardRuleCreateRequest(**data).to_service_kwargs())
+            except ValidationError as ve:
+                raise ValueError(_validation_summary(f"forward rule {name!r}", ve)) from ve
             matches = existing_rules.get(name, [])
             if len(matches) > 1:
                 raise ValueError(f"forward rule name {name!r} is ambiguous in the target (multiple rows)")
@@ -172,6 +186,14 @@ async def import_config(session: AsyncSession, bundle: Any, *, dry_run: bool = F
             name = str(data.get("name") or "").strip()
             if not name:
                 raise ValueError("maintenance window without a name")
+            request_shape = dict(data)
+            request_shape["days_of_week"] = [
+                int(part) for part in str(data.get("days_of_week") or "").split(",") if part.strip()
+            ]
+            try:
+                data = MaintenanceWindowCreateRequest(**request_shape).to_model_kwargs()
+            except ValidationError as ve:
+                raise ValueError(_validation_summary(f"maintenance window {name!r}", ve)) from ve
             window = existing_windows.get(name)
             if window is not None:
                 window_report["updated" if _apply(window, data) else "unchanged"] += 1
@@ -201,6 +223,16 @@ async def import_config(session: AsyncSession, bundle: Any, *, dry_run: bool = F
     for entry in bundle.get("silences") or []:
         try:
             data = _clean(entry, _SILENCE_FIELDS)
+            if str(data.get("created_by") or "") == _MAINTENANCE_CREATED_BY:
+                raise ValueError("maintenance-window silences are derived state; import the window, not its silence")
+            created_by = str(data.get("created_by") or "")
+            try:
+                validated = SilenceCreateRequest(
+                    **{k: v for k, v in data.items() if k != "created_by"}, created_by=created_by
+                ).to_service_kwargs()
+            except ValidationError as ve:
+                raise ValueError(_validation_summary("silence", ve)) from ve
+            data = {k: v for k, v in validated.items() if k != "expires_at"}
             expires_raw = entry.get("expires_at") if isinstance(entry, dict) else None
             expires_at = None
             if expires_raw:

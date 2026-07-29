@@ -74,7 +74,7 @@ async def test_secondary_retention_bounds_history_and_closes_quiet_incidents(
         )
     )
 
-    assert result == {"archives": 1, "outboxes": 1, "ai_usage": 1, "incidents_closed": 1}
+    assert result == {"archives": 1, "outboxes": 1, "ai_usage": 1, "decision_traces": 0, "incidents_closed": 1}
     async with session_factory() as session:
         assert await session.scalar(select(func.count(ArchivedWebhookEvent.id))) == 1
         assert await session.scalar(select(func.count(AIUsageLog.id))) == 1
@@ -82,6 +82,36 @@ async def test_secondary_retention_bounds_history_and_closes_quiet_incidents(
         incident = (await session.execute(select(Incident))).scalar_one()
     assert incident.status == "closed"
     assert incident.workflow_status == "resolved"
+
+
+@pytest.mark.asyncio
+async def test_decision_trace_retention_prunes_only_old_rows(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from datetime import timedelta
+
+    from models import DecisionTrace
+    from services.operations.data_maintenance import cleanup_expired_operational_data
+    from services.operations.policies import DataMaintenancePolicy
+
+    now = utcnow()
+    async with session_factory.begin() as session:
+        session.add(DecisionTrace(webhook_event_id=1, created_at=now - timedelta(days=120), outcome="skipped"))
+        session.add(DecisionTrace(webhook_event_id=2, created_at=now - timedelta(days=5), outcome="forwarded"))
+
+    policy = DataMaintenancePolicy(
+        enabled=True,
+        retention_days_default=30,
+        retention_policies={},
+        source_retention_policies={},
+        cleanup_keywords={},
+        decision_trace_retention_days=90,
+    )
+    result = await cleanup_expired_operational_data(policy=policy)
+    assert result["decision_traces"] == 1
+    async with session_factory.begin() as session:
+        remaining = (await session.execute(select(DecisionTrace))).scalars().all()
+        assert [t.webhook_event_id for t in remaining] == [2]
 
 
 @pytest.mark.asyncio
