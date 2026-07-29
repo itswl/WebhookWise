@@ -263,6 +263,10 @@ async def test_feishu_app_transport_uses_fixed_api_and_interactive_content(
     assert message_call.args[0] == "https://open.feishu.cn/open-apis/im/v1/messages"
     assert message_call.kwargs["params"] == {"receive_id_type": "chat_id"}
     assert message_call.kwargs["headers"]["Authorization"] == "Bearer tenant-token"
-    assert message_call.kwargs["headers"]["Idempotency-Key"] == "incident-created:7"
+    # Feishu dedupes on the BODY uuid field (<=50 chars), not any header;
+    # the outbox key is hashed to fit deterministically.
+    assert "Idempotency-Key" not in message_call.kwargs["headers"]
+    assert message_call.kwargs["json"]["uuid"] == "07c8b8dde16e81b7df49962a9ee1d2e499bb11b1"
+    assert len(message_call.kwargs["json"]["uuid"]) <= 50
     assert message_call.kwargs["json"]["receive_id"] == "oc_chat"
     assert '"elements"' in message_call.kwargs["json"]["content"]

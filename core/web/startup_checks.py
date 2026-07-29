@@ -73,6 +73,16 @@ def validate_startup_security(config: AppConfig, *, app_env: str | None = None) 
                 if looks_like_placeholder_secret(value):
                     raise RuntimeError(f"{name} is still an example placeholder value")
                 _warn_if_short_secret(name, value)
+            if not config.security.FEISHU_ALLOWED_TENANT_KEYS.strip():
+                logger.warning(
+                    "FEISHU_ALLOWED_TENANT_KEYS is empty: any tenant passing token verification may drive "
+                    "incident card actions. Pin your tenant key unless cross-tenant access is intended."
+                )
+            if not config.security.FEISHU_ALLOWED_OPERATOR_OPEN_IDS.strip():
+                logger.warning(
+                    "FEISHU_ALLOWED_OPERATOR_OPEN_IDS is empty: any chat member may acknowledge/resolve "
+                    "incidents from cards. Set an operator allowlist to restrict who can act."
+                )
     if env == "production" and not config.security.REQUIRE_WEBHOOK_AUTH:
         raise RuntimeError(
             "Webhook authentication is not enabled in production. Please set REQUIRE_WEBHOOK_AUTH=true and WEBHOOK_SECRET"
