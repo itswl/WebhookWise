@@ -83,9 +83,9 @@ async def build_postmortem_markdown(session: AsyncSession, incident_id: int) -> 
     if event_ids:
         trace_rows = (
             await session.execute(
-                select(DecisionTrace.webhook_event_id, DecisionTrace.outcome, DecisionTrace.skip_code).where(
-                    DecisionTrace.webhook_event_id.in_(event_ids)
-                )
+                select(DecisionTrace.webhook_event_id, DecisionTrace.outcome, DecisionTrace.skip_code)
+                .where(DecisionTrace.webhook_event_id.in_(event_ids))
+                .order_by(DecisionTrace.id)
             )
         ).all()
         for event_id, outcome, skip_code in trace_rows:

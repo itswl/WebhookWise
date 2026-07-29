@@ -501,6 +501,7 @@ async def close_incident_endpoint(
     for historical review. Re-opening is a separate call so closure is always
     an explicit operator action, not an automated side effect.
     """
+    from services.incidents.summary import queue_summary_if_needed
     from services.operations.audit_logger import add_audit
 
     try:
@@ -524,15 +525,7 @@ async def close_incident_endpoint(
             incident.workflow_status = "resolved"
             incident.resolved_at = incident.resolved_at or now
             incident.ended_at = incident.ended_at or now
-            if incident.summary_analysis is None and incident.alert_count >= 2:
-                incident.summary_status = "pending"
-                incident.summary_attempts = 0
-                incident.summary_next_attempt_at = now
-                incident.summary_last_error = None
-            elif incident.summary_analysis is None:
-                incident.summary_status = "skipped"
-                incident.summary_next_attempt_at = None
-                incident.summary_last_error = "singleton incidents are not summarized"
+            queue_summary_if_needed(incident, now)
             add_audit(
                 session,
                 "incident",
