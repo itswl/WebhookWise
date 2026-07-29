@@ -81,6 +81,13 @@ def _fallback_body_hash(source: str, raw_body: bytes) -> str:
     return f"body:{digest}"
 
 
+# Settled tradeoff (review P2#27): this normalizes the payload on the API
+# process even though the worker normalizes again. The alternative — keying
+# the storm counter on a raw body hash — fragments the counter whenever the
+# sender varies timestamps inside the body, making per-alert backpressure
+# never trigger. The cost is bounded (1MB body cap) and paid ONLY when
+# WEBHOOK_INGRESS_BACKPRESSURE_THRESHOLD > 0 (check_alert_backpressure
+# returns before computing any identity when the feature is off — the default).
 def _ingress_identity(
     source_hint: str,
     raw_body: bytes,

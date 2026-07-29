@@ -152,8 +152,12 @@ class DBConfig(StaticSettings):
     # Postgres max_connections and expected per-request concurrency; consider
     # pgbouncer when scaling out. Defaults suit a small single-node deployment.
     DB_POOL_SIZE: int = Field(default=5, ge=1, description="Number of persistent connections in the per-process pool")
+    # Sized against the worker's task concurrency (TASKIQ_MAX_ASYNC_TASKS,
+    # default 20 in entrypoint.sh): tasks are LLM-bound most of their life, but
+    # a burst can put many into the persist phase at once — pool+overflow is
+    # the cap on how many proceed without queueing on a connection.
     DB_MAX_OVERFLOW: int = Field(
-        default=2, ge=0, description="Number of connections the per-process pool may temporarily exceed by"
+        default=5, ge=0, description="Number of connections the per-process pool may temporarily exceed by"
     )
     DB_POOL_RECYCLE_SECONDS: int = Field(default=3600, gt=0)
     DB_POOL_TIMEOUT_SECONDS: int = Field(
