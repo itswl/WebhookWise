@@ -44,8 +44,11 @@ def test_apply_auto_sla_arms_only_matching_unset_open_incidents() -> None:
     policy = AutoSlaPolicy(minutes_by_importance={"high": 30})
 
     armed = _incident()
-    assert apply_auto_sla(armed, policy) is True
-    assert armed.sla_due_at == armed.updated_at + timedelta(minutes=30)
+    arm_time = utcnow()
+    assert apply_auto_sla(armed, policy, now=arm_time) is True
+    # Armed from NOW, not from (possibly backfilled) event timestamps — a
+    # delayed alert must not arm an already-breached SLA.
+    assert armed.sla_due_at == arm_time + timedelta(minutes=30)
 
     # Already-set SLA is never moved.
     preset = _incident(sla_due_at=utcnow() + timedelta(hours=4))
@@ -57,6 +60,9 @@ def test_apply_auto_sla_arms_only_matching_unset_open_incidents() -> None:
     assert apply_auto_sla(_incident(top_importance="medium"), policy) is False
     # Resolved incidents are off the hook.
     assert apply_auto_sla(_incident(workflow_status="resolved"), policy) is False
+    # Acknowledged incidents are off the hook too: a human already owns it, so
+    # clearing the SLA after acking must NOT re-arm on the next member alert.
+    assert apply_auto_sla(_incident(acknowledged_at=utcnow()), policy) is False
     # Disabled policy.
     assert apply_auto_sla(_incident(), AutoSlaPolicy()) is False
 
@@ -110,6 +116,15 @@ async def test_breach_skips_resolved_and_future_slas(session: AsyncSession, monk
     now = utcnow()
     session.add(_incident(sla_due_at=now - timedelta(minutes=5), workflow_status="resolved"))
     session.add(_incident(title="future", sla_due_at=now + timedelta(minutes=30)))
+    # Breached but acknowledged: someone owns it — no escalation ping.
+    session.add(
+        _incident(
+            title="acked",
+            sla_due_at=now - timedelta(minutes=5),
+            workflow_status="acknowledged",
+            acknowledged_at=now - timedelta(minutes=10),
+        )
+    )
     await session.flush()
 
     assert await queue_sla_breach_notifications(session, now) == []
