@@ -15,7 +15,7 @@ logger = get_logger("runtime_heartbeat")
 
 _tasks: dict[str, asyncio.Task[None]] = {}
 
-DEFAULT_LOCAL_HEARTBEAT_FILE = "/tmp/webhookwise-heartbeat"  # noqa: S108 - pods mount an emptyDir at /tmp
+DEFAULT_LOCAL_HEARTBEAT_FILE = "/tmp/webhookwise-heartbeat"  # noqa: S108  # nosec B108 - container-private /tmp (emptyDir)
 
 
 def _positive_int_env(name: str, default: int) -> int:
