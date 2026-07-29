@@ -15,8 +15,9 @@ Off by default (empty mapping). Configure e.g.:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 
+from core.datetime_utils import utcnow
 from core.logger import get_logger
 from models import Incident
 
@@ -64,24 +65,30 @@ class AutoSlaPolicy:
         return bool(self.minutes_by_importance)
 
 
-def apply_auto_sla(incident: Incident, policy: AutoSlaPolicy) -> bool:
+def apply_auto_sla(incident: Incident, policy: AutoSlaPolicy, *, now: datetime | None = None) -> bool:
     """Arm the incident's SLA from its importance; return whether it was set.
 
-    Only fills an EMPTY sla_due_at: an operator-set (or previously armed) SLA is
-    never moved. Note the flip side: clearing an SLA on a still-firing incident
-    re-arms it when the next member lands — "still firing" means "still on the
-    hook", by design.
+    Only fills an EMPTY sla_due_at: an operator-set (or previously armed) SLA
+    is never moved. ACKNOWLEDGED incidents are never armed — the escalation
+    exists to find a human, and one is already on it (this also means an
+    operator clearing the SLA on an incident they acknowledged stays cleared;
+    on an UNacknowledged incident the next member re-arms it — "still firing
+    and still unowned" means "still on the hook", by design).
+
+    The timer runs from NOW (wall clock at arming), never from event
+    timestamps: a backfilled or delayed alert must not arm an already-breached
+    SLA and escalate instantly.
     """
     if not policy.enabled or incident.sla_due_at is not None:
         return False
     if incident.workflow_status in ("resolved", "ignored"):
         return False
+    if incident.acknowledged_at is not None:
+        return False
     minutes = policy.minutes_by_importance.get(str(incident.top_importance or "").lower())
     if minutes is None:
         return False
-    base = incident.updated_at or incident.started_at
-    if base is None:
-        return False
+    base = now or utcnow()
     incident.sla_due_at = base + timedelta(minutes=minutes)
     logger.info(
         "[AutoSLA] Armed SLA incident=%s importance=%s due_at=%s",

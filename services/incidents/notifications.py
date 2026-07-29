@@ -200,6 +200,9 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
                     Incident.sla_due_at.isnot(None),
                     Incident.sla_due_at <= now,
                     Incident.workflow_status.notin_(["resolved", "ignored"]),
+                    # The escalation exists to find a human; an acknowledged
+                    # resource already has one.
+                    Incident.acknowledged_at.is_(None),
                 )
                 .order_by(Incident.sla_due_at, Incident.id)
                 .limit(50)
@@ -216,6 +219,7 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
                     WebhookEvent.sla_due_at.isnot(None),
                     WebhookEvent.sla_due_at <= now,
                     WebhookEvent.workflow_status.notin_(["resolved", "ignored"]),
+                    WebhookEvent.acknowledged_at.is_(None),
                 )
                 .order_by(WebhookEvent.sla_due_at, WebhookEvent.id)
                 .limit(50)
