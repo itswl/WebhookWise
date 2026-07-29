@@ -291,7 +291,7 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
     # Identities oscillating firing↔recovered right now (best-effort Redis
     # read). Each one is a notification storm dedup cannot absorb; suggest a
     # threshold/for-duration fix upstream, or FLAPPING_SUPPRESS_ENABLED.
-    flapping = await list_active_flapping(limit=5)
+    flapping = await list_active_flapping(limit=50)
     if flapping:
         labels = ", ".join(item["identity"] for item in flapping[:3])
         items.append(

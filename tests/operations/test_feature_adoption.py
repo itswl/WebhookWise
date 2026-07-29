@@ -17,7 +17,7 @@ async def test_record_increments_monthly_hash(monkeypatch: pytest.MonkeyPatch) -
     client = MagicMock()
     client.hincrby = AsyncMock()
     client.expire = AsyncMock()
-    monkeypatch.setattr(fa, "get_redis", lambda: client)
+    monkeypatch.setattr(fa.redis_client, "get_redis", lambda: client)
 
     await fa.record_feature_use("action:kb_draft_published", now=datetime(2026, 7, 16))
     client.hincrby.assert_awaited_once_with("feature_adoption:2026-07", "action:kb_draft_published", 1)
@@ -29,7 +29,7 @@ async def test_record_is_fail_silent(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom() -> Any:
         raise RedisError("down")
 
-    monkeypatch.setattr(fa, "get_redis", boom)
+    monkeypatch.setattr(fa.redis_client, "get_redis", boom)
     await fa.record_feature_use("view:silence_debt")  # must not raise
 
 
@@ -45,7 +45,7 @@ async def test_get_adoption_splits_actions_views_and_prev_month(monkeypatch: pyt
         return hashes.get(key, {})
 
     client.hgetall = hgetall
-    monkeypatch.setattr(fa, "get_redis", lambda: client)
+    monkeypatch.setattr(fa.redis_client, "get_redis", lambda: client)
 
     # January exercises the year-boundary path for "previous month".
     data = await fa.get_feature_adoption(now=datetime(2026, 1, 15))
@@ -65,6 +65,6 @@ async def test_get_adoption_degrades_per_month_on_redis_error(monkeypatch: pytes
         raise RedisError("down")
 
     client.hgetall = hgetall
-    monkeypatch.setattr(fa, "get_redis", lambda: client)
+    monkeypatch.setattr(fa.redis_client, "get_redis", lambda: client)
     data = await fa.get_feature_adoption(now=datetime(2026, 7, 16))
     assert data["months"]["2026-07"] == {"actions": {}, "views": {}}

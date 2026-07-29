@@ -69,7 +69,7 @@ async def test_list_active_flapping_reads_and_prunes(monkeypatch: pytest.MonkeyP
     client = MagicMock()
     client.zremrangebyscore = AsyncMock(return_value=1)
     client.zrevrange = AsyncMock(return_value=[(b"volcengine::gpu", 1789000000000.0)])
-    monkeypatch.setattr(flap_mod, "get_redis", lambda: client)
+    monkeypatch.setattr(flap_mod.redis_client, "get_redis", lambda: client)
     items = await list_active_flapping(limit=5)
     assert items == [{"identity": "volcengine::gpu", "quiet_at_ms": 1789000000000}]
     client.zremrangebyscore.assert_awaited_once()
@@ -80,7 +80,7 @@ async def test_list_active_flapping_fails_open(monkeypatch: pytest.MonkeyPatch) 
     def get_boom() -> Any:
         raise RedisError("no redis")
 
-    monkeypatch.setattr(flap_mod, "get_redis", get_boom)
+    monkeypatch.setattr(flap_mod.redis_client, "get_redis", get_boom)
     assert await list_active_flapping() == []
 
 
@@ -101,3 +101,18 @@ def test_decide_forwarding_skips_flapping_with_trace_code() -> None:
 def test_decide_forwarding_without_flap_flag_unchanged() -> None:
     decision = decide_forwarding(rules=[], policy=_policy(), source="volcengine", flapping=False)
     assert decision.skip_code == "no_match"
+
+
+@pytest.mark.asyncio
+async def test_observe_skips_identityless_payloads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No rule name → no observation: unrelated alerts must not share a flip
+    bucket (three independent monitors each doing one down/up would otherwise
+    look like one flapping identity and suppression would mute the source)."""
+
+    async def eval_boom(*args: Any) -> int:
+        raise AssertionError("Redis must not be touched for identityless payloads")
+
+    monkeypatch.setattr(flap_mod, "redis_eval_int", eval_boom)
+    status = await observe_flapping("custom-source", {"title": "no rule keys here"}, None, policy=FlappingPolicy())
+    assert status.flapping is False
+    assert status.flips == 0

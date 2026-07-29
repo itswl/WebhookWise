@@ -57,9 +57,14 @@ async def resolve_forward_decision(
     policy: ForwardingPolicy | None = None,
     event_type: str = "webhook_forward",
     identity: dict[str, str] | None = None,
-    analysis: AnalysisResult | None = None,
+    flapping: bool = False,
 ) -> ForwardDecision:
-    """Resolve forwarding policy and matching rules for a processed webhook."""
+    """Resolve forwarding policy and matching rules for a processed webhook.
+
+    ``flapping`` must be observed by the CALLER (outside any DB transaction —
+    see finalize_analysis_transaction) and already gated on the suppression
+    opt-in; this function only routes it into the decision.
+    """
     rules: list[ForwardRuleSnapshot] = []
     try:
         rules = await get_cached_forward_rules(session=session)
@@ -71,11 +76,6 @@ async def resolve_forward_decision(
         silences = await get_cached_active_silences(session=session)
     except (KeyError, RuntimeError, SQLAlchemyError, TypeError, ValueError) as e:
         logger.warning("[Forward] Failed to load active silences: %s", e)
-
-    # Always-on flap observation (fail-open); the decision only suppresses when
-    # the opt-in is enabled AND the identity crossed the flip threshold.
-    flapping_policy = FlappingPolicy.from_config()
-    flap = await observe_flapping(source, parsed_data, dict(analysis) if analysis else None, policy=flapping_policy)
 
     decision = decide_forwarding(
         event_type=event_type,
@@ -89,7 +89,7 @@ async def resolve_forward_decision(
         parsed_data=parsed_data,
         silences=silences,
         identity=identity,
-        flapping=flap.flapping and flapping_policy.suppress_enabled,
+        flapping=flapping,
     )
 
     if decision.should_forward:
@@ -136,6 +136,18 @@ async def finalize_analysis_transaction(
         original_id_for_save = analysis_res.original_event_id
         prev_alert_id_for_save = None
 
+    # Always-on flap observation, deliberately OUTSIDE the persist transaction
+    # below: it is a Redis round trip with its own hard budget, and the DB
+    # connection/advisory locks must not wait on it. Only the decision bit
+    # (observation AND the suppression opt-in) enters the transaction.
+    flapping_policy = FlappingPolicy.from_config()
+    flap = await observe_flapping(
+        ctx.req_ctx.source,
+        dict(ctx.req_ctx.parsed_data),
+        dict(final_analysis) if final_analysis else None,
+        policy=flapping_policy,
+    )
+
     outbox_ids: list[int] = []
     persist_attrs = {
         WEBHOOK_EVENT_ID: ctx.event_id or 0,
@@ -181,7 +193,7 @@ async def finalize_analysis_transaction(
                 # check (or extract it now, once) instead of re-walking the
                 # payload inside decide_forwarding.
                 identity=ensure_forward_match_identity(ctx),
-                analysis=final_analysis,
+                flapping=flap.flapping and flapping_policy.suppress_enabled,
             )
 
             # Update the forward status of the alert event
