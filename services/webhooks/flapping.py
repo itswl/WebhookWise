@@ -22,6 +22,7 @@ import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
 from redis.exceptions import RedisError
 
@@ -39,11 +40,12 @@ ACTIVE_FLAPPING_KEY = "flap:active"
 # Atomically record a status observation and return the flip count in-window.
 # KEYS[1]=last-status key, KEYS[2]=flips zset, KEYS[3]=active zset
 # ARGV[1]=now_ms, ARGV[2]=status, ARGV[3]=window_ms, ARGV[4]=min_transitions,
-# ARGV[5]=identity label
+# ARGV[5]=identity label, ARGV[6]=per-observation nonce (keeps two flips within
+# the same millisecond as two zset members instead of one)
 _OBSERVE_LUA = """
 local last = redis.call('GET', KEYS[1])
 if last and last ~= ARGV[2] then
-  redis.call('ZADD', KEYS[2], ARGV[1], ARGV[1])
+  redis.call('ZADD', KEYS[2], ARGV[1], ARGV[1] .. '-' .. ARGV[6])
 end
 redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3] * 4)
 redis.call('ZREMRANGEBYSCORE', KEYS[2], 0, ARGV[1] - ARGV[3])
@@ -147,6 +149,7 @@ async def observe_flapping(
                 window_ms,
                 policy.min_transitions,
                 identity,
+                uuid4().hex[:8],
             ),
             timeout=_OBSERVE_BUDGET_SECONDS,
         )

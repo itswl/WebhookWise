@@ -48,7 +48,7 @@ async def _seed_incident_draft(session: AsyncSession) -> str:
 
 @pytest.mark.asyncio
 async def test_list_publish_and_discard_kb_draft_flow(session: AsyncSession) -> None:
-    from api.v1 import admin
+    from api.v1 import admin_config as admin
 
     ref = await _seed_incident_draft(session)
 
@@ -70,7 +70,7 @@ async def test_list_publish_and_discard_kb_draft_flow(session: AsyncSession) -> 
 
 @pytest.mark.asyncio
 async def test_discard_kb_draft(session: AsyncSession) -> None:
-    from api.v1 import admin
+    from api.v1 import admin_config as admin
 
     ref = await _seed_incident_draft(session)
 

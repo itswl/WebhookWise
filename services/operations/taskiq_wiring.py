@@ -12,6 +12,7 @@ import secrets
 
 from taskiq import TaskiqEvents
 
+import services.operations.scheduled_reports as _scheduled_reports  # noqa: F401
 import services.operations.tasks as _tasks  # noqa: F401
 from adapters.ecosystem_adapters import initialize_adapters
 from core.config.defaults import get_settings
