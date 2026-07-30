@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest an improvement or new capability
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What operational pain are you hitting? What does it cost you today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you would like to happen. Rough is fine.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Ingress / adapters
+        - Dedup / noise reduction
+        - AI / analysis
+        - Forwarding / notification channels
+        - Incidents / response / learning
+        - Dashboard
+        - Observability
+        - Deployment (Compose / Kubernetes)
+        - Other
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you use now, or why existing configuration does not cover this.
