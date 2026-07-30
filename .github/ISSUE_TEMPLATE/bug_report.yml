@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a defect in WebhookWise
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security vulnerabilities do not belong here** —
+        report them privately via
+        [GitHub Security Advisories](https://github.com/itswl/WebhookWise/security/advisories/new)
+        (see [SECURITY.md](https://github.com/itswl/WebhookWise/blob/main/SECURITY.md)).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag or commit SHA (see the dashboard footer or `CHANGELOG.md`).
+      placeholder: v3.5.1
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment mode
+      options:
+        - Docker Compose
+        - Kubernetes
+        - Host processes (uvicorn/taskiq directly)
+        - Other (explain below)
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include the affected area (ingress, dedup, analysis, forwarding, dashboard, ...).
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Ideally a minimal webhook payload (`curl -X POST .../v1/webhook ...`) plus the relevant configuration.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: API/Worker/Scheduler logs around the failure. **Redact secrets, tokens, and webhook URLs.**
+      render: shell
