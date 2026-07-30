@@ -5,6 +5,37 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+## [3.5.1] - 2026-07-30
+
+### Added
+- Open-source readiness: LICENSE (MIT), CONTRIBUTING, SECURITY policy, Code of
+  Conduct, issue/PR templates, bilingual README (README.zh.md), badges and
+  positioning. The committed deploy prompt containing infrastructure details
+  was untracked (`.claude/` is now ignored; note: prior revisions remain in
+  git history).
+- `scripts/gate.sh`: the local quality gate is now an exact replica of the CI
+  test job (bandit, pip-audit, and the OpenAPI contract had each gone red in
+  CI while hand-picked local lists passed) — CI-enforced to stay in sync.
+- Full-stack e2e for the Feishu card-action closed loop (fake Feishu app API:
+  tenant token + message create; signed callback → incident acknowledged →
+  idempotent replay → wrong-token 401).
+- README "suppression stack" chapter + dashboard decision-trace help block
+  (en/zh): the eight gates an alert passes, in order, each mapped to its
+  decision-trace skip code. The `flapping` skip code also gained its missing
+  dashboard icon/label.
+
+### Changed
+- The shared per-source event aggregation now lives in one place
+  (`services/webhooks/source_stats.py`); source-health and alert-quality
+  consume it (rule-audit keeps its rule-level dimension deliberately).
+- Structural: `DecisionInput` value object for forward decisions; periodic
+  report tasks split from `tasks.py` (task names unchanged); KB corpus /
+  config-bundle / adoption endpoints split from `api/v1/admin.py` into
+  `admin_config.py` (paths and auth unchanged); silences API imports hoisted.
+- Flapping flip accounting keys each observation uniquely (two flips within
+  one millisecond no longer collapse into one zset member).
+
+
 ## [3.5.0] - 2026-07-29
 
 Rolls up the incident-response feature waves shipped since 3.4.0 plus a full
