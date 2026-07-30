@@ -3,7 +3,30 @@ name: webhookwise-e2e
 networks:
   e2e:
 
+# TLS material for the Feishu custom-app API host. The app transport calls the
+# fixed origin https://open.feishu.cn with an httpx client that only trusts
+# certifi's bundle (trust_env=False), so cert-init generates a throwaway CA,
+# gives the fake server a cert for open.feishu.cn:443, and publishes a certifi
+# package shadow whose bundle additionally trusts that CA.
+volumes:
+  e2e-certs:
+
 services:
+  cert-init:
+    image: webhookwise-e2e:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    # Root, because the fresh named volume is root-owned; the script chmods
+    # everything world-readable for the non-root app user and fake server.
+    user: "0:0"
+    entrypoint: ["python", "/gen/generate_e2e_certs.py", "/e2e-certs"]
+    volumes:
+      - ./generate_e2e_certs.py:/gen/generate_e2e_certs.py:ro
+      - e2e-certs:/e2e-certs
+    networks:
+      - e2e
+
   postgres:
     image: postgres:15-alpine
     environment:
@@ -33,6 +56,10 @@ services:
     command: ["python", "/app/fake_feishu.py"]
     volumes:
       - ./fake_feishu.py:/app/fake_feishu.py:ro
+      - e2e-certs:/certs:ro
+    depends_on:
+      cert-init:
+        condition: service_completed_successfully
     ports:
       - "19090:9000"
     healthcheck:
@@ -117,9 +144,26 @@ services:
       ALLOW_PRIVATE_TARGET_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
+      # Feishu custom-app card actions: queue interactive incident cards, send
+      # them through the app API, and verify signed operator callbacks.
+      FEISHU_CARD_ACTIONS_ENABLED: "true"
+      FEISHU_APP_ID: cli_e2e
+      FEISHU_APP_SECRET: e2e-app-secret
+      FEISHU_INCIDENT_CHAT_ID: oc_e2e
+      FEISHU_CARD_VERIFICATION_TOKEN: e2e-verify-token
+      FEISHU_CARD_ACTION_SECRET: e2e-action-secret
+      # TaskRuntimePolicy clamps this to a 30s floor; low value keeps incident
+      # grouping fast for the card-actions e2e.
+      BACKGROUND_SCAN_INTERVAL_SECONDS: "5"
+    volumes:
+      # certifi package shadow (bundle + e2e CA) so outbound TLS trusts the
+      # fake open.feishu.cn; path matches the image's python:3.12 /opt/venv.
+      - e2e-certs:/opt/venv/lib/python3.12/site-packages/certifi:ro
     ports:
       - "18080:8000"
     depends_on:
+      cert-init:
+        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
       postgres:
@@ -170,7 +214,24 @@ services:
       ALLOW_PRIVATE_TARGET_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
+      # Feishu custom-app card actions: queue interactive incident cards, send
+      # them through the app API, and verify signed operator callbacks.
+      FEISHU_CARD_ACTIONS_ENABLED: "true"
+      FEISHU_APP_ID: cli_e2e
+      FEISHU_APP_SECRET: e2e-app-secret
+      FEISHU_INCIDENT_CHAT_ID: oc_e2e
+      FEISHU_CARD_VERIFICATION_TOKEN: e2e-verify-token
+      FEISHU_CARD_ACTION_SECRET: e2e-action-secret
+      # TaskRuntimePolicy clamps this to a 30s floor; low value keeps incident
+      # grouping fast for the card-actions e2e.
+      BACKGROUND_SCAN_INTERVAL_SECONDS: "5"
+    volumes:
+      # certifi package shadow (bundle + e2e CA) so outbound TLS trusts the
+      # fake open.feishu.cn; path matches the image's python:3.12 /opt/venv.
+      - e2e-certs:/opt/venv/lib/python3.12/site-packages/certifi:ro
     depends_on:
+      cert-init:
+        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
       postgres:
@@ -209,7 +270,24 @@ services:
       ALLOW_PRIVATE_TARGET_URLS: "true"
       FORWARD_TARGET_ALLOWLIST: open.feishu.cn
       OTEL_ENABLED: "false"
+      # Feishu custom-app card actions: queue interactive incident cards, send
+      # them through the app API, and verify signed operator callbacks.
+      FEISHU_CARD_ACTIONS_ENABLED: "true"
+      FEISHU_APP_ID: cli_e2e
+      FEISHU_APP_SECRET: e2e-app-secret
+      FEISHU_INCIDENT_CHAT_ID: oc_e2e
+      FEISHU_CARD_VERIFICATION_TOKEN: e2e-verify-token
+      FEISHU_CARD_ACTION_SECRET: e2e-action-secret
+      # TaskRuntimePolicy clamps this to a 30s floor; low value keeps incident
+      # grouping fast for the card-actions e2e.
+      BACKGROUND_SCAN_INTERVAL_SECONDS: "5"
+    volumes:
+      # certifi package shadow (bundle + e2e CA) so outbound TLS trusts the
+      # fake open.feishu.cn; path matches the image's python:3.12 /opt/venv.
+      - e2e-certs:/opt/venv/lib/python3.12/site-packages/certifi:ro
     depends_on:
+      cert-init:
+        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
       postgres:
