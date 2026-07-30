@@ -34,6 +34,7 @@ var DecisionTraceModule = (function () {
         'cooldown': { icon: '⏳', key: 'dt.code.cooldown' },
         'duplicate_no_rule': { icon: '🔁', key: 'dt.code.duplicateNoRule' },
         'noise_suppressed': { icon: '🌊', key: 'dt.code.noiseSuppressed' },
+        'flapping': { icon: '📳', key: 'dt.code.flapping' },
         'no_match': { icon: '🚫', key: 'dt.code.noMatch' },
         'periodic_no_rule': { icon: '🔔', key: 'dt.code.periodicNoRule' }
     };
