@@ -17,23 +17,20 @@ Run focused checks before broad ones:
 ```bash
 ruff check .
 mypy
-python -m compileall -q .
 pytest -q
 ```
 
-Run the CI-equivalent quality gate when touching runtime behavior:
+Before EVERY push, run the full gate — it is an exact replica of the CI test
+job (bandit, pip-audit, and the OpenAPI contract have each gone red in CI
+while a hand-picked local list passed; do not hand-pick):
 
 ```bash
-python scripts/check_requirements_locks.py
-python scripts/observability/webhookwise_observe.py contract
-pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db --cov=contracts --cov-branch --cov-report=term --cov-report=xml --cov-fail-under=85
+bash scripts/gate.sh          # full gate
+bash scripts/gate.sh --fast   # skips pip-audit for tight loops
 ```
 
-Run shell checks when editing container entrypoints:
-
-```bash
-shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh
-```
+When a check is added to ci.yml's test job, add it to scripts/gate.sh in the
+same change (and vice versa).
 
 ## Working Rules
 
