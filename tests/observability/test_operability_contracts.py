@@ -56,7 +56,13 @@ def test_dependency_updates_and_ai_dev_entrypoint_are_configured() -> None:
 
     assert ecosystems == {"docker", "github-actions", "pip"}
     assert "ruff check ." in guide
-    assert "shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh" in guide
+    # The guide points at the unified gate script; shellcheck (and the rest of
+    # the CI checks) live THERE so the local list can never drift from ci.yml.
+    assert "bash scripts/gate.sh" in guide
+    gate = (ROOT / "scripts/gate.sh").read_text()
+    assert "shellcheck entrypoint.sh scripts/gate.sh tests/e2e/*.sh" in gate
+    assert "bandit -r core api services models adapters db scripts contracts" in gate
+    assert "export_openapi.py --check" in gate
     assert "Keep metrics labels stable and machine-readable" in guide
 
 

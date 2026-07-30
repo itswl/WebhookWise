@@ -42,3 +42,4 @@ openclaw-main/
 
 # Local virtualenv
 .venv/
+.claude/
