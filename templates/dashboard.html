@@ -273,6 +273,10 @@
              the navbar labels it "Overview" and it is the default landing tab. -->
         <div id="decisionTraceTab" class="tab-content active">
             <div class="decision-trace-section" style="padding: 20px 0;">
+                <details class="dt-suppression-help" style="margin-bottom: 14px;">
+                    <summary style="cursor: pointer; font-weight: 600;" data-i18n="dt.help.title">Why didn't I get notified? — the suppression stack</summary>
+                    <div style="padding: 8px 0 0 4px; line-height: 1.7; opacity: 0.9;" data-i18n="dt.help.body">Every alert passes the same gates, in order: ① ingress backpressure (per-alert storms / queue high-water, opt-in) → ② dedup (repeats join an existing thread) → ③ smart noise reduction (derived alerts of one root cause) → ④ silences and maintenance windows (operator mutes) → ⑤ flapping mute (rapid firing↔recovered oscillation, opt-in) → ⑥ cooldown (just notified) → ⑦ forwarding rules (no matching rule, no delivery) → ⑧ periodic reminder policy. Each trace row below names the exact gate that stopped (or forwarded) the alert.</div>
+                </details>
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
                     <div class="dt-view-switch" style="display: flex; gap: 8px; align-items: center;">
                         <button class="btn dt-view-btn active" data-dt-view="overview" data-i18n="dt.view.overview">Overview</button>

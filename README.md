@@ -1,5 +1,13 @@
 # WebhookWise
 
+**English** | [中文](README.zh.md)
+
+[![CI](https://github.com/itswl/WebhookWise/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/itswl/WebhookWise/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/itswl/WebhookWise)](https://github.com/itswl/WebhookWise/releases)
+
+*Self-hosted alert intelligence between your monitoring and your chat — dedup, noise reduction, AI triage, and a decision trace that can explain every notification (or its absence).*
+
 WebhookWise is an intelligent Webhook receive, analysis, and forwarding service built for production operations. It normalizes events from Prometheus, Grafana, Alertmanager, Feishu, or any third-party system into a unified shape, writes them asynchronously to a queue and database, and then uses AI analysis, noise reduction and deduplication, transactional forwarding, and observability to turn alerts into operational events that can be tracked, audited, and acted on.
 
 It is not a simple Webhook relay, but a small AIOps control plane:
@@ -8,6 +16,8 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 - The Worker pipeline handles normalization, persistence, deduplication, AI/rule analysis, noise reduction, and forwarding decisions.
 - The Forward Outbox decouples business state from external HTTP/Feishu/OpenClaw side effects.
 - OTel-first observability ties together metrics, traces, logs, events, signals, and profiles.
+
+**Works well with:** WebhookWise sits upstream of executor platforms — it decides which alerts deserve attention and hands them off with context, so a downstream auto-investigation platform such as Ongrid can act on what gets through.
 
 ## Quick Links
 
@@ -269,6 +279,35 @@ Application images must use a release tag or digest; avoid using `latest`. For m
 
 For stricter ownership rules, see [docs/architecture/boundaries.md](docs/architecture/boundaries.md).
 
+## The Suppression Stack — "why didn't I get notified?"
+
+Eight mechanisms can stop an alert from reaching chat. They are not eight
+mysteries: every alert passes the same gates in the same order, and the
+decision trace records exactly which gate acted (dashboard → Decision Trace).
+
+```mermaid
+flowchart TD
+    A[Alert received] --> G1{"① Ingress backpressure<br/>(per-alert storm / queue high water, opt-in)"}
+    G1 -->|suppressed| X1[dropped at ingress · 200 with outcome=suppressed]
+    G1 --> G2{"② Dedup"}
+    G2 -->|duplicate| X2[joins the existing thread<br/>cooldown / periodic reminder decide re-notify]
+    G2 --> G3{"③ Smart noise reduction<br/>(derived alerts of one root cause)"}
+    G3 -->|suppressed| X3[skip_code=noise_suppressed]
+    G3 --> G4{"④ Silences & maintenance windows"}
+    G4 -->|matched| X4[skip_code=silenced]
+    G4 --> G5{"⑤ Flapping mute<br/>(firing↔recovered oscillation, opt-in)"}
+    G5 -->|flapping| X5[skip_code=flapping]
+    G5 --> G6{"⑥ Cooldown<br/>(just notified)"}
+    G6 -->|inside window| X6[skip_code=cooldown]
+    G6 --> G7{"⑦ Forwarding rules"}
+    G7 -->|no rule matches| X7[skip_code=no_match / duplicate_no_rule]
+    G7 --> D[Delivered — outbox → Feishu / DingTalk / WeCom / webhook]
+```
+
+Rules of thumb: gates ①⑤ are **opt-in** (default off); ②③⑥ are automatic
+noise control; ④⑦⑧ are operator-authored policy. Every skip is visible —
+nothing is dropped without a decision-trace row naming the gate.
+
 ## Delivery Semantics
 
 Understanding the durability boundaries of this path is what lets you correctly assess the risk of loss and duplication:
@@ -302,6 +341,13 @@ For the complete documentation entry point, see [docs/README.md](docs/README.md)
 | Operations | [Observability](docs/operations/observability/overview.md), [Grafana Dashboards](docs/operations/observability/dashboards.md), [Query Tools](docs/operations/observability/query-tools.md), [Troubleshooting](docs/operations/troubleshooting.md) |
 | Reference | [API Docs](docs/reference/api.md), [Kubernetes](deploy/k8s/README.md), [Contributing Guide](CONTRIBUTING.md), [Changelog](CHANGELOG.md) |
 
+## Community
+
+- Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md); the entire quality gate is one command, `bash scripts/gate.sh`.
+- Security issues go **privately** through [GitHub Security Advisories](https://github.com/itswl/WebhookWise/security/advisories/new), never public issues — see [SECURITY.md](SECURITY.md).
+- Bugs and feature requests: [GitHub Issues](https://github.com/itswl/WebhookWise/issues).
+- We follow the [Contributor Covenant](CODE_OF_CONDUCT.md).
+
 ## License
 
-MIT License
+MIT License — see [LICENSE](LICENSE).
