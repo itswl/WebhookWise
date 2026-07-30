@@ -70,7 +70,7 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       # shellcheck ships pre-installed on GitHub-hosted ubuntu runners.
-      - run: shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh
+      - run: shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh tests/e2e/run_feishu_card_actions.sh
       - run: python scripts/check_requirements_locks.py
       - run: mypy
       - run: bandit -r core api services models adapters db scripts contracts -x tests -q -s B106
@@ -138,7 +138,7 @@ jobs:
     needs: changes
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || needs.changes.outputs.docker_e2e == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -153,3 +153,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - run: E2E_SKIP_BUILD=1 tests/e2e/run_webhook_to_feishu.sh
+      # Each script owns its stack lifecycle (down -v up front and in its EXIT
+      # trap), so the runs share the built image but never share state.
+      - run: E2E_SKIP_BUILD=1 tests/e2e/run_feishu_card_actions.sh
