@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
-from sqlalchemy import Integer, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.normalized import extract_alert_identity
@@ -25,6 +25,7 @@ from services.analysis.alert_identity_context import build_alert_identity_contex
 from services.incidents.grouping import is_recovery_payload
 from services.webhooks.decisioning import extract_forward_match_fields
 from services.webhooks.source_onboarding import payload_schema_fingerprint
+from services.webhooks.source_stats import get_source_event_stats
 
 _MAX_PAYLOAD_SCAN_EVENTS = 2_000
 _PAYLOAD_SCAN_YIELD_EVERY = 200
@@ -520,20 +521,8 @@ async def get_alert_quality_overview(
 
     now = utcnow()
     start = now - timedelta(days=window_days)
-    totals_rows = (
-        await session.execute(
-            select(
-                WebhookEvent.source,
-                WebhookEvent.source_connection_id,
-                func.count(WebhookEvent.id).label("total"),
-                func.sum(WebhookEvent.is_duplicate.cast(Integer)).label("duplicates"),
-                func.max(WebhookEvent.timestamp).label("last_seen"),
-            )
-            .where(WebhookEvent.timestamp >= start)
-            .group_by(WebhookEvent.source, WebhookEvent.source_connection_id)
-        )
-    ).all()
-    total_events = sum(int(row.total or 0) for row in totals_rows)
+    totals_rows = await get_source_event_stats(session, window_days=window_days, granularity="connection")
+    total_events = sum(row.total for row in totals_rows)
     events = (
         await session.execute(
             select(

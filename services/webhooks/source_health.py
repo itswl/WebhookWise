@@ -8,11 +8,12 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import Integer, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
-from models import DecisionTrace, WebhookEvent
+from models import DecisionTrace
+from services.webhooks.source_stats import get_source_event_stats
 
 
 async def get_source_health(session: AsyncSession, *, window_days: int = 7) -> list[dict[str, Any]]:
@@ -20,19 +21,7 @@ async def get_source_health(session: AsyncSession, *, window_days: int = 7) -> l
     window_days = max(1, int(window_days))
     start = utcnow() - timedelta(days=window_days)
 
-    rows = (
-        await session.execute(
-            select(
-                WebhookEvent.source,
-                func.count(WebhookEvent.id).label("total"),
-                func.sum(WebhookEvent.is_duplicate.cast(Integer)).label("duplicates"),
-                func.max(WebhookEvent.timestamp).label("last_seen"),
-            )
-            .where(WebhookEvent.timestamp >= start)
-            .group_by(WebhookEvent.source)
-            .order_by(func.count(WebhookEvent.id).desc())
-        )
-    ).all()
+    rows = await get_source_event_stats(session, window_days=window_days, granularity="source")
 
     if not rows:
         return []
@@ -58,10 +47,10 @@ async def get_source_health(session: AsyncSession, *, window_days: int = 7) -> l
 
     results: list[dict[str, Any]] = []
     for row in rows:
-        source = (row[0] or "unknown").strip()
-        total = int(row[1] or 0)
-        duplicates = int(row[2] or 0)
-        last_seen = row[3]
+        source = row.source
+        total = row.total
+        duplicates = row.duplicates
+        last_seen = row.last_seen
         forwarded = forwarded_by_source.get(source, 0)
 
         dup_pct = round(100.0 * duplicates / total, 1) if total else 0.0
