@@ -496,6 +496,49 @@ def _decide_duplicate_alert(
     return ForwardDecision(False, "Duplicate alert: no matching forwarding rule", False, skip_code="duplicate_no_rule")
 
 
+@dataclass(frozen=True, slots=True)
+class DecisionInput:
+    """Everything one forward decision depends on, as a single value object.
+
+    decide_forwarding had grown to 13 keyword parameters; the dataclass keeps
+    the unit reviewable and lets pipeline stages build/pass it around without
+    threading each field separately.
+    """
+
+    rules: list[ForwardRuleSnapshot]
+    policy: ForwardingPolicy
+    event_type: str = ""
+    importance: str = ""
+    is_duplicate: bool = False
+    noise: NoiseReductionContext | None = None
+    original_event: WebhookEvent | None = None
+    source: str = ""
+    parsed_data: dict[str, Any] | None = None
+    now: datetime | None = None
+    silences: list[SilenceSnapshot] | None = None
+    identity: dict[str, str] | None = None
+    flapping: bool = False
+
+
+def decide(input: DecisionInput) -> ForwardDecision:
+    """Decide from a DecisionInput (the preferred entry point)."""
+    return decide_forwarding(
+        event_type=input.event_type,
+        importance=input.importance,
+        is_duplicate=input.is_duplicate,
+        noise=input.noise,
+        original_event=input.original_event,
+        source=input.source,
+        rules=input.rules,
+        policy=input.policy,
+        parsed_data=input.parsed_data,
+        now=input.now,
+        silences=input.silences,
+        identity=input.identity,
+        flapping=input.flapping,
+    )
+
+
 def decide_forwarding(
     *,
     event_type: str = "",
