@@ -1010,5 +1010,44 @@ const API = {
     async discardKbDraft(sourceRef) {
         const response = await this.authenticatedFetch('/v1/admin/kb/drafts/' + encodeURIComponent(sourceRef), { method: 'DELETE' });
         return await this.parseJsonResponse(response);
+    },
+
+    // ========== Runtime Settings API ==========
+
+    /**
+     * List runtime settings: per key the env default, the optional admin
+     * override (null when unset), and the effective value (override ?? env).
+     * @returns {Promise<object>} { success, data: { settings: [...] } }
+     */
+    async getRuntimeSettings() {
+        const response = await this.authenticatedFetch('/v1/runtime-settings');
+        return await this.parseJsonResponse(response);
+    },
+
+    /**
+     * Set the override for a runtime setting (admin write). The value is always
+     * sent as a string; the backend validates it and returns 400 with a human
+     * message on failure. Success returns the updated setting object.
+     * @param {string} key - setting key
+     * @param {string} value - new override value
+     */
+    async updateRuntimeSetting(key, value) {
+        const response = await this.authenticatedFetch('/v1/runtime-settings/' + encodeURIComponent(key), {
+            method: 'PUT',
+            body: JSON.stringify({ value: value })
+        });
+        return await this.parseJsonResponse(response);
+    },
+
+    /**
+     * Clear the override for a runtime setting (admin write); the environment
+     * default becomes effective again.
+     * @param {string} key - setting key
+     */
+    async clearRuntimeSetting(key) {
+        const response = await this.authenticatedFetch('/v1/runtime-settings/' + encodeURIComponent(key), {
+            method: 'DELETE'
+        });
+        return await this.parseJsonResponse(response);
     }
 };

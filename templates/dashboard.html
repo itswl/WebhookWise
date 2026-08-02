@@ -526,6 +526,7 @@
                 <button class="btn operations-view-btn" type="button" data-operations-view="noise" data-i18n="operations.view.noise">Noise optimization</button>
                 <button class="btn operations-view-btn" type="button" data-operations-view="kb" data-i18n="operations.view.kb">Knowledge drafts</button>
                 <button class="btn operations-view-btn" type="button" data-operations-view="gaps" data-i18n="operations.view.gaps">Knowledge gaps</button>
+                <button class="btn operations-view-btn" type="button" data-operations-view="settings" data-i18n="operations.view.settings">Runtime settings</button>
             </div>
 
         <!-- Noise Center view -->
@@ -613,6 +614,26 @@
                     </div>
                 </div>
                 <div id="knowledgeGapsList">
+                    <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Runtime settings: live-tunable policy values (env default + admin
+             override). Overrides propagate to all processes within ~1 minute
+             via pub/sub + periodic refresh; no restart required. Filled by
+             runtime-settings.js. -->
+        <div id="runtimeSettingsTab" class="operations-view" style="display: none;">
+            <div style="padding:20px 0;">
+                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;">
+                    <div>
+                        <div class="section-title" data-i18n="rs.title">Runtime settings</div>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size:0.85rem;" data-i18n="rs.subtitle">Live-tunable policy values. The effective value is the override when set, otherwise the environment default.</p>
+                    </div>
+                    <button class="btn" onclick="RuntimeSettingsModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                </div>
+                <p style="margin:0 0 16px; padding:10px 14px; background:var(--bg-subtle); border:1px dashed var(--border); border-radius:var(--radius); color:var(--text-secondary); font-size:0.85rem;" data-i18n="rs.propagationNote">⏱️ Changes take effect across all processes within about 1 minute (pub/sub + periodic refresh); no restart is required.</p>
+                <div id="runtimeSettingsList">
                     <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
                 </div>
             </div>
@@ -1180,6 +1201,7 @@
     <script defer src="/static/js/action-center.js"></script>
     <script defer src="/static/js/noise-center.js"></script>
     <script defer src="/static/js/kb-drafts.js"></script>
+    <script defer src="/static/js/runtime-settings.js"></script>
     <script defer src="/static/js/response-center.js"></script>
     <script defer src="/static/js/ingress-setup.js"></script>
     <script defer src="/static/js/dashboard.js"></script>
