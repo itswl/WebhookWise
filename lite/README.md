@@ -52,7 +52,9 @@ silently assumed.
 
 ## Configuration
 
-Every variable is optional; the defaults are a working install.
+Every variable is optional; the defaults are a working install. The full
+annotated template is [`.env.example`](.env.example) — copy it and pass it with
+`docker run --env-file .env`.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
