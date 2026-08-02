@@ -67,3 +67,19 @@ class NoiseReductionAction(Base):
     undone_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     __table_args__ = (Index("ix_noise_reduction_actions_status_created", "status", "created_at"),)
+
+
+class RuntimeSetting(Base):
+    """One live override for an operator-policy config key.
+
+    Sparse by design: a missing row means "use the env value / default".
+    Values are stored as strings and validated against the setting registry
+    (services/operations/runtime_settings.py) on write.
+    """
+
+    __tablename__ = "runtime_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(500), nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow())

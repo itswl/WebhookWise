@@ -16,7 +16,7 @@ from models.intelligence import (
     RunbookExecution,
 )
 from models.kb_document import KBDocument
-from models.operations import AnalysisFeedback, NoiseReductionAction, OperationalNote
+from models.operations import AnalysisFeedback, NoiseReductionAction, OperationalNote, RuntimeSetting
 from models.silence import MaintenanceWindow, Silence
 from models.source_connection import SourceConnection
 from models.suppressed_record import SuppressedRecord
@@ -45,6 +45,7 @@ __all__ = [
     "AuditLog",
     "OperationalNote",
     "AnalysisFeedback",
+    "RuntimeSetting",
     "NoiseReductionAction",
     "SourceConnection",
 ]
