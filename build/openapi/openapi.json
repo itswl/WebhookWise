@@ -4802,6 +4802,122 @@
         ]
       }
     },
+    "/v1/runtime-settings": {
+      "get": {
+        "summary": "List Runtime Settings Endpoint",
+        "description": "All registered runtime-policy keys with env default / override / effective.",
+        "operationId": "list_runtime_settings_endpoint_v1_runtime_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/runtime-settings/{key}": {
+      "put": {
+        "summary": "Put Runtime Setting Endpoint",
+        "description": "Set one override (validated against the registry); live within ~1 min.",
+        "operationId": "put_runtime_setting_endpoint_v1_runtime_settings__key__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeSettingWriteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Runtime Setting Endpoint",
+        "description": "Clear one override — the key falls back to its env value / default.",
+        "operationId": "delete_runtime_setting_endpoint_v1_runtime_settings__key__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/onboarding/source-types": {
       "get": {
         "summary": "List Source Types Endpoint",
@@ -9004,6 +9120,27 @@
         "type": "object",
         "title": "RunbookExecutionUpdateRequest",
         "description": "Update explicit runbook progress without executing external commands."
+      },
+      "RuntimeSettingWriteRequest": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 0,
+            "title": "Value"
+          },
+          "actor": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Actor",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "title": "RuntimeSettingWriteRequest"
       },
       "SandboxForwarding": {
         "properties": {
