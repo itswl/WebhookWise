@@ -8,8 +8,13 @@ Gate order is deliberate — cheapest and most certain first:
 
     ① duplicate  — identical alert already seen inside the window
     ② silenced   — an operator asked for quiet
-    ③ cooldown   — we just notified about this identity
-    ④ no_match   — no forwarding rule claims this alert
+    ③ no_match   — no forwarding rule claims this alert
+    ④ cooldown   — every rule that claims it was notified too recently
+
+Cooldown comes last because it is scoped per (identity, rule): which
+destinations a repeat alert should still reach cannot be decided before
+knowing which rules claim it. A partially-cooled alert is still delivered —
+to the rules that are due — and the trace names the ones held back.
 
 Anything that survives all four is delivered, and that too is recorded.
 """
@@ -85,23 +90,25 @@ async def process(
     event_id = await _persist(store, event, analysis)
     event.update({"importance": analysis["importance"], "summary": analysis["summary"], "route": analysis["route"]})
 
-    # ③ Cooldown — we notified about this identity very recently.
-    if settings.cooldown_seconds > 0:
-        last = await store.last_forward_at(event["alert_hash"])
-        if last is not None and (time.time() - last) < settings.cooldown_seconds:
-            decision.record("cooldown", "cooling", seconds_ago=int(time.time() - last))
-            await store.insert_decision(event_id, "skipped", "cooldown", decision.steps, [])
-            return {"event_id": event_id, "outcome": "skipped", "skip_code": "cooldown"}
-    decision.record("cooldown", "pass", seconds=settings.cooldown_seconds)
-
-    # ④ Rule match — an alert nobody routed is an alert nobody asked for.
+    # ③ Rule match — an alert nobody routed is an alert nobody asked for.
     matched, stopped_by = _match_rules(await store.active_rules(), event)
     if not matched:
         decision.record("rules", "no_match")
         await store.insert_decision(event_id, "skipped", "no_match", decision.steps, [])
         return {"event_id": event_id, "outcome": "skipped", "skip_code": "no_match"}
+    decision.record("rules", "matched", rules=[str(r["name"]) for r in matched], stopped_by=stopped_by)
 
-    for rule in matched:
+    # ④ Cooldown — per (identity, rule), so each destination paces itself.
+    # Runs AFTER matching for exactly that reason: which rules a repeat alert
+    # should still reach cannot be decided before knowing which rules claim it.
+    due, cooled = await _apply_cooldown(store, settings, event["alert_hash"], matched)
+    if not due:
+        decision.record("cooldown", "cooling", cooled=cooled)
+        await store.insert_decision(event_id, "skipped", "cooldown", decision.steps, [])
+        return {"event_id": event_id, "outcome": "skipped", "skip_code": "cooldown"}
+    decision.record("cooldown", "pass", seconds=settings.cooldown_seconds, cooled=cooled or None)
+
+    for rule in due:
         await store.enqueue_delivery(
             event_id,
             str(rule["name"]),
@@ -109,14 +116,28 @@ async def process(
             str(rule["target_url"]),
             channels.build_payload(str(rule["target_kind"]), event),
         )
-    names = [str(rule["name"]) for rule in matched]
-    # stopped_by is recorded, not just acted on: without it, "why didn't my
-    # catch-all rule fire?" would have no answer in the trace — which is the one
-    # question this whole system exists to answer.
-    decision.record("rules", "matched", rules=names, stopped_by=stopped_by)
-    decision.record("forward", "enqueued", count=len(matched))
+    names = [str(rule["name"]) for rule in due]
+    decision.record("forward", "enqueued", count=len(due))
     await store.insert_decision(event_id, "forwarded", "none", decision.steps, names)
     return {"event_id": event_id, "outcome": "forwarded", "skip_code": "none", "rules": names}
+
+
+async def _apply_cooldown(
+    store: Store, settings: Any, alert_hash: str, matched: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Split matched rules into those due for delivery and those still cooling."""
+    if settings.cooldown_seconds <= 0:
+        return matched, []
+    now = time.time()
+    due: list[dict[str, Any]] = []
+    cooled: list[str] = []
+    for rule in matched:
+        last = await store.last_forward_at(alert_hash, str(rule["name"]))
+        if last is not None and (now - last) < settings.cooldown_seconds:
+            cooled.append(str(rule["name"]))
+        else:
+            due.append(rule)
+    return due, cooled
 
 
 def _match_rules(rules: list[dict[str, Any]], event: dict[str, Any]) -> tuple[list[dict[str, Any]], str | None]:

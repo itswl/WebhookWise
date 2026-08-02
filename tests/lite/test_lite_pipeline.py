@@ -62,8 +62,8 @@ async def test_forwarded_alert_enqueues_delivery_and_records_why(routed_store: S
         "dedup",
         "silence",
         "analysis",
-        "cooldown",
         "rules",
+        "cooldown",
         "forward",
     ]
 
@@ -319,3 +319,42 @@ async def test_migration_adds_columns_to_a_pre_existing_database(tmp_path: Any) 
         assert rules[0]["priority"] == 0 and rules[0]["stop_on_match"] == 0
     finally:
         await store.close()
+
+
+@pytest.mark.asyncio
+async def test_cooldown_is_scoped_per_rule_not_shared_across_targets(store: Store) -> None:
+    """A chatty on-call rule must not silence an archive sink sharing the alert."""
+    await store.add_rule({"name": "oncall", "target_kind": "generic", "target_url": "http://oncall"})
+    first = await _run(store, ALERT, dedup_window_seconds=0)
+    assert first["rules"] == ["oncall"]
+
+    # archive is added afterwards, so it has no delivery history of its own.
+    await store.add_rule({"name": "archive", "target_kind": "generic", "target_url": "http://archive"})
+    second = await _run(store, ALERT, dedup_window_seconds=0, cooldown_seconds=3600)
+
+    # oncall is cooling; archive has its own clock and must still be delivered.
+    assert second["outcome"] == "forwarded"
+    assert second["rules"] == ["archive"]
+
+    step = next(s for s in (await store.list_decisions())[0]["steps"] if s["step"] == "cooldown")
+    assert step["cooled"] == ["oncall"]
+
+
+@pytest.mark.asyncio
+async def test_alert_is_skipped_only_when_every_matching_rule_is_cooling(store: Store) -> None:
+    await store.add_rule({"name": "oncall", "target_kind": "generic", "target_url": "http://oncall"})
+    await _run(store, ALERT, dedup_window_seconds=0)
+    result = await _run(store, ALERT, dedup_window_seconds=0, cooldown_seconds=3600)
+
+    assert result["skip_code"] == "cooldown"
+    step = next(s for s in (await store.list_decisions())[0]["steps"] if s["step"] == "cooldown")
+    assert step["cooled"] == ["oncall"]
+
+
+@pytest.mark.asyncio
+async def test_cooldown_zero_disables_the_gate(store: Store) -> None:
+    await store.add_rule({"name": "oncall", "target_kind": "generic", "target_url": "http://oncall"})
+    await _run(store, ALERT, dedup_window_seconds=0)
+    result = await _run(store, ALERT, dedup_window_seconds=0, cooldown_seconds=0)
+
+    assert result["outcome"] == "forwarded"
