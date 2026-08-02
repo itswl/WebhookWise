@@ -14,7 +14,7 @@ body:
     attributes:
       label: Version
       description: Release tag or commit SHA (see the dashboard footer or `CHANGELOG.md`).
-      placeholder: v3.6.0
+      placeholder: v3.6.1
     validations:
       required: true
   - type: dropdown

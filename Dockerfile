@@ -13,7 +13,7 @@ RUN python -m venv /opt/venv && \
 # ====== Runtime stage ======
 FROM python:3.12-slim
 
-ARG APP_VERSION=3.6.0
+ARG APP_VERSION=3.6.1
 
 # Set the timezone to Asia/Shanghai.
 ENV TZ=Asia/Shanghai
