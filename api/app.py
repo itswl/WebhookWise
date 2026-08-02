@@ -57,10 +57,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.app_context = services.app_context
 
     from services.forwarding.rules import start_rules_invalidation_listener, stop_rules_invalidation_listener
+    from services.operations.runtime_settings import start_runtime_settings_plane
     from services.silences.store import start_silences_invalidation_listener, stop_silences_invalidation_listener
 
     await start_rules_invalidation_listener()
     await start_silences_invalidation_listener()
+    await start_runtime_settings_plane()
 
     async with AsyncExitStack() as lifecycle:
         # The mounted MCP app is a sub-app; Starlette does not run a mounted
@@ -80,6 +82,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from services.analysis.ai_usage import flush_ai_usage
 
             await flush_ai_usage()
+            from services.operations.runtime_settings import stop_runtime_settings_plane
+
+            await stop_runtime_settings_plane()
             await stop_rules_invalidation_listener()
             await stop_silences_invalidation_listener()
             await stop_runtime_services(
