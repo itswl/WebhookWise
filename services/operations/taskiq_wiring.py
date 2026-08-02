@@ -95,10 +95,12 @@ async def worker_startup_event(state: object) -> None:
 
     from core.runtime_heartbeat import start_runtime_heartbeat
     from services.forwarding.rules import start_rules_invalidation_listener
+    from services.operations.runtime_settings import start_runtime_settings_plane
     from services.silences.store import start_silences_invalidation_listener
 
     await start_rules_invalidation_listener()
     await start_silences_invalidation_listener()
+    await start_runtime_settings_plane()
     await start_runtime_heartbeat("worker")
 
     # Catch-up: send any enabled periodic report whose most recent scheduled fire
@@ -133,7 +135,10 @@ async def worker_shutdown_event(state: object) -> None:
     context = get_default_app_context() or init_default_app_context(get_settings())
     # Buffered AI-usage rows must land before the DB engine goes away.
     await flush_ai_usage()
+    from services.operations.runtime_settings import stop_runtime_settings_plane
+
     await stop_runtime_heartbeat("worker")
+    await stop_runtime_settings_plane()
     await stop_rules_invalidation_listener()
     await stop_silences_invalidation_listener()
     await stop_runtime_services(

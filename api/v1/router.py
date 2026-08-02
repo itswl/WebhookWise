@@ -17,6 +17,7 @@ from api.v1.onboarding import onboarding_router, source_ingress_router
 from api.v1.operations import operations_router
 from api.v1.reanalysis import reanalysis_router
 from api.v1.response_center import response_center_router
+from api.v1.runtime_settings import runtime_settings_router
 from api.v1.sandbox import sandbox_router
 from api.v1.services import services_router
 from api.v1.silences import silences_router
@@ -48,6 +49,7 @@ v1_router.include_router(activity_router, dependencies=_admin_api_deps)
 v1_router.include_router(operations_router, dependencies=_admin_api_deps)
 v1_router.include_router(admin_router, dependencies=_admin_api_deps)
 v1_router.include_router(admin_config_router, dependencies=_admin_api_deps)
+v1_router.include_router(runtime_settings_router, dependencies=_admin_api_deps)
 v1_router.include_router(onboarding_router, dependencies=_admin_api_deps)
 v1_router.include_router(source_ingress_router)
 v1_router.include_router(webhook_router)
