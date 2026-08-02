@@ -19,6 +19,7 @@ def build_payload(kind: str, event: dict[str, Any]) -> dict[str, Any]:
     return {
         "source": event["source"],
         "title": event["title"],
+        "status": "resolved" if event.get("resolved") else "firing",
         "importance": event["importance"],
         "summary": event["summary"],
         "body": event["body"],
@@ -28,7 +29,9 @@ def build_payload(kind: str, event: dict[str, Any]) -> dict[str, Any]:
 
 def _feishu_card(event: dict[str, Any]) -> dict[str, Any]:
     importance = str(event.get("importance") or "medium")
+    resolved = bool(event.get("resolved"))
     lines = [
+        f"**Status** {'RESOLVED' if resolved else 'FIRING'}",
         f"**Importance** {importance.upper()}",
         f"**Source** {event['source']}",
         "",
@@ -39,12 +42,15 @@ def _feishu_card(event: dict[str, Any]) -> dict[str, Any]:
         lines += ["", "---", body[:1500]]
     if event.get("route") == "rule":
         lines += ["", "_(rule-based triage: AI judgement unavailable)_"]
+    # A recovery must never be mistakable for the alert it closes: same title,
+    # same colour, same AI summary made the two indistinguishable in chat.
+    title = ("[RESOLVED] " + event["title"]) if resolved else event["title"]
     return {
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": event["title"][:100]},
-                "template": _COLOR.get(importance, "blue"),
+                "title": {"tag": "plain_text", "content": title[:100]},
+                "template": "green" if resolved else _COLOR.get(importance, "blue"),
             },
             "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}}],
         },

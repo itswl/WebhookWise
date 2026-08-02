@@ -375,3 +375,39 @@ def test_dashboard_does_not_poll_aggressively() -> None:
     assert 'id="updated"' in html
     assert "visibilitychange" in html  # a hidden tab must stop polling
     assert "setInterval(refresh, 5000)" not in html
+
+
+def test_recovery_card_cannot_be_mistaken_for_the_alert_it_closes() -> None:
+    """Real traffic produced two identical-looking Lark cards, one a recovery."""
+    from lite import channels
+
+    base = {
+        "source": "grafana",
+        "title": "示例充值超限告警",
+        "body": "...",
+        "importance": "medium",
+        "summary": "用户436293单次充值达500美元",
+        "route": "ai",
+    }
+    firing = channels.build_payload("feishu", {**base, "resolved": False})
+    recovered = channels.build_payload("feishu", {**base, "resolved": True})
+
+    assert firing["card"]["header"]["template"] != recovered["card"]["header"]["template"]
+    assert recovered["card"]["header"]["template"] == "green"
+    assert recovered["card"]["header"]["title"]["content"].startswith("[RESOLVED]")
+    assert "**Status** RESOLVED" in recovered["card"]["elements"][0]["text"]["content"]
+    assert "**Status** FIRING" in firing["card"]["elements"][0]["text"]["content"]
+
+    # Machine consumers need the same distinction.
+    assert channels.build_payload("generic", {**base, "resolved": True})["status"] == "resolved"
+    assert channels.build_payload("generic", {**base, "resolved": False})["status"] == "firing"
+
+
+def test_recovery_keeps_the_importance_that_routes_it_to_the_same_people() -> None:
+    """Downgrading recoveries would page someone and never tell them it ended."""
+    from lite.triage import rule_triage
+
+    firing = rule_triage("prod", "service down", "critical outage", resolved=False)
+    recovered = rule_triage("prod", "service down", "critical outage", resolved=True)
+
+    assert firing["importance"] == recovered["importance"] == "high"

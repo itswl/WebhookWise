@@ -20,6 +20,7 @@ _MEDIUM = ("error", "warn", "high", "错误", "告警", "超时", "异常")
 _LOW = ("info", "notice", "recovered", "恢复", "通知")
 
 _PROMPT = """你是一个运维告警分诊助手。请判断这条告警的重要程度并给出一句话摘要。
+%(resolved_note)s
 
 重要程度只能是 high / medium / low 之一:
 - high: 影响用户或核心业务、需要立即介入
@@ -34,8 +35,10 @@ _PROMPT = """你是一个运维告警分诊助手。请判断这条告警的重�
 
 
 def rule_triage(source: str, title: str, body: str, resolved: bool) -> dict[str, str]:
-    if resolved:
-        return {"importance": "low", "summary": f"{title} — recovered", "route": "rule"}
+    # A recovery keeps the importance its firing alert would get, deliberately.
+    # Downgrading it to "low" would route it away from whoever was paged, so
+    # they would be told about the problem and never told it was over. The card
+    # carries the recovery marker instead; urgency is a display concern here.
     text = f"{title} {body}".lower()
     for keyword in _HIGH:
         if keyword in text:
@@ -71,7 +74,15 @@ async def triage(
                 "messages": [
                     {
                         "role": "user",
-                        "content": _PROMPT % {"source": source, "title": title, "body": body[:2000]},
+                        "content": _PROMPT
+                        % {
+                            "source": source,
+                            "title": title,
+                            "body": body[:2000],
+                            "resolved_note": (
+                                "注意:这是一条恢复通知(告警已解除),摘要请写明已恢复。\n" if resolved else ""
+                            ),
+                        },
                     }
                 ],
             },
