@@ -3,6 +3,22 @@
  * Handles loading, filtering, pagination, display, and interaction of alerts
  */
 
+/**
+ * A clickable reference to another alert.
+ *
+ * These identifiers were rendered as inert text everywhere, so a reader who
+ * spotted "the original is #123" had to memorise the number and go hunting.
+ * AlertsModule.focusAlertById already handled the hard part (clear filters,
+ * paginate, fetch if absent) and was called from nowhere.
+ */
+function _alertLink(id, label) {
+    if (!id) return escapeHtml(String(label == null ? '' : label));
+    return '<a href="#/alerts/' + encodeURIComponent(id) + '"'
+        + ' onclick="event.preventDefault(); openAlert(' + Number(id) + ');"'
+        + ' style="color: var(--primary); text-decoration: none;">'
+        + escapeHtml(String(label == null ? '#' + id : label)) + '</a>';
+}
+
 const AlertsModule = {
     currentPage: 1,
     pageSize: 20,
@@ -416,10 +432,10 @@ const AlertsModule = {
 
             // Show duplicate information
             if (isDuplicate) {
-                html += '<span class="alert-meta-item">🔗 ' + t('alerts.meta.original', {id: webhook.duplicate_of}) + '</span>';
+                html += '<span class="alert-meta-item">🔗 ' + _alertLink(webhook.duplicate_of, t('alerts.meta.original', {id: webhook.duplicate_of})) + '</span>';
                 // Show previous alert ID and time
                 if (webhook.prev_alert_id) {
-                    let prevText = '⏮️ ' + t('alerts.meta.previous', {id: webhook.prev_alert_id});
+                    let prevText = '⏮️ ' + _alertLink(webhook.prev_alert_id, t('alerts.meta.previous', {id: webhook.prev_alert_id}));
                     if (webhook.prev_alert_timestamp) {
                         prevText += ' (' + timeAgo(webhook.prev_alert_timestamp) + ')';
                     }
@@ -577,9 +593,9 @@ const AlertsModule = {
             html += '<div class="info-item" style="grid-column: 1 / -1;"><div class="info-label">' + t('alerts.overview.failureReason') + '</div><div class="info-value" style="color:#ef4444; white-space: pre-wrap;">' + escapeHtml(String(failure)) + '</div></div>';
         }
         if (webhook.is_duplicate) {
-            html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.originalAlert') + '</div><div class="info-value">#' + webhook.duplicate_of + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.originalAlert') + '</div><div class="info-value">' + _alertLink(webhook.duplicate_of) + '</div></div>';
             if (webhook.prev_alert_id) {
-                let prevValue = '#' + webhook.prev_alert_id;
+                let prevValue = _alertLink(webhook.prev_alert_id);
                 if (webhook.prev_alert_timestamp) {
                     prevValue += ' (' + new Date(webhook.prev_alert_timestamp).toLocaleString('zh-CN') + ')';
                 }
@@ -680,7 +696,7 @@ const AlertsModule = {
             const relation = relationMap[nr.relation] || nr.relation || t('alerts.ai.unknown');
             html += `<span>🛡️ ${t('alerts.ai.noiseReduction')}: <strong style="color: var(--text-main);">${escapeHtml(String(relation))}</strong> (${t('alerts.ai.confidence')}: ${Number(nr.confidence * 100).toFixed(1)}%)</span>`;
             if (nr.root_cause_event_id) {
-                html += `<span>🔗 ${t('alerts.ai.relatedRootCause')}: <strong style="color: var(--primary);">#${nr.root_cause_event_id}</strong></span>`;
+                html += `<span>🔗 ${t('alerts.ai.relatedRootCause')}: ${_alertLink(nr.root_cause_event_id)}</span>`;
             }
         }
 

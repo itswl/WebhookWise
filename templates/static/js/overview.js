@@ -39,6 +39,16 @@ const OverviewModule = {
         }
     },
 
+    // Same drill, keyed on outcome rather than skip reason — what the forward
+    // and delivery headline cards are actually summarising.
+    drillToOutcome(outcome) {
+        if (typeof DecisionTraceModule === 'undefined') return;
+        DecisionTraceModule.setView('trace');
+        if (typeof DecisionTraceModule.filterByOutcome === 'function') {
+            DecisionTraceModule.filterByOutcome(outcome);
+        }
+    },
+
     async load(period) {
         this.currentPeriod = period || this.currentPeriod || 'day';
         this.updatePeriodButtons(this.currentPeriod);
@@ -87,14 +97,17 @@ const OverviewModule = {
         var totalDelta = (prev.total_delta_pct != null) ? (prev.total_delta_pct > 0 ? '↑' : '↓') + Math.abs(prev.total_delta_pct).toFixed(1) + '%' : '';
         html += this._card('📥', t('overview.card.processed'), fmt(d.total) + (totalDelta ? ' <span style="font-size:0.7em;color:' + (prev.total_delta_pct > 0 ? 'var(--danger)' : 'var(--success)') + ';">' + totalDelta + '</span>' : ''), t('overview.card.processedTrend'), 'var(--primary)');
         html += this._card('✅', t('overview.card.forwardRate'), (d.forward_rate || 0).toFixed(1) + '%',
-            t('overview.card.forwardRateTrend', { fwd: fmt(d.forwarded), skip: fmt(d.skipped) }), 'var(--success)');
+            t('overview.card.forwardRateTrend', { fwd: fmt(d.forwarded), skip: fmt(d.skipped) }), 'var(--success)',
+            "OverviewModule.drillToOutcome('forwarded')");
         html += this._card('📨', t('overview.card.deliveryRate'),
             (delivery.success_rate != null ? delivery.success_rate.toFixed(1) + '%' : '—'),
             t('overview.card.deliveryRateTrend', { ok: fmt(delivery.delivered || 0), fail: fmt(delivery.failed || 0) }),
-            (delivery.failed > 0 ? 'var(--danger)' : 'var(--success)'));
+            (delivery.failed > 0 ? 'var(--danger)' : 'var(--success)'),
+            "OverviewModule.drillToOutcome('forwarded')");
         if (ai) {
             html += this._card('💰', t('overview.card.aiCost'), '$' + (Number(cost) || 0).toFixed(4),
-                t('overview.card.aiCostTrend', { n: fmt(aiCalls || 0) }), 'var(--warning)');
+                t('overview.card.aiCostTrend', { n: fmt(aiCalls || 0) }), 'var(--warning)',
+                "navigateTo('cost')");
         }
         html += '</div>';
 
@@ -142,7 +155,7 @@ const OverviewModule = {
             var impEmoji = { high: '🔴', medium: '🟠', low: '🟢' };
             for (var i = 0; i < Math.min(incidents.length, 5); i++) {
                 var inc = incidents[i];
-                html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="openInboxIncidents()">';
+                html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="openIncident(' + Number(inc.id) + ')">';
                 html += '<span style="font-size:1.2rem;">🔥</span>';
                 html += '<div style="flex:1; min-width:0;">';
                 html += '<div style="font-weight:500; font-size:0.9rem;">' + escapeHtml(inc.title) + '</div>';
@@ -224,8 +237,13 @@ const OverviewModule = {
         return html;
     },
 
-    _card(icon, label, value, trend, color) {
-        return '<div class="stat-card" style="border-left: 4px solid ' + color + ';">' +
+    // Same promise the hover lift was already making. The skip-reason chips
+    // below these cards have drilled in for a while; the headline numbers,
+    // which are what people look at first, did not.
+    _card(icon, label, value, trend, color, onClick) {
+        const clickable = onClick ? ' onclick="' + onClick + '" ' : '';
+        return '<div class="stat-card"' + clickable + ' style="border-left: 4px solid ' + color + ';'
+            + (onClick ? ' cursor:pointer;' : '') + '">' +
             '<div class="stat-label">' + icon + ' ' + label + '</div>' +
             '<div class="stat-value" style="font-size: 2rem; color: ' + color + ';">' + value + '</div>' +
             '<div class="stat-trend">' + trend + '</div></div>';

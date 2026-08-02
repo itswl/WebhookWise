@@ -21,6 +21,9 @@ const RoutingModule = (function () {
         integrations: 'routingViewIntegrations'
     };
 
+    // Views reached from within another view rather than from the pill bar.
+    const PILL_PARENT = { sandbox: 'rules', audit: 'rules' };
+
     function loadView(view) {
         if (view === 'rules') {
             if (typeof loadForwardRules === 'function') loadForwardRules();
@@ -51,9 +54,15 @@ const RoutingModule = (function () {
             const el = document.getElementById(VIEWS[key]);
             if (el) el.style.display = key === currentView ? 'block' : 'none';
         });
+        // Sandbox and Audit are entered from buttons inside the Rules view and
+        // have no pill of their own. Highlighting their PARENT keeps the bar
+        // from going completely blank, which left the user with no indication
+        // of where they were.
+        const highlighted = PILL_PARENT[currentView] || currentView;
         document.querySelectorAll('[data-routing-view]').forEach(function (btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-routing-view') === currentView);
+            btn.classList.toggle('active', btn.getAttribute('data-routing-view') === highlighted);
         });
+        if (typeof recordDestination === 'function') recordDestination(currentView);
         loadView(currentView);
     }
 

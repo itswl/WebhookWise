@@ -414,7 +414,10 @@ var DecisionTraceModule = (function () {
                 '<div class="da-summary-main">' +
                     '<div class="da-summary-meta-row">' +
                         parts.join(' ') +
-                        '<span class="da-alert-title">🔔 ' + t('dt.alertNumber', { n: escapeHtml(trace.webhook_event_id) }) + '</span>' +
+                        '<span class="da-alert-title"><a href="#/alerts/' + encodeURIComponent(trace.webhook_event_id) + '"'
+                          + ' onclick="event.stopPropagation(); event.preventDefault(); openAlert(' + Number(trace.webhook_event_id) + ');"'
+                          + ' style="color: inherit; text-decoration: none;">🔔 '
+                          + t('dt.alertNumber', { n: escapeHtml(trace.webhook_event_id) }) + '</a></span>' +
                         '<span class="da-source">📡 ' + metaLine + '</span>' +
                     '</div>' +
                 '</div>' +
@@ -660,6 +663,7 @@ var DecisionTraceModule = (function () {
     }
 
     function load() {
+        if (typeof recordDestination === 'function') recordDestination(currentView);
         loadActiveView();
     }
 

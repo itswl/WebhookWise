@@ -451,8 +451,11 @@ const IncidentsModule = (function () {
     function renderSimilarIncident(item, incidentId) {
         var resolution = Array.isArray(item.resolution) ? item.resolution.join('；') : (item.resolution || '');
         var html = '<article class="incident-intelligence-card">';
-        html += '<div class="incident-intelligence-card-head"><strong>#' + item.incident_id + ' ' +
-            escapeHtml(item.title || '') + '</strong>' + intelligenceScore(item) + '</div>';
+        html += '<div class="incident-intelligence-card-head"><strong>'
+            + '<a href="#/incidents/' + encodeURIComponent(item.incident_id) + '"'
+            + ' onclick="event.preventDefault(); openIncident(' + Number(item.incident_id) + ');"'
+            + ' style="color: var(--primary); text-decoration: none;">#' + item.incident_id + '</a> '
+            + escapeHtml(item.title || '') + '</strong>' + intelligenceScore(item) + '</div>';
         if (item.root_cause) {
             html += '<p><span>' + t('incidents.rootCause') + ':</span> ' + escapeHtml(String(item.root_cause)) + '</p>';
         } else if (resolution) {
@@ -1735,8 +1738,18 @@ const IncidentsModule = (function () {
         });
     }
 
-    function openFromQueue(id) {
+    // Arm the scroll-to target without navigating; the caller has already
+    // arrived (or is about to). render() consumes _focusIncidentId.
+    function focusIncident(id) {
         _focusIncidentId = Number(id);
+    }
+
+    function openFromQueue(id) {
+        if (typeof openIncident === 'function') {
+            openIncident(id);
+            return;
+        }
+        focusIncident(id);
         if (typeof switchMainTab === 'function') switchMainTab('alerts');
         if (typeof setInboxView === 'function') setInboxView('incidents');
     }
@@ -1823,6 +1836,7 @@ const IncidentsModule = (function () {
         submitRunbookCompletion: submitRunbookCompletion,
         reviewRecurrence: reviewRecurrence,
         openFromQueue: openFromQueue,
+        focusIncident: focusIncident,
         merge: merge,
         split: split,
         exportPostmortem: exportPostmortem,

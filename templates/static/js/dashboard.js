@@ -11,6 +11,111 @@ let currentOperationsView = 'actions';
 const DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000;
 
 /**
+ * Navigation.
+ *
+ * The dashboard has 19 leaf destinations behind 4 tabs and four separate
+ * sub-view mechanisms (data-dt-view / -inbox-view / -routing-view /
+ * -operations-view). With no URL they were unreachable except by clicking:
+ * a refresh always dumped you back on Overview, nothing could be bookmarked
+ * or pasted to a colleague, and browser Back left the app entirely.
+ *
+ * Rather than rewrite the four mechanisms, each one REPORTS the destination it
+ * just entered (recordDestination) and a single registry knows how to re-enter
+ * one from a URL. Every existing call site therefore gains URL sync without
+ * being touched, and navigateTo() gives new code one way to jump anywhere.
+ */
+const DESTINATIONS = {
+    overview: { tab: 'decision-trace', enter: () => DecisionTraceModule.setView('overview') },
+    trace: { tab: 'decision-trace', enter: () => DecisionTraceModule.setView('trace') },
+    cost: { tab: 'decision-trace', enter: () => DecisionTraceModule.setView('cost') },
+
+    alerts: { tab: 'alerts', enter: () => setInboxView('alerts') },
+    'work-queue': { tab: 'alerts', enter: () => setInboxView('work-queue') },
+    incidents: { tab: 'alerts', enter: () => setInboxView('incidents') },
+    investigations: { tab: 'alerts', enter: () => setInboxView('investigations') },
+
+    rules: { tab: 'routing', enter: () => RoutingModule.setView('rules') },
+    silences: { tab: 'routing', enter: () => RoutingModule.setView('silences') },
+    sandbox: { tab: 'routing', enter: () => RoutingModule.setView('sandbox') },
+    audit: { tab: 'routing', enter: () => RoutingModule.setView('audit') },
+    ingress: { tab: 'routing', enter: () => RoutingModule.setView('ingress') },
+    quality: { tab: 'routing', enter: () => RoutingModule.setView('quality') },
+    integrations: { tab: 'routing', enter: () => RoutingModule.setView('integrations') },
+
+    actions: { tab: 'operations', enter: () => setOperationsView('actions') },
+    noise: { tab: 'operations', enter: () => setOperationsView('noise') },
+    kb: { tab: 'operations', enter: () => setOperationsView('kb') },
+    gaps: { tab: 'operations', enter: () => setOperationsView('gaps') },
+    settings: { tab: 'operations', enter: () => setOperationsView('settings') },
+};
+const DEFAULT_DESTINATION = 'overview';
+
+let currentDestination = DEFAULT_DESTINATION;
+let pendingFocus = null;
+
+/** Jump anywhere. `opts.focus` is handed to the destination's module. */
+function navigateTo(slug, opts) {
+    const destination = DESTINATIONS[slug];
+    if (!destination) {
+        console.warn('Unknown navigation destination:', slug);
+        return false;
+    }
+    pendingFocus = (opts && opts.focus) || null;
+    switchMainTab(destination.tab);
+    destination.enter();
+    return true;
+}
+
+/** The id a destination should reveal on arrival; consumed once. */
+function takePendingFocus() {
+    const focus = pendingFocus;
+    pendingFocus = null;
+    return focus;
+}
+
+/**
+ * Jump to one alert / one incident, from anywhere.
+ *
+ * Dozens of places rendered "#123" as inert text next to an alert or incident
+ * the reader obviously wanted to open. The machinery to open them already
+ * existed — AlertsModule.focusAlertById was fully built and called from
+ * nowhere — it just had no entry point these renderers could reach.
+ */
+function openAlert(id) {
+    if (!id) return;
+    navigateTo('alerts', { focus: String(id) });
+}
+
+function openIncident(id) {
+    if (!id) return;
+    navigateTo('incidents', { focus: String(id) });
+}
+
+/** Called by each sub-view mechanism once it has entered a destination. */
+function recordDestination(slug) {
+    if (!DESTINATIONS[slug]) return;
+    currentDestination = slug;
+    const focus = pendingFocus ? '/' + encodeURIComponent(pendingFocus) : '';
+    const next = '#/' + slug + focus;
+    if (window.location.hash !== next) {
+        // replaceState, not assignment: a sub-view switch is not a separate
+        // history entry, otherwise Back would walk every pill the user touched.
+        window.history.replaceState(null, '', next);
+    }
+}
+
+function applyHashRoute() {
+    const raw = String(window.location.hash || '').replace(/^#\/?/, '');
+    const [slug, focus] = raw.split('/');
+    if (!DESTINATIONS[slug]) {
+        navigateTo(DEFAULT_DESTINATION);
+        return;
+    }
+    if (slug === currentDestination && !focus) return; // already here; don't refetch
+    navigateTo(slug, focus ? { focus: decodeURIComponent(focus) } : null);
+}
+
+/**
  * Initialize the Dashboard
  */
 document.addEventListener('DOMContentLoaded', () => {
@@ -96,6 +201,14 @@ async function initDashboard() {
     // dict load failure we still render (English/key fallbacks) rather than
     // leaving the landing tab stuck on its spinner. Single render = no race.
     const loadLandingTab = () => {
+        // Honour a pasted/bookmarked URL. Only fall back to the landing tab
+        // when the hash names nothing — otherwise a shared link would load,
+        // then immediately bounce the reader to Overview.
+        const slug = String(window.location.hash || '').replace(/^#\/?/, '').split('/')[0];
+        if (DESTINATIONS[slug]) {
+            applyHashRoute();
+            return;
+        }
         if (typeof DecisionTraceModule !== 'undefined') DecisionTraceModule.load();
     };
     if (typeof I18N === 'undefined' || i18nReadyAtStart) {
@@ -152,6 +265,9 @@ function bindGlobalEvents() {
             if (view) setOperationsView(view);
         });
     });
+
+    // Browser Back/Forward and pasted links.
+    window.addEventListener('hashchange', applyHashRoute);
 
     // Auto-refresh button
     const autoRefreshBtn = document.getElementById('autoRefreshBtn');
@@ -296,15 +412,29 @@ function setInboxView(view) {
         button.classList.toggle('active', button.getAttribute('data-inbox-view') === currentInboxView);
     });
 
+    recordDestination(currentInboxView);
+
+    // Consumed here, after recordDestination has put it in the URL: the focus
+    // can only be applied once the destination's list has actually loaded.
+    const focus = takePendingFocus();
+
     if (currentInboxView === 'work-queue' && typeof ResponseCenterModule !== 'undefined') {
         ResponseCenterModule.loadWorkQueue();
     } else if (currentInboxView === 'incidents' && typeof IncidentsModule !== 'undefined') {
+        if (focus && typeof IncidentsModule.focusIncident === 'function') {
+            IncidentsModule.focusIncident(focus);
+        }
         IncidentsModule.load();
     } else if (currentInboxView === 'investigations' && typeof DeepAnalysesModule !== 'undefined') {
         DeepAnalysesModule.load();
     } else {
         if (typeof DeepAnalysesModule !== 'undefined') DeepAnalysesModule.stopAutoRefresh();
-        if (typeof AlertsModule !== 'undefined') AlertsModule.loadAlerts();
+        if (typeof AlertsModule !== 'undefined') {
+            const loading = AlertsModule.loadAlerts();
+            if (focus) {
+                Promise.resolve(loading).then(() => AlertsModule.focusAlertById(focus));
+            }
+        }
     }
 }
 
@@ -329,6 +459,8 @@ function setOperationsView(view) {
     document.querySelectorAll('[data-operations-view]').forEach(function (button) {
         button.classList.toggle('active', button.getAttribute('data-operations-view') === currentOperationsView);
     });
+    recordDestination(currentOperationsView);
+
     if (currentOperationsView === 'noise') {
         if (typeof NoiseCenterModule !== 'undefined') NoiseCenterModule.load();
     } else if (currentOperationsView === 'kb') {

@@ -371,8 +371,11 @@ function showQuickSilenceForm(source, project, region, environment, payload) {
     if (environment) document.getElementById('silenceFormEnvironment').value = environment;
     if (payload) document.getElementById('silenceFormPayload').value = payload;
     // Default to 1 hour — long enough to investigate, short enough not to be
-    // forgotten and left permanently silencing alerts.
-    document.getElementById('silenceFormDuration').value = '1h';
+    // forgotten and left permanently silencing alerts. The value must be one of
+    // the <option> values (hours as a bare number): assigning an unknown value
+    // leaves the select blank, and a blank duration parses to a PERMANENT
+    // silence — the exact outcome this default exists to prevent.
+    document.getElementById('silenceFormDuration').value = '1';
 }
 
 /**
@@ -386,11 +389,19 @@ function closeSilenceForm() {
  * Compute an ISO expires_at from the duration selector value.
  * Returns: undefined = "keep current" (edit), null = permanent, or an ISO string.
  */
+// Fallback when a duration cannot be read. Never "permanent": an unreadable
+// duration is a bug, and the safe way to fail is a mute that expires on its own.
+const SILENCE_FALLBACK_HOURS = 1;
+
 function computeSilenceExpiry(durationValue) {
     if (durationValue === 'keep') return undefined;
+    // Permanent must be chosen EXPLICITLY. Collapsing "unparseable" into the
+    // same null as "0" is what turned a broken quick-silence default into a
+    // silence that never expired.
+    if (String(durationValue).trim() === '0') return null;
     const hours = parseFloat(durationValue);
-    if (!hours || hours <= 0) return null; // 0 / permanent
-    return new Date(Date.now() + hours * 3600 * 1000).toISOString();
+    const effective = Number.isFinite(hours) && hours > 0 ? hours : SILENCE_FALLBACK_HOURS;
+    return new Date(Date.now() + effective * 3600 * 1000).toISOString();
 }
 
 /**
