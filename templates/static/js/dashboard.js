@@ -24,23 +24,34 @@ const DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000;
  * one from a URL. Every existing call site therefore gains URL sync without
  * being touched, and navigateTo() gives new code one way to jump anywhere.
  */
+// Module lookups stay late-bound and guarded, matching the rest of this file:
+// one module failing to parse must not take navigation down with it.
+function setSubView(moduleName, view) {
+    const module = window[moduleName];
+    if (module && typeof module.setView === 'function') {
+        module.setView(view);
+    } else {
+        console.warn('Navigation target unavailable:', moduleName);
+    }
+}
+
 const DESTINATIONS = {
-    overview: { tab: 'decision-trace', enter: () => DecisionTraceModule.setView('overview') },
-    trace: { tab: 'decision-trace', enter: () => DecisionTraceModule.setView('trace') },
-    cost: { tab: 'decision-trace', enter: () => DecisionTraceModule.setView('cost') },
+    overview: { tab: 'decision-trace', enter: () => setSubView('DecisionTraceModule', 'overview') },
+    trace: { tab: 'decision-trace', enter: () => setSubView('DecisionTraceModule', 'trace') },
+    cost: { tab: 'decision-trace', enter: () => setSubView('DecisionTraceModule', 'cost') },
 
     alerts: { tab: 'alerts', enter: () => setInboxView('alerts') },
     'work-queue': { tab: 'alerts', enter: () => setInboxView('work-queue') },
     incidents: { tab: 'alerts', enter: () => setInboxView('incidents') },
     investigations: { tab: 'alerts', enter: () => setInboxView('investigations') },
 
-    rules: { tab: 'routing', enter: () => RoutingModule.setView('rules') },
-    silences: { tab: 'routing', enter: () => RoutingModule.setView('silences') },
-    sandbox: { tab: 'routing', enter: () => RoutingModule.setView('sandbox') },
-    audit: { tab: 'routing', enter: () => RoutingModule.setView('audit') },
-    ingress: { tab: 'routing', enter: () => RoutingModule.setView('ingress') },
-    quality: { tab: 'routing', enter: () => RoutingModule.setView('quality') },
-    integrations: { tab: 'routing', enter: () => RoutingModule.setView('integrations') },
+    rules: { tab: 'routing', enter: () => setSubView('RoutingModule', 'rules') },
+    silences: { tab: 'routing', enter: () => setSubView('RoutingModule', 'silences') },
+    sandbox: { tab: 'routing', enter: () => setSubView('RoutingModule', 'sandbox') },
+    audit: { tab: 'routing', enter: () => setSubView('RoutingModule', 'audit') },
+    ingress: { tab: 'routing', enter: () => setSubView('RoutingModule', 'ingress') },
+    quality: { tab: 'routing', enter: () => setSubView('RoutingModule', 'quality') },
+    integrations: { tab: 'routing', enter: () => setSubView('RoutingModule', 'integrations') },
 
     actions: { tab: 'operations', enter: () => setOperationsView('actions') },
     noise: { tab: 'operations', enter: () => setOperationsView('noise') },
@@ -431,8 +442,12 @@ function setInboxView(view) {
         if (typeof DeepAnalysesModule !== 'undefined') DeepAnalysesModule.stopAutoRefresh();
         if (typeof AlertsModule !== 'undefined') {
             const loading = AlertsModule.loadAlerts();
-            if (focus) {
-                Promise.resolve(loading).then(() => AlertsModule.focusAlertById(focus));
+            if (focus && typeof AlertsModule.focusAlertById === 'function') {
+                // Focus after the list resolves, and never let a failed reveal
+                // surface as an unhandled rejection over the loaded view.
+                Promise.resolve(loading)
+                    .then(() => AlertsModule.focusAlertById(focus))
+                    .catch((error) => console.warn('Could not reveal alert', focus, error));
             }
         }
     }
