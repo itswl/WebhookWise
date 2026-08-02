@@ -206,3 +206,29 @@ async def test_backoff_defers_the_next_attempt(store: Store) -> None:
 
     await store.mark_failed(int(outbox_id), "boom", 60)
     assert await store.due_deliveries() == []  # not due again yet
+
+
+def test_env_example_documents_every_setting() -> None:
+    """The template is the only config reference lite has — it must not drift.
+
+    Checked in both directions: an undocumented setting is invisible to
+    operators, and a documented-but-nonexistent one sends them chasing a
+    variable that does nothing.
+    """
+    import re
+    from pathlib import Path
+
+    from lite.settings import Settings
+
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "lite/settings.py").read_text()
+    used = set(re.findall(r'os\.environ\.get\("([A-Z_]+)"|_int\("([A-Z_]+)"', source))
+    in_code = {name for pair in used for name in pair if name}
+
+    example = (root / "lite/.env.example").read_text()
+    documented = set(re.findall(r"^([A-Z_]+)=", example, re.MULTILINE))
+
+    assert sorted(in_code - documented) == [], "settings missing from .env.example"
+    assert sorted(documented - in_code) == [], ".env.example documents unknown settings"
+    # Every field on Settings must come from one of those variables.
+    assert len(in_code) == len(Settings.__dataclass_fields__)
