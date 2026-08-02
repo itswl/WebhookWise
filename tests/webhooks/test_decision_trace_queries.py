@@ -179,8 +179,8 @@ async def test_quality_stats_proxy_signals(session_factory: async_sessionmaker[A
     assert q["degraded_reasons"] == {"ai_error: boom": 1}
     # Importance distribution is over ai-route only (the redis_reuse high + rule medium excluded).
     assert q["ai_importance_breakdown"] == {"high": 1, "medium": 1, "low": 1}
-    # Per-source only counts ai-route rows.
-    assert q["ai_importance_by_source"].get("grafana") == {"low": 1}
+    # Grouped by alert rule; a trace with no rule name falls back to its source.
+    assert q["ai_importance_by_rule"].get("grafana") == {"low": 1}
 
 
 @pytest.mark.asyncio

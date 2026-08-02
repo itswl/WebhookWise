@@ -7,11 +7,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final, cast
 
 from adapters.declarative import register_declarative_adapters
 from adapters.simple_adapters import normalize_level, register_simple_adapters
 from contracts.webhook_payload import WebhookData, webhook_data_from_mapping
+from core import json
 from core.logger import get_logger
 
 logger = get_logger("ecosystem_adapters")
@@ -64,6 +65,49 @@ def initialize_adapters() -> None:
         logger.info("[Adapter] Adapter registration complete")
 
 
+# Relay-style senders (chat bridges, EventBridge → webhook shims) wrap the real
+# document as a JSON *string* under one key. Every detector then sees a
+# single-key dict and matches nothing, so the alert lands as source=unknown with
+# its structure invisible to identity extraction and to the AI.
+_ENVELOPE_KEYS: Final = ("text", "message", "body", "payload", "data")
+
+
+def _unwrap_json_envelope(data: dict[str, Any]) -> dict[str, Any]:
+    """Unwrap a relay envelope such as SNS's `{"text": "<json>", "subject": …}`.
+
+    Three conditions must hold together, so a real alert that merely *has* a
+    "message" field is never gutted:
+
+    1. exactly one key from the relay allowlist holds a JSON-object string;
+    2. every other key is a scalar — anything structured means the outer
+       document is the alert, not a wrapper;
+    3. the inner object is RICHER than the outer one. This is the sharp test:
+       a wrapper carries less than what it wraps, so `{"message": "{\\"a\\":1}",
+       "severity": "high", "host": "x"}` stays intact while a 3-key SNS
+       envelope around a 9-key AWS Health document unwraps.
+
+    Only the matching view is replaced; raw_payload still stores the original.
+    """
+    candidates = [
+        (key, value)
+        for key, value in data.items()
+        if key in _ENVELOPE_KEYS and isinstance(value, str) and value.strip().startswith("{")
+    ]
+    if len(candidates) != 1:
+        return data
+    key, value = candidates[0]
+    if any(k != key and isinstance(v, dict | list) for k, v in data.items()):
+        return data
+    try:
+        inner = json.loads(value.strip())
+    except ValueError:
+        return data
+    if not isinstance(inner, dict) or len(inner) <= len(data):
+        return data
+    logger.info("[Adapter] Unwrapped %r relay envelope before adapter matching", key)
+    return cast(dict[str, Any], inner)
+
+
 def normalize_webhook_event(
     data: Any,
     source: str | None,
@@ -75,6 +119,8 @@ def normalize_webhook_event(
     if not isinstance(data, dict):
         resolved_source = str(source or _header_get(headers, "X-Webhook-Source") or "unknown").strip().lower()
         return NormalizedWebhook(resolved_source, webhook_data_from_mapping({"raw": data}), "passthrough")
+
+    data = _unwrap_json_envelope(data)
 
     h_src = str(_header_get(headers, "X-Webhook-Source") or "").strip().lower()
     s_hint = str(source or "").strip().lower() or h_src

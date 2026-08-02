@@ -854,7 +854,7 @@
             'dt.quality.degradedTrend': '{n} 次退化为规则判定',
             'dt.quality.importanceDist': 'AI importance 分布',
             'dt.quality.degradedReasons': '降级原因',
-            'dt.quality.bySource': '按来源看 AI importance',
+            'dt.quality.byRule': '按告警规则看 AI importance',
             'dt.disagreements.title': 'AI 与规则——最近的分歧',
             'dt.disagreements.note': '规则随后推翻的 AI 判断。点击某行查看完整决策链。',
             'dt.disagreements.empty': '当前时间窗内没有 AI 与规则的分歧。',

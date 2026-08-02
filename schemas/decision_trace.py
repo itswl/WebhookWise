@@ -35,7 +35,7 @@ class DecisionTraceQualityData(BaseModel):
     degraded_rate: float
     degraded_reasons: dict[str, int]
     ai_importance_breakdown: dict[str, int]
-    ai_importance_by_source: dict[str, dict[str, int]]
+    ai_importance_by_rule: dict[str, dict[str, int]]
 
 
 class DecisionTraceQualityResponse(APIResponse[DecisionTraceQualityData]):
