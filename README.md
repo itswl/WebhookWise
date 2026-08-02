@@ -308,6 +308,27 @@ Rules of thumb: gates ①⑤ are **opt-in** (default off); ②③⑥ are automat
 noise control; ④⑦⑧ are operator-authored policy. Every skip is visible —
 nothing is dropped without a decision-trace row naming the gate.
 
+## Runtime Settings — live operator policy
+
+Most config is static process configuration (env is its home, change = redeploy).
+The exception is **operator policy** — the knobs you tune while running the
+system (flapping, auto-SLA, backpressure fractions, noise weights, notify
+cadence, KB cards, trace retention). Every key tagged `[runtime-policy]` in
+[.env.example.all](.env.example.all) is served by a DB-backed override plane:
+
+- **Resolution order:** DB override → env value → code default. The env value
+  stays the bootstrap default; an override is a sparse row on top of it.
+- **Where:** dashboard *Operations → Settings*, or the API —
+  `GET /v1/runtime-settings` (list with env/override/effective per key),
+  `PUT /v1/runtime-settings/{KEY}` / `DELETE …/{KEY}` (admin write key
+  required). Writes are validated against a typed registry and audited.
+- **Propagation:** all processes (api / worker / scheduler) apply a change
+  within ~60 seconds — a Redis pub/sub nudge plus an interval refresh; no
+  restart, no file edit.
+- **Failure posture:** fail-open. If the DB or Redis is unhealthy the last
+  snapshot (or plain env config) keeps serving; the hot path never depends on
+  this plane.
+
 ## Delivery Semantics
 
 Understanding the durability boundaries of this path is what lets you correctly assess the risk of loss and duplication:
@@ -326,7 +347,7 @@ When you need "zero loss at ingress", you should add retries/acknowledgements up
 - The receive layer is at-most-once-until-consumed: `200 OK` means accepted (enqueued), not persisted; `WEBHOOK_MQ_STREAM_MAXLEN` and Redis's AOF fsync cadence together determine the loss boundary (see [Delivery Semantics](#delivery-semantics)).
 - The Worker is the main execution surface of the business pipeline; the Scheduler only dispatches periodic tasks.
 - The Forward Outbox is the audit boundary for external delivery; retries and expired states must be persisted to the database.
-- Configuration is static process configuration and is not dynamically overridden from the database or Redis.
+- Configuration is static process configuration, with one deliberate exception: keys tagged `[runtime-policy]` accept DB-backed live overrides through the runtime-settings plane (see [Runtime Settings](#runtime-settings--live-operator-policy)); everything else changes only with a redeploy.
 - The application emits telemetry only over OTLP and does not directly expose `/metrics`.
 - For a new Webhook source, prefer adding an adapter and tests first, then reusing the existing pipeline.
 - For a new business capability, prefer placing it in the nearest `services/*` domain package and avoid stuffing business logic into `core/`.

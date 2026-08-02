@@ -115,6 +115,15 @@ python scripts/seed_demo_data.py --base-url http://localhost:8000
 | ReDoc | `http://localhost:8000/redoc` |
 | 健康检查 | `http://localhost:8000/live` / `http://localhost:8000/ready` |
 
+## 运行时设置 — 免重启的运维策略
+
+大部分配置是静态进程配置(env 是它的家,改动 = 重新部署)。例外是**运维策略**——运行中需要随手调的旋钮(抖动抑制、自动 SLA、背压水位、降噪权重、通知节奏、KB 卡片、追踪保留)。[.env.example.all](.env.example.all) 中标 `[runtime-policy]` 的每个键都由 DB 覆盖平面托管:
+
+- **解析顺序**:DB 覆盖 → env 值 → 代码默认。env 仍是引导默认值,覆盖只是叠在其上的稀疏行。
+- **入口**:仪表盘 *Operations → Settings*,或 API —— `GET /v1/runtime-settings`(逐键列出 env/覆盖/生效值)、`PUT` / `DELETE /v1/runtime-settings/{KEY}`(需管理写密钥)。写入经类型注册表校验并留审计。
+- **传播**:api / worker / scheduler 全进程 ~60 秒内生效(Redis pub/sub 推动 + 定时刷新),无需重启、无需改文件。
+- **故障姿态**:fail-open。DB 或 Redis 异常时沿用最后快照(或纯 env 配置),热路径永不依赖此平面。
+
 ## 交付语义
 
 理解这条链路的持久性边界,才能正确评估丢失与重复的风险(完整版见英文 [Delivery Semantics](README.md#delivery-semantics)):
