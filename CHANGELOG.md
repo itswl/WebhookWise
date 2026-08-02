@@ -5,6 +5,28 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+## [3.6.1] - 2026-08-02
+
+### Added
+- Last-resort self-notification: when a forward exhausts its retries the
+  process posts one minimal text message DIRECTLY to
+  `SELF_NOTIFY_WEBHOOK_URL` (Feishu bot text or generic JSON), bypassing the
+  rules/outbox/channel stack that just failed — including when the
+  `outbox_exhausted` meta-card itself dies, which previously left a full
+  channel outage silent. Rate-limited (`SELF_NOTIFY_MIN_INTERVAL_MINUTES`,
+  live-tunable as the 27th runtime-settings key) with a suppressed-failure
+  count folded into the next message; fails open to a per-process gate when
+  Redis is down; never raises into the delivery path.
+
+### Changed
+- `PROCESSING_LOCK_FAILFAST_*` is now formally deprecated for ingress storm
+  control in favor of `WEBHOOK_INGRESS_STORM_THRESHOLD/_WINDOW_SECONDS`: env
+  references updated, and a one-shot startup warning fires while the legacy
+  fallback is load-bearing. The fallback will be removed in a future release.
+- README (en/zh) gained a Runtime Settings operations section; the Runtime
+  Contract line claiming config is never DB-overridden now documents the
+  runtime-settings exception.
+
 ## [3.6.0] - 2026-08-02
 
 ### Added
