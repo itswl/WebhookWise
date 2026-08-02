@@ -38,8 +38,8 @@ reason**, and that name is written to the decision trace:
 | --- | --- | --- |
 | ① dedup | the identical alert arrived inside the dedup window | `duplicate` |
 | ② silence | an operator asked for quiet on a matching pattern | `silenced` |
-| ③ cooldown | this identity was notified about too recently | `cooldown` |
-| ④ rules | no forwarding rule claims this alert | `no_match` |
+| ③ rules | no forwarding rule claims this alert | `no_match` |
+| ④ cooldown | every rule that claims it was notified too recently | `cooldown` |
 
 Whatever survives is written to an outbox and delivered by a background loop with
 retries and backoff. Every alert — delivered or not — produces exactly one decision row,
@@ -60,7 +60,7 @@ annotated template is [`.env.example`](.env.example) — copy it and pass it wit
 | --- | --- | --- |
 | `DB_PATH` | `/data/webhookwise.db` | Put it on a volume to survive restarts |
 | `DEDUP_WINDOW_SECONDS` | `300` | Collapses a burst of the identical alert |
-| `COOLDOWN_SECONDS` | `1800` | Paces re-notification of one identity |
+| `COOLDOWN_SECONDS` | `1800` | Paces re-notification, per identity **per rule** |
 | `OPENAI_API_KEY` | *(empty)* | Empty = rule-based triage only |
 | `OPENAI_API_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible endpoint |
 | `OPENAI_MODEL` | `gpt-4o-mini` | |
@@ -114,11 +114,15 @@ curl -X POST localhost:8000/api/rules -H 'content-type: application/json' \
 The rule that ended evaluation is recorded in the trace as `stopped_by`, so "why didn't
 my catch-all fire?" stays answerable.
 
-**One caveat when you fan out to receivers with different purposes:** the cooldown gate
-is keyed on the alert identity, not on the target. A repeat alert suppressed by cooldown
-is suppressed for *every* rule — including an archive sink that may want the full stream.
-Raise `COOLDOWN_SECONDS` deliberately, or keep archival targets on a separate ingest
-source that no cooldown-sensitive rule matches.
+Cooldown is scoped per `(alert identity, rule)`, so each destination paces itself: a
+repeat alert can be held back from a chatty on-call rule while still reaching an archive
+sink that has its own clock. The alert is only skipped as `cooldown` when *every*
+matching rule is cooling; a partially-cooled alert is delivered to the rules that are
+due, and the trace names the ones held back.
+
+This is also why cooldown is evaluated *after* rule matching rather than before it —
+which rules a repeat alert should still reach cannot be decided until you know which
+rules claim it.
 
 ## What it deliberately leaves out
 

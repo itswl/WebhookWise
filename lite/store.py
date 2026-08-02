@@ -156,15 +156,18 @@ class Store:
         row = await cur.fetchone()
         return dict(row) if row else None
 
-    async def last_forward_at(self, alert_hash: str) -> float | None:
-        """When this identity last produced a delivery intent (cooldown input).
+    async def last_forward_at(self, alert_hash: str, rule_name: str) -> float | None:
+        """When this identity last produced a delivery FOR THIS RULE.
 
-        Keyed on the event's arrival, not the outbox row's updated_at: a
-        delivery retry must not silently push the cooldown window forward.
+        Scoped per rule, not per identity: with fan-out, a shared clock would
+        let a chatty on-call rule silence an archive sink that wants the full
+        stream. Keyed on the event's arrival rather than the outbox row's
+        updated_at, so a delivery retry cannot push the window forward.
         """
         cur = await self.db.execute(
-            "SELECT MAX(e.received_at) AS t FROM outbox o JOIN events e ON e.id = o.event_id WHERE e.alert_hash = ?",
-            (alert_hash,),
+            "SELECT MAX(e.received_at) AS t FROM outbox o JOIN events e ON e.id = o.event_id"
+            " WHERE e.alert_hash = ? AND o.rule_name = ?",
+            (alert_hash, rule_name),
         )
         row = await cur.fetchone()
         return float(row["t"]) if row and row["t"] is not None else None
