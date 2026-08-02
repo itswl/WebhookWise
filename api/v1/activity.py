@@ -99,6 +99,9 @@ async def handoff_summary_endpoint(
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """On-call handoff summary for the last N hours."""
+    from services.operations.feature_adoption import record_feature_use
+
+    await record_feature_use("view:handoff")
     try:
         data = await get_handoff_summary(session, hours=hours)
         return ok_response(http_status=200, data=data)

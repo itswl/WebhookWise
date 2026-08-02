@@ -258,6 +258,9 @@ async def run_remediation_endpoint(
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     try:
+        from services.operations.feature_adoption import record_feature_use
+
+        await record_feature_use("action:remediation_command")
         data = await run_remediation(session, **payload.model_dump())
         status = 200 if data.get("changed") else 409
         if not data.get("changed"):
