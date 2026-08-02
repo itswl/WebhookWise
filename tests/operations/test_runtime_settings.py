@@ -47,6 +47,23 @@ def test_registry_covers_only_real_config_fields() -> None:
     assert missing == []
 
 
+def test_env_reference_tags_match_the_registry_exactly() -> None:
+    """`[runtime-policy]` in .env.example.all promises "live-editable".
+
+    README and the env legend both state that every tagged key is editable
+    through this plane, so the tags and the registry must agree in BOTH
+    directions — a tagged-but-unregistered key is a documented lie, and a
+    registered-but-untagged key is an operator knob nobody can discover.
+    """
+    from pathlib import Path
+
+    lines = (Path(__file__).resolve().parents[2] / ".env.example.all").read_text().splitlines()
+    tagged = {lines[i + 1].split("=")[0] for i, line in enumerate(lines) if line.startswith("# [runtime-policy]")}
+
+    assert sorted(tagged - set(rs.SPECS)) == [], "tagged in env reference but not registered"
+    assert sorted(set(rs.SPECS) - tagged) == [], "registered but not tagged in env reference"
+
+
 def test_write_validation_is_strict() -> None:
     # Cast-level checks (no session needed).
     with pytest.raises(ValueError):
