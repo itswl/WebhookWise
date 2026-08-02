@@ -69,7 +69,17 @@ def _build_http_payload(record: ForwardOutbox, *, kb_links: list[dict[str, str]]
             return feishu.build_feishu_card(
                 webhook_data, analysis_result, is_periodic_reminder=is_reminder, kb_links=kb_links
             )
-        return {"webhook": webhook_data, "analysis": analysis_result, "is_periodic_reminder": is_reminder}
+        from services.incidents.grouping import is_recovery_payload
+
+        parsed = webhook_data.get("parsed_data") or webhook_data.get("body") or {}
+        return {
+            "webhook": webhook_data,
+            "analysis": analysis_result,
+            "is_periodic_reminder": is_reminder,
+            # Machine consumers need the firing/recovery distinction too; the
+            # reused analysis alone reads as a still-firing alert.
+            "is_recovery": is_recovery_payload(parsed if isinstance(parsed, dict) else {}, analysis_result),
+        }
     return {}
 
 
