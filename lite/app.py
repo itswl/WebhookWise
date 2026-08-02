@@ -120,6 +120,10 @@ async def api_add_rule(rule: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="name and target_url are required")
     if str(rule.get("target_kind", "feishu")) not in ("feishu", "generic"):
         raise HTTPException(status_code=400, detail="target_kind must be feishu or generic")
+    try:
+        int(rule.get("priority", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="priority must be an integer") from None
     return {"id": await store.add_rule(rule)}
 
 

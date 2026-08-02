@@ -67,7 +67,12 @@ CREATE TABLE IF NOT EXISTS rules (
     match_source     TEXT    NOT NULL DEFAULT '',   -- CSV, empty = any
     match_importance TEXT    NOT NULL DEFAULT '',   -- CSV, empty = any
     target_kind      TEXT    NOT NULL DEFAULT 'feishu',
-    target_url       TEXT    NOT NULL
+    target_url       TEXT    NOT NULL,
+    -- Evaluated in priority DESC, id ASC order. A matched rule with
+    -- stop_on_match ends evaluation, so "everything else" can be expressed as a
+    -- low-priority catch-all instead of hand-maintained disjoint match sets.
+    priority         INTEGER NOT NULL DEFAULT 0,
+    stop_on_match    INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS silences (
@@ -92,7 +97,24 @@ class Store:
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.execute("PRAGMA synchronous=NORMAL")
         await self._db.executescript(SCHEMA)
+        await self._migrate()
         await self._db.commit()
+
+    async def _migrate(self) -> None:
+        """Add columns introduced after a database was first created.
+
+        CREATE TABLE IF NOT EXISTS is a no-op on an existing table, so new
+        columns need an explicit ALTER. Idempotent and additive only — this
+        edition has no migration history to replay and must never need one.
+        """
+        added: list[tuple[str, str, str]] = [
+            ("rules", "priority", "INTEGER NOT NULL DEFAULT 0"),
+            ("rules", "stop_on_match", "INTEGER NOT NULL DEFAULT 0"),
+        ]
+        for table, column, spec in added:
+            cur = await self.db.execute(f"PRAGMA table_info({table})")
+            if column not in {row["name"] for row in await cur.fetchall()}:
+                await self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {spec}")
 
     async def close(self) -> None:
         if self._db is not None:
@@ -243,18 +265,23 @@ class Store:
     # ── rules & silences ──────────────────────────────────────────────────────
 
     async def active_rules(self) -> list[dict[str, Any]]:
-        cur = await self.db.execute("SELECT * FROM rules WHERE enabled=1 ORDER BY id")
+        # Highest priority first; id keeps equal priorities in creation order so
+        # evaluation is deterministic rather than dependent on storage layout.
+        cur = await self.db.execute("SELECT * FROM rules WHERE enabled=1 ORDER BY priority DESC, id ASC")
         return [dict(row) for row in await cur.fetchall()]
 
     async def add_rule(self, rule: dict[str, Any]) -> int:
         cur = await self.db.execute(
-            "INSERT INTO rules (name, match_source, match_importance, target_kind, target_url) VALUES (?,?,?,?,?)",
+            "INSERT INTO rules (name, match_source, match_importance, target_kind, target_url, priority, stop_on_match)"
+            " VALUES (?,?,?,?,?,?,?)",
             (
                 rule["name"],
                 rule.get("match_source", ""),
                 rule.get("match_importance", ""),
                 rule.get("target_kind", "feishu"),
                 rule["target_url"],
+                int(rule.get("priority", 0)),
+                1 if rule.get("stop_on_match") else 0,
             ),
         )
         await self.db.commit()

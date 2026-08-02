@@ -95,7 +95,7 @@ async def process(
     decision.record("cooldown", "pass", seconds=settings.cooldown_seconds)
 
     # ④ Rule match — an alert nobody routed is an alert nobody asked for.
-    matched = [rule for rule in await store.active_rules() if _matches(rule, event)]
+    matched, stopped_by = _match_rules(await store.active_rules(), event)
     if not matched:
         decision.record("rules", "no_match")
         await store.insert_decision(event_id, "skipped", "no_match", decision.steps, [])
@@ -110,10 +110,30 @@ async def process(
             channels.build_payload(str(rule["target_kind"]), event),
         )
     names = [str(rule["name"]) for rule in matched]
-    decision.record("rules", "matched", rules=names)
+    # stopped_by is recorded, not just acted on: without it, "why didn't my
+    # catch-all rule fire?" would have no answer in the trace — which is the one
+    # question this whole system exists to answer.
+    decision.record("rules", "matched", rules=names, stopped_by=stopped_by)
     decision.record("forward", "enqueued", count=len(matched))
     await store.insert_decision(event_id, "forwarded", "none", decision.steps, names)
     return {"event_id": event_id, "outcome": "forwarded", "skip_code": "none", "rules": names}
+
+
+def _match_rules(rules: list[dict[str, Any]], event: dict[str, Any]) -> tuple[list[dict[str, Any]], str | None]:
+    """Rules in priority order; a matched stop_on_match rule ends evaluation.
+
+    Returns the matched rules and the name of the rule that stopped the scan
+    (None if every rule was considered). Same semantics as the full edition, so
+    a routing table can be moved between them unchanged.
+    """
+    matched: list[dict[str, Any]] = []
+    for rule in rules:
+        if not _matches(rule, event):
+            continue
+        matched.append(rule)
+        if rule.get("stop_on_match"):
+            return matched, str(rule["name"])
+    return matched, None
 
 
 def _matches(rule: dict[str, Any], event: dict[str, Any]) -> bool:
