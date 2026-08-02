@@ -411,3 +411,39 @@ def test_recovery_keeps_the_importance_that_routes_it_to_the_same_people() -> No
     recovered = rule_triage("prod", "service down", "critical outage", resolved=True)
 
     assert firing["importance"] == recovered["importance"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_recovery_never_spends_an_ai_call(store: Store) -> None:
+    """ "It ended" needs no judgement — and the trace must not call that a failure."""
+    from lite import triage as triage_mod
+
+    calls: list[str] = []
+
+    async def explode(*args: Any, **kwargs: Any) -> Any:
+        calls.append("llm")
+        raise AssertionError("the LLM must not be asked about a recovery")
+
+    class _Client:
+        post = staticmethod(explode)
+
+    settings = _Settings()
+    object.__setattr__(settings, "openai_api_key", "sk-present")
+
+    result = await triage_mod.triage(_Client(), settings, "grafana", "svc down", "critical", resolved=True)
+
+    assert calls == []
+    assert result["route"] == "recovery"
+    # Routing must stay symmetric with the alert this recovery closes.
+    assert result["importance"] == "high"
+
+
+def test_recovery_route_is_not_flagged_as_degraded_on_the_card() -> None:
+    from lite import channels
+
+    base = {"source": "s", "title": "t", "body": "b", "importance": "high", "summary": "s", "resolved": True}
+    recovery = channels.build_payload("feishu", {**base, "route": "recovery"})["card"]
+    degraded = channels.build_payload("feishu", {**base, "route": "rule", "resolved": False})["card"]
+
+    assert "AI judgement unavailable" not in recovery["elements"][0]["text"]["content"]
+    assert "AI judgement unavailable" in degraded["elements"][0]["text"]["content"]

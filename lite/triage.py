@@ -20,7 +20,6 @@ _MEDIUM = ("error", "warn", "high", "错误", "告警", "超时", "异常")
 _LOW = ("info", "notice", "recovered", "恢复", "通知")
 
 _PROMPT = """你是一个运维告警分诊助手。请判断这条告警的重要程度并给出一句话摘要。
-%(resolved_note)s
 
 重要程度只能是 high / medium / low 之一:
 - high: 影响用户或核心业务、需要立即介入
@@ -61,6 +60,11 @@ async def triage(
     resolved: bool,
 ) -> dict[str, str]:
     fallback = rule_triage(source, title, body, resolved)
+    if resolved:
+        # A recovery needs no judgement — "it ended" is the whole message, and
+        # the card already says so. Route is "recovery" rather than "rule" so
+        # the trace does not read as an AI failure: this call was never made.
+        return {**fallback, "route": "recovery"}
     if not settings.openai_api_key:
         return fallback
 
@@ -74,15 +78,7 @@ async def triage(
                 "messages": [
                     {
                         "role": "user",
-                        "content": _PROMPT
-                        % {
-                            "source": source,
-                            "title": title,
-                            "body": body[:2000],
-                            "resolved_note": (
-                                "注意:这是一条恢复通知(告警已解除),摘要请写明已恢复。\n" if resolved else ""
-                            ),
-                        },
+                        "content": _PROMPT % {"source": source, "title": title, "body": body[:2000]},
                     }
                 ],
             },

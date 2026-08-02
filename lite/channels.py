@@ -40,6 +40,8 @@ def _feishu_card(event: dict[str, Any]) -> dict[str, Any]:
     body = str(event.get("body") or "").strip()
     if body:
         lines += ["", "---", body[:1500]]
+    # Only a genuine fallback is worth flagging; "recovery" means the AI was
+    # deliberately not asked, which is not a degradation.
     if event.get("route") == "rule":
         lines += ["", "_(rule-based triage: AI judgement unavailable)_"]
     # A recovery must never be mistakable for the alert it closes: same title,
