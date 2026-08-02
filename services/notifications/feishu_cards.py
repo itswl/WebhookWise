@@ -117,6 +117,21 @@ def build_feishu_card(
 
     parsed_obj = webhook_data.get("parsed_data") or webhook_data.get("body") or {}
     parsed = parsed_obj if isinstance(parsed_obj, dict) else {}
+
+    # A recovery reuses its firing alert's analysis (route=redis_reuse), so
+    # without this the two cards are byte-identical apart from the timestamp —
+    # same red header, same "high", same summary describing the problem as if
+    # it were still happening. Recovery is derived here rather than passed in
+    # so no caller can forget it.
+    from services.incidents.grouping import is_recovery_payload
+
+    is_recovery = is_recovery_payload(parsed, analysis_result)
+    if is_recovery:
+        template = "green"
+        # The green header already says "not urgent"; showing 🔴 高 next to it
+        # would contradict itself. Importance still drives routing untouched,
+        # so whoever was paged about the alert also hears that it ended.
+        importance_label = "✅ 已恢复"
     source = webhook_data.get("source", "") or parsed.get("source", "")
     event_type = analysis_result.get("event_type") or parsed.get("event_type", "") or parsed.get("Type", "") or ""
     rule_name = parsed.get("RuleName", "") or parsed.get("alert_name", "")
@@ -127,7 +142,7 @@ def build_feishu_card(
     summary = _strip_redundant_prefix(str(analysis_result.get("summary", "")), "事件摘要", "摘要")
     impact = _strip_redundant_prefix(str(analysis_result.get("impact_scope", "")), "影响范围", "影响")
     prefix = "🔁 [周期提醒] " if is_periodic_reminder else ""
-    title = f"{prefix}📡 告警通知"
+    title = f"{prefix}✅ 恢复通知" if is_recovery else f"{prefix}📡 告警通知"
 
     elements: list[JsonObject] = []
 

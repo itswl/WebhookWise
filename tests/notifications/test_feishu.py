@@ -207,3 +207,64 @@ def test_card_strips_redundant_impact_and_summary_prefix() -> None:
     assert "桶错误率 36%" in rendered
     # The section header itself still reads 影响范围.
     assert "**🎯 影响范围**" in rendered
+
+
+def _card(state: str) -> dict[str, Any]:
+    from services.notifications.feishu_cards import build_feishu_card
+
+    # Shape taken from real Grafana traffic: the recovery carries the firing
+    # alert's analysis verbatim, because analysis is reused (route=redis_reuse).
+    return build_feishu_card(
+        {
+            "source": "grafana",
+            "timestamp": "2026-08-02T10:20:24Z",
+            "body": {"state": state, "title": f"[{state}] 示例充值超限告警"},
+        },
+        {
+            "importance": "high",
+            "summary": "玩家108891单次充值$2000触发充值超500告警",
+            "impact_scope": "影响平台财务安全",
+        },
+    )["card"]
+
+
+def test_recovery_card_is_not_identical_to_the_alert_it_closes() -> None:
+    """Production sent two byte-identical red cards, one of them a recovery.
+
+    The reused analysis describes the problem as if it were still happening and
+    the raw "[RESOLVED]" title never reaches the card, so without an explicit
+    recovery treatment the two are indistinguishable apart from the timestamp.
+    """
+    firing = _card("alerting")
+    recovered = _card("ok")
+
+    assert firing["header"]["template"] == "red"
+    assert recovered["header"]["template"] == "green"
+    assert "告警通知" in firing["header"]["title"]["content"]
+    assert "恢复通知" in recovered["header"]["title"]["content"]
+
+    firing_headline = firing["elements"][0]["text"]["content"]
+    recovered_headline = recovered["elements"][0]["text"]["content"]
+    assert "🔴 高" in firing_headline
+    # A red "high" badge on a green recovery card contradicts itself.
+    assert "🔴 高" not in recovered_headline
+    assert "已恢复" in recovered_headline
+
+
+def test_generic_channel_payload_carries_the_recovery_flag() -> None:
+    from types import SimpleNamespace
+
+    from services.forwarding.channels import _build_http_payload
+
+    def payload(state: str) -> dict[str, Any]:
+        record = SimpleNamespace(
+            formatted_payload=None,
+            forward_data={"source": "grafana", "body": {"state": state}},
+            analysis_result={"importance": "high", "summary": "x"},
+            is_periodic_reminder=False,
+            target_url="https://example.com/hook",
+        )
+        return _build_http_payload(record)  # type: ignore[arg-type]
+
+    assert payload("ok")["is_recovery"] is True
+    assert payload("alerting")["is_recovery"] is False
