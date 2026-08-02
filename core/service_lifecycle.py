@@ -39,6 +39,28 @@ async def check_database_ready(context: AppContext | None = None) -> bool:
     return await test_db_connection()
 
 
+def _warn_deprecated_config(config: AppConfig) -> None:
+    """One startup nudge per process when deprecated keys are load-bearing.
+
+    The PROCESSING_LOCK_FAILFAST_* pair doubled as the ingress-storm knobs; the
+    canonical names are WEBHOOK_INGRESS_STORM_THRESHOLD/_WINDOW_SECONDS. The
+    legacy fallback still works but is slated for removal — warn only when the
+    legacy values are actually the ones taking effect.
+    """
+    retry_cfg = getattr(config, "retry", None)
+    mq_cfg = getattr(config, "mq", None)
+    if retry_cfg is None or mq_cfg is None:  # partial config doubles in tests
+        return
+    legacy_threshold = int(getattr(retry_cfg, "PROCESSING_LOCK_FAILFAST_THRESHOLD", 0) or 0)
+    canonical_threshold = int(getattr(mq_cfg, "WEBHOOK_INGRESS_STORM_THRESHOLD", 0) or 0)
+    if legacy_threshold > 0 and canonical_threshold == 0:
+        logger.warning(
+            "[Lifecycle] PROCESSING_LOCK_FAILFAST_* is deprecated for ingress storm control; "
+            "set WEBHOOK_INGRESS_STORM_THRESHOLD/_WINDOW_SECONDS instead (legacy fallback "
+            "will be removed in a future release)"
+        )
+
+
 async def start_runtime_services(
     config: AppConfig,
     *,
@@ -55,6 +77,8 @@ async def start_runtime_services(
 ) -> RuntimeServices:
     context = context or get_or_create_default_app_context(config)
     set_default_app_context(context)
+
+    _warn_deprecated_config(config)
 
     if initialize_logger is not None:
         initialize_logger()
