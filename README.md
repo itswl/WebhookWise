@@ -23,6 +23,7 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 
 | What you want to do | Where to go |
 | --- | --- |
+| Try the idea in one container | [WebhookWise Lite](lite/README.md) — SQLite, no Redis, ~800 lines |
 | Start the local environment | [Quick Start](#quick-start) |
 | View the API | After startup, visit `http://localhost:8000/docs`; for export notes see [docs/reference/api.md](docs/reference/api.md) |
 | Understand the full system | [docs/architecture/system-overview.md](docs/architecture/system-overview.md) |

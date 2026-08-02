@@ -14,6 +14,8 @@
 
 WebhookWise 是一个面向生产运维的智能 Webhook 接收、分析与转发服务。它把来自 Prometheus、Grafana、Alertmanager、飞书或任意第三方系统的事件归一为统一结构,异步写入队列与数据库,再通过 AI 分析、降噪去重、事务性转发与可观测性,把告警变成可跟踪、可审计、可行动的运维事件。
 
+> 想先花五分钟理解这套思路?[WebhookWise Lite](lite/README.md) 是它的提纯版:单容器、SQLite、无 Redis、约 800 行,保留了四道具名闸门和决策链这个内核。
+
 它不是简单的 Webhook 中继,而是一个小型 AIOps 控制平面:
 
 - API 在请求入队后立即返回 `200 OK`,耗时处理移入 TaskIQ / Redis Stream;入队是持久性边界,见[交付语义](#交付语义)。
