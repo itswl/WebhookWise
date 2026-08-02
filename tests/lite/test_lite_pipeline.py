@@ -358,3 +358,20 @@ async def test_cooldown_zero_disables_the_gate(store: Store) -> None:
     result = await _run(store, ALERT, dedup_window_seconds=0, cooldown_seconds=0)
 
     assert result["outcome"] == "forwarded"
+
+
+def test_dashboard_does_not_poll_aggressively() -> None:
+    """The console must not hammer the API, and must be pausable.
+
+    A 5s poll was 1440 requests/hour per open tab for a stream where alerts
+    arrive minutes apart. The last-updated stamp is part of the contract: once
+    refreshing can be turned off, a paused dashboard and a quiet one look
+    identical without it.
+    """
+    from lite.dashboard import DASHBOARD_HTML as html
+
+    assert "DEFAULT_INTERVAL = 30" in html
+    assert 'id="interval"' in html and 'id="refresh"' in html
+    assert 'id="updated"' in html
+    assert "visibilitychange" in html  # a hidden tab must stop polling
+    assert "setInterval(refresh, 5000)" not in html
