@@ -318,7 +318,8 @@ function setOperationsView(view) {
         actions: 'actionCenterTab',
         noise: 'noiseCenterTab',
         kb: 'kbDraftsTab',
-        gaps: 'knowledgeGapsTab'
+        gaps: 'knowledgeGapsTab',
+        settings: 'runtimeSettingsTab'
     };
     currentOperationsView = views[view] ? view : 'actions';
     Object.keys(views).forEach(function (key) {
@@ -334,6 +335,8 @@ function setOperationsView(view) {
         if (typeof KbDraftsModule !== 'undefined') KbDraftsModule.load();
     } else if (currentOperationsView === 'gaps') {
         if (typeof ResponseCenterModule !== 'undefined') ResponseCenterModule.loadKnowledgeGaps();
+    } else if (currentOperationsView === 'settings') {
+        if (typeof RuntimeSettingsModule !== 'undefined') RuntimeSettingsModule.load();
     } else if (typeof ActionCenterModule !== 'undefined') {
         ActionCenterModule.load();
     }

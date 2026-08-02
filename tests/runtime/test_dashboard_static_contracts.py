@@ -442,6 +442,72 @@ def test_kb_draft_publish_discard_urls_encode_source_ref() -> None:
     assert "method: 'DELETE'" in api_js  # discard
 
 
+def test_runtime_settings_admin_panel_is_wired() -> None:
+    # Fifth Operations sub-view (mirrors the kb/gaps toggle): button, panel,
+    # module script, setOperationsView routing, API surface (key path-encoded,
+    # PUT body {"value": ...}, DELETE clears the override), and the propagation
+    # note explaining changes reach all processes without a restart.
+    html = _dashboard_html()
+    api_js = _static_js("api.js")
+    dashboard = _static_js("dashboard.js")
+    module = _static_js("runtime-settings.js")
+
+    assert 'data-operations-view="settings"' in html
+    assert 'id="runtimeSettingsTab"' in html
+    assert 'id="runtimeSettingsList"' in html
+    assert 'data-i18n="rs.propagationNote"' in html
+    assert "/static/js/runtime-settings.js" in html
+    assert "runtimeSettingsTab" in dashboard  # setOperationsView shows/hides the panel
+    assert "RuntimeSettingsModule" in dashboard  # ...and loads the module
+
+    assert "getRuntimeSettings" in api_js
+    assert "updateRuntimeSetting" in api_js
+    assert "clearRuntimeSetting" in api_js
+    assert "'/v1/runtime-settings/' + encodeURIComponent(key)" in api_js
+    assert "JSON.stringify({ value: value })" in api_js
+
+    # Inline edit keeps the operator in the row: widget picked from the env
+    # default (boolean select / number / text), clear-override only when an
+    # override exists, and the backend's 400 message shown verbatim (escaped).
+    assert "function valueKind" in module
+    assert "data-rs-save" in module
+    assert "data-rs-clear" in module
+    assert "hasOverride(setting)" in module
+    assert "escapeHtml(rowError.message)" in module
+
+
+def test_runtime_settings_i18n_keys_exist_in_both_dictionaries() -> None:
+    # Every literal t('rs.*') key in the module resolves in BOTH dictionaries.
+    # Domain labels are looked up dynamically ('rs.domain.' + domain), so the
+    # full domain set — including the zh ops vocabulary — is asserted explicitly.
+    module = _static_js("runtime-settings.js")
+    keys = set(re.findall(r"\bt\(\s*'([^']+)'", module))
+    rs_keys = {key for key in keys if key.startswith("rs.") and not key.endswith(".")}
+
+    assert rs_keys
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        dictionary = _static_js(dict_name)
+        assert "'operations.view.settings'" in dictionary
+        missing = [key for key in sorted(rs_keys) if f"'{key}':" not in dictionary]
+        assert missing == []
+        for domain in ("flapping", "escalation", "backpressure", "kb", "noise", "cadence", "retention"):
+            assert f"'rs.domain.{domain}'" in dictionary
+
+    zh = _static_js("i18n.zh.js")
+    assert "'operations.view.settings': '运行时设置'" in zh
+    assert "'rs.col.override': '覆盖'" in zh
+    assert "'rs.col.effective': '生效值'" in zh
+    assert "'rs.col.envDefault': '环境默认'" in zh
+    assert "'rs.action.clearOverride': '清除覆盖'" in zh
+    assert "'rs.domain.flapping': '抖动'" in zh
+    assert "'rs.domain.escalation': '升级'" in zh
+    assert "'rs.domain.backpressure': '背压'" in zh
+    assert "'rs.domain.kb': '知识库'" in zh
+    assert "'rs.domain.noise': '降噪'" in zh
+    assert "'rs.domain.cadence': '通知节奏'" in zh
+    assert "'rs.domain.retention': '保留策略'" in zh
+
+
 def test_queue_health_tile_keys_on_backlog_not_fill() -> None:
     # Ingest-queue health tile on the Overview view (rendered dynamically by
     # overview.js). The gauge/tint must key on backlog_fraction, NOT fill_fraction:
