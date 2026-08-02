@@ -381,14 +381,25 @@ def test_incident_static_i18n_keys_exist_in_both_dictionaries() -> None:
         assert missing == []
 
 
-def test_action_center_routes_noise_view_items() -> None:
-    # Action Center items render generically off severity/view (no kind
-    # whitelist), so flapping_identity (view="noise") only needs the open-details
-    # navigation to know the noise view.
-    action_center = _static_js("action-center.js")
+def test_action_center_open_details_covers_every_backend_view() -> None:
+    """Open-details must handle every `view` the backend can emit.
 
-    assert "view === 'noise'" in action_center
-    assert "setOperationsView('noise')" in action_center
+    The previous if/else chain silently had no branch for "overview", so the
+    critical queue-backlog item's button did nothing at all. Pinned against the
+    backend rather than against the JS so the two cannot drift apart.
+    """
+    import re
+
+    backend = (PROJECT_ROOT / "services/operations/action_center.py").read_text()
+    emitted = set(re.findall(r'view="([a-z-]+)"', backend))
+    assert emitted, "no view= emitted; this guard would be vacuous"
+
+    action_center = _static_js("action-center.js")
+    mapping = re.search(r"DESTINATION_FOR_VIEW = \{(.*?)\};", action_center, re.S)
+    assert mapping, "view→destination mapping not found"
+    handled = set(re.findall(r"'?([a-z-]+)'?:\s*'", mapping.group(1)))
+
+    assert emitted <= handled, f"Open details does nothing for: {sorted(emitted - handled)}"
 
 
 def test_ai_disagreements_review_surface_is_wired() -> None:
@@ -584,3 +595,80 @@ def test_deep_analysis_formats_json_like_reports_as_structured_content() -> None
     assert ".da-report-strip" in css
     assert ".da-empty-report" in css
     assert ".da-json-block" not in css
+
+
+def test_silence_duration_presets_exist_as_options() -> None:
+    """Assigning an unknown value to a <select> leaves it blank, and a blank
+    duration used to parse to a PERMANENT silence — quick-silence shipped
+    setting '1h' when the option value is '1', so every "mute for an hour"
+    created a mute that never expired."""
+    import re
+
+    html = _dashboard_html()
+    select = re.search(r'<select[^>]*id="silenceFormDuration".*?</select>', html, re.S)
+    assert select, "silenceFormDuration select not found"
+    options = set(re.findall(r'value="([^"]*)"', select.group(0)))
+
+    js = _static_js("silences.js")
+    assigned = set(re.findall(r"getElementById\('silenceFormDuration'\)\.value\s*=\s*'([^']*)'", js))
+    assert assigned, "no duration preset is assigned anywhere — the guard would be vacuous"
+    assert assigned <= options, f"presets not offered by the select: {sorted(assigned - options)}"
+
+
+def test_only_an_explicit_zero_means_a_permanent_silence() -> None:
+    """ "Unreadable duration" and "until manually lifted" must not share a
+    result: that collapse is what made a broken default silence alerts forever."""
+    js = _static_js("silences.js")
+    assert "if (String(durationValue).trim() === '0') return null;" in js
+    assert "SILENCE_FALLBACK_HOURS" in js
+
+
+def test_every_destination_is_reachable_by_url() -> None:
+    """19 destinations used to sit behind one URL: a refresh dumped you back on
+    Overview and nothing could be bookmarked or shared."""
+    import re
+
+    js = _static_js("dashboard.js")
+    registry = re.search(r"const DESTINATIONS = \{(.*?)\n\};", js, re.S)
+    assert registry, "destination registry not found"
+    slugs = set(re.findall(r"^\s+'?([a-z-]+)'?:\s*\{ tab:", registry.group(1), re.M))
+
+    html = _dashboard_html()
+    for attr in ("data-dt-view", "data-inbox-view", "data-routing-view", "data-operations-view"):
+        for view in set(re.findall(attr + r'="([a-z-]+)"', html)):
+            assert view in slugs, f"{view} ({attr}) has no URL destination"
+
+    assert "window.addEventListener('hashchange', applyHashRoute)" in js, "Back/Forward not handled"
+    assert "function navigateTo(" in js and "function recordDestination(" in js
+
+
+def test_summary_counters_drill_into_their_detail_view() -> None:
+    """.stat-card:hover lifts the card, promising a click. The Action Center and
+    Overview headline numbers made that promise without keeping it."""
+    action_center = _static_js("action-center.js")
+    assert "statCard(t('action.summary.deadLetters')" in action_center
+    assert "'alerts')" in action_center and "'work-queue')" in action_center
+
+    overview = _static_js("overview.js")
+    assert "drillToOutcome" in overview
+    assert "navigateTo('cost')" in overview
+
+
+def test_alert_and_incident_references_are_links() -> None:
+    """Identifiers the reader obviously wants to open were inert text, while
+    AlertsModule.focusAlertById sat fully built and called from nowhere."""
+    assert "function openAlert(" in _static_js("dashboard.js")
+    assert "function openIncident(" in _static_js("dashboard.js")
+    assert "focusAlertById(focus)" in _static_js("dashboard.js")
+
+    for module in ("decision-trace.js", "deep-analyses.js"):
+        assert "openAlert(" in _static_js(module), f"{module} still renders inert alert ids"
+    assert "openIncident(" in _static_js("incidents.js")
+    assert "openIncident(" in _static_js("overview.js")
+
+
+def test_routing_pill_bar_keeps_a_parent_highlighted() -> None:
+    """Sandbox and Audit have no pill of their own; the bar used to go blank."""
+    js = _static_js("routing.js")
+    assert "PILL_PARENT" in js
+    assert "sandbox: 'rules'" in js and "audit: 'rules'" in js

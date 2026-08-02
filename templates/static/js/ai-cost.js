@@ -9,33 +9,11 @@ const AICostModule = {
     /**
      * Initialize the module
      */
-    init() {
-        this.loadStats('day');
-        this.bindEvents();
-    },
 
     /**
      * Bind events
      */
-    bindEvents() {
-        // Period toggle buttons
-        const periodButtons = document.querySelectorAll('[data-ai-period]');
-        periodButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const button = e.target.closest('[data-ai-period]');
-                const period = button ? button.getAttribute('data-ai-period') : null;
-                if (period) {
-                    this.loadStats(period);
-                }
-            });
-        });
-    },
 
-    updatePeriodButtons(period) {
-        document.querySelectorAll('[data-ai-period]').forEach(btn => {
-            btn.classList.toggle('active', btn.getAttribute('data-ai-period') === period);
-        });
-    },
 
     /**
      * Load statistics data

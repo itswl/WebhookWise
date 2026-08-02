@@ -1,7 +1,12 @@
 /** Operator action-center read model. */
 const ActionCenterModule = (function () {
-    function statCard(label, value, color) {
-        return '<div class="stat-card"><div class="stat-label">' + escapeHtml(label) +
+    // The cards already lift on hover (.stat-card:hover), promising a click
+    // that never existed. Each counter now goes where its number came from.
+    function statCard(label, value, color, destination) {
+        const clickable = destination
+            ? ' onclick="navigateTo(\'' + destination + '\')" style="cursor:pointer;"'
+            : '';
+        return '<div class="stat-card"' + clickable + '><div class="stat-label">' + escapeHtml(label) +
             '</div><div class="stat-value" style="color:' + color + ';">' +
             escapeHtml(String(value || 0)) + '</div></div>';
     }
@@ -16,9 +21,9 @@ const ActionCenterModule = (function () {
             statCard(t('action.summary.total'), summary.total, 'var(--text-main)') +
             statCard(t('action.summary.critical'), summary.critical, 'var(--danger)') +
             statCard(t('action.summary.warning'), summary.warning, 'var(--warning)') +
-            statCard(t('action.summary.deadLetters'), summary.dead_letters, 'var(--primary)') +
-            statCard(t('action.summary.sla'), summary.sla_breaches, 'var(--danger)') +
-            statCard(t('action.summary.aiAgreement'), summary.feedback_agreement_pct == null ? '–' : summary.feedback_agreement_pct + '%', 'var(--success)');
+            statCard(t('action.summary.deadLetters'), summary.dead_letters, 'var(--primary)', 'alerts') +
+            statCard(t('action.summary.sla'), summary.sla_breaches, 'var(--danger)', 'work-queue') +
+            statCard(t('action.summary.aiAgreement'), summary.feedback_agreement_pct == null ? '–' : summary.feedback_agreement_pct + '%', 'var(--success)', 'trace');
 
         const items = Array.isArray(data.items) ? data.items : [];
         if (!items.length) {
@@ -58,26 +63,20 @@ const ActionCenterModule = (function () {
         listEl.querySelectorAll('[data-open-action-view]').forEach(function (button) {
             button.addEventListener('click', function () {
                 const view = button.closest('[data-action-view-target]').getAttribute('data-action-view-target');
-                if (view === 'routing') {
-                    switchMainTab('routing');
-                    if (typeof RoutingModule !== 'undefined') RoutingModule.setView('rules');
-                } else if (view === 'inbox') {
-                    switchMainTab('alerts');
-                    if (typeof setInboxView === 'function') setInboxView('alerts');
-                } else if (view === 'alerts') {
-                    switchMainTab('alerts');
-                    if (typeof setInboxView === 'function') setInboxView('alerts');
-                } else if (view === 'incidents') {
-                    switchMainTab('alerts');
-                    if (typeof setInboxView === 'function') setInboxView('incidents');
-                } else if (view === 'decision-trace') {
-                    switchMainTab('decision-trace');
-                    if (typeof DecisionTraceModule !== 'undefined') DecisionTraceModule.setView('trace');
-                } else if (view === 'noise') {
-                    // e.g. kind=flapping_identity — the fix lives in the Noise Center.
-                    switchMainTab('operations');
-                    if (typeof setOperationsView === 'function') setOperationsView('noise');
-                }
+                // Backend view names → navigation destinations. The chain this
+                // replaces had no branch for "overview", so the queue-backlog
+                // item (action_center.py emits view="overview", severity
+                // critical) had an Open-details button that did nothing at all.
+                const DESTINATION_FOR_VIEW = {
+                    routing: 'rules',
+                    inbox: 'alerts',
+                    alerts: 'alerts',
+                    incidents: 'incidents',
+                    'decision-trace': 'trace',
+                    noise: 'noise',
+                    overview: 'overview',
+                };
+                navigateTo(DESTINATION_FOR_VIEW[view] || view);
             });
         });
         listEl.querySelectorAll('[data-remediation]').forEach(function (button) {

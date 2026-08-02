@@ -346,7 +346,7 @@ var DeepAnalysesModule = (function() {
                     <div class="da-summary-meta-row">
                         <span class="badge ${status.class}" style="display: flex; align-items: center; font-size: 0.7rem;">${status.icon} ${status.label}</span>
                         ${engineLabel}
-                        <span class="da-alert-title">🔔 ${escapeHtml(t('deep.alertNumber', { n: record.webhook_event_id }))}</span>
+                        <span class="da-alert-title"><a href="#/alerts/${encodeURIComponent(record.webhook_event_id)}" onclick="event.stopPropagation(); event.preventDefault(); openAlert(${Number(record.webhook_event_id)});" style="color: inherit; text-decoration: none;">🔔 ${escapeHtml(t('deep.alertNumber', { n: record.webhook_event_id }))}</a></span>
                         <span class="da-source">📡 ${escapeHtml(source)}</span>
                         ${alertTypeTag}
                     </div>
