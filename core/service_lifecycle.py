@@ -44,16 +44,23 @@ def _warn_deprecated_config(config: AppConfig) -> None:
 
     The PROCESSING_LOCK_FAILFAST_* pair doubled as the ingress-storm knobs; the
     canonical names are WEBHOOK_INGRESS_STORM_THRESHOLD/_WINDOW_SECONDS. The
-    legacy fallback still works but is slated for removal — warn only when the
-    legacy values are actually the ones taking effect.
+    legacy fallback still works but is slated for removal.
+
+    Warn only for a deployment whose own configuration will actually change
+    behaviour on removal: the legacy key was set EXPLICITLY (not merely left at
+    its code default) while the canonical key is unset. Warning about defaults
+    nobody wrote would put an unactionable line in every operator's startup log.
     """
     retry_cfg = getattr(config, "retry", None)
     mq_cfg = getattr(config, "mq", None)
     if retry_cfg is None or mq_cfg is None:  # partial config doubles in tests
         return
-    legacy_threshold = int(getattr(retry_cfg, "PROCESSING_LOCK_FAILFAST_THRESHOLD", 0) or 0)
+    explicitly_set: set[str] = getattr(retry_cfg, "model_fields_set", set())
+    legacy_is_explicit = bool(
+        {"PROCESSING_LOCK_FAILFAST_THRESHOLD", "PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS"} & explicitly_set
+    )
     canonical_threshold = int(getattr(mq_cfg, "WEBHOOK_INGRESS_STORM_THRESHOLD", 0) or 0)
-    if legacy_threshold > 0 and canonical_threshold == 0:
+    if legacy_is_explicit and canonical_threshold == 0:
         logger.warning(
             "[Lifecycle] PROCESSING_LOCK_FAILFAST_* is deprecated for ingress storm control; "
             "set WEBHOOK_INGRESS_STORM_THRESHOLD/_WINDOW_SECONDS instead (legacy fallback "
