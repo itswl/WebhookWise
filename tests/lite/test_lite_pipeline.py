@@ -1,0 +1,208 @@
+"""WebhookWise Lite: the suppression chain and the trace it leaves behind.
+
+These are the contract of the lite edition — each gate must stop the alert for
+its OWN named reason, because the whole promise is that "why didn't I get
+notified" has a precise answer.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+import pytest
+
+from lite import pipeline
+from lite.normalize import normalize
+from lite.store import Store
+
+
+@dataclass(frozen=True)
+class _Settings:
+    dedup_window_seconds: int = 300
+    cooldown_seconds: int = 1800
+    openai_api_key: str = ""
+    openai_api_url: str = ""
+    openai_model: str = ""
+    ai_timeout_seconds: int = 5
+
+
+@pytest.fixture
+async def store(tmp_path: Any):
+    store = Store(str(tmp_path / "lite.db"))
+    await store.open()
+    yield store
+    await store.close()
+
+
+@pytest.fixture
+async def routed_store(store: Store):
+    await store.add_rule({"name": "catch-all", "target_kind": "generic", "target_url": "http://sink.invalid/hook"})
+    return store
+
+
+ALERT = {"title": "disk full on db-01", "body": "/ is at 95%"}
+
+
+async def _run(store: Store, payload: dict[str, Any], source: str = "prod", **overrides: Any) -> dict[str, Any]:
+    return await pipeline.process(store, None, _Settings(**overrides), source, payload)
+
+
+@pytest.mark.asyncio
+async def test_forwarded_alert_enqueues_delivery_and_records_why(routed_store: Store) -> None:
+    result = await _run(routed_store, ALERT)
+
+    assert result["outcome"] == "forwarded"
+    assert result["rules"] == ["catch-all"]
+    assert len(await routed_store.due_deliveries()) == 1
+
+    trace = (await routed_store.list_decisions())[0]
+    assert [step["step"] for step in trace["steps"]] == [
+        "normalize",
+        "dedup",
+        "silence",
+        "analysis",
+        "cooldown",
+        "rules",
+        "forward",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_identical_alert_inside_the_window_is_a_duplicate(routed_store: Store) -> None:
+    await _run(routed_store, ALERT)
+    result = await _run(routed_store, ALERT)
+
+    assert result["skip_code"] == "duplicate"
+    # A suppressed alert must not produce a second delivery.
+    assert len(await routed_store.due_deliveries()) == 1
+    dedup_step = next(s for s in (await routed_store.list_decisions())[0]["steps"] if s["step"] == "dedup")
+    assert dedup_step["result"] == "duplicate"
+
+
+@pytest.mark.asyncio
+async def test_cooldown_paces_renotification_once_dedup_has_expired(routed_store: Store) -> None:
+    """The gate that only exists when the dedup window is the SHORTER one."""
+    await _run(routed_store, ALERT, dedup_window_seconds=0)
+    result = await _run(routed_store, ALERT, dedup_window_seconds=0, cooldown_seconds=3600)
+
+    assert result["skip_code"] == "cooldown"
+
+
+@pytest.mark.asyncio
+async def test_cooldown_is_per_identity_not_global(routed_store: Store) -> None:
+    """A different alert must not inherit another alert's cooldown."""
+    await _run(routed_store, ALERT)
+    result = await _run(routed_store, {"title": "cpu spike on web-02", "body": "99%"})
+
+    assert result["outcome"] == "forwarded"
+
+
+@pytest.mark.asyncio
+async def test_silence_suppresses_before_any_ai_call(routed_store: Store) -> None:
+    await routed_store.add_silence("noisy-job", minutes=30, reason="known flaky")
+    result = await _run(routed_store, {"title": "noisy-job failed", "body": "retrying"})
+
+    assert result["skip_code"] == "silenced"
+    steps = {step["step"] for step in (await routed_store.list_decisions())[0]["steps"]}
+    # Analysis must not have run: a silenced alert should cost nothing.
+    assert "analysis" not in steps
+
+
+@pytest.mark.asyncio
+async def test_expired_silence_no_longer_suppresses(store: Store) -> None:
+    await store.add_rule({"name": "catch-all", "target_kind": "generic", "target_url": "http://sink.invalid/hook"})
+    await store.add_silence("noisy-job", minutes=-1)  # already expired
+    result = await _run(store, {"title": "noisy-job failed", "body": "retrying"})
+
+    assert result["outcome"] == "forwarded"
+
+
+@pytest.mark.asyncio
+async def test_unrouted_alert_is_skipped_as_no_match(store: Store) -> None:
+    result = await _run(store, ALERT)
+    assert result["skip_code"] == "no_match"
+
+
+@pytest.mark.asyncio
+async def test_rules_filter_on_source_and_importance(store: Store) -> None:
+    await store.add_rule(
+        {
+            "name": "prod-high-only",
+            "match_source": "prod",
+            "match_importance": "high",
+            "target_kind": "generic",
+            "target_url": "http://sink.invalid/hook",
+        }
+    )
+    # "critical" in the body drives rule triage to high.
+    assert (await _run(store, {"title": "outage", "body": "critical"}, source="prod"))["outcome"] == "forwarded"
+    assert (await _run(store, {"title": "outage", "body": "critical"}, source="staging"))["skip_code"] == "no_match"
+
+
+@pytest.mark.asyncio
+async def test_every_alert_produces_exactly_one_decision(routed_store: Store) -> None:
+    await _run(routed_store, ALERT)
+    await _run(routed_store, ALERT)
+    await _run(routed_store, {"title": "another", "body": "x"})
+
+    decisions = await routed_store.list_decisions()
+    assert len(decisions) == 3
+    assert sorted(d["skip_code"] for d in decisions) == ["duplicate", "none", "none"]
+
+
+# ── normalization ─────────────────────────────────────────────────────────────
+
+
+def test_alertmanager_identity_survives_description_edits() -> None:
+    def payload(description: str) -> dict[str, Any]:
+        return {
+            "alerts": [
+                {
+                    "status": "firing",
+                    "labels": {"alertname": "HighLatency", "instance": "web-01"},
+                    "annotations": {"summary": "latency high", "description": description},
+                }
+            ]
+        }
+
+    first = normalize("prom", payload("p99 at 1.2s"))
+    second = normalize("prom", payload("p99 at 3.4s"))
+    # Identity comes from the label set, so a changing description is still the
+    # same alert and still dedups.
+    assert first["alert_hash"] == second["alert_hash"]
+
+
+def test_resolved_notice_is_a_distinct_identity_from_its_firing_alert() -> None:
+    labels = {"alertname": "HighLatency", "instance": "web-01"}
+    firing = normalize("prom", {"alerts": [{"status": "firing", "labels": labels, "annotations": {}}]})
+    resolved = normalize("prom", {"alerts": [{"status": "resolved", "labels": labels, "annotations": {}}]})
+
+    # Sharing the identity would make the recovery look like a duplicate of the
+    # alert it closes, and the recovery would never be delivered.
+    assert firing["alert_hash"] != resolved["alert_hash"]
+    assert resolved["resolved"] is True
+
+
+def test_unparseable_payload_still_becomes_an_alert() -> None:
+    event = normalize("weird", {"nothing": "recognizable"})
+    assert event["title"] and event["body"]
+
+
+@pytest.mark.asyncio
+async def test_delivery_retries_then_exhausts(store: Store) -> None:
+    await store.enqueue_delivery(1, "r", "generic", "http://sink.invalid/hook", {"x": 1})
+    outbox_id = (await store.due_deliveries())[0]["id"]
+
+    statuses = [await store.mark_failed(int(outbox_id), "boom", 0) for _ in range(4)]
+    assert statuses == ["pending", "pending", "pending", "exhausted"]
+    assert (await store.outbox_summary())["exhausted"] == 1
+
+
+@pytest.mark.asyncio
+async def test_backoff_defers_the_next_attempt(store: Store) -> None:
+    await store.enqueue_delivery(1, "r", "generic", "http://sink.invalid/hook", {"x": 1})
+    outbox_id = (await store.due_deliveries())[0]["id"]
+
+    await store.mark_failed(int(outbox_id), "boom", 60)
+    assert await store.due_deliveries() == []  # not due again yet
