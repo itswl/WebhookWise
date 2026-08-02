@@ -5,6 +5,27 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+## [3.6.0] - 2026-08-02
+
+### Added
+- The runtime settings plane: the 28 operator-policy keys (flapping,
+  auto-SLA escalation, backpressure/storm gates, KB card links, noise
+  weights, notification cadence, decision-trace retention) are now live-
+  editable overrides — `GET/PUT/DELETE /v1/runtime-settings` and a dashboard
+  "Runtime Settings" panel (en/zh). Resolution is override > env > default;
+  changes propagate to every process within ~1 minute (Redis pub/sub nudge +
+  interval refresh) with no restart. Writes are validated against a typed
+  registry, audited, and counted in the adoption ledger; reads are sync,
+  snapshot-backed, and fail-open (migration 0024).
+- Canonical `WEBHOOK_INGRESS_STORM_THRESHOLD/_WINDOW_SECONDS` keys for the
+  per-alert storm gate; the legacy dual-duty `PROCESSING_LOCK_FAILFAST_*`
+  values remain the fallback so existing deployments are unaffected.
+
+This pays down the dual-config-plane concept debt: 6 of the 8 suppression
+mechanisms were env-only; now all 8 are tunable live, and the env/DB split
+follows one principle — infrastructure in env, policy in the database.
+
+
 ### Changed
 - Removed the consumer-less `DecisionInput`/`decide()` indirection added in
   3.5.1 (the keyword `decide_forwarding` remains the single entry point).
