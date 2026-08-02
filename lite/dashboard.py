@@ -36,12 +36,31 @@ DASHBOARD_HTML = """<!doctype html>
   .step b { color:var(--text); font-weight:500; }
   .empty { color:var(--muted); padding:40px 0; text-align:center; }
   code { background:#11141a; padding:1px 5px; border-radius:4px; }
+  .controls { margin-left:auto; display:flex; align-items:center; gap:10px; font-size:12px; color:var(--muted); }
+  .controls select, .controls button {
+    background:var(--card); color:var(--text); border:1px solid var(--line);
+    border-radius:7px; padding:4px 9px; font-size:12px; font-family:inherit; cursor:pointer;
+  }
+  .controls button:hover, .controls select:hover { border-color:var(--accent); }
+  #updated { font-variant-numeric:tabular-nums; }
+  #updated.stale { color:var(--warn); }
 </style>
 </head>
 <body>
 <header>
   <h1>WebhookWise Lite</h1>
   <span class="sub">every alert, and why it did or didn't reach you</span>
+  <div class="controls">
+    <span id="updated">—</span>
+    <select id="interval" title="Auto-refresh interval">
+      <option value="0">manual</option>
+      <option value="10">10s</option>
+      <option value="30">30s</option>
+      <option value="120">2m</option>
+      <option value="600">10m</option>
+    </select>
+    <button id="refresh" type="button">Refresh</button>
+  </div>
 </header>
 <main>
   <div class="stats" id="stats"></div>
@@ -66,10 +85,22 @@ function stepLine(s) {
 }
 
 async function refresh() {
-  const [stats, data] = await Promise.all([
-    fetch('api/stats').then(r => r.json()),
-    fetch('api/decisions?limit=60').then(r => r.json())
-  ]);
+  let stats, data;
+  try {
+    [stats, data] = await Promise.all([
+      fetch('api/stats').then(r => r.json()),
+      fetch('api/decisions?limit=60').then(r => r.json())
+    ]);
+  } catch (e) {
+    // Surface it: a silently failed refresh looks exactly like "nothing new",
+    // which is the one thing this dashboard must never imply.
+    const el = document.getElementById('updated');
+    el.textContent = 'refresh failed';
+    el.classList.add('stale');
+    return;
+  }
+  lastUpdated = Date.now();
+  stamp();
 
   const s = stats.last24h || {};
   const order = ['forwarded', 'duplicate', 'silenced', 'cooldown', 'no_match'];
@@ -100,8 +131,50 @@ async function refresh() {
       + '-d \\'{"title":"disk full","body":"/ is at 95%"}\\'</code></div>';
 }
 
+// Refresh scheduling. Default 30s rather than a tight poll: alerts arrive
+// minutes apart, so a faster loop only burns requests. "manual" turns the
+// timer off entirely — hence the always-visible last-updated stamp, without
+// which a paused dashboard is indistinguishable from a quiet one.
+const DEFAULT_INTERVAL = 30;
+const STORAGE_KEY = 'wwlite.refreshInterval';
+let timer = null;
+let lastUpdated = null;
+
+function stamp() {
+  const el = document.getElementById('updated');
+  if (!lastUpdated) { el.textContent = '—'; el.classList.remove('stale'); return; }
+  const age = Math.round((Date.now() - lastUpdated) / 1000);
+  el.textContent = age < 60 ? 'updated ' + age + 's ago'
+                 : 'updated ' + Math.floor(age / 60) + 'm ago';
+  // Only meaningful while a timer should be keeping things current.
+  el.classList.toggle('stale', currentInterval() > 0 && age > currentInterval() * 2);
+}
+
+function currentInterval() {
+  return parseInt(document.getElementById('interval').value, 10) || 0;
+}
+
+function schedule() {
+  if (timer) { clearInterval(timer); timer = null; }
+  const seconds = currentInterval();
+  localStorage.setItem(STORAGE_KEY, String(seconds));
+  // A hidden tab polling in the background helps nobody; visibilitychange
+  // re-arms it and refreshes once so the view is current when you return.
+  if (seconds > 0 && !document.hidden) timer = setInterval(refresh, seconds * 1000);
+}
+
+document.getElementById('interval').addEventListener('change', schedule);
+document.getElementById('refresh').addEventListener('click', () => refresh());
+document.addEventListener('visibilitychange', () => {
+  schedule();
+  if (!document.hidden) refresh();
+});
+
+const saved = localStorage.getItem(STORAGE_KEY);
+document.getElementById('interval').value = saved === null ? String(DEFAULT_INTERVAL) : saved;
+setInterval(stamp, 1000);
+schedule();
 refresh();
-setInterval(refresh, 5000);
 </script>
 </body>
 </html>
