@@ -18,6 +18,13 @@ This project follows SemVer release headings.
   count folded into the next message; fails open to a per-process gate when
   Redis is down; never raises into the delivery path.
 
+### Fixed
+- The `[runtime-policy]` tags in the env reference over-promised: the two
+  deprecated `PROCESSING_LOCK_FAILFAST_*` keys carried the tag (and the 3.6.0
+  notes counted them) but were never in the registry, so they were not in fact
+  live-editable. Tags and registry now match exactly in both directions, and a
+  contract test keeps them from drifting apart again.
+
 ### Changed
 - `PROCESSING_LOCK_FAILFAST_*` is now formally deprecated for ingress storm
   control in favor of `WEBHOOK_INGRESS_STORM_THRESHOLD/_WINDOW_SECONDS`: env
@@ -30,7 +37,7 @@ This project follows SemVer release headings.
 ## [3.6.0] - 2026-08-02
 
 ### Added
-- The runtime settings plane: the 28 operator-policy keys (flapping,
+- The runtime settings plane: the 26 operator-policy keys (flapping,
   auto-SLA escalation, backpressure/storm gates, KB card links, noise
   weights, notification cadence, decision-trace retention) are now live-
   editable overrides — `GET/PUT/DELETE /v1/runtime-settings` and a dashboard
