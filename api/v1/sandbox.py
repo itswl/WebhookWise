@@ -28,6 +28,9 @@ async def test_webhook_endpoint(
     No enqueue, no AI call, no persistence — the only reads are the live forward
     rules and silences, so the verdict reflects the real configured routing.
     """
+    from services.operations.feature_adoption import record_feature_use
+
+    await record_feature_use("action:sandbox_dry_run")
     try:
         logger.info("[Sandbox] Dry-run request source=%s", request.source or "(none)")
         data = await test_webhook_payload(session, source=request.source, payload=request.payload)

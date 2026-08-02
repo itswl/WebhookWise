@@ -5,6 +5,14 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+### Changed
+- Removed the consumer-less `DecisionInput`/`decide()` indirection added in
+  3.5.1 (the keyword `decide_forwarding` remains the single entry point).
+- The sandbox dry-run, handoff summary, and remediation commands now feed the
+  feature-adoption ledger, so the observation-period keep/kill review covers
+  them with data instead of guesses.
+
+
 ## [3.5.1] - 2026-07-30
 
 ### Added
