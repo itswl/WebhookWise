@@ -359,6 +359,21 @@ class NotificationConfig(StaticSettings):
     AI_COST_BUDGET_ALERT_THRESHOLD: float = Field(default=0.8, gt=0.0, le=1.0)  # warn at 80% of budget
     AI_COST_BUDGET_FEISHU_WEBHOOK: str = Field(default="")
 
+    # Last-resort self-notification: when a forward exhausts its retries, post
+    # one minimal text message DIRECTLY to this webhook, bypassing the
+    # rules/outbox/channel stack that just failed. Point it at a channel that
+    # does NOT share fate with your normal targets (e.g. a separate Feishu
+    # group bot). Empty = off. The POST uses the shared outbound client, so the
+    # SSRF policy applies: a private-network URL additionally needs
+    # ALLOW_PRIVATE_TARGET_URLS=true.
+    SELF_NOTIFY_WEBHOOK_URL: str = Field(default="")
+    # "feishu" wraps the text as a Feishu bot message; "generic" posts a plain
+    # JSON object for any webhook receiver.
+    SELF_NOTIFY_KIND: Literal["feishu", "generic"] = Field(default="feishu")
+    # At most one self-notification per window; failures inside the window are
+    # counted and summarized in the next message.
+    SELF_NOTIFY_MIN_INTERVAL_MINUTES: int = Field(default=30, gt=0, le=1440)
+
     # Escalation-lite: arm each new incident's SLA from its importance
     # ("high=30,medium=240" → a high incident unacknowledged for 30 minutes
     # triggers the SLA-breach escalation card). Empty = off (default): SLAs

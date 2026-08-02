@@ -174,6 +174,12 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
     ),
     SettingSpec("ENABLE_PERIODIC_REMINDER", "cadence", _cast_bool, "Re-notify persisting duplicates on a schedule"),
     SettingSpec("REMINDER_INTERVAL_HOURS", "cadence", _cast_int(1, 720), "Periodic reminder interval (hours)"),
+    SettingSpec(
+        "SELF_NOTIFY_MIN_INTERVAL_MINUTES",
+        "cadence",
+        _cast_int(1, 1440),
+        "Min minutes between out-of-band delivery-failure self-notifications",
+    ),
     # Retention
     SettingSpec("DECISION_TRACE_RETENTION_DAYS", "retention", _cast_int(1, 3650), "Days to keep decision-trace rows"),
 )
