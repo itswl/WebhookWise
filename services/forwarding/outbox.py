@@ -586,6 +586,17 @@ async def _finalize_outbox_failure(
                 outbox_id,
                 exc,
             )
+        # Out-of-band operator notice, deliberately OUTSIDE the event_type
+        # guard above: when the outbox_exhausted meta-card itself dies, every
+        # in-band channel is gone and this is the only signal left.
+        from services.operations.self_notify import notify_delivery_exhausted
+
+        await notify_delivery_exhausted(
+            target_type=str(exhausted_record.target_type or "unknown"),
+            error=error_msg,
+            outbox_id=int(exhausted_record.id),
+            event_id=exhausted_record.webhook_event_id,
+        )
     if retry_outbox_id is not None and retry_delay is not None:
         await schedule_forward_outbox_retry(retry_outbox_id, retry_delay)
 
