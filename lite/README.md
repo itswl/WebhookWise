@@ -91,6 +91,35 @@ the dedup gate catches every candidate first and the cooldown gate can never fir
 Rules match on `match_source` and `match_importance` (comma-separated, empty = any) and
 deliver to `feishu` (interactive card) or `generic` (plain JSON) targets.
 
+### Routing to several receivers
+
+Rules are evaluated in `priority` order (highest first, then creation order) and **every**
+match produces its own delivery — one alert can reach an on-call group and an archive
+sink at once, each retried independently, so one dead target cannot take the other down.
+
+Set `stop_on_match` on a rule to end evaluation there. That is what makes "everything
+else" expressible without hand-maintaining disjoint match sets:
+
+```bash
+# high → on-call, and stop
+curl -X POST localhost:8000/api/rules -H 'content-type: application/json' \
+  -d '{"name":"oncall","match_importance":"high","priority":10,"stop_on_match":true,
+       "target_kind":"feishu","target_url":"https://.../hook/AAA"}'
+
+# everything else → general channel
+curl -X POST localhost:8000/api/rules -H 'content-type: application/json' \
+  -d '{"name":"general","priority":0,"target_kind":"feishu","target_url":"https://.../hook/BBB"}'
+```
+
+The rule that ended evaluation is recorded in the trace as `stopped_by`, so "why didn't
+my catch-all fire?" stays answerable.
+
+**One caveat when you fan out to receivers with different purposes:** the cooldown gate
+is keyed on the alert identity, not on the target. A repeat alert suppressed by cooldown
+is suppressed for *every* rule — including an archive sink that may want the full stream.
+Raise `COOLDOWN_SECONDS` deliberately, or keep archival targets on a separate ingest
+source that no cooldown-sensitive rule matches.
+
 ## What it deliberately leaves out
 
 Lite is a distillation, not a cut-down build. The [full edition](../README.md) adds the

@@ -232,3 +232,90 @@ def test_env_example_documents_every_setting() -> None:
     assert sorted(documented - in_code) == [], ".env.example documents unknown settings"
     # Every field on Settings must come from one of those variables.
     assert len(in_code) == len(Settings.__dataclass_fields__)
+
+
+@pytest.mark.asyncio
+async def test_priority_orders_rule_evaluation(store: Store) -> None:
+    await store.add_rule({"name": "low-prio", "target_kind": "generic", "target_url": "http://a", "priority": 1})
+    await store.add_rule({"name": "high-prio", "target_kind": "generic", "target_url": "http://b", "priority": 10})
+
+    assert [r["name"] for r in await store.active_rules()] == ["high-prio", "low-prio"]
+
+
+@pytest.mark.asyncio
+async def test_stop_on_match_expresses_everything_else(store: Store) -> None:
+    """The routing shape that disjoint match sets cannot express cleanly."""
+    await store.add_rule(
+        {
+            "name": "oncall",
+            "match_importance": "high",
+            "target_kind": "generic",
+            "target_url": "http://oncall",
+            "priority": 10,
+            "stop_on_match": True,
+        }
+    )
+    await store.add_rule({"name": "general", "target_kind": "generic", "target_url": "http://general", "priority": 0})
+
+    high = await _run(store, {"title": "outage", "body": "critical"})
+    assert high["rules"] == ["oncall"]  # general was never reached
+
+    low = await _run(store, {"title": "backup done", "body": "info notice"})
+    assert low["rules"] == ["general"]
+
+
+@pytest.mark.asyncio
+async def test_early_stop_is_visible_in_the_trace(store: Store) -> None:
+    """A rule that never got evaluated must still be explainable."""
+    await store.add_rule(
+        {
+            "name": "oncall",
+            "target_kind": "generic",
+            "target_url": "http://oncall",
+            "priority": 10,
+            "stop_on_match": True,
+        }
+    )
+    await store.add_rule({"name": "archive", "target_kind": "generic", "target_url": "http://archive"})
+
+    await _run(store, ALERT)
+    rules_step = next(s for s in (await store.list_decisions())[0]["steps"] if s["step"] == "rules")
+    assert rules_step["stopped_by"] == "oncall"
+
+
+@pytest.mark.asyncio
+async def test_fan_out_without_stop_reaches_every_matching_rule(store: Store) -> None:
+    await store.add_rule({"name": "oncall", "target_kind": "generic", "target_url": "http://oncall", "priority": 10})
+    await store.add_rule({"name": "archive", "target_kind": "generic", "target_url": "http://archive"})
+
+    result = await _run(store, ALERT)
+    assert result["rules"] == ["oncall", "archive"]
+    assert len(await store.due_deliveries()) == 2
+    rules_step = next(s for s in (await store.list_decisions())[0]["steps"] if s["step"] == "rules")
+    assert rules_step["stopped_by"] is None
+
+
+@pytest.mark.asyncio
+async def test_migration_adds_columns_to_a_pre_existing_database(tmp_path: Any) -> None:
+    """An installed instance must survive the upgrade with its rules intact."""
+    import aiosqlite
+
+    path = str(tmp_path / "old.db")
+    async with aiosqlite.connect(path) as db:
+        await db.execute(
+            "CREATE TABLE rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,"
+            " enabled INTEGER NOT NULL DEFAULT 1, match_source TEXT NOT NULL DEFAULT '',"
+            " match_importance TEXT NOT NULL DEFAULT '', target_kind TEXT NOT NULL DEFAULT 'feishu',"
+            " target_url TEXT NOT NULL)"
+        )
+        await db.execute("INSERT INTO rules (name, target_url) VALUES ('pre-existing', 'http://kept')")
+        await db.commit()
+
+    store = Store(path)
+    await store.open()
+    try:
+        rules = await store.active_rules()
+        assert [r["name"] for r in rules] == ["pre-existing"]
+        assert rules[0]["priority"] == 0 and rules[0]["stop_on_match"] == 0
+    finally:
+        await store.close()
