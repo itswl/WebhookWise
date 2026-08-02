@@ -580,9 +580,13 @@ def decide_forwarding(
 
 
 def forwarding_policy_from_config() -> ForwardingPolicy:
+    from services.operations import runtime_settings as rt
+
     cfg = get_config_manager()
     return ForwardingPolicy(
-        notification_cooldown_seconds=cfg.retry.NOTIFICATION_COOLDOWN_SECONDS,
-        enable_periodic_reminder=cfg.retry.ENABLE_PERIODIC_REMINDER,
-        reminder_interval_hours=cfg.retry.REMINDER_INTERVAL_HOURS,
+        notification_cooldown_seconds=rt.override_or(
+            "NOTIFICATION_COOLDOWN_SECONDS", int(cfg.retry.NOTIFICATION_COOLDOWN_SECONDS)
+        ),
+        enable_periodic_reminder=rt.override_or("ENABLE_PERIODIC_REMINDER", bool(cfg.retry.ENABLE_PERIODIC_REMINDER)),
+        reminder_interval_hours=rt.override_or("REMINDER_INTERVAL_HOURS", int(cfg.retry.REMINDER_INTERVAL_HOURS)),
     )

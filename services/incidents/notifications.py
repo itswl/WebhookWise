@@ -190,7 +190,9 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
     ).strip()
     if not target_url:
         return []
-    mention_all = bool(cfg.SLA_BREACH_MENTION_ALL)
+    from services.operations import runtime_settings as rt
+
+    mention_all = rt.override_or("SLA_BREACH_MENTION_ALL", bool(cfg.SLA_BREACH_MENTION_ALL))
 
     incidents = list(
         (

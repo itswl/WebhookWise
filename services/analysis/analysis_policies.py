@@ -157,12 +157,18 @@ class NoiseScoringConfig:
 
     @classmethod
     def from_config(cls, noise: NoiseConfig) -> "NoiseScoringConfig":
+        from services.operations import runtime_settings as rt
+
         return cls(
-            source_weight=float(noise.NOISE_SOURCE_WEIGHT),
-            resource_weight=float(noise.NOISE_RESOURCE_WEIGHT),
-            semantic_weight=float(noise.NOISE_SEMANTIC_WEIGHT),
-            severity_weight=float(noise.NOISE_SEVERITY_WEIGHT),
-            time_weight=float(noise.NOISE_TIME_WEIGHT),
-            severity_downgrade_score=float(noise.NOISE_SEVERITY_DOWNGRADE_SCORE),
-            related_min_confidence=float(noise.NOISE_RELATED_MIN_CONFIDENCE),
+            source_weight=rt.override_or("NOISE_SOURCE_WEIGHT", float(noise.NOISE_SOURCE_WEIGHT)),
+            resource_weight=rt.override_or("NOISE_RESOURCE_WEIGHT", float(noise.NOISE_RESOURCE_WEIGHT)),
+            semantic_weight=rt.override_or("NOISE_SEMANTIC_WEIGHT", float(noise.NOISE_SEMANTIC_WEIGHT)),
+            severity_weight=rt.override_or("NOISE_SEVERITY_WEIGHT", float(noise.NOISE_SEVERITY_WEIGHT)),
+            time_weight=rt.override_or("NOISE_TIME_WEIGHT", float(noise.NOISE_TIME_WEIGHT)),
+            severity_downgrade_score=rt.override_or(
+                "NOISE_SEVERITY_DOWNGRADE_SCORE", float(noise.NOISE_SEVERITY_DOWNGRADE_SCORE)
+            ),
+            related_min_confidence=rt.override_or(
+                "NOISE_RELATED_MIN_CONFIDENCE", float(noise.NOISE_RELATED_MIN_CONFIDENCE)
+            ),
         )

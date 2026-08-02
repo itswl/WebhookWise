@@ -33,7 +33,11 @@ async def get_queue_health() -> dict[str, Any]:
     queue = str(mq.WEBHOOK_MQ_QUEUE)
     group = str(mq.WEBHOOK_MQ_CONSUMER_GROUP)
     maxlen = int(mq.WEBHOOK_MQ_STREAM_MAXLEN or 0)
-    warn_fraction = float(mq.WEBHOOK_MQ_BACKLOG_WARN_FRACTION or 0.0)
+    from services.operations import runtime_settings as rt
+
+    warn_fraction = rt.override_or(
+        "WEBHOOK_MQ_BACKLOG_WARN_FRACTION", float(mq.WEBHOOK_MQ_BACKLOG_WARN_FRACTION or 0.0)
+    )
     high_water_fraction = float(mq.WEBHOOK_MQ_INGRESS_HIGH_WATER_FRACTION or 0.0)
 
     depth = pending = lag = None
