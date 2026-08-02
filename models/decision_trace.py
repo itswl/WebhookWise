@@ -34,6 +34,11 @@ class DecisionTrace(Base):
     skip_code: Mapped[str] = mapped_column(String(40), default="none", index=True)
 
     source: Mapped[str | None] = mapped_column(String(100))
+    # The alert RULE this trace is about (alert_identity.name). `source` is the
+    # ecosystem — too coarse to judge AI quality, since a whole estate collapses
+    # into one bucket. NULL when the payload carried no identifiable identity,
+    # which is itself the signal that an adapter is missing.
+    alert_name: Mapped[str | None] = mapped_column(String(200))
     importance: Mapped[str | None] = mapped_column(String(20))
     is_periodic_reminder: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
 
@@ -67,6 +72,14 @@ class DecisionTrace(Base):
             "ix_decision_trace_silence_id",
             "silence_id",
             postgresql_where=text("silence_id IS NOT NULL"),
+        ),
+        # Per-rule AI-quality aggregate (migration 0025). Partial because
+        # unidentified payloads carry NULL and never take part in the GROUP BY.
+        Index(
+            "ix_decision_trace_alert_name_created_at",
+            "alert_name",
+            "created_at",
+            postgresql_where=text("alert_name IS NOT NULL"),
         ),
         # Source aggregates: overview/quality GROUP BY source over a created_at
         # window (migration 0014). NOTE: this does NOT serve the source-filtered

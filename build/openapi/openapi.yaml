@@ -4039,13 +4039,13 @@ components:
             type: integer
           type: object
           title: Ai Importance Breakdown
-        ai_importance_by_source:
+        ai_importance_by_rule:
           additionalProperties:
             additionalProperties:
               type: integer
             type: object
           type: object
-          title: Ai Importance By Source
+          title: Ai Importance By Rule
       type: object
       required:
       - period
@@ -4058,7 +4058,7 @@ components:
       - degraded_rate
       - degraded_reasons
       - ai_importance_breakdown
-      - ai_importance_by_source
+      - ai_importance_by_rule
       title: DecisionTraceQualityData
       description: Proxy signals for AI-judgment quality (no human ground truth exists).
     DecisionTraceQualityResponse:

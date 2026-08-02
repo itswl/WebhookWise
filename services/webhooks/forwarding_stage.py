@@ -207,6 +207,9 @@ async def finalize_analysis_transaction(
                 session,
                 webhook_event_id=save_res.webhook_id,
                 source=ctx.req_ctx.source,
+                # Reuse the identity already extracted for rule matching; the
+                # rule name is the dimension the quality view aggregates on.
+                alert_name=(ensure_forward_match_identity(ctx) or {}).get("name"),
                 dedup=analysis_res,
                 final_analysis=final_analysis,
                 noise=noise,

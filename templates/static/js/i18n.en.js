@@ -855,7 +855,7 @@
             'dt.quality.degradedTrend': '{n} fell back to rules',
             'dt.quality.importanceDist': 'AI Importance Distribution',
             'dt.quality.degradedReasons': 'Degradation Reasons',
-            'dt.quality.bySource': 'AI Importance by Source',
+            'dt.quality.byRule': 'AI Importance by Alert Rule',
             'dt.disagreements.title': 'AI vs rules — recent disagreements',
             'dt.disagreements.note': 'Fresh AI judgments a deterministic rule then overrode. Click a row for its full decision chain.',
             'dt.disagreements.empty': 'No AI/rule disagreements in this window.',

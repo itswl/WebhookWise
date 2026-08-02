@@ -136,16 +136,22 @@ async def get_decision_trace_quality_stats(session: AsyncSession, period: str = 
     ).all()
     ai_importance_breakdown = {row[0]: row[1] for row in importance_rows}
 
-    by_source_rows = (
+    # Grouped by alert RULE, not by source: an estate that all arrives via one
+    # ecosystem collapses into a single useless bucket otherwise. Per rule the
+    # distribution is actionable — "this rule is always low, stop paging on it".
+    # Traces with no identifiable rule fall back to their source so the bucket
+    # still names something, and an unidentified sender stays visible.
+    rule_key = func.coalesce(DecisionTrace.alert_name, DecisionTrace.source)
+    by_rule_rows = (
         await session.execute(
-            select(DecisionTrace.source, DecisionTrace.importance, func.count(DecisionTrace.id))
-            .where(window, DecisionTrace.route == _AI_ROUTE, DecisionTrace.source.isnot(None))
-            .group_by(DecisionTrace.source, DecisionTrace.importance)
+            select(rule_key, DecisionTrace.importance, func.count(DecisionTrace.id))
+            .where(window, DecisionTrace.route == _AI_ROUTE, rule_key.isnot(None))
+            .group_by(rule_key, DecisionTrace.importance)
         )
     ).all()
-    ai_importance_by_source: dict[str, dict[str, int]] = {}
-    for source, importance, count in by_source_rows:
-        ai_importance_by_source.setdefault(source, {})[importance or "unknown"] = count
+    ai_importance_by_rule: dict[str, dict[str, int]] = {}
+    for rule, importance, count in by_rule_rows:
+        ai_importance_by_rule.setdefault(rule, {})[importance or "unknown"] = count
 
     return {
         "period": period,
@@ -158,7 +164,7 @@ async def get_decision_trace_quality_stats(session: AsyncSession, period: str = 
         "degraded_rate": round(degraded_total / total * 100, 1) if total else 0.0,
         "degraded_reasons": degraded_reasons,
         "ai_importance_breakdown": ai_importance_breakdown,
-        "ai_importance_by_source": ai_importance_by_source,
+        "ai_importance_by_rule": ai_importance_by_rule,
     }
 
 

@@ -158,6 +158,7 @@ def test_build_row_flattens_outcome_and_indexed_fields() -> None:
     trace = build_decision_trace(
         webhook_event_id=123,
         source="grafana",
+        alert_name="DiskUsageHigh",
         dedup=_dedup(),
         final_analysis=_analysis(importance="P0"),  # type: ignore[arg-type]
         noise=_noise(),
@@ -178,6 +179,7 @@ def test_build_row_skipped_outcome() -> None:
     trace = build_decision_trace(
         webhook_event_id=1,
         source="",
+        alert_name="DiskUsageHigh",
         dedup=_dedup(),
         final_analysis={"importance": "", "summary": ""},
         noise=_noise(),
@@ -197,6 +199,7 @@ def test_build_row_flattens_silence_id_only_when_silenced() -> None:
     trace = build_decision_trace(
         webhook_event_id=4,
         source="volcengine",
+        alert_name="DiskUsageHigh",
         dedup=_dedup(),
         final_analysis=_analysis(route="silenced_skip"),
         noise=_noise(),
@@ -212,6 +215,7 @@ def test_build_row_flattens_silence_id_only_when_silenced() -> None:
     trace2 = build_decision_trace(
         webhook_event_id=5,
         source="volcengine",
+        alert_name="DiskUsageHigh",
         dedup=_dedup(),
         final_analysis=_analysis(),
         noise=_noise(),
@@ -245,6 +249,7 @@ def test_steps_and_row_capture_importance_override() -> None:
     trace = build_decision_trace(
         webhook_event_id=1,
         source="volcengine",
+        alert_name="DiskUsageHigh",
         dedup=_dedup(),
         final_analysis=analysis,
         noise=_noise(),
@@ -277,6 +282,7 @@ def test_steps_and_row_capture_degradation_reason() -> None:
     trace = build_decision_trace(
         webhook_event_id=2,
         source="grafana",
+        alert_name="DiskUsageHigh",
         dedup=_dedup(),
         final_analysis=analysis,
         noise=_noise(),
@@ -299,6 +305,7 @@ def test_row_truncates_long_degraded_reason() -> None:
     trace = build_decision_trace(
         webhook_event_id=3,
         source="s",
+        alert_name="DiskUsageHigh",
         dedup=_dedup(),
         final_analysis=analysis,
         noise=_noise(),
@@ -322,6 +329,7 @@ async def test_record_uses_savepoint_and_adds_trace() -> None:
         session,
         webhook_event_id=5,
         source="grafana",
+        alert_name="DiskUsageHigh",
         dedup=_dedup(),
         final_analysis=_analysis(),  # type: ignore[arg-type]
         noise=_noise(),
@@ -347,6 +355,7 @@ async def test_record_swallows_errors_and_never_raises() -> None:
         session,
         webhook_event_id=5,
         source="grafana",
+        alert_name="DiskUsageHigh",
         dedup=_dedup(),
         final_analysis=_analysis(),  # type: ignore[arg-type]
         noise=_noise(),

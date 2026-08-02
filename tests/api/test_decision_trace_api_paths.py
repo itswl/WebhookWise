@@ -62,7 +62,7 @@ async def test_quality_stats_endpoint_returns_proxy_signals(monkeypatch: pytest.
         "degraded_rate": 20.0,
         "degraded_reasons": {"ai_error: boom": 1},
         "ai_importance_breakdown": {"high": 1, "medium": 1, "low": 1},
-        "ai_importance_by_source": {"grafana": {"low": 1}},
+        "ai_importance_by_rule": {"DiskUsageHigh": {"low": 1}},
     }
 
     async def fake_quality(_session: object, period: str) -> dict[str, Any]:

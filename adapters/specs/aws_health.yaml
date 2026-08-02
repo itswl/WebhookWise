@@ -1,0 +1,54 @@
+# AWS Health events (EventBridge → webhook relay).
+#
+# Seen in production wrapped as {"text": "<json string>"} by the relay in front
+# of the webhook; the envelope is unwrapped before adapter matching (see
+# adapters/ecosystem_adapters._unwrap_json_envelope), so this spec keys on the
+# real EventBridge document:
+#
+#   {
+#     "detail-type": "AWS Health Event",
+#     "source": "aws.health",
+#     "region": "ap-southeast-1",
+#     "detail": {
+#       "service": "SES",
+#       "eventTypeCode": "AWS_SES_ENFORCEMENT_PROBATION",
+#       "eventTypeCategory": "accountNotification",
+#       "eventArn": "arn:aws:health:...",
+#       "eventDescription": [{"latestDescription": "..."}]
+#     }
+#   }
+#
+# eventTypeCode is the identity: one code is one recurring condition ("SES on
+# enforcement probation"), which is exactly the grain you want to dedup and to
+# aggregate AI-quality on. eventArn is per-occurrence and would defeat dedup.
+#
+# eventTypeCategory is issue / accountNotification / scheduledChange — not a
+# severity scale, so this spec maps no Level and lets the analyzer judge from
+# the description rather than inventing a ranking AWS did not express.
+
+name: aws_health
+priority: 0
+aliases:
+  - aws-health
+  - awshealth
+
+detect:
+  all:
+    - key_equals:
+        path: source
+        value: aws.health
+    - key_exists: detail.eventTypeCode
+
+identity:
+  name: detail.eventTypeCode
+  service: detail.service
+  resource:
+    - detail.eventArn
+    - region
+
+output:
+  Type: AWSHealthEvent
+  RuleName: detail.eventTypeCode
+  summary:
+    - detail.eventDescription.0.latestDescription
+    - detail.eventTypeCode

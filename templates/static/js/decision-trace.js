@@ -204,17 +204,17 @@ var DecisionTraceModule = (function () {
             html += '</div>';
         }
 
-        // Per-source importance distribution (only sources with ai judgments).
-        var bySource = data.ai_importance_by_source || {};
-        var sources = Object.keys(bySource);
-        if (sources.length) {
-            html += '<div style="font-size: 0.9rem; font-weight: 600; margin: 1.25rem 0 0.5rem;">' + t('dt.quality.bySource') + '</div>';
-            sources.sort();
-            sources.forEach(function (src) {
-                var dist = bySource[src];
+        // Per-rule importance distribution (only rules with fresh ai judgments).
+        var byRule = data.ai_importance_by_rule || {};
+        var rules = Object.keys(byRule);
+        if (rules.length) {
+            html += '<div style="font-size: 0.9rem; font-weight: 600; margin: 1.25rem 0 0.5rem;">' + t('dt.quality.byRule') + '</div>';
+            rules.sort();
+            rules.forEach(function (rule) {
+                var dist = byRule[rule];
                 var srcTotal = Object.keys(dist).reduce(function (s, k) { return s + dist[k]; }, 0);
                 html += '<div style="margin-bottom: 0.75rem;">' +
-                    '<div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.3rem;">📡 ' + escapeHtml(src) + ' <span style="color:var(--text-muted);">(' + srcTotal + ')</span></div>' +
+                    '<div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.3rem;">📡 ' + escapeHtml(rule) + ' <span style="color:var(--text-muted);">(' + srcTotal + ')</span></div>' +
                     distributionBar(dist, srcTotal, IMPORTANCE_COLORS) + '</div>';
             });
         }
