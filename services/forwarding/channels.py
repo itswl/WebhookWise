@@ -87,9 +87,10 @@ async def _kb_links_for_alert_card(record: ForwardOutbox) -> list[dict[str, str]
     try:
         from core.app_context import get_config_manager
         from services.kb.card_links import find_kb_snippets_for_alert
+        from services.operations import runtime_settings as rt
 
         kb_cfg = get_config_manager().kb
-        if not bool(kb_cfg.KB_CARD_LINKS_ENABLED):
+        if not rt.override_or("KB_CARD_LINKS_ENABLED", bool(kb_cfg.KB_CARD_LINKS_ENABLED)):
             return None
         parsed_obj = record.forward_data.get("parsed_data") or record.forward_data.get("body") or {}
         parsed = parsed_obj if isinstance(parsed_obj, dict) else {}
@@ -98,7 +99,7 @@ async def _kb_links_for_alert_card(record: ForwardOutbox) -> list[dict[str, str]
             source=str(record.forward_data.get("source") or ""),
             rule_name=rule_name,
             summary=str(record.analysis_result.get("summary") or ""),
-            limit=int(kb_cfg.KB_CARD_LINKS_MAX),
+            limit=rt.override_or("KB_CARD_LINKS_MAX", int(kb_cfg.KB_CARD_LINKS_MAX)),
         )
         return links or None
     except (KeyError, RuntimeError, TypeError, ValueError) as e:

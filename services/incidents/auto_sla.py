@@ -56,8 +56,10 @@ class AutoSlaPolicy:
     @classmethod
     def from_config(cls) -> AutoSlaPolicy:
         from core.app_context import get_config_manager
+        from services.operations import runtime_settings as rt
 
-        raw = str(get_config_manager().notifications.INCIDENT_AUTO_SLA_MINUTES or "")
+        env_raw = str(get_config_manager().notifications.INCIDENT_AUTO_SLA_MINUTES or "")
+        raw = rt.override_or("INCIDENT_AUTO_SLA_MINUTES", env_raw)
         return cls(minutes_by_importance=parse_importance_minutes(raw))
 
     @property

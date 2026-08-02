@@ -8,6 +8,12 @@ from dataclasses import dataclass
 from core.app_context import get_config_manager
 
 
+def _rt_override[T](key: str, fallback: T) -> T:
+    from services.operations import runtime_settings as rt
+
+    return rt.override_or(key, fallback)
+
+
 @dataclass(frozen=True, slots=True)
 class TaskRuntimePolicy:
     worker_id: str
@@ -54,6 +60,8 @@ class DataMaintenancePolicy:
             archive_retention_days=int(cfg.ARCHIVE_RETENTION_DAYS),
             terminal_outbox_retention_days=int(cfg.TERMINAL_OUTBOX_RETENTION_DAYS),
             ai_usage_retention_days=int(cfg.AI_USAGE_RETENTION_DAYS),
-            decision_trace_retention_days=int(cfg.DECISION_TRACE_RETENTION_DAYS),
+            decision_trace_retention_days=_rt_override(
+                "DECISION_TRACE_RETENTION_DAYS", int(cfg.DECISION_TRACE_RETENTION_DAYS)
+            ),
             incident_auto_close_days=int(cfg.INCIDENT_AUTO_CLOSE_DAYS),
         )

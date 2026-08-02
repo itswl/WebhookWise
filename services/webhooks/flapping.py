@@ -74,12 +74,13 @@ class FlappingPolicy:
     @classmethod
     def from_config(cls) -> FlappingPolicy:
         from core.app_context import get_config_manager
+        from services.operations import runtime_settings as rt
 
         noise = get_config_manager().noise
         return cls(
-            window_minutes=int(noise.FLAPPING_WINDOW_MINUTES),
-            min_transitions=int(noise.FLAPPING_MIN_TRANSITIONS),
-            suppress_enabled=bool(noise.FLAPPING_SUPPRESS_ENABLED),
+            window_minutes=rt.override_or("FLAPPING_WINDOW_MINUTES", int(noise.FLAPPING_WINDOW_MINUTES)),
+            min_transitions=rt.override_or("FLAPPING_MIN_TRANSITIONS", int(noise.FLAPPING_MIN_TRANSITIONS)),
+            suppress_enabled=rt.override_or("FLAPPING_SUPPRESS_ENABLED", bool(noise.FLAPPING_SUPPRESS_ENABLED)),
         )
 
 
