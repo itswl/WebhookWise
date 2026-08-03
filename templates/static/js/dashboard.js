@@ -128,13 +128,20 @@ function renderSidebar() {
     if (!sidebar || typeof CommandPalette === 'undefined') return;
     let html = '';
     CommandPalette._groups.forEach(function (group) {
-        html += '<div class="sidebar-group">' + escapeHtml(t(group.title)) + '</div>';
+        var groupLabel = t(group.title);
+        if (groupLabel === group.title) groupLabel = group.title.split('.').pop();
+        html += '<div class="sidebar-group">' + escapeHtml(groupLabel) + '</div>';
         group.items.forEach(function (item) {
+            // Slug fallback, matching the palette: the dictionary loads async,
+            // and a pre-ready render must degrade to "investigations", never
+            // to the raw "nav.dest.investigations" key.
+            var translated = t(item.label);
+            var label = translated === item.label ? item.slug : translated;
             html += '<button type="button" class="sidebar-item" data-sidebar-slug="' + item.slug + '"'
                 + ' onclick="navigateTo(\'' + item.slug + '\'); closeSidebarDrawer();"'
-                + ' title="' + escapeHtml(t(item.label)) + '">'
+                + ' title="' + escapeHtml(label) + '">'
                 + '<span class="sidebar-icon" aria-hidden="true">' + wwIcon(item.icon) + '</span>'
-                + '<span class="sidebar-label">' + escapeHtml(t(item.label)) + '</span>'
+                + '<span class="sidebar-label">' + escapeHtml(label) + '</span>'
                 + (item.slug === 'incidents' ? '<span class="sidebar-badge" id="sidebarIncidentsBadge" style="display:none;"></span>' : '')
                 + '</button>';
         });
@@ -295,6 +302,7 @@ async function initDashboard() {
         CommandPalette.init();
     }
     renderSidebar();
+    renderBreadcrumb(currentDestination);
     initSidebarState();
 
     // Bind global events
@@ -324,10 +332,17 @@ async function initDashboard() {
     } else if (I18N.ready && typeof I18N.ready.then === 'function') {
         I18N.ready.finally(() => {
             if (I18N.isReady()) I18N.apply();
+            // The sidebar and breadcrumb bake t() output into strings at
+            // render time; the pre-ready paint used slug fallbacks, so give
+            // them one translated pass now that the dictionary settled.
+            renderSidebar();
+            renderBreadcrumb(currentDestination);
             loadLandingTab();
         });
     } else {
         I18N.apply();
+        renderSidebar();
+        renderBreadcrumb(currentDestination);
         loadLandingTab();
     }
 
