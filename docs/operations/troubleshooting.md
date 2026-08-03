@@ -238,6 +238,23 @@ docker compose exec webhook-service env | sort
 
 ---
 
+### Console shows a CSP violation for `static.cloudflareinsights.com`
+
+**Symptom**: the browser console reports that Content-Security-Policy blocked
+`https://static.cloudflareinsights.com/beacon.min.js` (`script-src-elem 'self'`).
+
+**This is not a fault.** When the dashboard's domain is proxied through
+Cloudflare with *Web Analytics* enabled, Cloudflare injects its RUM beacon
+into the HTML at the edge. WebhookWise ships a strict CSP that only executes
+first-party scripts, so the injected third-party script is refused — the
+header doing exactly its job. No dashboard functionality is affected.
+
+**Fix at the source** (recommended): Cloudflare dashboard → your zone →
+*Analytics & Logs → Web Analytics* → disable *Automatic setup* for the
+hostname (or remove the site). Do **not** loosen `script-src-elem` to allow
+the beacon: an operations console handling alert data should not run
+third-party scripts for the sake of page analytics.
+
 ## 🪲 Enabling DEBUG Logging
 
 When troubleshooting AI analysis content or Webhook parsing problems, enable the DEBUG level:
