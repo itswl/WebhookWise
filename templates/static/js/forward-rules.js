@@ -189,7 +189,7 @@ function renderRuleCard(rule) {
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                 <!-- Match conditions area -->
                 <div class="rule-conditions" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--bg-subtle); padding: 1.25rem; border-radius: 8px; border: 1px dashed var(--border);">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">' + wwIcon('target') + ' ${t('rules.card.matchConditions')}</div>
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">${wwIcon('target')} ${t('rules.card.matchConditions')}</div>
                     ${rule.match_event_type ? '<div style="margin-bottom:0.5rem;"><strong>' + t('rules.card.eventType') + ':</strong> ' + (function() { var types = rule.match_event_type.split(',').map(function(et) { var m = { webhook_forward: t('rules.evtType.webhook_forward'), manual_forward: t('rules.evtType.manual_forward'), ai_error: t('rules.evtType.ai_error'), ai_degraded: t('rules.evtType.ai_degraded'), deep_analysis: t('rules.evtType.deep_analysis'), outbox_exhausted: t('rules.evtType.outbox_exhausted'), rule_test: t('rules.evtType.rule_test') }; return '<span style="display:inline-block;background:var(--primary-bg);color:var(--primary);padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;margin-right:4px;">' + (m[et.trim()] || et.trim()) + '</span>'; }); return types.join(''); })() + '</div>' : ''}
                     <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.importance')}:</strong> ${importanceText}</div>
                     <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.alertStatus')}:</strong> ${duplicateText}</div>
@@ -202,7 +202,7 @@ function renderRuleCard(rule) {
 
                 <!-- Forward target area -->
                 <div class="rule-target" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--success-bg); padding: 1.25rem; border-radius: 8px; border: 1px dashed rgba(5,150,105,0.3);">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--success); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">' + wwIcon('send') + ' ${t('rules.card.action')}</div>
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--success); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">${wwIcon('send')} ${t('rules.card.action')}</div>
                     <div style="margin-bottom: 0.75rem;">
                         <strong>${t('rules.card.pushTo')}:</strong> ${targetTypeText}
                         ${rule.target_name ? `(${escapeHtml(rule.target_name)})` : ''}
@@ -219,13 +219,13 @@ function renderRuleCard(rule) {
 
             <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid var(--border);">
                 <button class="btn" onclick="testRule(${rule.id})" style="color: var(--primary); border-color: var(--primary-light); background: var(--primary-bg); font-weight: 600;">
-                    ' + wwIcon('flask') + ' ${t('rules.action.test')}
+                    ${wwIcon('flask')} ${t('rules.action.test')}
                 </button>
                 <button class="btn" onclick="showRuleForm(${rule.id})" style="font-weight: 600;">
-                    ' + wwIcon('pencil') + ' ${t('rules.action.edit')}
+                    ${wwIcon('pencil')} ${t('rules.action.edit')}
                 </button>
                 <button class="btn" onclick="deleteRule(${rule.id})" style="color: var(--danger); border-color: rgba(225,29,72,0.2); background: var(--danger-bg); font-weight: 600;">
-                    ' + wwIcon('trash') + ' ${t('rules.action.delete')}
+                    ${wwIcon('trash')} ${t('rules.action.delete')}
                 </button>
             </div>
         </div>
