@@ -1,0 +1,57 @@
+import fs from 'node:fs';
+const paletteSrc = fs.readFileSync('templates/static/js/command-palette.js', 'utf8');
+const dashSrc = fs.readFileSync('templates/static/js/dashboard.js', 'utf8');
+
+// slice: sidebar functions live between SIDEBAR_COLLAPSED_KEY and renderBreadcrumb
+const nav = dashSrc.slice(dashSrc.indexOf("const SIDEBAR_COLLAPSED_KEY"), dashSrc.indexOf('/** The tab highlight is gone'));
+
+const store = {};
+globalThis.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = v; } };
+globalThis.escapeHtml = s => String(s);
+globalThis.wwIcon = (n) => `<svg data-icon="${n}"></svg>`;
+globalThis.t = k => ({'nav.group.overview':'概览','nav.group.inbox':'收件箱','nav.group.routing':'路由','nav.group.operations':'运维'}[k] || k);
+globalThis.navigateTo = () => true;
+
+const elements = {};
+function el(id) {
+  if (!elements[id]) elements[id] = { id, innerHTML: '', style: {}, classList: { add(){}, remove(){}, toggle(){} }, addEventListener(){}, };
+  return elements[id];
+}
+const items = [];
+globalThis.document = {
+  getElementById: (id) => (id === 'sidebar' || id === 'sidebarCollapseBtn') ? el(id) : null,
+  querySelectorAll: (sel) => sel === '[data-sidebar-slug]' ? items : [],
+  body: { classList: { toggle: () => true, add(){}, remove(){} } },
+};
+globalThis.CommandPalette = new Function(paletteSrc + '; return CommandPalette;')();
+globalThis.currentDestination = 'overview';
+
+const M = new Function(nav + '; return { renderSidebar, updateSidebarActive };')();
+M.renderSidebar();
+const html = el('sidebar').innerHTML;
+let fails = 0;
+const check = (label, ok) => { if (!ok) fails++; console.log((ok ? 'PASS' : 'FAIL') + '  ' + label); };
+
+check('渲染了全部 19 项', (html.match(/data-sidebar-slug=/g) || []).length === 19);
+check('19 项全部走 sprite 图标', (html.match(/data-icon=/g) || []).length >= 19);
+check('4 个分组头', (html.match(/sidebar-group/g) || []).length === 4);
+check('分组已翻译', html.includes('收件箱') && html.includes('运维'));
+check('incidents 带徽章占位', html.includes('sidebarIncidentsBadge'));
+check('折叠按钮存在', html.includes('sidebarCollapseBtn'));
+check('点击项同时关抽屉', html.includes('closeSidebarDrawer()'));
+
+// active-state sync
+const mk = (slug) => ({ _a: false, getAttribute: () => slug, classList: { toggle(cls, on) { if (cls === 'is-active') this._on = on; } } });
+items.push(mk('alerts'), mk('silences'), mk('settings'));
+M.updateSidebarActive('silences');
+check('激活态指向 silences', items[1].classList._on === true && items[0].classList._on === false && items[2].classList._on === false);
+
+// ── Dictionary-not-ready phase: labels degrade to slugs, never raw keys ──
+globalThis.t = k => k;                       // identity = nothing translated yet
+M.renderSidebar();
+const rawHtml = el('sidebar').innerHTML;
+check('未就绪时无生键泄漏', !rawHtml.includes('nav.dest.'));
+check('未就绪时用 slug 顶替', rawHtml.includes('>investigations<') && rawHtml.includes('>silences<'));
+check('分组头去前缀', rawHtml.includes('>inbox<') || rawHtml.includes('>overview<'));
+
+process.exit(fails ? 1 : 0);

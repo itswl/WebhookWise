@@ -31,6 +31,9 @@ ruff check .
 step "ruff format --check"
 ruff format --check .
 
+step "frontend headless"
+node tests/frontend/run-all.mjs
+
 step "shellcheck"
 shellcheck entrypoint.sh scripts/gate.sh tests/e2e/*.sh
 

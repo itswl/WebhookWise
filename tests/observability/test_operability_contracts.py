@@ -37,6 +37,9 @@ def test_ci_enforces_coverage_gate() -> None:
     assert re.search(r"(?m)^  pull_request:\s*$", ci)
     assert re.search(r"(?m)^  push:\s*$", ci)
     assert "shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh" in ci
+    # The headless dashboard-behaviour suite runs in BOTH the local gate and
+    # CI: three shipped regressions were invisible to python-side contracts.
+    assert "node tests/frontend/run-all.mjs" in ci
     assert "--cov=core" in ci
     assert "--cov=api" in ci
     assert "--cov=services" in ci
@@ -61,6 +64,7 @@ def test_dependency_updates_and_ai_dev_entrypoint_are_configured() -> None:
     assert "bash scripts/gate.sh" in guide
     gate = (ROOT / "scripts/gate.sh").read_text()
     assert "shellcheck entrypoint.sh scripts/gate.sh tests/e2e/*.sh" in gate
+    assert "node tests/frontend/run-all.mjs" in gate
     assert "bandit -r core api services models adapters db scripts contracts" in gate
     assert "export_openapi.py --check" in gate
     assert "Keep metrics labels stable and machine-readable" in guide
