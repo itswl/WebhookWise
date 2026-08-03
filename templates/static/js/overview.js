@@ -142,7 +142,7 @@ const OverviewModule = {
                 html += '<div style="margin-bottom: 0.75rem;">' +
                     '<div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:0.25rem;">' +
                     '<span>' + wwIcon('tag') + ' ' + escapeHtml(s.name) + '</span><span style="color:var(--text-muted);">' + fmt(s.count) + '</span></div>' +
-                    '<div style="height:8px; background:var(--bg-subtle, #f1f5f9); border-radius:4px; overflow:hidden;">' +
+                    '<div style="height:8px; background:var(--bg-subtle, var(--bg-subtle)); border-radius:4px; overflow:hidden;">' +
                     '<div style="height:100%; width:' + pct + '%; background:var(--primary);"></div></div></div>';
             });
             html += '</div>';
@@ -218,7 +218,7 @@ const OverviewModule = {
             '<span style="font-weight: 600;">' + t('overview.queue.title') + '</span>' +
             '<span style="font-size: 1.25rem; font-weight: 700; color: ' + color + ';">' + (pct != null ? pct + '%' : dash) + '</span></div>';
         // Gauge = backlog_fraction (the at-risk-of-trim share).
-        html += '<div style="height: 8px; background: var(--bg-subtle, #f1f5f9); border-radius: 4px; overflow: hidden; margin-bottom: 0.6rem;">' +
+        html += '<div style="height: 8px; background: var(--bg-subtle, var(--bg-subtle)); border-radius: 4px; overflow: hidden; margin-bottom: 0.6rem;">' +
             '<div style="height: 100%; width: ' + barWidth + '%; background: ' + color + ';"></div></div>';
         html += '<div style="display: flex; flex-wrap: wrap; gap: 1.25rem; font-size: 0.8rem; color: var(--text-muted);">';
         html += '<span>' + t('overview.queue.backlog') + ': <strong style="color: var(--text-main);">' + backlog + '</strong></span>';

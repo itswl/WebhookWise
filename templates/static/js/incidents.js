@@ -1055,7 +1055,7 @@ const IncidentsModule = (function () {
                 var offsetStr = isRootAlert ? t('incidents.timeline.root') : formatRelativeOffset(offsetSecs);
                 
                 // Icon and color
-                var dotColor = isRootAlert ? 'var(--primary, #6366f1)' : (m.importance === 'high' ? 'var(--danger, #ef4444)' : (m.importance === 'medium' ? 'var(--warning, #f59e0b)' : 'var(--success, #10b981)'));
+                var dotColor = isRootAlert ? 'var(--primary, var(--primary))' : (m.importance === 'high' ? 'var(--danger, var(--danger))' : (m.importance === 'medium' ? 'var(--warning, var(--warning))' : 'var(--success, var(--success))'));
                 var dotIcon = isRootAlert
                     ? wwIcon('target', 'icon-warning')
                     : (m.importance === 'high' ? '<span class="ww-dot ww-dot-danger"></span>'
@@ -1073,7 +1073,7 @@ const IncidentsModule = (function () {
                 var rootBadge = isRootAlert ? '<span class="badge badge-high" style="font-size:0.65rem; padding:1px 6px; background:var(--primary); color:white; font-weight:bold; border-radius:4px; margin-right:4px;">' + wwIcon('target') + ' ' + t('incidents.timeline.rootAlert') + '</span>' : '';
                 var dupBadge = m.is_duplicate ? '<span class="badge badge-outline" style="font-size:0.65rem; padding:1px 4px; margin-left:4px;">' + t('incidents.timeline.duplicate') + '</span>' : '';
                 
-                html += '<div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border); border-radius:6px; padding:0.6rem 0.85rem; display:flex; flex-direction:column; gap:4px;">' +
+                html += '<div style="background:var(--bg-subtle, var(--bg-subtle)); border:1px solid var(--border); border-radius:6px; padding:0.6rem 0.85rem; display:flex; flex-direction:column; gap:4px;">' +
                     '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">' +
                     '<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">' +
                     rootBadge +

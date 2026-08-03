@@ -318,10 +318,10 @@ var DeepAnalysesModule = (function() {
         var source = displayValue(record.source || report.alert_identity.source) || t('deep.unknownSource');
 
         const engineMap = {
-            'openclaw': { label: t('deep.engine.openclaw'), class: 'badge-high', icon: '', bg: '#dbeafe', color: '#4338ca' },
-            'hermes': { label: t('deep.engine.hermes'), class: 'badge-medium', icon: '', bg: '#fae8ff', color: '#4c1d95' },
-            'local': { label: t('deep.engine.local'), class: 'badge-low', icon: '', bg: '#f3f4f6', color: '#4b5563' },
-            'auto': { label: t('deep.engine.auto'), class: 'badge-outline', icon: '', bg: '#fef3c7', color: '#b45309' }
+            'openclaw': { label: t('deep.engine.openclaw'), class: 'badge-high', icon: '', bg: 'var(--info-bg)', color: 'var(--primary)' },
+            'hermes': { label: t('deep.engine.hermes'), class: 'badge-medium', icon: '', bg: 'var(--primary-bg)', color: 'var(--primary)' },
+            'local': { label: t('deep.engine.local'), class: 'badge-low', icon: '', bg: 'var(--bg-subtle)', color: 'var(--text-muted)' },
+            'auto': { label: t('deep.engine.auto'), class: 'badge-outline', icon: '', bg: 'var(--warning-bg)', color: 'var(--warning)' }
         };
         const engine = engineMap[record.engine] || engineMap['local'];
         const engineLabel = `<span class="badge" style="background: ${engine.bg}; color: ${engine.color}; border: none; font-size: 0.7rem;">${engine.icon} ${engine.label}</span>`;
@@ -335,9 +335,9 @@ var DeepAnalysesModule = (function() {
 
         var alertTypeTag = '';
         if (record.is_duplicate) {
-            alertTypeTag = '<span class="badge" style="background: #e2e8f0; color: #334155; font-size: 0.7rem;">' + wwIcon('refresh') + ' ' + escapeHtml(t('deep.duplicateAlert')) + '</span>';
+            alertTypeTag = '<span class="badge" style="background: var(--border); color: var(--text-secondary); font-size: 0.7rem;">' + wwIcon('refresh') + ' ' + escapeHtml(t('deep.duplicateAlert')) + '</span>';
         } else {
-            alertTypeTag = '<span class="badge" style="background: #dcfce7; color: #059669; font-size: 0.7rem;">🆕 ' + escapeHtml(t('deep.newAlert')) + '</span>';
+            alertTypeTag = '<span class="badge" style="background: var(--success-bg); color: var(--success); font-size: 0.7rem;">🆕 ' + escapeHtml(t('deep.newAlert')) + '</span>';
         }
 
         let html = `
@@ -448,7 +448,7 @@ var DeepAnalysesModule = (function() {
         if (!container) return;
 
         if (!records || records.length === 0) {
-            container.innerHTML = '<div style="text-align: center; padding: 40px; color: #888; background: var(--bg-surface); border-radius: var(--radius-lg); border: 1px dashed var(--border);">' + escapeHtml(t('deep.empty.noRecords')) + '</div>';
+            container.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-lg); border: 1px dashed var(--border);">' + escapeHtml(t('deep.empty.noRecords')) + '</div>';
             return;
         }
 
@@ -520,7 +520,7 @@ var DeepAnalysesModule = (function() {
 
         var container = document.getElementById('deepAnalysesList');
         if (container && !expandedIds.size) {
-            container.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">' + escapeHtml(t('deep.loadingRecords')) + '</div>';
+            container.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-muted);">' + escapeHtml(t('deep.loadingRecords')) + '</div>';
         }
         fetchPage(null, false);
     }
