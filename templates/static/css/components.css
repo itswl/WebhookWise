@@ -3493,3 +3493,176 @@
     width: 100%;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Command palette — the navigation surface
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.command-palette {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: none;
+  /* Aligned to the upper third, not centred: the eye is already near the top
+     bar where the trigger lives, and a centred panel jumps the focal point. */
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.command-palette.is-open { display: flex; }
+
+.palette-panel {
+  width: min(620px, calc(100vw - 32px));
+  max-height: 68vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.palette-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.palette-input-row .palette-prompt { color: var(--text-muted); font-size: 0.95rem; }
+
+#paletteInput {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+}
+
+#paletteInput::placeholder { color: var(--text-muted); }
+
+.palette-list { overflow-y: auto; padding: 6px; }
+
+.palette-group {
+  padding: 10px 10px 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.palette-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Keyboard selection and hover share one state: the highlighted row is
+   always the row Enter will open, whichever input moved it there. */
+.palette-item:hover,
+.palette-item.is-active { background: var(--primary-bg); }
+
+.palette-icon { width: 1.25rem; text-align: center; flex-shrink: 0; }
+.palette-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.palette-slug {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.palette-item.is-active .palette-slug { color: var(--primary); }
+
+.palette-empty { padding: 28px 12px; text-align: center; color: var(--text-muted); font-size: 0.875rem; }
+
+.palette-footer {
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.palette-footer kbd {
+  font-family: var(--font-mono);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-right: 4px;
+}
+
+/* The trigger. Looks like a search field because that is the affordance
+   people already understand, and it is the only entry point without a
+   keyboard — so it must never collapse to an icon on touch. */
+.palette-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+  padding: 5px 10px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.palette-trigger:hover { border-color: var(--primary); color: var(--text-secondary); }
+.palette-trigger .trigger-hint { margin-left: auto; font-family: var(--font-mono); font-size: 0.7rem; }
+
+@media (max-width: 640px) {
+  .palette-trigger { min-width: 0; }
+  .palette-trigger .trigger-label,
+  .palette-trigger .trigger-hint { display: none; }
+}
+
+/* Breadcrumb — replaces the tab highlight as the "where am I" signal. */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.crumb-area { color: var(--text-muted); }
+.crumb-sep { color: var(--border); }
+.crumb-leaf { color: var(--text-main); font-weight: 600; }
+
+/* Inbox badge: the one count worth interrupting the minimal bar for, so it
+   is a button rather than the decoration it used to be. */
+.inbox-badge {
+  background: var(--danger);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.inbox-badge:hover { filter: brightness(1.1); }

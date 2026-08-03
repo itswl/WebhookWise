@@ -8,98 +8,111 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── Refined Light theme ─────────────────────────────────────────────────
-     A premium, calm light UI: blue-tinted neutrals (never dead grey), a
-     restrained indigo→violet accent, and layered soft shadows for depth. The
-     rest of the stylesheet consumes these via var(), so the palette drives the
-     whole dashboard; a small "refined" enhancement layer adds the gradient
-     accents, micro-interactions, and shadow rhythm. */
+  /* ── Dark-first ops console ──────────────────────────────────────────────
+     Designed for the screen this actually lives on: a wall display or a
+     second monitor someone glances at for hours. Dark is the base state
+     (no class), light is an override, because that is what "dark-first"
+     has to mean structurally or the light values keep leaking through.
 
-  /* Brand (indigo primary, violet accent) */
-  --primary: #6366f1;
-  --primary-hover: #4f46e5;
-  --primary-light: #c7d2fe;
-  --primary-bg: #eef2ff;
-  --accent: #8b5cf6;
-  --accent-bg: #f5f3ff;
-  --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+     Three rules the palette follows:
+     1. Colour carries MEANING, never decoration. One interactive accent;
+        everything else coloured is a severity or a state.
+     2. Backgrounds step in small, even increments so elevation reads
+        without borders shouting.
+     3. Never pure black (#000) — it makes text edges vibrate over hours. */
 
-  /* Status */
-  --success: #059669;
-  --success-bg: #ecfdf5;
-  --warning: #d97706;
-  --warning-bg: #fffbeb;
-  --danger: #e11d48;
-  --danger-bg: #fff1f2;
-  --info: #0284c7;
-  --info-bg: #f0f9ff;
+  /* Interactive. The only "brand" colour, and it means "you can act here". */
+  --primary: #58a6ff;
+  --primary-hover: #79b8ff;
+  --primary-light: #1f3350;
+  --primary-bg: rgba(88, 166, 255, 0.14);
+  --accent: #58a6ff;
+  --accent-bg: rgba(88, 166, 255, 0.14);
+  --accent-gradient: linear-gradient(135deg, #58a6ff, #388bfd);
 
-  /* Neutrals (blue-tinted, slate family) */
-  --text-main: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --border: #e6e8f0;
-  --border-light: #eef1f6;
-  --bg-base: #f6f7fb;
-  --bg-surface: #ffffff;
-  --bg-subtle: #f4f6fb;
-  --bg-elevated: #ffffff;
+  /* Severity. Tuned for legibility on the dark base, not for brightness:
+     these get scanned peripherally, so hue must separate them, not chroma. */
+  --success: #3fb950;
+  --success-bg: rgba(63, 185, 80, 0.14);
+  --warning: #f5a524;
+  --warning-bg: rgba(245, 165, 36, 0.14);
+  --danger: #ff6169;
+  --danger-bg: rgba(255, 97, 105, 0.14);
+  --info: #58a6ff;
+  --info-bg: rgba(88, 166, 255, 0.14);
 
-  /* Layered soft shadows — multiple low-opacity passes, no hard edges. */
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
-  --shadow-md:
-    0 1px 2px rgba(16, 24, 40, 0.04),
-    0 4px 8px -2px rgba(16, 24, 40, 0.06),
-    0 12px 20px -8px rgba(16, 24, 40, 0.08);
-  --shadow-lg:
-    0 2px 4px rgba(16, 24, 40, 0.04),
-    0 12px 24px -8px rgba(16, 24, 40, 0.10),
-    0 28px 48px -16px rgba(16, 24, 40, 0.16);
-  --ring-primary: 0 0 0 3px rgba(99, 102, 241, 0.18);
+  /* Neutrals: even elevation steps over a near-black blue-grey. */
+  --text-main: #e6e9ef;
+  --text-secondary: #9aa4b5;
+  --text-muted: #6b7688;
+  --border: #232935;
+  --border-light: #1a1f29;
+  --bg-base: #0b0e14;
+  --bg-surface: #11151d;
+  --bg-subtle: #1a202b;
+  --bg-elevated: #161b24;
 
-  /* Radii */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  /* Dark UI reads depth from borders and background steps, not from drop
+     shadows; keep shadows for genuinely floating layers only. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, 0.7);
+  --ring-primary: 0 0 0 3px rgba(88, 166, 255, 0.28);
 
-  /* Typography */
+  /* Tighter radii than the previous design: an ops table of hard numbers
+     looks flimsy in pill shapes. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 }
 
-/* ── Refined Dark theme variables ────────────────────────────────────────── */
-.theme-dark {
-  /* Brand override */
-  --primary: #818cf8;
-  --primary-hover: #6366f1;
-  --primary-light: #1e1b4b;
-  --primary-bg: rgba(99, 102, 241, 0.18);
-  --accent: #a78bfa;
-  --accent-bg: rgba(139, 92, 246, 0.18);
-  --accent-gradient: linear-gradient(135deg, #818cf8, #a78bfa);
+/* ── Light override ──────────────────────────────────────────────────────
+   Kept fully usable for daylight and for screenshots, but it is the
+   override: dark is what the design is tuned against. */
+.theme-light {
+  --primary: #0969da;
+  --primary-hover: #0550ae;
+  --primary-light: #ddf4ff;
+  --primary-bg: #ddf4ff;
+  --accent: #0969da;
+  --accent-bg: #ddf4ff;
+  --accent-gradient: linear-gradient(135deg, #0969da, #0550ae);
 
-  /* Neutrals override */
-  --text-main: #f8fafc;
-  --text-secondary: #cbd5e1;
-  --text-muted: #64748b;
-  --border: #1e293b;
-  --border-light: #0f172a;
-  --bg-base: #020617;
-  --bg-surface: #0b1329;
-  --bg-subtle: #1e293b;
-  --bg-elevated: #0f172a;
+  --success: #1a7f37;
+  --success-bg: #dafbe1;
+  --warning: #9a6700;
+  --warning-bg: #fff8c5;
+  --danger: #cf222e;
+  --danger-bg: #ffebe9;
+  --info: #0969da;
+  --info-bg: #ddf4ff;
 
-  /* Shadows override */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.7), 0 4px 12px -2px rgba(0, 0, 0, 0.5);
+  --text-main: #1f2328;
+  --text-secondary: #59636e;
+  --text-muted: #818b98;
+  --border: #d1d9e0;
+  --border-light: #e4e8ec;
+  --bg-base: #f6f8fa;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f0f3f6;
+  --bg-elevated: #ffffff;
+
+  --shadow-sm: 0 1px 2px rgba(31, 35, 40, 0.06);
+  --shadow-md: 0 3px 8px rgba(31, 35, 40, 0.10);
+  --shadow-lg: 0 12px 28px rgba(31, 35, 40, 0.16);
+  --ring-primary: 0 0 0 3px rgba(9, 105, 218, 0.24);
 }
 
 /* Tighten Inter's rendering for a crisper, more premium feel. */
 html { -webkit-text-size-adjust: 100%; }
 body { text-rendering: optimizeLegibility; -moz-osx-font-smoothing: grayscale; }
-.stat-value, .info-value, .outbox-id, .da-summary-runtime, .da-duration, .kbd { font-variant-numeric: tabular-nums; }
+/* Any figure an operator compares column-to-column must align. */
+.stat-value, .info-value, .outbox-id, .da-summary-runtime, .da-duration, .kbd,
+.alert-time, .badge, td, .metric, .count { font-variant-numeric: tabular-nums; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CSS Reset & Base
@@ -114,39 +127,29 @@ body { text-rendering: optimizeLegibility; -moz-osx-font-smoothing: grayscale; }
 /* Subtle slate scrollbars (WebKit + Firefox). */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: var(--border) transparent;
 }
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--border);
   border-radius: 6px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-*::-webkit-scrollbar-thumb:hover { background: #94a3b8; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--text-muted); background-clip: padding-box; }
 
 body {
   font-family: var(--font-sans);
-  /* Calm light backdrop: two very faint indigo/violet light sources bleeding in
-     from the top corners over a cool off-white, fixed so content scrolls over a
-     steady surface. Keeps the page from feeling flat-white without any noise. */
-  background:
-    radial-gradient(900px 620px at 10% -8%, rgba(99, 102, 241, 0.06), transparent 60%),
-    radial-gradient(900px 600px at 100% -4%, rgba(139, 92, 246, 0.05), transparent 55%),
-    linear-gradient(180deg, #fbfcfe 0%, var(--bg-base) 100%);
-  background-attachment: fixed;
+  /* Flat. The previous design floated two indigo light sources over the page;
+     on a console that is read for hours it is decoration competing with the
+     only thing that should draw the eye, which is a severity colour. */
+  background: var(--bg-base);
   color: var(--text-main);
-  line-height: 1.7;
+  /* 1.7 was a reading-page rhythm. An operator scans rows, so trade the air
+     for how many alerts fit above the fold. */
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-}
-
-.theme-dark body {
-  background:
-    radial-gradient(900px 620px at 10% -8%, rgba(129, 140, 248, 0.08), transparent 60%),
-    radial-gradient(900px 600px at 100% -4%, rgba(167, 139, 250, 0.07), transparent 55%),
-    linear-gradient(180deg, #020617 0%, var(--bg-base) 100%);
-  background-attachment: fixed;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -154,7 +157,7 @@ body {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .navbar {
-  background: rgba(255, 255, 255, 0.78);
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
   backdrop-filter: blur(16px) saturate(150%);
   -webkit-backdrop-filter: blur(16px) saturate(150%);
   border-bottom: 1px solid var(--border);
@@ -165,8 +168,8 @@ body {
   box-shadow: 0 1px 0 rgba(16, 24, 40, 0.03), 0 8px 24px -18px rgba(16, 24, 40, 0.35);
 }
 
-.theme-dark .navbar {
-  background: rgba(11, 19, 41, 0.85);
+.theme-light .navbar {
+  background: rgba(255, 255, 255, 0.88);
 }
 
 .navbar-content {

@@ -658,7 +658,8 @@ def test_dashboard_alert_quality_center_is_read_only() -> None:
     quality_js = (PROJECT_ROOT / "templates" / "static" / "js" / "alert-quality.js").read_text()
     api_js = (PROJECT_ROOT / "templates" / "static" / "js" / "api.js").read_text()
 
-    assert 'data-routing-view="quality"' in dashboard
+    palette = (PROJECT_ROOT / "templates/static/js/command-palette.js").read_text()
+    assert "slug: 'quality'" in palette, "alert quality unreachable from the palette"
     assert 'id="routingViewQuality"' in dashboard
     assert "/static/js/alert-quality.js" in dashboard
     assert "AlertQualityModule.load()" in routing_js

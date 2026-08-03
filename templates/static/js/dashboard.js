@@ -102,10 +102,30 @@ function openIncident(id) {
     navigateTo('incidents', { focus: String(id) });
 }
 
+const DESTINATION_AREA = {
+    'decision-trace': 'nav.group.overview',
+    alerts: 'nav.group.inbox',
+    routing: 'nav.group.routing',
+    operations: 'nav.group.operations',
+};
+
+/** The tab highlight is gone, so the breadcrumb is the only "where am I". */
+function renderBreadcrumb(slug) {
+    const element = document.getElementById('breadcrumb');
+    const destination = DESTINATIONS[slug];
+    if (!element || !destination) return;
+    const area = t(DESTINATION_AREA[destination.tab] || '');
+    const leaf = t('nav.dest.' + (slug === 'work-queue' ? 'workQueue' : slug));
+    element.innerHTML = '<span class="crumb-area">' + escapeHtml(area) + '</span>'
+        + '<span class="crumb-sep" aria-hidden="true">/</span>'
+        + '<span class="crumb-leaf">' + escapeHtml(leaf) + '</span>';
+}
+
 /** Called by each sub-view mechanism once it has entered a destination. */
 function recordDestination(slug) {
     if (!DESTINATIONS[slug]) return;
     currentDestination = slug;
+    renderBreadcrumb(slug);
     const focus = pendingFocus ? '/' + encodeURIComponent(pendingFocus) : '';
     const next = '#/' + slug + focus;
     if (window.location.hash !== next) {
@@ -198,6 +218,10 @@ async function initDashboard() {
     }
     if (typeof ResponseCenterModule !== 'undefined') {
         ResponseCenterModule.init();
+    }
+
+    if (typeof CommandPalette !== 'undefined') {
+        CommandPalette.init();
     }
 
     // Bind global events
@@ -706,31 +730,25 @@ function goToPage(page) {
 
 // ========== Dark Mode / Theme Toggle Logic ==========
 
+function applyTheme(theme) {
+    // Dark is the base state (no class) — the palette is tuned against it, so
+    // an unstyled first paint lands on the intended design rather than flashing
+    // white. Light is the opt-out.
+    const light = theme === 'light';
+    document.documentElement.classList.toggle('theme-light', light);
+    const icon = document.getElementById('themeToggleIcon');
+    if (icon) icon.textContent = light ? '\u{1F319}' : '\u2600\uFE0F';
+}
+
 function initTheme() {
-    const savedTheme = localStorage.getItem('ww-theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
-        document.documentElement.classList.add('theme-dark');
-        const icon = document.getElementById('themeToggleIcon');
-        if (icon) icon.textContent = '☀️';
-    } else {
-        document.documentElement.classList.remove('theme-dark');
-        const icon = document.getElementById('themeToggleIcon');
-        if (icon) icon.textContent = '🌙';
-    }
+    const saved = localStorage.getItem('ww-theme');
+    const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+    applyTheme(saved || (prefersLight ? 'light' : 'dark'));
 }
 
 function toggleTheme() {
-    const isDark = document.documentElement.classList.contains('theme-dark');
-    const icon = document.getElementById('themeToggleIcon');
-    if (isDark) {
-        document.documentElement.classList.remove('theme-dark');
-        localStorage.setItem('ww-theme', 'light');
-        if (icon) icon.textContent = '🌙';
-    } else {
-        document.documentElement.classList.add('theme-dark');
-        localStorage.setItem('ww-theme', 'dark');
-        if (icon) icon.textContent = '☀️';
-    }
-    
+    const next = document.documentElement.classList.contains('theme-light') ? 'dark' : 'light';
+    localStorage.setItem('ww-theme', next);
+    applyTheme(next);
 }
+

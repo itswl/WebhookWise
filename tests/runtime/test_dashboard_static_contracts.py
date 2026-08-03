@@ -54,46 +54,19 @@ def test_dashboard_references_existing_static_assets_in_order() -> None:
     assert missing == []
 
 
-def test_dashboard_tabs_have_matching_content_panels() -> None:
+def test_every_destination_targets_a_real_content_panel() -> None:
+    """Navigation moved into the command palette, so the old tab buttons are
+    gone. What still has to hold is that every destination the registry can
+    reach lands on a panel that actually exists in the markup."""
     html = _dashboard_html()
-    tabs = set(re.findall(r'data-tab="([^"]+)"', html))
     panels = set(re.findall(r'id="([^"]+Tab)"', html))
+    assert {"alertsTab", "decisionTraceTab", "routingTab", "operationsTab"} <= panels
 
-    # The navbar is down to 4 tabs. Forwarding analytics (Overview / Decision
-    # Trace / AI Cost) are sub-views of the landing tab (data-tab="decision-trace",
-    # labelled "Overview"); Forward Rules / Silences / Sandbox are sub-views of the
-    # Routing tab. So the standalone overview / ai-cost / outbox / forward-rules /
-    # silences / sandbox tabs no longer exist.
-    assert {"alerts", "decision-trace", "routing", "operations"} <= tabs
-    assert {
-        "alertsTab",
-        "decisionTraceTab",
-        "routingTab",
-        "operationsTab",
-        "noiseCenterTab",
-        "actionCenterTab",
-    } <= panels
-    assert {
-        "overview",
-        "ai-cost",
-        "outbox",
-        "forward-rules",
-        "silences",
-        "sandbox",
-        "incidents",
-        "deep-analyses",
-    }.isdisjoint(tabs)
-    assert {"overviewTab", "aiCostTab", "outboxTab", "forwardRulesTab", "silencesTab", "sandboxTab"}.isdisjoint(panels)
-    # The landing tab's forwarding-analytics sub-views (Overview | Decision Trace | AI Cost).
-    dt_views = set(re.findall(r'data-dt-view="([^"]+)"', html))
-    assert {"overview", "trace", "cost"} <= dt_views
-    inbox_views = set(re.findall(r'data-inbox-view="([^"]+)"', html))
-    assert {"alerts", "incidents", "investigations"} <= inbox_views
-    # Sandbox and Audit remain secondary tools opened from the Rules view.
-    routing_views = set(re.findall(r'data-routing-view="([^"]+)"', html))
-    assert {"rules", "silences"} <= routing_views
-    operations_views = set(re.findall(r'data-operations-view="([^"]+)"', html))
-    assert {"actions", "noise"} <= operations_views
+    registry = re.search(r"const DESTINATIONS = \{(.*?)\n\};", _static_js("dashboard.js"), re.S)
+    assert registry
+    for tab in set(re.findall(r"tab: '([a-z-]+)'", registry.group(1))):
+        camel = tab.split("-")[0] + "".join(part.title() for part in tab.split("-")[1:])
+        assert f"{camel}Tab" in panels, f"destination tab {tab} has no panel"
 
 
 @pytest.mark.asyncio
@@ -427,7 +400,7 @@ def test_kb_drafts_review_subview_is_wired() -> None:
     api_js = _static_js("api.js")
     dashboard = _static_js("dashboard.js")
 
-    assert 'data-operations-view="kb"' in html
+    assert "slug: 'kb'" in _static_js("command-palette.js"), "kb unreachable from the palette"
     assert 'id="kbDraftsTab"' in html
     assert "/static/js/kb-drafts.js" in html
     assert "kbDraftsTab" in dashboard  # setOperationsView shows/hides the panel
@@ -463,7 +436,7 @@ def test_runtime_settings_admin_panel_is_wired() -> None:
     dashboard = _static_js("dashboard.js")
     module = _static_js("runtime-settings.js")
 
-    assert 'data-operations-view="settings"' in html
+    assert "slug: 'settings'" in _static_js("command-palette.js"), "settings unreachable from the palette"
     assert 'id="runtimeSettingsTab"' in html
     assert 'id="runtimeSettingsList"' in html
     assert 'data-i18n="rs.propagationNote"' in html
@@ -633,10 +606,12 @@ def test_every_destination_is_reachable_by_url() -> None:
     assert registry, "destination registry not found"
     slugs = set(re.findall(r"^\s+'?([a-z-]+)'?:\s*\{ tab:", registry.group(1), re.M))
 
-    html = _dashboard_html()
-    for attr in ("data-dt-view", "data-inbox-view", "data-routing-view", "data-operations-view"):
-        for view in set(re.findall(attr + r'="([a-z-]+)"', html)):
-            assert view in slugs, f"{view} ({attr}) has no URL destination"
+    # The palette is now the ONLY way to reach a destination without a link,
+    # so a destination it omits is a feature nobody can find. Checked both
+    # ways: the map must not lie in either direction.
+    palette = _static_js("command-palette.js")
+    listed = set(re.findall(r"slug: '([a-z-]+)'", palette))
+    assert listed == slugs, f"palette missing {sorted(slugs - listed)}; palette lists unknown {sorted(listed - slugs)}"
 
     assert "window.addEventListener('hashchange', applyHashRoute)" in js, "Back/Forward not handled"
     assert "function navigateTo(" in js and "function recordDestination(" in js
@@ -672,3 +647,38 @@ def test_routing_pill_bar_keeps_a_parent_highlighted() -> None:
     js = _static_js("routing.js")
     assert "PILL_PARENT" in js
     assert "sandbox: 'rules'" in js and "audit: 'rules'" in js
+
+
+def test_command_palette_is_reachable_without_a_keyboard() -> None:
+    """The palette replaced persistent navigation. If it were keyboard-only,
+    a touch or mouse-only operator would have no way to move at all."""
+    html = _dashboard_html()
+    palette = _static_js("command-palette.js")
+
+    assert "data-palette-open" in html, "no visible trigger"
+    assert "data-palette-open" in palette, "trigger not bound"
+    assert 'id="commandPalette"' in html and 'id="paletteInput"' in html
+    # Keyboard paths still exist alongside it.
+    assert "'k'" in palette and "event.key === '/'" in palette
+    assert "'Escape'" in palette and "'ArrowDown'" in palette and "'Enter'" in palette
+
+
+def test_empty_palette_shows_the_whole_map_not_a_blank_panel() -> None:
+    """With no persistent nav, an empty query must list every destination —
+    otherwise opening the palette teaches the operator nothing about what
+    the product can do."""
+    palette = _static_js("command-palette.js")
+    assert "if (!normalized)" in palette
+    assert "...ALL.filter(" in palette, "empty state does not fall back to the full map"
+
+
+def test_dark_is_the_base_theme_not_an_override() -> None:
+    """Dark-first has to be structural: if light lives in :root, an unstyled
+    first paint flashes white and every new rule defaults to the light value."""
+    css = _static_css("dashboard.css")
+    assert ".theme-light {" in css, "light should be the override"
+    assert ".theme-dark" not in css, "dark should be the base, not a class"
+
+    js = _static_js("dashboard.js")
+    assert "classList.toggle('theme-light'" in js
+    assert "prefers-color-scheme: light" in js
