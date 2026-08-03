@@ -777,3 +777,29 @@ def test_font_sizes_stay_on_the_scale_ratchet() -> None:
     for source in (_static_css("components.css"), _static_css("dashboard.css"), _dashboard_html()):
         values |= set(_re.findall(r"font-size:\s*([0-9.]+(?:rem|px|em))", source))
     assert len(values) <= 24, f"font-size sprawl is growing again: {len(values)} distinct raw values"
+
+
+def test_js_modules_never_call_methods_they_do_not_define() -> None:
+    """Deleting a \"dead\" method while a `this.` call to it survives passes
+    node --check and every static grep for external callers — then throws at
+    runtime the first time the view loads. That is exactly how the AI Cost
+    view shipped broken: loadStats still called this.updatePeriodButtons after
+    the method was removed as orphaned. Self-references are checkable per
+    file, so check them."""
+    import re as _re
+
+    from tests.helpers.paths import PROJECT_ROOT as _ROOT
+
+    offenders = {}
+    for path in sorted((_ROOT / "templates/static/js").glob("*.js")):
+        if path.name.startswith("i18n."):
+            continue
+        src = path.read_text()
+        calls = set(_re.findall(r"\bthis\.([A-Za-z_]\w*)\s*\(", src))
+        defs = set(_re.findall(r"^\s{4}(?:async\s+)?([A-Za-z_]\w*)\s*\([^)]*\)\s*\{", src, _re.M))
+        defs |= set(_re.findall(r"\b([A-Za-z_]\w*)\s*:\s*(?:async\s+)?function\b", src))
+        defs |= set(_re.findall(r"\bfunction\s+([A-Za-z_]\w*)\s*\(", src))
+        missing = calls - defs
+        if missing:
+            offenders[path.name] = sorted(missing)
+    assert offenders == {}, f"this.-calls with no same-file definition: {offenders}"

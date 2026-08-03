@@ -21,7 +21,8 @@ const AICostModule = {
      */
     async loadStats(period = 'day') {
         this.currentPeriod = period;
-        this.updatePeriodButtons(period);
+        // Period-button highlighting belongs to DecisionTraceModule, which owns
+        // the shared Day/Week/Month toggle for every sub-view of this tab.
 
         try {
             const result = await API.getAIUsage(period);
