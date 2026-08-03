@@ -84,12 +84,34 @@ function stepLine(s) {
   return '<div class="step"><b>' + esc(s.step) + '</b> → ' + esc(s.result) + (rest ? '  ' + esc(rest) : '') + '</div>';
 }
 
+const TOKEN_KEY = 'wwlite.readToken';
+
+// Reads may be token-gated (READ_TOKEN). Ask once, remember locally, retry;
+// a wrong token clears itself so the next load asks again instead of looping.
+async function api(url) {
+  const headers = {};
+  const saved = localStorage.getItem(TOKEN_KEY);
+  if (saved) headers['X-Read-Token'] = saved;
+  let res = await fetch(url, { headers });
+  if (res.status === 401) {
+    const entered = prompt('Read token required (READ_TOKEN):');
+    if (entered === null) throw new Error('unauthorized');
+    localStorage.setItem(TOKEN_KEY, entered);
+    res = await fetch(url, { headers: { 'X-Read-Token': entered } });
+    if (res.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      throw new Error('unauthorized');
+    }
+  }
+  return res.json();
+}
+
 async function refresh() {
   let stats, data;
   try {
     [stats, data] = await Promise.all([
-      fetch('api/stats').then(r => r.json()),
-      fetch('api/decisions?limit=60').then(r => r.json())
+      api('api/stats'),
+      api('api/decisions?limit=60')
     ]);
   } catch (e) {
     // Surface it: a silently failed refresh looks exactly like "nothing new",

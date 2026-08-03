@@ -66,11 +66,12 @@ annotated template is [`.env.example`](.env.example) — copy it and pass it wit
 | `OPENAI_MODEL` | `gpt-4o-mini` | |
 | `INGEST_TOKEN` | *(empty)* | Required in the `X-Ingest-Token` header when set |
 | `ADMIN_TOKEN` | *(empty)* | Required in `X-Admin-Token` for rule/silence writes |
+| `READ_TOKEN` | *(empty)* | Required in `X-Read-Token` for the dashboard/read APIs; also hides `/docs` |
 | `OUTBOX_POLL_SECONDS` | `2` | Delivery loop interval |
 | `OUTBOX_BACKOFF_SECONDS` | `15` | Delay before a retry |
 
-**Set `INGEST_TOKEN` and `ADMIN_TOKEN` before exposing this to a network you don't
-control.** They are empty by default so the first run works with no setup, which is the
+**Set `INGEST_TOKEN`, `ADMIN_TOKEN` and `READ_TOKEN` before exposing this to a network
+you don't control** — decision rows carry your alert content verbatim. They are empty by default so the first run works with no setup, which is the
 right trade for a laptop and the wrong one for the internet.
 
 The two suppression windows must not be set to the same magnitude. Dedup collapses a

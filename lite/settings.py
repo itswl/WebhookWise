@@ -26,6 +26,10 @@ class Settings:
     # Empty = unauthenticated ingest. Set it for anything internet-facing.
     ingest_token: str = os.environ.get("INGEST_TOKEN", "")
     admin_token: str = os.environ.get("ADMIN_TOKEN", "")
+    # Empty = the dashboard and read APIs are open (fine on a laptop). Set it
+    # the moment the port is reachable from a network you do not control:
+    # decision rows carry your alert content verbatim.
+    read_token: str = os.environ.get("READ_TOKEN", "")
 
     # The two suppression windows do different jobs and must not be set to the
     # same magnitude: dedup collapses a BURST of the identical alert, cooldown
