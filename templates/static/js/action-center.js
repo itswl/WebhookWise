@@ -1,5 +1,43 @@
 /** Operator action-center read model. */
 const ActionCenterModule = (function () {
+    // Backend view names -> navigation destinations. Module-scoped because the
+    // renderer also uses it to LABEL each Open-details button with where it
+    // goes -- a jump button that hides its destination reads as a teleport.
+    const DESTINATION_FOR_VIEW = {
+        routing: 'rules',
+        inbox: 'alerts',
+        alerts: 'alerts',
+        incidents: 'incidents',
+        'decision-trace': 'trace',
+        noise: 'noise',
+        overview: 'overview',
+    };
+
+    // Per-kind arrival: carry the item's CONTEXT into the destination, so
+    // "5 dead letters -> Open details" lands on the alert list already
+    // filtered to dead letters instead of teleporting to an unfiltered page.
+    const KIND_ARRIVAL = {
+        dead_letter: function () {
+            const sel = document.getElementById('processingStatusFilter');
+            if (sel) sel.value = 'dead_letter';
+            navigateTo('alerts');
+        },
+        delivery_exhausted: function () {
+            navigateTo('trace');
+            if (typeof DecisionTraceModule !== 'undefined' && typeof DecisionTraceModule.setResult === 'function') {
+                DecisionTraceModule.setResult('failed');
+            }
+        },
+    };
+
+    function destinationLabel(view) {
+        const slug = DESTINATION_FOR_VIEW[view];
+        if (!slug) return '';
+        const key = 'nav.dest.' + (slug === 'work-queue' ? 'workQueue' : slug);
+        const translated = t(key);
+        return translated === key ? slug : translated;
+    }
+
     // The cards already lift on hover (.stat-card:hover), promising a click
     // that never existed. Each counter now goes where its number came from.
     function statCard(label, value, color, destination) {
@@ -46,7 +84,7 @@ const ActionCenterModule = (function () {
                     escapeHtml(action.resource_type || '') + '">' + escapeHtml(action.label || 'Run') + '</button>';
             }).join('');
             return '<div class="action-center-item" data-action-view-target="' +
-                escapeHtml(item.view || '') + '" style="text-align:left; width:100%; background:var(--bg-surface);' +
+                escapeHtml(item.view || '') + '" data-action-kind="' + escapeHtml(item.kind || '') + '" style="text-align:left; width:100%; background:var(--bg-surface);' +
                 ' border:1px solid var(--border); border-left:3px solid ' + color + '; border-radius:var(--radius-lg);' +
                 ' padding:16px; color:inherit;">' +
                 '<div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start;">' +
@@ -57,25 +95,20 @@ const ActionCenterModule = (function () {
                 '<span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">' + escapeHtml(when) +
                 '</span></div>' +
                 '<div style="display:flex; gap:8px; margin-top:12px; align-items:center;">' + actionButtons +
-                '<button type="button" class="btn btn-sm" data-open-action-view>' + escapeHtml(t('action.openDetails')) + '</button></div></div>';
+                '<button type="button" class="btn btn-sm" data-open-action-view>' + escapeHtml(t('action.openDetails')) +
+                (destinationLabel(item.view) ? ' <span class="btn-dest">' + wwIcon('external-link', 'icon-sm') + ' ' + escapeHtml(destinationLabel(item.view)) + '</span>' : '') +
+                '</button></div></div>';
         }).join('') + '</div>';
 
         listEl.querySelectorAll('[data-open-action-view]').forEach(function (button) {
             button.addEventListener('click', function () {
-                const view = button.closest('[data-action-view-target]').getAttribute('data-action-view-target');
-                // Backend view names → navigation destinations. The chain this
-                // replaces had no branch for "overview", so the queue-backlog
-                // item (action_center.py emits view="overview", severity
-                // critical) had an Open-details button that did nothing at all.
-                const DESTINATION_FOR_VIEW = {
-                    routing: 'rules',
-                    inbox: 'alerts',
-                    alerts: 'alerts',
-                    incidents: 'incidents',
-                    'decision-trace': 'trace',
-                    noise: 'noise',
-                    overview: 'overview',
-                };
+                const container = button.closest('[data-action-view-target]');
+                const view = container.getAttribute('data-action-view-target');
+                const kind = container.getAttribute('data-action-kind');
+                if (KIND_ARRIVAL[kind]) {
+                    KIND_ARRIVAL[kind]();
+                    return;
+                }
                 navigateTo(DESTINATION_FOR_VIEW[view] || view);
             });
         });
