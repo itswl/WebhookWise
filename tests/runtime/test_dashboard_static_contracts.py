@@ -827,3 +827,20 @@ def test_one_click_navigation_invariants() -> None:
     dashboard = _static_js("dashboard.js")
     assert "switchMainTab(destination.tab, { skipInit: true })" in dashboard
     assert "if (skipInit) return;" in dashboard
+
+
+def test_sidebar_never_shows_raw_i18n_keys() -> None:
+    """The dictionary loads async and startup deliberately does not block on
+    it. The sidebar bakes t() output into strings at render time, so on a
+    cold load it painted \"nav.dest.investigations\" until a language toggle
+    forced a re-render. Two halves: labels degrade to slugs pre-ready, and
+    the dictionary-settled hook repaints the baked chrome once."""
+    dashboard = _static_js("dashboard.js")
+    assert "translated === item.label ? item.slug : translated" in dashboard
+    # The ready hook must repaint sidebar AND breadcrumb before the landing tab.
+    import re as _re
+
+    ready_block = _re.search(r"I18N\.ready\.finally\(\(\) => \{(.*?)\}\);", dashboard, _re.S)
+    assert ready_block, "dictionary-settled hook missing"
+    assert "renderSidebar()" in ready_block.group(1)
+    assert "renderBreadcrumb(currentDestination)" in ready_block.group(1)
