@@ -19,24 +19,19 @@
                 <span>🔔</span>
                 <span data-i18n="nav.title">Webhook Monitor</span>
             </div>
-            <div class="nav-tabs">
-                <!-- The Overview landing tab now hosts the forwarding-analytics views
-                     (Overview | Decision Trace | AI Cost) as sub-views; data-tab stays
-                     "decision-trace" (the panel that owns the sub-view toggle). -->
-                <button class="nav-tab active" data-tab="decision-trace" type="button" data-i18n-aria-label="nav.aria.overview" aria-label="Switch to Overview">
-                    <span>📊</span> <span data-i18n="nav.tab.overview">Overview</span>
-                </button>
-                <button class="nav-tab" data-tab="alerts" type="button" data-i18n-aria-label="nav.aria.alerts" aria-label="Switch to Inbox" style="position:relative;">
-                    <span>🔔</span> <span data-i18n="nav.tab.inbox">Inbox</span>
-                    <span id="incidentsBadge" style="display:none; position:absolute; top:-4px; right:-8px; background:var(--danger,#ef4444); color:#fff; border-radius:10px; padding:0 5px; font-size:0.6rem; font-weight:700; min-width:16px; text-align:center; line-height:16px;"></span>
-                </button>
-                <button class="nav-tab" data-tab="routing" type="button" data-i18n-aria-label="nav.aria.routing" aria-label="Switch to Routing">
-                    <span>⚙️</span> <span data-i18n="nav.tab.routing">Routing</span>
-                </button>
-                <button class="nav-tab" data-tab="operations" type="button" data-i18n-aria-label="nav.aria.operations" aria-label="Switch to Operations Center">
-                    <span>🛠️</span> <span data-i18n="nav.tab.operations">Operations</span>
-                </button>
-            </div>
+            <!-- Navigation lives in the command palette. The breadcrumb is
+                 what replaces the tab highlight: with no persistent nav there
+                 is otherwise nothing on screen saying where you are. -->
+            <nav class="breadcrumb" id="breadcrumb" aria-live="polite"></nav>
+            <button class="palette-trigger" type="button" data-palette-open
+                    data-i18n-aria-label="palette.open" aria-label="Jump to anywhere">
+                <span aria-hidden="true">&#128269;</span>
+                <span class="trigger-label" data-i18n="palette.trigger">Jump to anywhere…</span>
+                <span class="trigger-hint" aria-hidden="true">&#8984;K</span>
+            </button>
+            <span id="incidentsBadge" class="inbox-badge" style="display:none;"
+                  role="button" tabindex="0" onclick="navigateTo('incidents')"
+                  data-i18n-title="nav.tab.incidents" title="Incidents"></span>
             <div class="nav-actions">
                 <span class="nav-status-dot" data-i18n-title="nav.status.running" title="Service running" aria-label="Service running" role="img"></span>
                 <button class="btn btn-icon" id="autoRefreshBtn" type="button" data-i18n-title="nav.autoRefresh" title="Auto-refresh" data-i18n-aria-label="nav.autoRefresh" aria-label="Auto-refresh">
@@ -64,10 +59,6 @@
         <div id="alertsTab" class="tab-content" style="display: none;">
             <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; margin:20px 0; flex-wrap:wrap; gap:12px;">
                 <div class="inbox-view-switch" style="display:flex; gap:8px; align-items:center;">
-                <button class="btn inbox-view-btn active" data-inbox-view="alerts" data-i18n="inbox.view.alerts">Alerts</button>
-                    <button class="btn inbox-view-btn" data-inbox-view="work-queue" data-i18n="inbox.view.workQueue">Work queue</button>
-                    <button class="btn inbox-view-btn" data-inbox-view="incidents" data-i18n="inbox.view.incidents">Incidents</button>
-                    <button class="btn inbox-view-btn" data-inbox-view="investigations" data-i18n="inbox.view.investigations">Investigations</button>
                 </div>
             </div>
             <div id="inboxViewAlerts">
@@ -279,9 +270,6 @@
                 </details>
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
                     <div class="dt-view-switch" style="display: flex; gap: 8px; align-items: center;">
-                        <button class="btn dt-view-btn active" data-dt-view="overview" data-i18n="dt.view.overview">Overview</button>
-                        <button class="btn dt-view-btn" data-dt-view="trace" data-i18n="dt.view.trace">Decision Trace</button>
-                        <button class="btn dt-view-btn" data-dt-view="cost" data-i18n="dt.view.cost">AI Cost</button>
                     </div>
                     <div class="dt-period-selector" style="display: flex; gap: 8px; align-items: center;">
                         <span id="dtLastRefreshed" class="last-refreshed" style="font-size: 0.75rem; color: var(--text-muted);"></span>
@@ -347,11 +335,6 @@
             <div class="routing-section" style="padding: 20px 0;">
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
                     <div class="routing-view-switch" style="display: flex; gap: 8px; align-items: center;">
-                        <button class="btn routing-view-btn active" data-routing-view="rules" data-i18n="routing.view.rules">Forward Rules</button>
-                        <button class="btn routing-view-btn" data-routing-view="silences" data-i18n="routing.view.silences">Silences</button>
-                        <button class="btn routing-view-btn" data-routing-view="ingress" data-i18n="routing.view.ingress">Inbound setup</button>
-                        <button class="btn routing-view-btn" data-routing-view="quality" data-i18n="routing.view.quality">Alert quality</button>
-                        <button class="btn routing-view-btn" data-routing-view="integrations" data-i18n="routing.view.integrations">Integrations</button>
                     </div>
                 </div>
 
@@ -522,11 +505,6 @@
         <!-- Operations Center: operator work and noise optimization in one place -->
         <div id="operationsTab" class="tab-content" style="display: none;">
             <div class="section-header" style="display:flex; gap:8px; align-items:center; justify-content:flex-start; padding-top:20px;">
-                <button class="btn operations-view-btn active" type="button" data-operations-view="actions" data-i18n="operations.view.actions">Action queue</button>
-                <button class="btn operations-view-btn" type="button" data-operations-view="noise" data-i18n="operations.view.noise">Noise optimization</button>
-                <button class="btn operations-view-btn" type="button" data-operations-view="kb" data-i18n="operations.view.kb">Knowledge drafts</button>
-                <button class="btn operations-view-btn" type="button" data-operations-view="gaps" data-i18n="operations.view.gaps">Knowledge gaps</button>
-                <button class="btn operations-view-btn" type="button" data-operations-view="settings" data-i18n="operations.view.settings">Runtime settings</button>
             </div>
 
         <!-- Noise Center view -->
@@ -1204,6 +1182,26 @@
     <script defer src="/static/js/runtime-settings.js"></script>
     <script defer src="/static/js/response-center.js"></script>
     <script defer src="/static/js/ingress-setup.js"></script>
+    <script defer src="/static/js/command-palette.js"></script>
     <script defer src="/static/js/dashboard.js"></script>
+
+    <!-- Command palette: the whole navigation surface. -->
+    <div class="command-palette" id="commandPalette" role="dialog" aria-modal="true" aria-hidden="true"
+         data-i18n-aria-label="palette.open" aria-label="Jump to anywhere">
+        <div class="palette-panel">
+            <div class="palette-input-row">
+                <span class="palette-prompt" aria-hidden="true">&#128269;</span>
+                <input id="paletteInput" type="text" autocomplete="off" spellcheck="false"
+                       data-i18n-placeholder="palette.placeholder" placeholder="Search destinations…"
+                       role="combobox" aria-expanded="true" aria-controls="paletteList">
+            </div>
+            <div class="palette-list" id="paletteList" role="listbox"></div>
+            <div class="palette-footer">
+                <span><kbd>&#8593;</kbd><kbd>&#8595;</kbd> <span data-i18n="palette.hint.move">move</span></span>
+                <span><kbd>&#8629;</kbd> <span data-i18n="palette.hint.open">open</span></span>
+                <span><kbd>esc</kbd> <span data-i18n="palette.hint.close">close</span></span>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
