@@ -854,6 +854,8 @@
             'dt.quality.degradedTrend': '{n} 次退化为规则判定',
             'dt.quality.importanceDist': 'AI importance 分布',
             'dt.quality.degradedReasons': '降级原因',
+            'nav.menu': '菜单',
+            'nav.collapse': '收起',
             'palette.trigger': '跳转任意位置…',
             'palette.open': '跳转任意位置',
             'palette.placeholder': '搜索目的地…',

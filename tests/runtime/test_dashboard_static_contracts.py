@@ -682,3 +682,26 @@ def test_dark_is_the_base_theme_not_an_override() -> None:
     js = _static_js("dashboard.js")
     assert "classList.toggle('theme-light'" in js
     assert "prefers-color-scheme: light" in js
+
+
+def test_sidebar_renders_the_same_map_as_the_palette() -> None:
+    """The rail and the palette must be one navigation model, not two: the
+    sidebar renders from CommandPalette._groups, so a destination added to
+    the palette appears in the rail for free — and cannot appear in only one."""
+    html = _dashboard_html()
+    dashboard = _static_js("dashboard.js")
+
+    assert 'id="sidebar"' in html
+    assert "CommandPalette._groups" in dashboard, "sidebar must render from the palette's groups"
+    assert "renderSidebar" in dashboard and "updateSidebarActive" in dashboard
+    # Language switches re-render the rail; navigation updates its highlight.
+    assert "renderSidebar();\n            updateAuthButtonState" in dashboard.replace("\r", "")
+    assert "updateSidebarActive(slug)" in dashboard
+
+
+def test_sidebar_works_on_mobile_and_remembers_collapse() -> None:
+    css = _static_css("components.css")
+    assert "body.sidebar-collapsed .container" in css, "content must reflow when collapsed"
+    assert "translateX(-100%)" in css, "mobile must get the off-canvas drawer"
+    assert 'id="sidebarMobileBtn"' in _dashboard_html(), "no way to open the drawer on touch"
+    assert "SIDEBAR_COLLAPSED_KEY" in _static_js("dashboard.js")

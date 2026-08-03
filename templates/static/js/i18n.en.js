@@ -855,6 +855,8 @@
             'dt.quality.degradedTrend': '{n} fell back to rules',
             'dt.quality.importanceDist': 'AI Importance Distribution',
             'dt.quality.degradedReasons': 'Degradation Reasons',
+            'nav.menu': 'Menu',
+            'nav.collapse': 'Collapse',
             'palette.trigger': 'Jump to anywhere…',
             'palette.open': 'Jump to anywhere',
             'palette.placeholder': 'Search destinations…',

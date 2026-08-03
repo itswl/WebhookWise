@@ -255,7 +255,10 @@ const CommandPalette = (function () {
         open: show,
         close: close,
         // Exposed for tests and for anything that needs the destination map.
+        // The sidebar renders from these same groups: one source of truth, so
+        // the palette and the persistent nav cannot drift apart.
         _all: ALL,
+        _groups: GROUPS,
         _compute: compute,
     };
 })();
