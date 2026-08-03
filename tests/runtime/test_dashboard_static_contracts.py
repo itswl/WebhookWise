@@ -1004,3 +1004,29 @@ def test_open_details_carries_context_and_names_its_destination() -> None:
 
     css = _static_css("components.css")
     assert ".stat-card[onclick]::after" in css, "clickable cards need a pre-hover mark"
+
+
+def test_roi_badges_drill_into_the_trace() -> None:
+    """The audit's headline example: a silence saying \"suppressed 42\" and a
+    rule saying \"matched 87\" were inert text — the one question they raise
+    (WHICH alerts?) had no answer. The trace list now accepts silence_id and
+    matched_rule filters end to end, and both badges use them."""
+    assert "filterBySilence" in _static_js("decision-trace.js")
+    assert "filterByRule" in _static_js("decision-trace.js")
+    assert "silence_id" in _static_js("api.js") and "matched_rule" in _static_js("api.js")
+    assert "filterBySilence(" in _static_js("silences.js")
+    assert "data-drill-rule" in _static_js("forward-rules.js")
+
+    backend = (PROJECT_ROOT / "services/webhooks/decision_trace_queries.py").read_text()
+    assert "silence_id: int | None = None" in backend
+    assert "matched_rule: str" in backend
+
+
+def test_scroll_to_alert_never_silently_noops() -> None:
+    """Clicking a timeline reference to an off-page alert did nothing at all;
+    the robust reveal (clear filters, paginate, fetch) sat one function away."""
+    alerts = _static_js("alerts.js")
+    import re as _re
+
+    body = _re.search(r"_scrollToAlert\(eventId\) \{(.*?)\n    \}", alerts, _re.S)
+    assert body and "focusAlertById(eventId)" in body.group(1)

@@ -487,6 +487,13 @@ const IncidentsModule = (function () {
                 escapeHtml(item.actor) + '</p>';
         }
         html += renderChangeImpact(item, false);
+        // Same working "view change" link the chronological timeline already
+        // renders for the identical object — it was silently absent here.
+        var relatedUrl = safeHttpUrl(item.source_url);
+        if (relatedUrl) {
+            html += '<p><a href="' + relatedUrl + '" target="_blank" rel="noopener noreferrer">' +
+                wwIcon('external-link', 'icon-sm') + ' ' + t('incidents.timeline.viewChange') + '</a></p>';
+        }
         html += '<div class="incident-intelligence-reasons">' + intelligenceReasons(item.reasons) + '</div>';
         html += intelligenceFeedbackState(item.feedback);
         html += intelligenceFeedbackControls(
@@ -1077,7 +1084,8 @@ const IncidentsModule = (function () {
                     '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">' +
                     '<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">' +
                     rootBadge +
-                    '<span style="font-size:0.8rem; font-weight:600; color:var(--text-main);">#' + m.id + '</span>' +
+                    '<a href="#/alerts/' + encodeURIComponent(m.id) + '" onclick="event.preventDefault(); openAlert(' + Number(m.id) + ');"' +
+                    ' style="font-size:0.8rem; font-weight:600; color:var(--primary); text-decoration:none;">#' + m.id + '</a>' +
                     '<span class="badge badge-' + impClass(m.importance) + '" style="font-size:0.7rem; font-weight:600;">' + dotIcon + ' ' + escapeHtml(m.importance || t('common.unknown')) + '</span>' +
                     dupBadge +
                     '<span style="font-size:0.72rem; color:var(--text-muted); font-weight:500;">' + escapeHtml(m.source || '') + '</span>' +
