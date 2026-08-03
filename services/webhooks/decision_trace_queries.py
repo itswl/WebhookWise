@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.datetime_utils import utc_isoformat, utcnow
 from core.sensitive_data import mask_webhook_url
 from db.session import count_with_timeout
-from models import DecisionTrace, ForwardOutbox
+from models import DecisionTrace, ForwardOutbox, WebhookEvent
 from services.pagination import apply_cursor_window, trim_cursor_window
 
 _PERIOD_DELTAS = {
@@ -429,6 +429,7 @@ def _row_to_trace_dict(trace: DecisionTrace) -> dict[str, Any]:
         "outcome": trace.outcome,
         "skip_code": trace.skip_code,
         "source": trace.source,
+        "alert_name": trace.alert_name,
         "importance": trace.importance,
         "is_periodic_reminder": trace.is_periodic_reminder,
         "route": trace.route,
@@ -595,7 +596,27 @@ async def list_decision_traces(
     page_window = trim_cursor_window(list(result.scalars().all()), page_size, lambda trace: trace.id)
     items = [_row_to_trace_dict(trace) for trace in page_window.rows]
     await _attach_delivery_status(session, items)
+    await _attach_alert_summaries(session, items)
     return items, page_window.has_more, page_window.next_cursor
+
+
+async def _attach_alert_summaries(session: AsyncSession, items: list[dict[str, Any]]) -> None:
+    """One query per page: the AI one-liner for each trace's event.
+
+    The row already carries alert_name (the RULE); the summary says what THIS
+    occurrence was ("用户436293单次充值达$500…"), which is what an operator
+    scans the list for. Best-effort: a missing event or summary leaves the
+    field None and the UI falls back to the rule name.
+    """
+    ids = [item["webhook_event_id"] for item in items if item.get("webhook_event_id")]
+    if not ids:
+        return
+    rows = (
+        await session.execute(select(WebhookEvent.id, WebhookEvent.ai_analysis).where(WebhookEvent.id.in_(ids)))
+    ).all()
+    summaries = {event_id: (analysis or {}).get("summary") for event_id, analysis in rows if isinstance(analysis, dict)}
+    for item in items:
+        item["alert_summary"] = summaries.get(item["webhook_event_id"])
 
 
 async def get_decision_trace_for_event(session: AsyncSession, webhook_event_id: int) -> dict[str, Any] | None:
@@ -617,4 +638,5 @@ async def get_decision_trace_for_event(session: AsyncSession, webhook_event_id: 
     # Attach delivery status too, so the per-alert view answers "delivered?" like
     # the list does (no-op for skipped rows / rows without an outbox record).
     await _attach_delivery_status(session, [item])
+    await _attach_alert_summaries(session, [item])
     return item

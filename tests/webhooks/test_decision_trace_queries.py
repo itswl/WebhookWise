@@ -42,6 +42,7 @@ def _trace(event_id: int, outcome: str, skip_code: str, **extra: Any) -> Decisio
         outcome=outcome,
         skip_code=skip_code,
         source=extra.get("source", "volcengine"),
+        alert_name=extra.get("alert_name"),
         importance=extra.get("importance", "medium"),
         is_periodic_reminder=extra.get("is_periodic_reminder", False),
         route=extra.get("route", "ai"),
@@ -444,3 +445,32 @@ async def test_list_ai_rule_disagreements_returns_only_overridden_ai_rows(
     assert result["items"][0]["webhook_event_id"] == 1
     assert result["items"][0]["source"] == "volcengine"
     assert result["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_carries_what_the_alert_was(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """A trace row that only says "Alert #191" forces an expand or a jump to
+    learn WHAT fired. The row carries the rule name from the trace itself and
+    the per-occurrence AI summary joined from the event, so the list reads as
+    a story instead of a sequence of ids."""
+    from models import WebhookEvent
+
+    async with session_factory.begin() as session:
+        session.add(
+            WebhookEvent(
+                id=901,
+                source="grafana",
+                raw_payload=b"{}",
+                alert_hash="h901",
+                dedup_key="d901",
+                ai_analysis={"summary": "用户436293单次充值达500美元"},
+            )
+        )
+        session.add(_trace(901, "forwarded", "none", source="grafana", alert_name="充值金额单次超500报警"))
+
+    async with session_factory() as session:
+        items, _, _ = await list_decision_traces(session)
+
+    row = next(item for item in items if item["webhook_event_id"] == 901)
+    assert row["alert_name"] == "充值金额单次超500报警"
+    assert row["alert_summary"] == "用户436293单次充值达500美元"

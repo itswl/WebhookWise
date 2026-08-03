@@ -6313,6 +6313,28 @@
             ],
             "title": "Source"
           },
+          "alert_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Name"
+          },
+          "alert_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Summary"
+          },
           "importance": {
             "anyOf": [
               {

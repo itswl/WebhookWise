@@ -3927,3 +3927,15 @@ body.sidebar-collapsed .sidebar-collapse .sidebar-icon { transform: rotate(180de
 .ww-dot-warning { color: var(--warning); }
 .ww-dot-success { color: var(--success); }
 .ww-dot-muted { color: var(--text-muted); }
+
+/* Trace row: what the alert actually was. The id link stays compact; this
+   carries the AI one-liner (or the rule name) and yields space gracefully. */
+.da-alert-what {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
