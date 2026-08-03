@@ -72,12 +72,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await store.close()
 
 
-app = FastAPI(title="WebhookWise Lite", lifespan=lifespan)
+# With a read token set this is no longer a laptop toy: hide the API map too.
+app = FastAPI(
+    title="WebhookWise Lite",
+    lifespan=lifespan,
+    docs_url=None if settings.read_token else "/docs",
+    redoc_url=None,
+    openapi_url=None if settings.read_token else "/openapi.json",
+)
 
 
 def require_admin(x_admin_token: str = Header(default="")) -> None:
     if settings.admin_token and x_admin_token != settings.admin_token:
         raise HTTPException(status_code=401, detail="invalid admin token")
+
+
+def require_read(x_read_token: str = Header(default="")) -> None:
+    """Reads carry alert content verbatim; token-gate them when configured.
+
+    /health stays open on purpose: the container healthcheck curls it, and its
+    status/outbox counters carry no alert content. The admin token also passes,
+    so an operator with write power is never locked out of reading.
+    """
+    if not settings.read_token:
+        return
+    if x_read_token in (settings.read_token, settings.admin_token) and x_read_token:
+        return
+    raise HTTPException(status_code=401, detail="invalid read token")
 
 
 @app.get("/health")
@@ -99,17 +120,17 @@ async def ingest(source: str, request: Request, x_ingest_token: str = Header(def
     return JSONResponse(result, status_code=202)
 
 
-@app.get("/api/decisions")
+@app.get("/api/decisions", dependencies=[Depends(require_read)])
 async def api_decisions(limit: int = 50) -> dict[str, Any]:
     return {"decisions": await store.list_decisions(min(max(limit, 1), 200))}
 
 
-@app.get("/api/stats")
+@app.get("/api/stats", dependencies=[Depends(require_read)])
 async def api_stats() -> dict[str, Any]:
     return {"last24h": await store.decision_stats(), "outbox": await store.outbox_summary()}
 
 
-@app.get("/api/rules")
+@app.get("/api/rules", dependencies=[Depends(require_read)])
 async def api_rules() -> dict[str, Any]:
     return {"rules": await store.active_rules()}
 
@@ -132,7 +153,7 @@ async def api_delete_rule(rule_id: int) -> dict[str, Any]:
     return {"deleted": await store.delete_rule(rule_id)}
 
 
-@app.get("/api/silences")
+@app.get("/api/silences", dependencies=[Depends(require_read)])
 async def api_silences() -> dict[str, Any]:
     return {"silences": await store.active_silences()}
 
