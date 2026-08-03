@@ -81,7 +81,7 @@ function navigateTo(slug, opts) {
         return false;
     }
     pendingFocus = (opts && opts.focus) || null;
-    switchMainTab(destination.tab);
+    switchMainTab(destination.tab, { skipInit: true });
     destination.enter();
     return true;
 }
@@ -441,7 +441,12 @@ function bindGlobalEvents() {
  * Switch the main Tab
  * @param {string} tabId - Tab ID
  */
-function switchMainTab(tabId) {
+function switchMainTab(tabId, options) {
+    // skipInit: navigateTo() calls the destination's enter() right after this,
+    // which loads the real target view — running the tab's default loader too
+    // would fetch the OLD sub-view first (double API round-trips, and the
+    // stale-view flash behind the two-click bug).
+    const skipInit = !!(options && options.skipInit);
     if (currentTab === 'routing' && tabId !== 'routing' &&
             typeof IngressSetupModule !== 'undefined') {
         IngressSetupModule.deactivate();
@@ -473,6 +478,8 @@ function switchMainTab(tabId) {
     });
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    if (skipInit) return;
 
     // Trigger Tab-specific initialization
     switch (tabId) {

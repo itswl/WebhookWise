@@ -803,3 +803,27 @@ def test_js_modules_never_call_methods_they_do_not_define() -> None:
         if missing:
             offenders[path.name] = sorted(missing)
     assert offenders == {}, f"this.-calls with no same-file definition: {offenders}"
+
+
+def test_one_click_navigation_invariants() -> None:
+    """The Overview-tab destinations needed two clicks: the destination
+    reporter had been spliced into load() (which fires on tab entry with the
+    STALE sub-view) instead of setView() (which knows the view just entered).
+    Three invariants pin the repaired shape:
+    1. setView reports the destination it enters;
+    2. load() — also the auto-refresh path — never reports, so refresh cannot
+       rewrite the URL;
+    3. navigateTo suppresses the tab's default loader (skipInit), because
+       enter() loads the real target — the default was a wasted fetch of the
+       old sub-view on every cross-tab navigation."""
+    import re as _re
+
+    dt = _static_js("decision-trace.js")
+    set_view = _re.search(r"function setView\(view\) \{.*?\n    \}", dt, _re.S)
+    assert set_view and "recordDestination(currentView)" in set_view.group(0)
+    load_fn = _re.search(r"function load\(\) \{.*?\n    \}", dt, _re.S)
+    assert load_fn and "recordDestination" not in load_fn.group(0)
+
+    dashboard = _static_js("dashboard.js")
+    assert "switchMainTab(destination.tab, { skipInit: true })" in dashboard
+    assert "if (skipInit) return;" in dashboard
