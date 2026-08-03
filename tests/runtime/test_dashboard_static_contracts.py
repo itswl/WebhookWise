@@ -892,3 +892,96 @@ def test_colour_stays_in_points_not_surfaces() -> None:
         ".badge-high, .badge-medium, .badge-low, .badge-success, .badge-danger,\n.badge-warning, .badge-info, .badge-duplicate {\n  background: transparent;",
         ".badge-success {\n  background: transparent;",
     ), "cold badge treatment missing"
+
+
+def _js_string_contexts(text: str) -> dict[int, str]:
+    """Innermost string context per character, comment-aware.
+
+    Comment-awareness is the hard-won part: a backtick inside a // comment
+    flipped the migration scanner's template parity, which is how fourteen
+    `' + wwIcon() + '` splices shipped as LITERAL TEXT on the Rules and
+    Silences pages."""
+    marks: dict[int, str] = {}
+    stack: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        top = stack[-1] if stack else None
+        if top == "//":
+            if ch == "\n":
+                stack.pop()
+            i += 1
+            continue
+        if top == "/*":
+            if ch == "*" and text[i : i + 2] == "*/":
+                stack.pop()
+                i += 2
+                continue
+            i += 1
+            continue
+        if top in ("'", '"'):
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == top:
+                stack.pop()
+            else:
+                marks[i] = top
+            i += 1
+            continue
+        if top == "`":
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == "`":
+                stack.pop()
+            elif ch == "$" and text[i : i + 2] == "${":
+                stack.append("${")
+                i += 2
+                continue
+            else:
+                marks[i] = "`"
+            i += 1
+            continue
+        if top == "${" and ch == "}":
+            stack.pop()
+            i += 1
+            continue
+        if ch == "/" and text[i : i + 2] == "//":
+            stack.append("//")
+            i += 2
+            continue
+        if ch == "/" and text[i : i + 2] == "/*":
+            stack.append("/*")
+            i += 2
+            continue
+        if ch in ("'", '"', "`"):
+            stack.append(ch)
+        i += 1
+    return marks
+
+
+def test_icon_splices_match_their_string_context() -> None:
+    """Concatenation syntax inside a template literal (or ${} inside a
+    single-quoted string) renders as literal source code on screen."""
+    import re as _re
+
+    from tests.helpers.paths import PROJECT_ROOT as _ROOT
+
+    offenders = []
+    for path in sorted((_ROOT / "templates/static/js").glob("*.js")):
+        if path.name.startswith("i18n."):
+            continue
+        src = path.read_text()
+        contexts = _js_string_contexts(src)
+        offenders.extend(
+            f"{path.name}: concat splice inside a template literal"
+            for match in _re.finditer(r"' \+ wwIcon\('[a-z-]+'\) \+ '", src)
+            if contexts.get(match.start()) == "`"
+        )
+        offenders.extend(
+            f"{path.name}: ${{}} splice inside a single-quoted string"
+            for match in _re.finditer(r"\$\{wwIcon\('[a-z-]+'\)\}", src)
+            if contexts.get(match.start()) == "'"
+        )
+    assert offenders == [], offenders

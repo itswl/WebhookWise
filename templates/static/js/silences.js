@@ -273,11 +273,11 @@ function renderSilenceCard(silence) {
                     font-weight: 600;
                     color: var(--warning);
                     border: 1px solid rgba(217,119,6,0.18);
-                ">' + wwIcon('clock') + ' ${escapeHtml(formatSilenceExpiry(silence))}</span>
+                ">${wwIcon('clock')} ${escapeHtml(formatSilenceExpiry(silence))}</span>
             </div>
 
             <div class="silence-conditions" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--bg-subtle); padding: 1.25rem; border-radius: 8px; border: 1px dashed var(--border); margin-bottom: 1.25rem;">
-                <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">' + wwIcon('target') + ' ${t('silences.card.matchConditions')}</div>
+                <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">${wwIcon('target')} ${t('silences.card.matchConditions')}</div>
                 <div style="margin-bottom: 0.5rem;"><strong>${t('silences.card.source')}:</strong> ${sourceText}</div>
                 <div style="margin-bottom: 0.5rem;"><strong>${t('silences.card.importance')}:</strong> ${importanceText}</div>
                 <div style="margin-bottom: 0.5rem;"><strong>${t('silences.card.eventType')}:</strong> ${eventTypeText}</div>
@@ -291,8 +291,8 @@ function renderSilenceCard(silence) {
 
             <div class="silence-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1rem; border-top: 1px solid var(--border);">
                 ${isActive ? '<button class="btn" onclick="liftSilence(' + silence.id + ')" style="color: var(--warning); border-color: rgba(217,119,6,0.25); background: var(--warning-bg); font-weight: 600;">' + t('silences.action.lift') + '</button>' : ''}
-                <button class="btn" onclick="showSilenceForm(${silence.id})" style="font-weight: 600;">' + wwIcon('pencil') + ' ${t('silences.action.edit')}</button>
-                <button class="btn" onclick="deleteSilence(${silence.id})" style="color: var(--danger); border-color: rgba(225,29,72,0.25); background: var(--danger-bg); font-weight: 600;">' + wwIcon('trash') + ' ${t('silences.action.delete')}</button>
+                <button class="btn" onclick="showSilenceForm(${silence.id})" style="font-weight: 600;">${wwIcon('pencil')} ${t('silences.action.edit')}</button>
+                <button class="btn" onclick="deleteSilence(${silence.id})" style="color: var(--danger); border-color: rgba(225,29,72,0.25); background: var(--danger-bg); font-weight: 600;">${wwIcon('trash')} ${t('silences.action.delete')}</button>
             </div>
         </div>
     `;
@@ -564,7 +564,7 @@ async function backtestSilenceRule() {
     try {
         const result = await API.backtestSilence(silenceData);
         if (!result.success || !result.data) {
-            container.innerHTML = `<div style="color: var(--danger); font-size: 0.85rem;">' + wwIcon('alert-triangle') + ' Error: ${escapeHtml(result.error || 'Unknown error')}</div>`;
+            container.innerHTML = `<div style="color: var(--danger); font-size: 0.85rem;">${wwIcon('alert-triangle')} Error: ${escapeHtml(result.error || 'Unknown error')}</div>`;
             return;
         }
 
@@ -583,7 +583,7 @@ async function backtestSilenceRule() {
         if ((d.sample_matched_events || []).length > 0) {
             sampleHtml += `
                 <div style="margin-top: 0.75rem;">
-                    <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.4rem;">' + wwIcon('target') + ' Recent Matched Samples (${d.sample_matched_events.length}):</div>
+                    <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.4rem;">${wwIcon('target')} Recent Matched Samples (${d.sample_matched_events.length}):</div>
                     <div style="display: flex; flex-direction: column; gap: 5px;">
             `;
             d.sample_matched_events.forEach(function(ev) {
@@ -606,7 +606,7 @@ async function backtestSilenceRule() {
         container.innerHTML = `
             <div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; padding: 1rem;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                    <span style="font-weight: 600; font-size: 0.9rem; color: var(--primary);">' + wwIcon('flask') + ' Backtest Result (Past 30 Days)</span>
+                    <span style="font-weight: 600; font-size: 0.9rem; color: var(--primary);">${wwIcon('flask')} Backtest Result (Past 30 Days)</span>
                     <span style="font-size: 0.8rem; color: var(--text-muted);">Scanned: <strong>${d.total_scanned}</strong> events</span>
                 </div>
                 <div style="display: flex; gap: 1.5rem; align-items: center; background: var(--bg-subtle, var(--bg-subtle)); border-radius: 4px; padding: 0.75rem; margin-bottom: 0.75rem;">
@@ -625,7 +625,7 @@ async function backtestSilenceRule() {
 
     } catch (error) {
         console.error('Silence backtest failed:', error);
-        container.innerHTML = `<div style="color: var(--danger); font-size: 0.85rem;">' + wwIcon('alert-triangle') + ' Failure: ${escapeHtml(error.message || String(error))}</div>`;
+        container.innerHTML = `<div style="color: var(--danger); font-size: 0.85rem;">${wwIcon('alert-triangle')} Failure: ${escapeHtml(error.message || String(error))}</div>`;
     }
 }
 
@@ -653,7 +653,7 @@ async function loadMaintenanceWindows() {
         } else {
             container.innerHTML = `
                 <div class="empty-state" style="text-align: center; padding: 30px; color: var(--text-secondary);">
-                    <p>' + wwIcon('x') + ' ${t('common.loadFailed')}: ${escapeHtml(result.error || t('common.unknownError'))}</p>
+                    <p>${wwIcon('x')} ${t('common.loadFailed')}: ${escapeHtml(result.error || t('common.unknownError'))}</p>
                     <button class="btn" onclick="loadMaintenanceWindows()" style="margin-top: 10px;">${t('common.retry')}</button>
                 </div>
             `;
@@ -662,7 +662,7 @@ async function loadMaintenanceWindows() {
         console.error('Failed to load maintenance windows:', error);
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 30px; color: var(--text-secondary);">
-                <p>' + wwIcon('x') + ' ${t('common.loadFailed')}: ${escapeHtml(error.message || String(error))}</p>
+                <p>${wwIcon('x')} ${t('common.loadFailed')}: ${escapeHtml(error.message || String(error))}</p>
                 <button class="btn" onclick="loadMaintenanceWindows()" style="margin-top: 10px;">${t('common.retry')}</button>
             </div>
         `;
@@ -726,7 +726,7 @@ function renderMaintenanceWindows(list) {
     if (!list || list.length === 0) {
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 30px; color: var(--text-secondary);">
-                <div style="font-size: 32px; margin-bottom: 12px;">' + wwIcon('wrench') + '</div>
+                <div style="font-size: 32px; margin-bottom: 12px;">${wwIcon('wrench')}</div>
                 <p style="font-size: 14px;">${t('silences.mw.empty')}</p>
             </div>
         `;
