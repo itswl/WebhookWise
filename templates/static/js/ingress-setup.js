@@ -82,7 +82,7 @@ const IngressSetupModule = (function () {
         return '<ol class="ingress-stepper">' + labels.map(function (label, index) {
             const step = index + 1;
             const state = step < currentStep ? ' is-complete' : (step === currentStep ? ' is-current' : '');
-            return '<li class="' + state + '"><span>' + (step < currentStep ? '✓' : step) +
+            return '<li class="' + state + '"><span>' + (step < currentStep ? wwIcon('check') : step) +
                 '</span><strong>' + escapeHtml(label) + '</strong></li>';
         }).join('') + '</ol>';
     }
@@ -90,7 +90,7 @@ const IngressSetupModule = (function () {
     function typeCards() {
         if (!sourceTypes.length) {
             return '<div class="ingress-source-types"><button class="ingress-source-type is-selected" ' +
-                'type="button" data-source-type="generic"><strong>🔗 Generic JSON</strong></button></div>';
+                'type="button" data-source-type="generic"><strong>' + wwIcon('link') + ' Generic JSON</strong></button></div>';
         }
         return '<div class="ingress-source-types">' + sourceTypes.map(function (item) {
             const value = sourceTypeValue(item);
@@ -175,7 +175,7 @@ const IngressSetupModule = (function () {
         return '<section class="ingress-step-card"><div class="ingress-step-heading"><span>2</span><div><h3>' +
             escapeHtml(t('ingress.credential.title')) + '</h3><p>' +
             escapeHtml(t('ingress.credential.once')) + '</p></div></div>' +
-            '<div class="ingress-token-warning">⚠️ ' +
+            '<div class="ingress-token-warning">' + wwIcon('alert-triangle') + ' ' +
             escapeHtml(t('ingress.credential.warning')) + '</div>' +
             copyField(t('ingress.webhookUrl'), webhookUrl(), false) +
             copyField(t('ingress.authorization'), 'Authorization: Bearer ' + token, true) +
@@ -217,7 +217,7 @@ const IngressSetupModule = (function () {
 
     function renderPayloadStep() {
         const dryRun = dryRunResult
-            ? '<div class="ingress-test-result is-success">✓ ' +
+            ? '<div class="ingress-test-result is-success">' + wwIcon('check') + ' ' +
                 escapeHtml(t('ingress.payload.valid')) + '</div>'
             : '';
         return '<section class="ingress-step-card"><div class="ingress-step-heading"><span>4</span><div><h3>' +
@@ -225,9 +225,9 @@ const IngressSetupModule = (function () {
             escapeHtml(t('ingress.payload.hint')) + '</p></div></div>' +
             '<textarea class="form-input ingress-payload" id="ingressPayload" rows="14" spellcheck="false">' +
             escapeHtml(samplePayload()) + '</textarea>' + dryRun +
-            (!sourceToken ? '<div class="ingress-token-warning">⚠️ ' +
+            (!sourceToken ? '<div class="ingress-token-warning">' + wwIcon('alert-triangle') + ' ' +
                 escapeHtml(t('ingress.payload.rotateNeeded')) + '</div>' : '') +
-            '<div class="ingress-step-actions"><button class="btn" type="button" id="ingressDryRunBtn">🧪 ' +
+            '<div class="ingress-step-actions"><button class="btn" type="button" id="ingressDryRunBtn">' + wwIcon('flask') + ' ' +
             escapeHtml(t('ingress.payload.dryRun')) + '</button>' +
             (!sourceToken
                 ? '<button class="btn" type="button" id="ingressRotateBtn">↻ ' +
@@ -249,13 +249,13 @@ const IngressSetupModule = (function () {
             escapeHtml(t('ingress.firstEvent.title')) + '</h3><p>' +
             escapeHtml(connected ? t('ingress.firstEvent.connected') : t('ingress.firstEvent.waiting')) +
             '</p></div></div><div class="ingress-connection-state' +
-            (connected ? ' is-connected' : '') + '"><span>' + (connected ? '✓' : '') +
+            (connected ? ' is-connected' : '') + '"><span>' + (connected ? wwIcon('check') : '') +
             '</span><div><strong>' +
             escapeHtml(t('ingress.connection.' + (connected ? 'connected' : 'waiting_for_event'))) +
             '</strong><small>' +
             escapeHtml(connection && (connection.last_request_id || connection.first_event_at) || '') +
             '</small></div></div>' +
-            '<div class="ingress-step-actions"><button class="btn" type="button" id="ingressPollBtn">🔄 ' +
+            '<div class="ingress-step-actions"><button class="btn" type="button" id="ingressPollBtn">' + wwIcon('refresh') + ' ' +
             escapeHtml(t('ingress.firstEvent.check')) + '</button>' +
             (connected ? '<button class="btn btn-primary" type="button" data-ingress-next="6">' +
                 escapeHtml(t('common.continue')) + '</button>' : '') +
@@ -264,7 +264,7 @@ const IngressSetupModule = (function () {
 
     function renderForwardStep() {
         const result = forwardingResult
-            ? '<div class="ingress-test-result is-success">✓ ' +
+            ? '<div class="ingress-test-result is-success">' + wwIcon('check') + ' ' +
                 escapeHtml(t('ingress.forward.success')) + '</div>'
             : '';
         return '<section class="ingress-step-card"><div class="ingress-step-heading"><span>6</span><div><h3>' +

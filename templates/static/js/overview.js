@@ -77,12 +77,12 @@ const OverviewModule = {
             if (mark) mark.textContent = t('common.lastRefreshed', { time: new Date().toLocaleTimeString() });
         } catch (err) {
             console.error('Failed to load overview:', err);
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">' + t('common.loadFailed') + '</div><div class="empty-text">' + escapeHtml(String(err && err.message || err)) + '</div></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('alert-triangle') + '</div><div class="empty-title">' + t('common.loadFailed') + '</div><div class="empty-text">' + escapeHtml(String(err && err.message || err)) + '</div></div>';
         }
     },
 
     emptyHtml() {
-        return '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">' + t('overview.empty.title') + '</div><div class="empty-text">' + t('overview.empty.text') + '</div></div>';
+        return '<div class="empty-state"><div class="empty-icon">' + wwIcon('bar-chart') + '</div><div class="empty-title">' + t('overview.empty.title') + '</div><div class="empty-text">' + t('overview.empty.text') + '</div></div>';
     },
 
     renderHtml(d, ai, incidents, sparkData, queue) {
@@ -95,17 +95,17 @@ const OverviewModule = {
         let html = '<div class="stats-grid" style="margin-bottom: 1.5rem;">';
         var prev = d.previous || {};
         var totalDelta = (prev.total_delta_pct != null) ? (prev.total_delta_pct > 0 ? '↑' : '↓') + Math.abs(prev.total_delta_pct).toFixed(1) + '%' : '';
-        html += this._card('📥', t('overview.card.processed'), fmt(d.total) + (totalDelta ? ' <span style="font-size:0.7em;color:' + (prev.total_delta_pct > 0 ? 'var(--danger)' : 'var(--success)') + ';">' + totalDelta + '</span>' : ''), t('overview.card.processedTrend'), 'var(--primary)');
-        html += this._card('✅', t('overview.card.forwardRate'), (d.forward_rate || 0).toFixed(1) + '%',
+        html += this._card(wwIcon('inbox'), t('overview.card.processed'), fmt(d.total) + (totalDelta ? ' <span style="font-size:0.7em;color:' + (prev.total_delta_pct > 0 ? 'var(--danger)' : 'var(--success)') + ';">' + totalDelta + '</span>' : ''), t('overview.card.processedTrend'), 'var(--primary)');
+        html += this._card(wwIcon('check'), t('overview.card.forwardRate'), (d.forward_rate || 0).toFixed(1) + '%',
             t('overview.card.forwardRateTrend', { fwd: fmt(d.forwarded), skip: fmt(d.skipped) }), 'var(--success)',
             "OverviewModule.drillToOutcome('forwarded')");
-        html += this._card('📨', t('overview.card.deliveryRate'),
+        html += this._card(wwIcon('send'), t('overview.card.deliveryRate'),
             (delivery.success_rate != null ? delivery.success_rate.toFixed(1) + '%' : '—'),
             t('overview.card.deliveryRateTrend', { ok: fmt(delivery.delivered || 0), fail: fmt(delivery.failed || 0) }),
             (delivery.failed > 0 ? 'var(--danger)' : 'var(--success)'),
             "OverviewModule.drillToOutcome('forwarded')");
         if (ai) {
-            html += this._card('💰', t('overview.card.aiCost'), '$' + (Number(cost) || 0).toFixed(4),
+            html += this._card(wwIcon('dollar'), t('overview.card.aiCost'), '$' + (Number(cost) || 0).toFixed(4),
                 t('overview.card.aiCostTrend', { n: fmt(aiCalls || 0) }), 'var(--warning)',
                 "navigateTo('cost')");
         }
@@ -141,7 +141,7 @@ const OverviewModule = {
                 const pct = ((s.count || 0) / max) * 100;
                 html += '<div style="margin-bottom: 0.75rem;">' +
                     '<div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:0.25rem;">' +
-                    '<span>📡 ' + escapeHtml(s.source) + '</span><span style="color:var(--text-muted);">' + fmt(s.count) + '</span></div>' +
+                    '<span>' + wwIcon('radio') + ' ' + escapeHtml(s.source) + '</span><span style="color:var(--text-muted);">' + fmt(s.count) + '</span></div>' +
                     '<div style="height:8px; background:var(--bg-subtle, #f1f5f9); border-radius:4px; overflow:hidden;">' +
                     '<div style="height:100%; width:' + pct + '%; background:var(--primary);"></div></div></div>';
             });
@@ -150,13 +150,13 @@ const OverviewModule = {
 
         // Recent active incidents — quick glance at what's happening right now.
         if (incidents && incidents.length) {
-            html += '<div style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem;">🚨 ' + t('overview.section.incidents') + '</div>';
+            html += '<div style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem;">' + t('overview.section.incidents') + '</div>';
             html += '<div style="display:flex; flex-direction:column; gap:0.5rem;">';
-            var impEmoji = { high: '🔴', medium: '🟠', low: '🟢' };
+            var impEmoji = { high: '<span class="ww-dot ww-dot-danger"></span>', medium: '<span class="ww-dot ww-dot-warning"></span>', low: '<span class="ww-dot ww-dot-success"></span>' };
             for (var i = 0; i < Math.min(incidents.length, 5); i++) {
                 var inc = incidents[i];
                 html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="openIncident(' + Number(inc.id) + ')">';
-                html += '<span style="font-size:1.2rem;">🔥</span>';
+                html += '<span style="font-size:1.2rem;"></span>';
                 html += '<div style="flex:1; min-width:0;">';
                 html += '<div style="font-weight:500; font-size:0.9rem;">' + escapeHtml(inc.title) + '</div>';
                 html += '<div style="font-size:0.76rem; color:var(--text-muted);">' + escapeHtml(inc.source || '') + ' · ' + inc.alert_count + ' alerts · ' + (impEmoji[inc.top_importance] || '') + (inc.top_importance || '') + '</div>';
@@ -168,7 +168,7 @@ const OverviewModule = {
         }
         // Dependency-free 7-day sparkline trend.
         if (sparkData && sparkData.length > 1) {
-            html += '<div style="font-size:1rem; font-weight:600; margin:1.5rem 0 0.5rem;">📈 ' + t('overview.section.trend') + '</div>';
+            html += '<div style="font-size:1rem; font-weight:600; margin:1.5rem 0 0.5rem;">' + t('overview.section.trend') + '</div>';
             html += '<div id="overviewTrendBox" style="background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; padding:1.25rem;">' + this._trendInner(sparkData) + '</div>';
         }
         return html;
@@ -215,7 +215,7 @@ const OverviewModule = {
             (q.backlogged ? ' border-left: 4px solid var(--danger);' : '') +
             ' border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">';
         html += '<div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem;">' +
-            '<span style="font-weight: 600;">📥 ' + t('overview.queue.title') + '</span>' +
+            '<span style="font-weight: 600;">' + t('overview.queue.title') + '</span>' +
             '<span style="font-size: 1.25rem; font-weight: 700; color: ' + color + ';">' + (pct != null ? pct + '%' : dash) + '</span></div>';
         // Gauge = backlog_fraction (the at-risk-of-trim share).
         html += '<div style="height: 8px; background: var(--bg-subtle, #f1f5f9); border-radius: 4px; overflow: hidden; margin-bottom: 0.6rem;">' +
@@ -231,7 +231,7 @@ const OverviewModule = {
         }
         html += '</div>';
         if (q.backlogged) {
-            html += '<div style="margin-top: 0.6rem; font-size: 0.8rem; color: var(--danger);">⚠️ ' + t('overview.queue.backlogged') + '</div>';
+            html += '<div style="margin-top: 0.6rem; font-size: 0.8rem; color: var(--danger);">' + t('overview.queue.backlogged') + '</div>';
         }
         html += '</div>';
         return html;

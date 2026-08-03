@@ -151,7 +151,7 @@ const AICostModule = {
 
                 <div style="margin-bottom: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--primary);">🤖 ${t('aicost.route.ai')}</span>
+                        <span style="font-weight: 500; color: var(--primary);">${wwIcon('sparkles')} ${t('aicost.route.ai')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeAi), pct: this.formatPercent(percentAi) })}</span>
                     </div>
                     <div style="height: 8px; background: #e0e7ff; border-radius: 4px; overflow: hidden;">
@@ -161,7 +161,7 @@ const AICostModule = {
 
                 <div style="margin-bottom: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--success);">💾 ${t('aicost.route.cache')}</span>
+                        <span style="font-weight: 500; color: var(--success);">${wwIcon('database')} ${t('aicost.route.cache')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeCache), pct: this.formatPercent(percentCache) })}</span>
                     </div>
                     <div style="height: 8px; background: #d1fae5; border-radius: 4px; overflow: hidden;">
@@ -171,7 +171,7 @@ const AICostModule = {
 
                 <div style="margin-bottom: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--warning);">🔄 ${t('aicost.route.reuse')}</span>
+                        <span style="font-weight: 500; color: var(--warning);">${wwIcon('refresh')} ${t('aicost.route.reuse')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeReuse), pct: this.formatPercent(percentReuse) })}</span>
                     </div>
                     <div style="height: 8px; background: #fef3c7; border-radius: 4px; overflow: hidden;">
@@ -181,7 +181,7 @@ const AICostModule = {
 
                 <div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
-                        <span style="font-weight: 500; color: var(--text-muted);">📋 ${t('aicost.route.rule')}</span>
+                        <span style="font-weight: 500; color: var(--text-muted);">${wwIcon('list')} ${t('aicost.route.rule')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeRule), pct: this.formatPercent(percentRule) })}</span>
                     </div>
                     <div style="height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
@@ -253,6 +253,6 @@ const AICostModule = {
         const container = document.getElementById('aiCostStats');
         if (!container) return;
 
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">' + t('aicost.empty.title') + '</div><div class="empty-text">' + t('aicost.empty.text') + '</div></div>';
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('bar-chart') + '</div><div class="empty-title">' + t('aicost.empty.title') + '</div><div class="empty-text">' + t('aicost.empty.text') + '</div></div>';
     }
 };

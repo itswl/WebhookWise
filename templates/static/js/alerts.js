@@ -373,7 +373,7 @@ const AlertsModule = {
 
         // Ensure the current page is within the valid range
         if (this.currentPage > totalPagesFiltered && totalPagesFiltered > 0) {
-            console.warn('⚠️  Current page number out of range, resetting to last page');
+            console.warn('Current page number out of range, resetting to last page');
             this.currentPage = totalPagesFiltered;
         }
 
@@ -397,7 +397,7 @@ const AlertsModule = {
         const container = document.getElementById('alertList');
 
         if (webhooks.length === 0) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">' + t('alerts.empty.title') + '</div><div class="empty-text">' + t('alerts.empty.text') + '</div></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('inbox') + '</div><div class="empty-title">' + t('alerts.empty.title') + '</div><div class="empty-text">' + t('alerts.empty.text') + '</div></div>';
             return;
         }
 
@@ -421,21 +421,21 @@ const AlertsModule = {
             html += '</div>';
             html += '<div class="alert-meta">';
             html += '<span class="alert-meta-item">🆔 #' + webhookId + '</span>';
-            html += '<span class="alert-meta-item">📍 ' + escapeHtml(String(webhook.source || 'unknown')) + '</span>';
+            html += '<span class="alert-meta-item">' + wwIcon('target') + ' ' + escapeHtml(String(webhook.source || 'unknown')) + '</span>';
 
             // Always show the client IP
             if (webhook.client_ip) {
-                html += '<span class="alert-meta-item">🌐 ' + escapeHtml(String(webhook.client_ip)) + '</span>';
+                html += '<span class="alert-meta-item">' + wwIcon('globe') + ' ' + escapeHtml(String(webhook.client_ip)) + '</span>';
             }
 
-            html += '<span class="alert-meta-item">🕐 ' + formatTime(webhook.timestamp) + '</span>';
+            html += '<span class="alert-meta-item">' + wwIcon('clock') + ' ' + formatTime(webhook.timestamp) + '</span>';
 
             // Show duplicate information
             if (isDuplicate) {
-                html += '<span class="alert-meta-item">🔗 ' + _alertLink(webhook.duplicate_of, t('alerts.meta.original', {id: webhook.duplicate_of})) + '</span>';
+                html += '<span class="alert-meta-item">' + wwIcon('link') + ' ' + _alertLink(webhook.duplicate_of, t('alerts.meta.original', {id: webhook.duplicate_of})) + '</span>';
                 // Show previous alert ID and time
                 if (webhook.prev_alert_id) {
-                    let prevText = '⏮️ ' + _alertLink(webhook.prev_alert_id, t('alerts.meta.previous', {id: webhook.prev_alert_id}));
+                    let prevText = wwIcon('chevron-left') + ' ' + _alertLink(webhook.prev_alert_id, t('alerts.meta.previous', {id: webhook.prev_alert_id}));
                     if (webhook.prev_alert_timestamp) {
                         prevText += ' (' + timeAgo(webhook.prev_alert_timestamp) + ')';
                     }
@@ -454,7 +454,7 @@ const AlertsModule = {
             if (webhook.forward_status) {
                 var fwdLabels = { 'pending': t('alerts.fwd.pending'), 'queued': t('alerts.fwd.queued'), 'skipped': t('alerts.fwd.skipped'), 'forwarded': t('alerts.fwd.forwarded'), 'sent': t('alerts.fwd.sent'), 'failed': t('alerts.fwd.failed'), 'success': t('alerts.fwd.sent') };
                 var fwdClass = (webhook.forward_status === 'sent' || webhook.forward_status === 'success' || webhook.forward_status === 'forwarded') ? 'badge-low' : ((webhook.forward_status === 'failed') ? 'badge-high' : 'badge-medium');
-                html += '<span class="badge ' + fwdClass + '" title="' + t('alerts.fwd.statusTitle') + '">📤 ' + escapeHtml(fwdLabels[webhook.forward_status] || webhook.forward_status) + '</span>';
+                html += '<span class="badge ' + fwdClass + '" title="' + t('alerts.fwd.statusTitle') + '">' + wwIcon('send') + ' ' + escapeHtml(fwdLabels[webhook.forward_status] || webhook.forward_status) + '</span>';
             }
             var workflowStatus = webhook.workflow_status || 'open';
             var workflowClass = workflowStatus === 'resolved' || workflowStatus === 'ignored' ? 'badge-low' : (workflowStatus === 'open' ? 'badge-high' : 'badge-medium');
@@ -465,25 +465,25 @@ const AlertsModule = {
             html += '<div class="alert-toolbar">';
             html += '<div class="alert-primary-actions">';
             if (workflowStatus === 'open') {
-                html += '<button type="button" class="btn btn-sm" data-action="acknowledge" data-id="' + webhookId + '">👋 ' + escapeHtml(t('alerts.action.acknowledge')) + '</button>';
+                html += '<button type="button" class="btn btn-sm" data-action="acknowledge" data-id="' + webhookId + '">' + wwIcon('check') + ' ' + escapeHtml(t('alerts.action.acknowledge')) + '</button>';
             }
             if (workflowStatus !== 'resolved' && workflowStatus !== 'ignored') {
-                html += '<button type="button" class="btn btn-sm btn-primary" data-action="resolve" data-id="' + webhookId + '">✅ ' + escapeHtml(t('alerts.action.resolve')) + '</button>';
+                html += '<button type="button" class="btn btn-sm btn-primary" data-action="resolve" data-id="' + webhookId + '">' + wwIcon('check') + ' ' + escapeHtml(t('alerts.action.resolve')) + '</button>';
             }
             html += '</div>';
 
             var secondaryActions = [];
-            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="reanalyze" data-id="' + webhookId + '">🔄 ' + escapeHtml(t('alerts.action.reanalyze')) + '</button>');
-            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="deep-analyze" data-id="' + webhookId + '">🔬 ' + escapeHtml(t('alerts.action.deepAnalyze')) + '</button>');
-            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="forward" data-id="' + webhookId + '">🚀 ' + escapeHtml(t('alerts.action.forward')) + '</button>');
-            secondaryActions.push('<button type="button" class="btn btn-sm btn-warn" data-action="quick-silence" data-id="' + webhookId + '" title="' + escapeHtml(t('alerts.action.quickSilenceTitle')) + '">🔕 ' + escapeHtml(t('alerts.action.quickSilence')) + '</button>');
-            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="replay-dry" data-id="' + webhookId + '" title="' + escapeHtml(t('alerts.action.replayDryTitle')) + '">🔁 ' + escapeHtml(t('alerts.action.replayDry')) + '</button>');
-            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="assign" data-id="' + webhookId + '">👤 ' + escapeHtml(t('alerts.action.assign')) + '</button>');
-            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="notes" data-id="' + webhookId + '">📝 ' + escapeHtml(t('alerts.action.notes')) + '</button>');
-            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="feedback-correct" data-id="' + webhookId + '">👍 ' + escapeHtml(t('alerts.action.feedbackCorrect')) + '</button>');
-            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="feedback-incorrect" data-id="' + webhookId + '">👎 ' + escapeHtml(t('alerts.action.feedbackIncorrect')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="reanalyze" data-id="' + webhookId + '">' + wwIcon('refresh') + ' ' + escapeHtml(t('alerts.action.reanalyze')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="deep-analyze" data-id="' + webhookId + '">' + wwIcon('flask') + ' ' + escapeHtml(t('alerts.action.deepAnalyze')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="forward" data-id="' + webhookId + '">' + wwIcon('send') + ' ' + escapeHtml(t('alerts.action.forward')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm btn-warn" data-action="quick-silence" data-id="' + webhookId + '" title="' + escapeHtml(t('alerts.action.quickSilenceTitle')) + '">' + wwIcon('volume-x') + ' ' + escapeHtml(t('alerts.action.quickSilence')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="replay-dry" data-id="' + webhookId + '" title="' + escapeHtml(t('alerts.action.replayDryTitle')) + '">' + wwIcon('refresh') + ' ' + escapeHtml(t('alerts.action.replayDry')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="assign" data-id="' + webhookId + '">' + wwIcon('user') + ' ' + escapeHtml(t('alerts.action.assign')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="notes" data-id="' + webhookId + '">' + wwIcon('pencil') + ' ' + escapeHtml(t('alerts.action.notes')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="feedback-correct" data-id="' + webhookId + '">' + wwIcon('thumbs-up') + ' ' + escapeHtml(t('alerts.action.feedbackCorrect')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="feedback-incorrect" data-id="' + webhookId + '">' + wwIcon('thumbs-down') + ' ' + escapeHtml(t('alerts.action.feedbackIncorrect')) + '</button>');
             if (webhook.processing_status === 'dead_letter') {
-                secondaryActions.push('<button type="button" class="btn btn-sm btn-danger" data-action="replay-dl" data-id="' + webhookId + '">🔄 ' + escapeHtml(t('alerts.action.replayDeadLetter')) + '</button>');
+                secondaryActions.push('<button type="button" class="btn btn-sm btn-danger" data-action="replay-dl" data-id="' + webhookId + '">' + wwIcon('refresh') + ' ' + escapeHtml(t('alerts.action.replayDeadLetter')) + '</button>');
             }
             html += '<details class="alert-action-menu">';
             html += '<summary class="btn btn-sm alert-more-trigger">••• ' + escapeHtml(t('alerts.action.more')) + '<span class="alert-action-count">' + secondaryActions.length + '</span></summary>';
@@ -505,7 +505,7 @@ const AlertsModule = {
             // Decision / Delivery tab (why forwarded/skipped + did it deliver)
             html += '<div class="tab" data-tab="decision" data-id="' + webhook.id + '">' + t('alerts.tab.decision') + '</div>';
             // Incident Timeline tab
-            html += '<div class="tab" data-tab="timeline" data-id="' + webhook.id + '">📅 ' + t('alerts.tab.timeline') + '</div>';
+            html += '<div class="tab" data-tab="timeline" data-id="' + webhook.id + '">' + wwIcon('clock') + ' ' + t('alerts.tab.timeline') + '</div>';
             html += '</div>';
 
             html += '<div class="tab-content active" data-tab-content="overview">';
@@ -528,7 +528,7 @@ const AlertsModule = {
             } else if (summary || webhook.importance) {
                 html += '<div class="tab-content" data-tab-content="ai">';
                 html += '<div class="ai-section">';
-                html += '<div class="ai-header">🤖 ' + t('alerts.ai.resultsTitle') + '</div>';
+                html += '<div class="ai-header">' + wwIcon('sparkles') + ' ' + t('alerts.ai.resultsTitle') + '</div>';
                 html += '<div class="ai-content">';
                 if (summary) {
                     html += '<div class="ai-item"><div class="ai-label">' + t('alerts.ai.summary') + '</div><div class="ai-value">' + escapeHtml(String(summary)) + '</div></div>';
@@ -538,7 +538,7 @@ const AlertsModule = {
                 }
                 html += '</div></div>';
                 html += '<div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px;">';
-                html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">💡 ' + t('alerts.ai.autoLoadHint') + '</p>';
+                html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">' + wwIcon('lightbulb') + ' ' + t('alerts.ai.autoLoadHint') + '</p>';
                 html += '</div>';
                 html += '</div>';
             }
@@ -555,7 +555,7 @@ const AlertsModule = {
 
             // Incident timeline panel (lazy-loaded on tab click)
             html += '<div class="tab-content" data-tab-content="timeline">';
-            html += '<div id="timeline-container-' + webhook.id + '">📅 ' + t('alerts.timeline.clickToLoad') + '</div>';
+            html += '<div id="timeline-container-' + webhook.id + '">' + wwIcon('clock') + ' ' + t('alerts.timeline.clickToLoad') + '</div>';
             html += '</div>';
 
             html += '</div></div>';
@@ -620,7 +620,7 @@ const AlertsModule = {
         let html = `
             <div class="ai-analysis" style="border-left: 4px solid var(--primary); background: var(--bg-surface); border: 1px solid var(--border); padding: 1.5rem; border-radius: 12px; box-shadow: var(--shadow-sm); margin-bottom: 1rem;">
                 <div class="ai-header" style="font-size: 1rem; font-weight: 600; color: var(--primary); display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                    <span>🤖</span> ${t('alerts.ai.reportTitle')}
+                    <span>${wwIcon('sparkles')}</span> ${t('alerts.ai.reportTitle')}
                     <span class="badge ${analysis._degraded ? 'badge-medium' : 'badge-low'}" style="margin-left: auto;">
                         ${escapeHtml(String(analysis._degraded ? t('alerts.ai.localFallback') : (analysis._route_type || t('alerts.ai.smartRouting'))))}
                     </span>
@@ -636,14 +636,14 @@ const AlertsModule = {
         if (analysis.root_cause) {
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">🔍 ${t('alerts.ai.rootCause')}</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">${wwIcon('search')} ${t('alerts.ai.rootCause')}</h4>
                     <p style="font-size: 0.95rem; color: var(--text-secondary); margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.root_cause))}</p>
                 </div>
             `;
         } else if (analysis.event_type) {
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">🏷️ ${t('alerts.ai.eventType')}</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">${wwIcon('tag')} ${t('alerts.ai.eventType')}</h4>
                     <p style="font-size: 0.95rem; color: var(--text-secondary); margin: 0; line-height: 1.6;">${escapeHtml(String(analysis.event_type))}</p>
                 </div>
             `;
@@ -653,7 +653,7 @@ const AlertsModule = {
             const impact = analysis.impact || analysis.impact_scope;
             html += `
                 <div class="detail-section">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">💥 ${t('alerts.ai.impact')}</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">${wwIcon('zap')} ${t('alerts.ai.impact')}</h4>
                     <p style="font-size: 0.95rem; color: var(--text-secondary); margin: 0; line-height: 1.6;">${escapeHtml(String(impact))}</p>
                 </div>
             `;
@@ -663,7 +663,7 @@ const AlertsModule = {
         if (actions && actions.length > 0) {
             html += `
                 <div class="detail-section" style="grid-column: 1 / -1;">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">🛠️ ${t('alerts.ai.recommendations')}</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">${wwIcon('wrench')} ${t('alerts.ai.recommendations')}</h4>
                     <ul style="font-size: 0.95rem; color: var(--text-secondary); margin: 0; padding-left: 1.5rem; line-height: 1.6;">
                         ${actions.map(r => `<li style="margin-bottom: 0.5rem;">${escapeHtml(String(r))}</li>`).join('')}
                     </ul>
@@ -674,7 +674,7 @@ const AlertsModule = {
         if (analysis.risks && analysis.risks.length > 0) {
             html += `
                 <div class="detail-section" style="grid-column: 1 / -1;">
-                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">⚠️ ${t('alerts.ai.risks')}</h4>
+                    <h4 style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; letter-spacing: 0.05em;">${wwIcon('alert-triangle')} ${t('alerts.ai.risks')}</h4>
                     <ul style="font-size: 0.95rem; color: var(--text-secondary); margin: 0; padding-left: 1.5rem; line-height: 1.6;">
                         ${analysis.risks.map(r => `<li style="margin-bottom: 0.5rem;">${escapeHtml(String(r))}</li>`).join('')}
                     </ul>
@@ -687,23 +687,23 @@ const AlertsModule = {
         // Metadata footer
         html += `
             <div class="ai-meta" style="margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary); background: var(--bg-base); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
-                <span>⚡ ${t('alerts.ai.importance')}: <strong style="color: var(--text-main);">${escapeHtml(String(analysis.importance || t('alerts.ai.unknown')))}</strong></span>
+                <span>${wwIcon('zap')} ${t('alerts.ai.importance')}: <strong style="color: var(--text-main);">${escapeHtml(String(analysis.importance || t('alerts.ai.unknown')))}</strong></span>
         `;
 
         if (analysis.noise_reduction) {
             const nr = analysis.noise_reduction;
             const relationMap = { root_cause: t('alerts.ai.relation.rootCause'), derived: t('alerts.ai.relation.derived'), standalone: t('alerts.ai.relation.standalone') };
             const relation = relationMap[nr.relation] || nr.relation || t('alerts.ai.unknown');
-            html += `<span>🛡️ ${t('alerts.ai.noiseReduction')}: <strong style="color: var(--text-main);">${escapeHtml(String(relation))}</strong> (${t('alerts.ai.confidence')}: ${Number(nr.confidence * 100).toFixed(1)}%)</span>`;
+            html += `<span>${wwIcon('shield')} ${t('alerts.ai.noiseReduction')}: <strong style="color: var(--text-main);">${escapeHtml(String(relation))}</strong> (${t('alerts.ai.confidence')}: ${Number(nr.confidence * 100).toFixed(1)}%)</span>`;
             if (nr.root_cause_event_id) {
-                html += `<span>🔗 ${t('alerts.ai.relatedRootCause')}: ${_alertLink(nr.root_cause_event_id)}</span>`;
+                html += `<span>${wwIcon('link')} ${t('alerts.ai.relatedRootCause')}: ${_alertLink(nr.root_cause_event_id)}</span>`;
             }
         }
 
-        html += `<span>🔀 ${t('alerts.ai.routeChannel')}: <strong style="color: var(--text-main);">${escapeHtml(String(analysis._route_type || t('alerts.ai.unknown')))}</strong></span>`;
+        html += `<span>${wwIcon('send')} ${t('alerts.ai.routeChannel')}: <strong style="color: var(--text-main);">${escapeHtml(String(analysis._route_type || t('alerts.ai.unknown')))}</strong></span>`;
         if (analysis._cache_hit) {
             const hitCount = analysis._cache_hit_count || 1;
-            html += `<span title="${t('alerts.ai.hitCount', {n: escapeHtml(String(hitCount))})}" style="color: #10b981; font-weight: 600;">🎯 ${t('alerts.ai.cacheHit', {n: escapeHtml(String(hitCount))})}</span>`;
+            html += `<span title="${t('alerts.ai.hitCount', {n: escapeHtml(String(hitCount))})}" style="color: #10b981; font-weight: 600;">${wwIcon('target')} ${t('alerts.ai.cacheHit', {n: escapeHtml(String(hitCount))})}</span>`;
         }
 
         html += `
@@ -756,7 +756,7 @@ const AlertsModule = {
 
 
         if (page < 1) {
-            console.warn('❌ Page number less than 1, ignoring');
+            console.warn('Page number less than 1, ignoring');
             return;
         }
 
@@ -765,11 +765,11 @@ const AlertsModule = {
                 await this.loadMoreAlerts();
                 const updatedTotalPages = Math.ceil(this.filteredAlerts.length / this.pageSize);
                 if (page > updatedTotalPages) {
-                    console.warn('❌ Page number out of range (max', updatedTotalPages, 'pages), ignoring');
+                    console.warn('Page number out of range (max', updatedTotalPages, 'pages), ignoring');
                     return;
                 }
             } else {
-                console.warn('❌ Page number out of range (max', totalPagesFiltered, 'pages), ignoring');
+                console.warn('Page number out of range (max', totalPagesFiltered, 'pages), ignoring');
                 return;
             }
         }
@@ -929,9 +929,9 @@ const AlertsModule = {
                 throw new Error(result.error || t('alerts.error.loadFailed'));
             }
         } catch (error) {
-            console.error('❌ Failed to load full data:', error);
+            console.error('Failed to load full data:', error);
             if (dataTab) {
-                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">❌ ' + t('alerts.error.loadFailed') + ': ' + escapeHtml(String(error.message || error)) + '</div>';
+                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">' + wwIcon('x') + ' ' + t('alerts.error.loadFailed') + ': ' + escapeHtml(String(error.message || error)) + '</div>';
             }
         }
     },
@@ -991,7 +991,7 @@ const AlertsModule = {
             var result = await resp.json();
             var d = result.data || {};
             var lines = [
-                d.should_forward ? '✅ Would FORWARD' : '⏭️ Would SKIP',
+                d.should_forward ? 'Would FORWARD' : 'Would SKIP',
                 d.skip_reason ? 'Reason: ' + d.skip_reason : '',
                 'Rules matched: ' + (d.matched_rule_count || 0) + ' of ' + (d.rules_evaluated || 0),
                 d.matched_rules && d.matched_rules.length ? 'Matching: ' + d.matched_rules.join(', ') : ''
@@ -1016,14 +1016,14 @@ const AlertsModule = {
 
 
             if (result.success) {
-                alert('✅ ' + t('alerts.msg.reanalyzeSuccess'));
+                alert('' + t('alerts.msg.reanalyzeSuccess'));
                 this.loadAlerts();
             } else {
-                alert('❌ ' + t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
+                alert('' + t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
             }
         } catch (error) {
             console.error('Reanalysis error:', error);
-            alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
+            alert('' + t('alerts.msg.requestFailed') + ': ' + error.message);
         }
     },
 
@@ -1068,13 +1068,13 @@ const AlertsModule = {
                 const result = await API.forward(id, url);
 
                 if (result.success) {
-                    alert('✅ ' + t('alerts.msg.forwardSuccess'));
+                    alert('' + t('alerts.msg.forwardSuccess'));
                     this.closeForwardModal();
                 } else {
-                    alert('❌ ' + t('alerts.msg.forwardFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
+                    alert('' + t('alerts.msg.forwardFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
                 }
             } catch (error) {
-                alert('❌ ' + t('alerts.msg.requestFailed') + ': ' + error.message);
+                alert('' + t('alerts.msg.requestFailed') + ': ' + error.message);
             }
         });
     },
@@ -1118,7 +1118,7 @@ const AlertsModule = {
         try {
             const result = await this._fetchTimeline(webhookId);
             if (!result || !result.data || !result.data.events || !result.data.events.length) {
-                container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted);">📅 ' + t('alerts.timeline.empty') + '</div>';
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted);">' + t('alerts.timeline.empty') + '</div>';
                 return;
             }
             container.innerHTML = this._renderTimeline(result.data);
@@ -1136,7 +1136,7 @@ const AlertsModule = {
 
     _renderTimeline(data) {
         const anchorId = data.anchor ? data.anchor.id : null;
-        const impEmoji = { high: '🔴', medium: '🟠', low: '🟢' };
+        const impEmoji = { high: '<span class="ww-dot ww-dot-danger"></span>', medium: '<span class="ww-dot ww-dot-warning"></span>', low: '<span class="ww-dot ww-dot-success"></span>' };
         // Build an index of event IDs for fast relationship lookups.
         var idIndex = {};
         data.events.forEach(function (ev) { idIndex[ev.id] = ev; });
@@ -1178,12 +1178,12 @@ const AlertsModule = {
             html += '<div style="flex:1; min-width:0;">';
             if (connectorHtml) html += connectorHtml;
             html += '<div style="font-size:0.8rem; font-weight:600; margin-bottom:0.15rem;">';
-            if (isAnchor) html += '📍 ';
+            if (isAnchor) html += '';
             html += '<a href="javascript:void(0)" onclick="AlertsModule._scrollToAlert(' + ev.id + ')" style="color:var(--text-main); text-decoration:none;">#' + ev.id + '</a>';
             html += ' <span style="color:var(--text-muted); font-weight:400;">' + escapeHtml(ev.source) + '</span>';
-            html += ' <span>' + (impEmoji[ev.importance] || '⚪') + ' ' + escapeHtml(ev.importance) + '</span>';
+            html += ' <span>' + (impEmoji[ev.importance] || '<span class="ww-dot ww-dot-muted"></span>') + ' ' + escapeHtml(ev.importance) + '</span>';
             if (ev.is_duplicate) html += ' <span class="badge badge-outline" style="font-size:0.6rem;">' + t('alerts.status.duplicate') + '</span>';
-            if (ev.forward_status === 'sent') html += ' <span class="badge badge-success" style="font-size:0.6rem;">📤</span>';
+            if (ev.forward_status === 'sent') html += ' <span class="badge badge-success" style="font-size:0.6rem;"></span>';
             if (isCaused) html += ' <span style="font-size:0.6rem; color:var(--warning);" title="' + t('alerts.timeline.derivedTitle') + '">↳ derived</span>';
             html += '</div>';
             if (ev.summary) {
@@ -1237,7 +1237,7 @@ const AlertsModule = {
             let html = '';
             records.forEach(function(record) {
                 const analysis = record.analysis_result || {};
-                const engineLabel = record.engine === 'openclaw' ? '🦞 OpenClaw' : '\ud83e\udd16 ' + t('deep.engine.local');
+                const engineLabel = record.engine === 'openclaw' ? 'OpenClaw' : '\ud83e\udd16 ' + t('deep.engine.local');
                 const time = new Date(record.created_at).toLocaleString('zh-CN');
                 const duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
 
@@ -1260,7 +1260,7 @@ const AlertsModule = {
                 if (record.status === 'pending') {
                     // Analyzing-state card
                     html += '<div style="text-align:center; padding:20px; background:var(--info-bg); border:1px solid #bae6fd; border-radius:8px; color:var(--info);">';
-                    html += '<div style="font-size:2em; margin-bottom:12px;">⏳</div>';
+                    html += '<div style="font-size:2em; margin-bottom:12px;"></div>';
                     html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">' + t('alerts.deep.openclawAnalyzing') + '</div>';
                     if (record.openclaw_run_id) {
                         html += '<div style="font-size:0.8em; opacity:0.7; margin-bottom:12px;">' + t('alerts.deep.runId') + ': ' + escapeHtml(String(record.openclaw_run_id)) + '</div>';
@@ -1364,7 +1364,7 @@ const AlertsModule = {
                     this.loadDeepAnalyses(id);
                 } else {
                     // If the alert item is not on the current page, show a simple notice
-                    alert('✅ ' + t('alerts.deep.completeNotice'));
+                    alert('' + t('alerts.deep.completeNotice'));
                 }
             } else {
                 alert(t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));

@@ -38,7 +38,7 @@ const RuleAuditModule = (function () {
 
     function render(container, rows) {
         if (!rows.length) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title" data-i18n="audit.empty.title">All rules look healthy</div><div class="empty-text" data-i18n="audit.empty.text">No zombie, pure-noise, or flapping rules detected in the selected window.</div></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('check') + '</div><div class="empty-title" data-i18n="audit.empty.title">All rules look healthy</div><div class="empty-text" data-i18n="audit.empty.text">No zombie, pure-noise, or flapping rules detected in the selected window.</div></div>';
             return;
         }
 
@@ -50,10 +50,10 @@ const RuleAuditModule = (function () {
         var noises = rows.filter(function (r) { return r.flags.indexOf('pure_noise') >= 0; }).length;
         var flaps = rows.filter(function (r) { return r.flags.indexOf('flapping') >= 0; }).length;
         html += '<div class="stats-grid" style="margin-bottom: 1.5rem;">';
-        html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">🧟 ' + t('audit.summary.zombies') + '</div><div class="stat-value" style="color:var(--warning);">' + zombies + '</div></div>';
-        html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">🔇 ' + t('audit.summary.noise') + '</div><div class="stat-value" style="color:var(--text-muted);">' + noises + '</div></div>';
-        html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">📈 ' + t('audit.summary.flapping') + '</div><div class="stat-value" style="color:var(--danger);">' + flaps + '</div></div>';
-        html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">📋 ' + t('audit.summary.total') + '</div><div class="stat-value">' + rows.length + '</div></div>';
+        html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">' + wwIcon('alert-circle') + ' ' + t('audit.summary.zombies') + '</div><div class="stat-value" style="color:var(--warning);">' + zombies + '</div></div>';
+        html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">' + wwIcon('volume-x') + ' ' + t('audit.summary.noise') + '</div><div class="stat-value" style="color:var(--text-muted);">' + noises + '</div></div>';
+        html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">' + wwIcon('activity') + ' ' + t('audit.summary.flapping') + '</div><div class="stat-value" style="color:var(--danger);">' + flaps + '</div></div>';
+        html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">' + wwIcon('list') + ' ' + t('audit.summary.total') + '</div><div class="stat-value">' + rows.length + '</div></div>';
         html += '</div>';
 
         // Table

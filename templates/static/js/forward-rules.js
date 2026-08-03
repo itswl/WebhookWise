@@ -29,16 +29,16 @@ async function loadForwardRules() {
         } else {
             container.innerHTML = `
                 <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                    <p>❌ ${t('common.loadFailed')}: ${escapeHtml(result.error || t('common.unknownError'))}</p>
+                    <p>${wwIcon('x')} ${t('common.loadFailed')}: ${escapeHtml(result.error || t('common.unknownError'))}</p>
                     <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">${t('common.retry')}</button>
                 </div>
             `;
         }
     } catch (error) {
-        console.error('❌ Failed to load forward rules:', error);
+        console.error('Failed to load forward rules:', error);
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                <p>❌ ${t('common.loadFailed')}: ${escapeHtml(error.message || String(error))}</p>
+                <p>${wwIcon('x')} ${t('common.loadFailed')}: ${escapeHtml(error.message || String(error))}</p>
                 <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">${t('common.retry')}</button>
             </div>
         `;
@@ -55,7 +55,7 @@ function renderForwardRules(rules) {
     if (!rules || rules.length === 0) {
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 60px; color: var(--text-secondary);">
-                <div style="font-size: 48px; margin-bottom: 20px;">📭</div>
+                <div style="font-size: 48px; margin-bottom: 20px;">${wwIcon('inbox')}</div>
                 <p style="font-size: 16px; margin-bottom: 10px;">${t('rules.empty.title')}</p>
                 <p style="font-size: 14px;">${t('rules.empty.text')}</p>
             </div>
@@ -100,11 +100,11 @@ function renderRuleCard(rule) {
     const cardOpacity = isEnabled ? 'opacity: 1;' : 'opacity: 0.65; background: #f8fafc;';
     const titleColor = isEnabled ? 'color: var(--text-main);' : 'color: var(--text-muted); text-decoration: line-through;';
     const deliveryBadge = deliveryUnhealthy
-        ? '<span class="badge badge-danger">🚨 ' + t('rules.health.failed', { count: deliveryFailures || 1 }) + '</span>'
+        ? '<span class="badge badge-danger">' + wwIcon('alert-triangle') + ' ' + t('rules.health.failed', { count: deliveryFailures || 1 }) + '</span>'
         : (deliveryRetrying
-            ? '<span class="badge" style="background:var(--warning-bg); color:var(--warning);">⏳ ' + t('rules.health.retrying') + '</span>'
+            ? '<span class="badge" style="background:var(--warning-bg); color:var(--warning);">' + wwIcon('clock') + ' ' + t('rules.health.retrying') + '</span>'
             : (deliveryStatus === 'sent'
-                ? '<span class="badge badge-success">✅ ' + t('rules.health.healthy') + '</span>'
+                ? '<span class="badge badge-success">' + wwIcon('check') + ' ' + t('rules.health.healthy') + '</span>'
                 : ''));
     const deliveryDetail = rule.last_delivery_at
         ? '<div style="margin-top:0.75rem; font-size:0.82rem; color:' +
@@ -120,10 +120,10 @@ function renderRuleCard(rule) {
     // load; an enabled rule with zero matches is a "zombie" rule worth reviewing.
     const hits = Number(rule.hit_count || 0);
     const hitBadge = hits > 0
-        ? '<span class="badge badge-success" title="' + escapeHtml(t('rules.roi.tooltip')) + '">🎯 ' +
+        ? '<span class="badge badge-success" title="' + escapeHtml(t('rules.roi.tooltip')) + '">' +
             t('rules.roi.hits', { count: hits }) + '</span>'
         : (isEnabled
-            ? '<span class="badge badge-danger" title="' + escapeHtml(t('rules.roi.zombieTooltip')) + '">⚠️ ' +
+            ? '<span class="badge badge-danger" title="' + escapeHtml(t('rules.roi.zombieTooltip')) + '">' +
                 t('rules.roi.zombie') + '</span>'
             : '<span class="badge badge-outline">' + t('rules.roi.hits', { count: 0 }) + '</span>');
     const lastMatched = rule.last_matched_at
@@ -189,7 +189,7 @@ function renderRuleCard(rule) {
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
                 <!-- Match conditions area -->
                 <div class="rule-conditions" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--bg-subtle); padding: 1.25rem; border-radius: 8px; border: 1px dashed var(--border);">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🎯 ${t('rules.card.matchConditions')}</div>
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">' + wwIcon('target') + ' ${t('rules.card.matchConditions')}</div>
                     ${rule.match_event_type ? '<div style="margin-bottom:0.5rem;"><strong>' + t('rules.card.eventType') + ':</strong> ' + (function() { var types = rule.match_event_type.split(',').map(function(et) { var m = { webhook_forward: t('rules.evtType.webhook_forward'), manual_forward: t('rules.evtType.manual_forward'), ai_error: t('rules.evtType.ai_error'), ai_degraded: t('rules.evtType.ai_degraded'), deep_analysis: t('rules.evtType.deep_analysis'), outbox_exhausted: t('rules.evtType.outbox_exhausted'), rule_test: t('rules.evtType.rule_test') }; return '<span style="display:inline-block;background:var(--primary-bg);color:var(--primary);padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;margin-right:4px;">' + (m[et.trim()] || et.trim()) + '</span>'; }); return types.join(''); })() + '</div>' : ''}
                     <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.importance')}:</strong> ${importanceText}</div>
                     <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.alertStatus')}:</strong> ${duplicateText}</div>
@@ -202,7 +202,7 @@ function renderRuleCard(rule) {
 
                 <!-- Forward target area -->
                 <div class="rule-target" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--success-bg); padding: 1.25rem; border-radius: 8px; border: 1px dashed rgba(5,150,105,0.3);">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--success); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">🚀 ${t('rules.card.action')}</div>
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--success); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">' + wwIcon('send') + ' ${t('rules.card.action')}</div>
                     <div style="margin-bottom: 0.75rem;">
                         <strong>${t('rules.card.pushTo')}:</strong> ${targetTypeText}
                         ${rule.target_name ? `(${escapeHtml(rule.target_name)})` : ''}
@@ -210,7 +210,7 @@ function renderRuleCard(rule) {
                     <div style="word-break: break-all; color: var(--text-main); font-family: var(--font-mono); font-size: 0.85rem; background: var(--bg-surface); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border); box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
                         ${escapeHtml(rule.target_url || '-')}
                     </div>
-                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: var(--warning); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span>🛑</span> ' + t('rules.card.stopOnMatch') + '</div>' : ''}
+                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: var(--warning); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span></span> ' + t('rules.card.stopOnMatch') + '</div>' : ''}
                     ${deliveryDetail}
                 </div>
             </div>
@@ -219,13 +219,13 @@ function renderRuleCard(rule) {
 
             <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid var(--border);">
                 <button class="btn" onclick="testRule(${rule.id})" style="color: var(--primary); border-color: var(--primary-light); background: var(--primary-bg); font-weight: 600;">
-                    🧪 ${t('rules.action.test')}
+                    ' + wwIcon('flask') + ' ${t('rules.action.test')}
                 </button>
                 <button class="btn" onclick="showRuleForm(${rule.id})" style="font-weight: 600;">
-                    ✏️ ${t('rules.action.edit')}
+                    ' + wwIcon('pencil') + ' ${t('rules.action.edit')}
                 </button>
                 <button class="btn" onclick="deleteRule(${rule.id})" style="color: var(--danger); border-color: rgba(225,29,72,0.2); background: var(--danger-bg); font-weight: 600;">
-                    🗑️ ${t('rules.action.delete')}
+                    ' + wwIcon('trash') + ' ${t('rules.action.delete')}
                 </button>
             </div>
         </div>
@@ -445,15 +445,15 @@ async function saveRule() {
         }
 
         if (result.success) {
-            alert(ruleId ? '✅ ' + t('rules.alert.updateSuccess') : '✅ ' + t('rules.alert.createSuccess'));
+            alert(ruleId ? '' + t('rules.alert.updateSuccess') : '' + t('rules.alert.createSuccess'));
             closeRuleForm();
             loadForwardRules();
         } else {
-            alert('❌ ' + t('rules.alert.saveFailed') + ': ' + (result.error || t('common.unknownError')));
+            alert('' + t('rules.alert.saveFailed') + ': ' + (result.error || t('common.unknownError')));
         }
     } catch (error) {
-        console.error('❌ Failed to save rule:', error);
-        alert('❌ ' + t('rules.alert.saveFailed') + ': ' + error.message);
+        console.error('Failed to save rule:', error);
+        alert('' + t('rules.alert.saveFailed') + ': ' + error.message);
     }
 }
 
@@ -475,12 +475,12 @@ async function toggleRule(id, enabled) {
             // Re-render
             renderForwardRules(forwardRules);
         } else {
-            alert('❌ ' + t('rules.alert.operationFailed') + ': ' + (result.error || t('common.unknownError')));
+            alert('' + t('rules.alert.operationFailed') + ': ' + (result.error || t('common.unknownError')));
             loadForwardRules(); // Reload to restore state
         }
     } catch (error) {
-        console.error('❌ Failed to toggle rule state:', error);
-        alert('❌ ' + t('rules.alert.operationFailed') + ': ' + error.message);
+        console.error('Failed to toggle rule state:', error);
+        alert('' + t('rules.alert.operationFailed') + ': ' + error.message);
         loadForwardRules();
     }
 }
@@ -501,14 +501,14 @@ async function deleteRule(id) {
         const result = await API.deleteForwardRule(id);
 
         if (result.success) {
-            alert('✅ ' + t('rules.alert.deleteSuccess'));
+            alert('' + t('rules.alert.deleteSuccess'));
             loadForwardRules();
         } else {
-            alert('❌ ' + t('rules.alert.deleteFailed') + ': ' + (result.error || t('common.unknownError')));
+            alert('' + t('rules.alert.deleteFailed') + ': ' + (result.error || t('common.unknownError')));
         }
     } catch (error) {
-        console.error('❌ Failed to delete rule:', error);
-        alert('❌ ' + t('rules.alert.deleteFailed') + ': ' + error.message);
+        console.error('Failed to delete rule:', error);
+        alert('' + t('rules.alert.deleteFailed') + ': ' + error.message);
     }
 }
 
@@ -528,13 +528,13 @@ async function testRule(id) {
         const result = await API.testForwardRule(id);
 
         if (result.success) {
-            alert('✅ ' + t('rules.alert.testSuccess') + '\n\n' + (result.message || t('rules.alert.testMessageSent')));
+            alert('' + t('rules.alert.testSuccess') + '\n\n' + (result.message || t('rules.alert.testMessageSent')));
         } else {
-            alert('❌ ' + t('rules.alert.testFailed') + ': ' + (result.error || t('common.unknownError')));
+            alert('' + t('rules.alert.testFailed') + ': ' + (result.error || t('common.unknownError')));
         }
     } catch (error) {
-        console.error('❌ Failed to test rule:', error);
-        alert('❌ ' + t('rules.alert.testFailed') + ': ' + error.message);
+        console.error('Failed to test rule:', error);
+        alert('' + t('rules.alert.testFailed') + ': ' + error.message);
     }
 }
 

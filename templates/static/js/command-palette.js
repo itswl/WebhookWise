@@ -25,40 +25,40 @@ const CommandPalette = (function () {
         {
             title: 'nav.group.overview',
             items: [
-                { slug: 'overview', icon: '\u{1F4CA}', label: 'nav.dest.overview', keywords: 'overview home stats 总览 概览 首页' },
-                { slug: 'trace', icon: '\u{1F50E}', label: 'nav.dest.trace', keywords: 'decision trace why skipped 决策链 为什么 抑制' },
-                { slug: 'cost', icon: '\u{1F4B0}', label: 'nav.dest.cost', keywords: 'ai cost spend token 成本 花费' },
+                { slug: 'overview', icon: 'bar-chart', label: 'nav.dest.overview', keywords: 'overview home stats 总览 概览 首页' },
+                { slug: 'trace', icon: 'search', label: 'nav.dest.trace', keywords: 'decision trace why skipped 决策链 为什么 抑制' },
+                { slug: 'cost', icon: 'dollar', label: 'nav.dest.cost', keywords: 'ai cost spend token 成本 花费' },
             ],
         },
         {
             title: 'nav.group.inbox',
             items: [
-                { slug: 'alerts', icon: '\u{1F514}', label: 'nav.dest.alerts', keywords: 'alerts events inbox 告警 事件 收件箱' },
-                { slug: 'work-queue', icon: '\u{1F4CB}', label: 'nav.dest.workQueue', keywords: 'work queue triage sla 工作队列 待办' },
-                { slug: 'incidents', icon: '\u{1F525}', label: 'nav.dest.incidents', keywords: 'incidents outage 事件单 故障' },
-                { slug: 'investigations', icon: '\u{1F9EA}', label: 'nav.dest.investigations', keywords: 'deep analysis investigations 调查 深度分析' },
+                { slug: 'alerts', icon: 'bell', label: 'nav.dest.alerts', keywords: 'alerts events inbox 告警 事件 收件箱' },
+                { slug: 'work-queue', icon: 'list', label: 'nav.dest.workQueue', keywords: 'work queue triage sla 工作队列 待办' },
+                { slug: 'incidents', icon: 'flame', label: 'nav.dest.incidents', keywords: 'incidents outage 事件单 故障' },
+                { slug: 'investigations', icon: 'flask', label: 'nav.dest.investigations', keywords: 'deep analysis investigations 调查 深度分析' },
             ],
         },
         {
             title: 'nav.group.routing',
             items: [
-                { slug: 'rules', icon: '⚙️', label: 'nav.dest.rules', keywords: 'forward rules routing targets 转发 规则 路由' },
-                { slug: 'silences', icon: '\u{1F515}', label: 'nav.dest.silences', keywords: 'silence mute maintenance 静音 屏蔽 维护窗' },
-                { slug: 'sandbox', icon: '\u{1F9EB}', label: 'nav.dest.sandbox', keywords: 'sandbox test payload dry run 沙箱 测试' },
-                { slug: 'audit', icon: '\u{1F4DC}', label: 'nav.dest.audit', keywords: 'audit rule history 审计 变更' },
-                { slug: 'ingress', icon: '\u{1F4E5}', label: 'nav.dest.ingress', keywords: 'inbound setup webhook source 接入 来源' },
-                { slug: 'quality', icon: '✨', label: 'nav.dest.quality', keywords: 'alert quality schema 质量 数据质量' },
-                { slug: 'integrations', icon: '\u{1F517}', label: 'nav.dest.integrations', keywords: 'integrations feishu lark 集成 飞书' },
+                { slug: 'rules', icon: 'filter', label: 'nav.dest.rules', keywords: 'forward rules routing targets 转发 规则 路由' },
+                { slug: 'silences', icon: 'volume-x', label: 'nav.dest.silences', keywords: 'silence mute maintenance 静音 屏蔽 维护窗' },
+                { slug: 'sandbox', icon: 'zap', label: 'nav.dest.sandbox', keywords: 'sandbox test payload dry run 沙箱 测试' },
+                { slug: 'audit', icon: 'history', label: 'nav.dest.audit', keywords: 'audit rule history 审计 变更' },
+                { slug: 'ingress', icon: 'inbox', label: 'nav.dest.ingress', keywords: 'inbound setup webhook source 接入 来源' },
+                { slug: 'quality', icon: 'gauge', label: 'nav.dest.quality', keywords: 'alert quality schema 质量 数据质量' },
+                { slug: 'integrations', icon: 'link', label: 'nav.dest.integrations', keywords: 'integrations feishu lark 集成 飞书' },
             ],
         },
         {
             title: 'nav.group.operations',
             items: [
-                { slug: 'actions', icon: '\u{1F6E0}️', label: 'nav.dest.actions', keywords: 'action center queue todo 行动 待处理' },
-                { slug: 'noise', icon: '\u{1F507}', label: 'nav.dest.noise', keywords: 'noise reduction dedup 降噪 噪音' },
-                { slug: 'kb', icon: '\u{1F4D6}', label: 'nav.dest.kb', keywords: 'knowledge base drafts runbook 知识库 草稿' },
-                { slug: 'gaps', icon: '\u{1F573}️', label: 'nav.dest.gaps', keywords: 'knowledge gaps missing 知识缺口' },
-                { slug: 'settings', icon: '\u{1F39B}️', label: 'nav.dest.settings', keywords: 'runtime settings policy config 设置 配置 策略' },
+                { slug: 'actions', icon: 'wrench', label: 'nav.dest.actions', keywords: 'action center queue todo 行动 待处理' },
+                { slug: 'noise', icon: 'activity', label: 'nav.dest.noise', keywords: 'noise reduction dedup 降噪 噪音' },
+                { slug: 'kb', icon: 'book-open', label: 'nav.dest.kb', keywords: 'knowledge base drafts runbook 知识库 草稿' },
+                { slug: 'gaps', icon: 'lightbulb', label: 'nav.dest.gaps', keywords: 'knowledge gaps missing 知识缺口' },
+                { slug: 'settings', icon: 'sliders', label: 'nav.dest.settings', keywords: 'runtime settings policy config 设置 配置 策略' },
             ],
         },
     ];
@@ -142,7 +142,7 @@ const CommandPalette = (function () {
             }
             html += '<button type="button" class="palette-item' + (index === cursor ? ' is-active' : '') +
                 '" data-palette-index="' + index + '" role="option" aria-selected="' + (index === cursor) + '">' +
-                '<span class="palette-icon">' + item.icon + '</span>' +
+                '<span class="palette-icon">' + wwIcon(item.icon) + '</span>' +
                 '<span class="palette-label">' + escapeHtml(label(item)) + '</span>' +
                 '<span class="palette-slug">#/' + escapeHtml(item.slug) + '</span></button>';
         });

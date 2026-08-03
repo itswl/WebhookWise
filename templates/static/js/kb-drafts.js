@@ -14,7 +14,7 @@ const KbDraftsModule = (function () {
         const items = Array.isArray(drafts) ? drafts : [];
         if (!items.length) {
             listEl.innerHTML = '<div class="empty-state" style="text-align:center; padding:60px;">' +
-                '<div style="font-size:48px; margin-bottom:16px;">📚</div>' +
+                '<div style="font-size:48px; margin-bottom:16px;">' + wwIcon('book-open') + '</div>' +
                 '<div class="empty-title">' + escapeHtml(t('kb.empty.title')) + '</div>' +
                 '<div class="empty-text">' + escapeHtml(t('kb.empty.text')) + '</div></div>';
             return;
@@ -27,14 +27,14 @@ const KbDraftsModule = (function () {
             return '<div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px;">' +
                 '<div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start;">' +
                 '<div style="min-width:0;">' +
-                '<div style="font-weight:700; margin-bottom:6px; overflow-wrap:anywhere;">📄 ' + escapeHtml(draft.title || ref) + '</div>' +
+                '<div style="font-weight:700; margin-bottom:6px; overflow-wrap:anywhere;">' + wwIcon('file-text') + ' ' + escapeHtml(draft.title || ref) + '</div>' +
                 '<div style="font-size:0.8rem; color:var(--text-muted);">' +
                 '<span class="badge badge-outline" style="font-size:0.65rem;">' + escapeHtml(ref) + '</span> · ' +
                 escapeHtml(t('kb.chunks', { n: chunks })) + '</div></div>' +
                 '<span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">' + escapeHtml(when) + '</span></div>' +
                 '<div style="display:flex; gap:8px; margin-top:12px;">' +
-                '<button type="button" class="btn btn-sm btn-primary" data-kb-publish="' + escapeHtml(ref) + '">✅ ' + escapeHtml(t('kb.publish')) + '</button>' +
-                '<button type="button" class="btn btn-sm" data-kb-discard="' + escapeHtml(ref) + '">🗑️ ' + escapeHtml(t('kb.discard')) + '</button>' +
+                '<button type="button" class="btn btn-sm btn-primary" data-kb-publish="' + escapeHtml(ref) + '">' + wwIcon('check') + ' ' + escapeHtml(t('kb.publish')) + '</button>' +
+                '<button type="button" class="btn btn-sm" data-kb-discard="' + escapeHtml(ref) + '">' + wwIcon('trash') + ' ' + escapeHtml(t('kb.discard')) + '</button>' +
                 '</div></div>';
         }).join('') + '</div>';
 

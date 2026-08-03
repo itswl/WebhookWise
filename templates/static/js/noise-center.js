@@ -71,7 +71,7 @@ const NoiseCenterModule = (function () {
         if (!target) return;
         if (!items.length) {
             target.innerHTML = '<div class="empty-state" style="padding:36px; text-align:center;">' +
-                '<div style="font-size:40px; margin-bottom:10px;">✨</div><div class="empty-title">' +
+                '<div style="font-size:40px; margin-bottom:10px;">' + wwIcon('sparkles') + '</div><div class="empty-title">' +
                 escapeHtml(t('noise.empty.title')) + '</div><div class="empty-text">' +
                 escapeHtml(t('noise.empty.text')) + '</div></div>';
             return;

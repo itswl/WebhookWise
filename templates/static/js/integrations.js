@@ -24,7 +24,9 @@ const IntegrationsModule = (function () {
             catalog.map(function (item) {
                 return '<button type="button" class="integration-card" data-template="' + escapeHtml(item.id) +
                     '" style="text-align:left; padding:18px; border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--bg-surface); color:inherit; cursor:pointer;">' +
-                    '<div style="font-size:32px;">' + escapeHtml(item.icon || '🔌') + '</div>' +
+                    (item.icon
+                        ? '<div style="font-size:32px;">' + escapeHtml(item.icon) + '</div>'
+                        : '<div style="font-size:32px;">' + wwIcon('layers') + '</div>') +
                     '<div style="font-weight:700; margin:8px 0 5px;">' + escapeHtml(item.name) + '</div>' +
                     '<div style="font-size:0.82rem; color:var(--text-secondary); line-height:1.45;">' + escapeHtml(item.description) + '</div></button>';
             }).join('') + '</div>';

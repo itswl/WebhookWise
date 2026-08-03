@@ -165,7 +165,7 @@ const AlertQualityModule = (function () {
             '</div>' +
             (findings.length
                 ? '<div class="alert-quality-findings">' + findings.map(renderFinding).join('') + '</div>'
-                : '<div class="alert-quality-source-healthy">✓ ' +
+                : '<div class="alert-quality-source-healthy">' + wwIcon('check') + ' ' +
                     escapeHtml(t(source.event_count ? 'quality.source.healthy' : 'quality.source.noFindings')) +
                     '</div>') +
             '</article>';
@@ -173,7 +173,7 @@ const AlertQualityModule = (function () {
 
     function renderSources(sources) {
         if (!sources.length) {
-            return '<section class="alert-quality-panel"><div class="empty-state"><div class="empty-icon">📭</div>' +
+            return '<section class="alert-quality-panel"><div class="empty-state"><div class="empty-icon">' + wwIcon('inbox') + '</div>' +
                 '<div class="empty-title">' + escapeHtml(t('quality.empty.title')) + '</div>' +
                 '<div class="empty-text">' + escapeHtml(t('quality.empty.text')) + '</div></div></section>';
         }
@@ -193,7 +193,7 @@ const AlertQualityModule = (function () {
             shown: number(scan.source_limit),
             total: number(scan.source_total)
         }));
-        return '<div class="alert-quality-disclaimer"><span>🔒</span><div><strong>' +
+        return '<div class="alert-quality-disclaimer"><span>' + wwIcon('lock') + '</span><div><strong>' +
             escapeHtml(t('quality.readOnlyTitle')) + '</strong><p>' +
             escapeHtml(t('quality.readOnlyNote')) +
             (messages.length ? ' ' + escapeHtml(messages.join(' ')) : '') +
@@ -226,7 +226,7 @@ const AlertQualityModule = (function () {
             });
             render(payload.data || {});
         } catch (error) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div>' +
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('alert-triangle') + '</div>' +
                 '<div class="empty-title">' + escapeHtml(t('common.loadFailed')) + '</div>' +
                 '<div class="empty-text">' + escapeHtml(error.message || String(error)) + '</div></div>';
         } finally {

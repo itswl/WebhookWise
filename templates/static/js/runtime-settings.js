@@ -104,7 +104,7 @@ const RuntimeSettingsModule = (function () {
             overrideCell = renderEditor(setting) + errorHtml;
         } else {
             overrideCell = '<span style="' + MONO + '">' + (overridden ? escapeHtml(String(setting.override)) : '—') + '</span>' +
-                '<button type="button" class="btn btn-sm" data-rs-edit="' + escapeHtml(setting.key) + '" style="margin-left: 6px;">✏️ ' + t('rs.action.edit') + '</button>' +
+                '<button type="button" class="btn btn-sm" data-rs-edit="' + escapeHtml(setting.key) + '" style="margin-left: 6px;">' + wwIcon('pencil') + ' ' + t('rs.action.edit') + '</button>' +
                 errorHtml;
         }
 
@@ -132,7 +132,7 @@ const RuntimeSettingsModule = (function () {
 
         if (!settings.length) {
             container.innerHTML = '<div class="empty-state" style="text-align: center; padding: 60px; color: var(--text-secondary);">' +
-                '<div style="font-size: 48px; margin-bottom: 16px;">🎛️</div>' +
+                '<div style="font-size: 48px; margin-bottom: 16px;">' + wwIcon('sliders') + '</div>' +
                 '<div class="empty-title">' + escapeHtml(t('rs.empty.title')) + '</div>' +
                 '<div class="empty-text">' + escapeHtml(t('rs.empty.text')) + '</div></div>';
             return;
@@ -250,7 +250,7 @@ const RuntimeSettingsModule = (function () {
             editingValue = null;
             rowError = null;
             applyUpdated(result);
-            alert('✅ ' + t('rs.alert.saved'));
+            alert('' + t('rs.alert.saved'));
         } catch (error) {
             // Keep the row in edit mode with the typed value; the backend's
             // validation message is shown verbatim under the input.
@@ -269,7 +269,7 @@ const RuntimeSettingsModule = (function () {
             editingValue = null;
             rowError = null;
             applyUpdated(result);
-            alert('✅ ' + t('rs.alert.cleared'));
+            alert('' + t('rs.alert.cleared'));
         } catch (error) {
             rowError = { key: key, message: error.message || String(error) };
             render();
@@ -289,7 +289,7 @@ const RuntimeSettingsModule = (function () {
             render();
         } catch (error) {
             container.innerHTML = '<div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">' +
-                '<p>❌ ' + escapeHtml(t('common.loadFailed')) + ': ' + escapeHtml(error.message || String(error)) + '</p>' +
+                '<p>' + escapeHtml(t('common.loadFailed')) + ': ' + escapeHtml(error.message || String(error)) + '</p>' +
                 '<button class="btn" onclick="RuntimeSettingsModule.load()" style="margin-top: 10px;">' + t('common.retry') + '</button></div>';
         }
     }

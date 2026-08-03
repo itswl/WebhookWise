@@ -29,23 +29,23 @@ var DecisionTraceModule = (function () {
     // Display metadata per skip_code: icon + i18n label key. "none" is the
     // forwarded case; the rest are the suppressor / no-rule outcomes.
     var SKIP_CODE_META = {
-        'none': { icon: '✅', key: 'dt.code.none' },
-        'silenced': { icon: '🔕', key: 'dt.code.silenced' },
-        'cooldown': { icon: '⏳', key: 'dt.code.cooldown' },
-        'duplicate_no_rule': { icon: '🔁', key: 'dt.code.duplicateNoRule' },
-        'noise_suppressed': { icon: '🌊', key: 'dt.code.noiseSuppressed' },
-        'flapping': { icon: '📳', key: 'dt.code.flapping' },
-        'no_match': { icon: '🚫', key: 'dt.code.noMatch' },
-        'periodic_no_rule': { icon: '🔔', key: 'dt.code.periodicNoRule' }
+        'none': { icon: wwIcon('check'), key: 'dt.code.none' },
+        'silenced': { icon: wwIcon('volume-x'), key: 'dt.code.silenced' },
+        'cooldown': { icon: wwIcon('clock'), key: 'dt.code.cooldown' },
+        'duplicate_no_rule': { icon: wwIcon('refresh'), key: 'dt.code.duplicateNoRule' },
+        'noise_suppressed': { icon: wwIcon('activity'), key: 'dt.code.noiseSuppressed' },
+        'flapping': { icon: wwIcon('zap'), key: 'dt.code.flapping' },
+        'no_match': { icon: wwIcon('x'), key: 'dt.code.noMatch' },
+        'periodic_no_rule': { icon: wwIcon('bell'), key: 'dt.code.periodicNoRule' }
     };
 
     var STEP_META = {
-        'dedup': { icon: '🧬', key: 'dt.step.dedup' },
-        'analysis': { icon: '🧠', key: 'dt.step.analysis' },
-        'noise': { icon: '🌊', key: 'dt.step.noise' },
-        'silence': { icon: '🔕', key: 'dt.step.silence' },
-        'rule_match': { icon: '🎯', key: 'dt.step.ruleMatch' },
-        'forward': { icon: '📤', key: 'dt.step.forward' }
+        'dedup': { icon: wwIcon('activity'), key: 'dt.step.dedup' },
+        'analysis': { icon: wwIcon('lightbulb'), key: 'dt.step.analysis' },
+        'noise': { icon: wwIcon('activity'), key: 'dt.step.noise' },
+        'silence': { icon: wwIcon('volume-x'), key: 'dt.step.silence' },
+        'rule_match': { icon: wwIcon('target'), key: 'dt.step.ruleMatch' },
+        'forward': { icon: wwIcon('send'), key: 'dt.step.forward' }
     };
 
     function skipCodeLabel(code) {
@@ -79,12 +79,12 @@ var DecisionTraceModule = (function () {
                     '<div class="stat-trend">' + t('dt.stat.totalTrend') + '</div>' +
                 '</div>' +
                 '<div class="stat-card" style="border-left: 4px solid var(--success); background: #f0fdf4;">' +
-                    '<div class="stat-label" style="color: #059669;">✅ ' + t('dt.stat.forwarded') + '</div>' +
+                    '<div class="stat-label" style="color: #059669;">' + wwIcon('check') + ' ' + t('dt.stat.forwarded') + '</div>' +
                     '<div class="stat-value" style="color: var(--success); font-size: 2rem;">' + formatNumber(forwarded) + '</div>' +
                     '<div class="stat-trend" style="color: #059669;">' + fwdPct.toFixed(1) + '%</div>' +
                 '</div>' +
                 '<div class="stat-card" style="border-left: 4px solid var(--text-muted);">' +
-                    '<div class="stat-label">⏭️ ' + t('dt.stat.skipped') + '</div>' +
+                    '<div class="stat-label">' + wwIcon('skip-forward') + ' ' + t('dt.stat.skipped') + '</div>' +
                     '<div class="stat-value" style="font-size: 2rem;">' + formatNumber(skipped) + '</div>' +
                     '<div class="stat-trend">' + (100 - fwdPct).toFixed(1) + '%</div>' +
                 '</div>' +
@@ -115,7 +115,7 @@ var DecisionTraceModule = (function () {
     function renderEmptyStats() {
         var container = document.getElementById('decisionTraceStats');
         if (!container) return;
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">' + t('dt.empty.statsTitle') + '</div><div class="empty-text">' + t('dt.empty.statsText') + '</div></div>';
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('bar-chart') + '</div><div class="empty-title">' + t('dt.empty.statsTitle') + '</div><div class="empty-text">' + t('dt.empty.statsText') + '</div></div>';
     }
 
     function loadStats(period) {
@@ -178,13 +178,13 @@ var DecisionTraceModule = (function () {
             '<div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">' +
                 '<p style="margin: 0 0 1rem; color: var(--text-muted); font-size: 0.8rem;">' + t('dt.quality.note') + '</p>' +
                 '<div class="stats-grid" style="margin-bottom: 1.25rem;">' +
-                    '<div class="stat-card"><div class="stat-label">🧠 ' + t('dt.quality.aiJudgments') + '</div>' +
+                    '<div class="stat-card"><div class="stat-label">' + wwIcon('lightbulb') + ' ' + t('dt.quality.aiJudgments') + '</div>' +
                         '<div class="stat-value" style="font-size: 1.75rem;">' + formatNumber(aiTotal) + '</div>' +
                         '<div class="stat-trend">' + t('dt.quality.aiJudgmentsTrend') + '</div></div>' +
-                    '<div class="stat-card" style="border-left: 3px solid var(--warning);"><div class="stat-label">⚖️ ' + t('dt.quality.overrideRate') + '</div>' +
+                    '<div class="stat-card" style="border-left: 3px solid var(--warning);"><div class="stat-label">' + wwIcon('gauge') + ' ' + t('dt.quality.overrideRate') + '</div>' +
                         '<div class="stat-value" style="font-size: 1.75rem; color: var(--warning);">' + overrideRate.toFixed(1) + '%</div>' +
                         '<div class="stat-trend">' + t('dt.quality.overrideTrend', { n: formatNumber(data.override_count || 0) }) + '</div></div>' +
-                    '<div class="stat-card" style="border-left: 3px solid var(--text-muted);"><div class="stat-label">📉 ' + t('dt.quality.degradedRate') + '</div>' +
+                    '<div class="stat-card" style="border-left: 3px solid var(--text-muted);"><div class="stat-label">' + wwIcon('activity') + ' ' + t('dt.quality.degradedRate') + '</div>' +
                         '<div class="stat-value" style="font-size: 1.75rem;">' + degradedRate.toFixed(1) + '%</div>' +
                         '<div class="stat-trend">' + t('dt.quality.degradedTrend', { n: formatNumber(data.degraded_total || 0) }) + '</div></div>' +
                 '</div>';
@@ -214,7 +214,7 @@ var DecisionTraceModule = (function () {
                 var dist = byRule[rule];
                 var srcTotal = Object.keys(dist).reduce(function (s, k) { return s + dist[k]; }, 0);
                 html += '<div style="margin-bottom: 0.75rem;">' +
-                    '<div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.3rem;">📡 ' + escapeHtml(rule) + ' <span style="color:var(--text-muted);">(' + srcTotal + ')</span></div>' +
+                    '<div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.3rem;">' + wwIcon('radio') + ' ' + escapeHtml(rule) + ' <span class="ww-muted">(' + srcTotal + ')</span></div>' +
                     distributionBar(dist, srcTotal, IMPORTANCE_COLORS) + '</div>';
             });
         }
@@ -244,9 +244,9 @@ var DecisionTraceModule = (function () {
 
     function outcomeBadge(trace) {
         if (trace.outcome === 'forwarded') {
-            return '<span class="badge badge-success" style="font-size: 0.7rem;">✅ ' + t('dt.outcome.forwarded') + '</span>';
+            return '<span class="badge badge-success" style="font-size: 0.7rem;">' + wwIcon('check') + ' ' + t('dt.outcome.forwarded') + '</span>';
         }
-        return '<span class="badge" style="background: #e2e8f0; color: #334155; font-size: 0.7rem;">⏭️ ' + t('dt.outcome.skipped') + '</span>';
+        return '<span class="badge" style="background: #e2e8f0; color: #334155; font-size: 0.7rem;">' + wwIcon('skip-forward') + ' ' + t('dt.outcome.skipped') + '</span>';
     }
 
     // Delivery (outbox) badge for a forwarded row — shows whether the
@@ -256,13 +256,13 @@ var DecisionTraceModule = (function () {
         var d = trace.delivery;
         if (!d || !d.state) return '';
         if (d.state === 'sent') {
-            return '<span class="badge badge-success" style="font-size: 0.7rem;">📨 ' + t('dt.delivery.sent') + '</span>';
+            return '<span class="badge badge-success" style="font-size: 0.7rem;">' + wwIcon('send') + ' ' + t('dt.delivery.sent') + '</span>';
         }
         if (d.state === 'pending') {
-            return '<span class="badge" style="background: #fef3c7; color: #b45309; font-size: 0.7rem;">🔁 ' + t('dt.delivery.pending') + '</span>';
+            return '<span class="badge" style="background: #fef3c7; color: #b45309; font-size: 0.7rem;">' + wwIcon('refresh') + ' ' + t('dt.delivery.pending') + '</span>';
         }
         if (d.state === 'failed') {
-            return '<span class="badge badge-danger" style="font-size: 0.7rem;">❌ ' + t('dt.delivery.failed') + '</span>';
+            return '<span class="badge badge-danger" style="font-size: 0.7rem;">' + wwIcon('x') + ' ' + t('dt.delivery.failed') + '</span>';
         }
         return '';
     }
@@ -324,11 +324,11 @@ var DecisionTraceModule = (function () {
 
     function deliveryStatusBadge(status) {
         var map = {
-            'sent': { cls: 'badge-success', icon: '📨' },
-            'pending': { cls: 'badge-outline', icon: '⏳' },
-            'processing': { cls: 'badge-outline', icon: '📤' },
-            'retrying': { cls: 'badge-outline', icon: '🔁' },
-            'exhausted': { cls: 'badge-danger', icon: '❌' },
+            'sent': { cls: 'badge-success', icon: wwIcon('send') },
+            'pending': { cls: 'badge-outline', icon: '' },
+            'processing': { cls: 'badge-outline', icon: wwIcon('send') },
+            'retrying': { cls: 'badge-outline', icon: wwIcon('refresh') },
+            'exhausted': { cls: 'badge-danger', icon: wwIcon('x') },
             'expired': { cls: 'badge-danger', icon: '⌛' }
         };
         var m = map[status] || { cls: 'badge-outline', icon: '•' };
@@ -347,21 +347,21 @@ var DecisionTraceModule = (function () {
     // and a manual re-enqueue button for retryable targets).
     function renderDeliveryTarget(tgt) {
         var rows = '';
-        rows += kvRow('📊 ' + t('dt.delivery.state'), deliveryStatusBadge(tgt.status));
-        rows += kvRow('🎯 ' + t('dt.delivery.target'),
+        rows += kvRow(wwIcon('bar-chart') + ' ' + t('dt.delivery.state'), deliveryStatusBadge(tgt.status));
+        rows += kvRow(wwIcon('target') + ' ' + t('dt.delivery.target'),
             escapeHtml(tgt.target_name || tgt.target_type || '—') +
-            (tgt.target_type ? ' <span style="color:var(--text-muted);">(' + escapeHtml(tgt.target_type) + ')</span>' : ''));
-        if (tgt.target_url) rows += kvRow('🔗 ' + t('dt.delivery.targetUrl'), '<code style="word-break:break-all;">' + escapeHtml(tgt.target_url) + '</code>');
-        if (tgt.rule_name) rows += kvRow('⚙️ ' + t('dt.delivery.rule'), escapeHtml(tgt.rule_name));
-        if (tgt.event_type) rows += kvRow('🏷️ ' + t('dt.delivery.eventType'),
+            (tgt.target_type ? ' <span class="ww-muted">(' + escapeHtml(tgt.target_type) + ')</span>' : ''));
+        if (tgt.target_url) rows += kvRow(wwIcon('link') + ' ' + t('dt.delivery.targetUrl'), '<code style="word-break:break-all;">' + escapeHtml(tgt.target_url) + '</code>');
+        if (tgt.rule_name) rows += kvRow(wwIcon('sliders') + ' ' + t('dt.delivery.rule'), escapeHtml(tgt.rule_name));
+        if (tgt.event_type) rows += kvRow(wwIcon('tag') + ' ' + t('dt.delivery.eventType'),
             escapeHtml(tgt.event_type) + (tgt.is_periodic_reminder ? ' <span class="badge badge-outline" style="font-size:0.6rem;">' + t('dt.periodicReminder') + '</span>' : ''));
-        rows += kvRow('🔢 ' + t('dt.delivery.attempts'), escapeHtml((tgt.attempts != null ? tgt.attempts : '—') + ' / ' + (tgt.max_attempts != null ? tgt.max_attempts : '—')));
-        if (tgt.sent_at) rows += kvRow('🕓 ' + t('dt.delivery.sentAt'), escapeHtml(new Date(tgt.sent_at).toLocaleString()));
-        if (tgt.next_attempt_at && tgt.status !== 'sent') rows += kvRow('⏭️ ' + t('dt.delivery.nextRetry'), escapeHtml(new Date(tgt.next_attempt_at).toLocaleString()));
-        if (tgt.last_error) rows += kvRow('⚠️ ' + t('dt.delivery.error'), '<span style="color: var(--danger);">' + escapeHtml(tgt.last_error) + '</span>');
+        rows += kvRow(wwIcon('list') + ' ' + t('dt.delivery.attempts'), escapeHtml((tgt.attempts != null ? tgt.attempts : '—') + ' / ' + (tgt.max_attempts != null ? tgt.max_attempts : '—')));
+        if (tgt.sent_at) rows += kvRow(wwIcon('clock') + ' ' + t('dt.delivery.sentAt'), escapeHtml(new Date(tgt.sent_at).toLocaleString()));
+        if (tgt.next_attempt_at && tgt.status !== 'sent') rows += kvRow(wwIcon('skip-forward') + ' ' + t('dt.delivery.nextRetry'), escapeHtml(new Date(tgt.next_attempt_at).toLocaleString()));
+        if (tgt.last_error) rows += kvRow(wwIcon('alert-triangle') + ' ' + t('dt.delivery.error'), '<span style="color: var(--danger);">' + escapeHtml(tgt.last_error) + '</span>');
         if (tgt.retryable && DT_ENABLE_RETRY) {
             rows += '<div class="dt-step-row"><div class="dt-step-name"></div><div class="dt-step-value">' +
-                '<button class="btn btn-sm" onclick="DecisionTraceModule.retryDelivery(' + tgt.outbox_id + ')">🔄 ' + t('dt.delivery.retry') + '</button></div></div>';
+                '<button class="btn btn-sm" onclick="DecisionTraceModule.retryDelivery(' + tgt.outbox_id + ')">' + wwIcon('refresh') + ' ' + t('dt.delivery.retry') + '</button></div></div>';
         }
         return '<div class="dt-chain" style="padding-top: 0;">' + rows + '</div>';
     }
@@ -402,7 +402,7 @@ var DecisionTraceModule = (function () {
             parts.push('<span class="badge badge-outline" style="font-size: 0.7rem;">' + skipCodeLabel(trace.skip_code) + '</span>');
         }
         if (trace.is_periodic_reminder) {
-            parts.push('<span class="badge" style="background: #fef3c7; color: #b45309; font-size: 0.7rem;">🔔 ' + t('dt.periodicReminder') + '</span>');
+            parts.push('<span class="badge" style="background: #fef3c7; color: #b45309; font-size: 0.7rem;">' + wwIcon('bell') + ' ' + t('dt.periodicReminder') + '</span>');
         }
         var delivery = deliveryBadge(trace);
         if (delivery) parts.push(delivery);
@@ -416,9 +416,9 @@ var DecisionTraceModule = (function () {
                         parts.join(' ') +
                         '<span class="da-alert-title"><a href="#/alerts/' + encodeURIComponent(trace.webhook_event_id) + '"'
                           + ' onclick="event.stopPropagation(); event.preventDefault(); openAlert(' + Number(trace.webhook_event_id) + ');"'
-                          + ' style="color: inherit; text-decoration: none;">🔔 '
+                          + ' style="color: inherit; text-decoration: none;">' + wwIcon('bell') + ' '
                           + t('dt.alertNumber', { n: escapeHtml(trace.webhook_event_id) }) + '</a></span>' +
-                        '<span class="da-source">📡 ' + metaLine + '</span>' +
+                        '<span class="da-source">' + wwIcon('radio') + ' ' + metaLine + '</span>' +
                     '</div>' +
                 '</div>' +
                 '<div class="da-summary-runtime"><div>' + escapeHtml(time) + '</div></div>' +
@@ -472,7 +472,7 @@ var DecisionTraceModule = (function () {
         if (!container) return;
 
         if (!traces || traces.length === 0) {
-            container.innerHTML = '<div style="text-align: center; padding: 40px; color: #888; background: var(--bg-surface); border-radius: var(--radius-lg); border: 1px dashed var(--border);">' + t('dt.empty.noTraces') + '</div>';
+            container.innerHTML = '<div class="ww-empty" style="background: var(--bg-surface); border-radius: var(--radius-lg); border: 1px dashed var(--border);">' + t('dt.empty.noTraces') + '</div>';
             return;
         }
 
@@ -523,7 +523,7 @@ var DecisionTraceModule = (function () {
                 } else {
                     isLoadingMore = false;
                     if (container && !append) {
-                        container.innerHTML = '<div style="text-align: center; padding: 40px; color: red;">' + t('common.loadFailed') + ': ' + escapeHtml(res && res.error) + '</div>';
+                        container.innerHTML = '<div class="ww-error">' + t('common.loadFailed') + ': ' + escapeHtml(res && res.error) + '</div>';
                     }
                     renderPagination();
                 }
@@ -531,7 +531,7 @@ var DecisionTraceModule = (function () {
             .catch(function (err) {
                 isLoadingMore = false;
                 if (container && !append) {
-                    container.innerHTML = '<div style="text-align: center; padding: 40px; color: red;">' + t('common.loadFailed') + ': ' + escapeHtml(err && err.message) + '</div>';
+                    container.innerHTML = '<div class="ww-error">' + t('common.loadFailed') + ': ' + escapeHtml(err && err.message) + '</div>';
                 }
                 renderPagination();
             });
@@ -543,7 +543,7 @@ var DecisionTraceModule = (function () {
         hasMoreTraces = false;
         var container = document.getElementById('decisionTraceList');
         if (container && !expandedIds.size) {
-            container.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">' + t('common.loading') + '</div>';
+            container.innerHTML = '<div class="ww-empty">' + t('common.loading') + '</div>';
         }
         return fetchPage(null, false);
     }
