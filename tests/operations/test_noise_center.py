@@ -126,3 +126,16 @@ async def test_temporary_silence_action_can_be_lifted_from_history(session: Asyn
     assert undone["changed"] is True
     await session.refresh(silence)
     assert silence.lifted_at is not None
+
+
+@pytest.mark.asyncio
+async def test_noisy_rules_reach_the_payload_top_level(session: AsyncSession) -> None:
+    """The rule-grain table shipped buried under summary.* once: the payload
+    assembler whitelists top-level keys, so a field added deep in
+    _window_metrics silently never reaches the UI."""
+    from services.operations.noise_center import get_noise_center
+
+    payload = await get_noise_center(session, window_days=7)
+
+    assert "noisy_rules" in payload
+    assert isinstance(payload["noisy_rules"], list)
