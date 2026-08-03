@@ -705,3 +705,14 @@ def test_sidebar_works_on_mobile_and_remembers_collapse() -> None:
     assert "translateX(-100%)" in css, "mobile must get the off-canvas drawer"
     assert 'id="sidebarMobileBtn"' in _dashboard_html(), "no way to open the drawer on touch"
     assert "SIDEBAR_COLLAPSED_KEY" in _static_js("dashboard.js")
+
+
+def test_module_lookup_never_goes_through_window_indexing() -> None:
+    """window[name] returns undefined for every const-declared module (a
+    top-level const creates a global binding, not a window property) — that
+    silently killed all seven Routing destinations while var-declared modules
+    kept working. Bare-identifier typeof guards are the only safe lookup."""
+    dashboard = _static_js("dashboard.js")
+    assert "window[moduleName]" not in dashboard
+    assert "typeof RoutingModule !== 'undefined'" in dashboard
+    assert "typeof DecisionTraceModule !== 'undefined'" in dashboard

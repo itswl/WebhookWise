@@ -24,10 +24,19 @@ const DASHBOARD_AUTO_REFRESH_INTERVAL_MS = 60000;
  * one from a URL. Every existing call site therefore gains URL sync without
  * being touched, and navigateTo() gives new code one way to jump anywhere.
  */
-// Module lookups stay late-bound and guarded, matching the rest of this file:
-// one module failing to parse must not take navigation down with it.
+// Module lookups stay late-bound and guarded — but NOT via window[name]:
+// a top-level `const` in a classic script creates a global BINDING with no
+// window property, so a window lookup returns undefined for every
+// const-declared module. That is exactly how all seven Routing destinations
+// went dead while the var-declared DecisionTraceModule kept working. `typeof`
+// on the bare identifier sees const bindings and stays safe when absent.
 function setSubView(moduleName, view) {
-    const module = window[moduleName];
+    let module;
+    if (moduleName === 'DecisionTraceModule' && typeof DecisionTraceModule !== 'undefined') {
+        module = DecisionTraceModule;
+    } else if (moduleName === 'RoutingModule' && typeof RoutingModule !== 'undefined') {
+        module = RoutingModule;
+    }
     if (module && typeof module.setView === 'function') {
         module.setView(view);
     } else {
