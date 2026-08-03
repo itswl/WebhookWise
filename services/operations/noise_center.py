@@ -481,7 +481,7 @@ def _serialize_action(action: NoiseReductionAction) -> dict[str, Any]:
 
 async def _current_window_state(
     session: AsyncSession, *, window_days: int
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Current-window metrics, sources, and suggestions.
 
     Shared by the dashboard view and by suggestion revalidation, so applying a
@@ -493,6 +493,7 @@ async def _current_window_state(
     current = await _window_metrics(session, start=start, end=now, include_sources=True)
     rule_keys = current.pop("_rule_keys")
     sources = list(current.pop("sources", []))
+    noisy_rules = list(current.pop("noisy_rules", []))
     suggestions = await _build_suggestions(
         session,
         window_days=window_days,
@@ -500,7 +501,7 @@ async def _current_window_state(
         sources=sources,
         rule_keys=rule_keys,
     )
-    return current, sources, suggestions
+    return current, sources, noisy_rules, suggestions
 
 
 async def get_noise_center(session: AsyncSession, *, window_days: int = 7) -> dict[str, Any]:
@@ -509,7 +510,7 @@ async def get_noise_center(session: AsyncSession, *, window_days: int = 7) -> di
     now = utcnow()
     start = now - timedelta(days=window_days)
     previous_start = start - timedelta(days=window_days)
-    current, sources, suggestions = await _current_window_state(session, window_days=window_days)
+    current, sources, noisy_rules, suggestions = await _current_window_state(session, window_days=window_days)
     previous = await _window_metrics(session, start=previous_start, end=start, include_sources=False)
     actions = list(
         (
@@ -532,6 +533,7 @@ async def get_noise_center(session: AsyncSession, *, window_days: int = 7) -> di
         },
         "assumptions": {"minutes_per_avoided_notification": _MINUTES_PER_AVOIDED_NOTIFICATION},
         "sources": sources,
+        "noisy_rules": noisy_rules,
         "suggestions": suggestions,
         "recent_actions": [_serialize_action(action) for action in actions],
     }
@@ -559,7 +561,7 @@ async def apply_noise_suggestion(
         return {"changed": False, "reason": "already_applied", "action": _serialize_action(existing)}
 
     window_days = max(1, min(90, int(window_days)))
-    _, _, suggestions = await _current_window_state(session, window_days=window_days)
+    _, _, _, suggestions = await _current_window_state(session, window_days=window_days)
     suggestion = next((item for item in suggestions if item["id"] == suggestion_id), None)
     if suggestion is None or not suggestion.get("action_available"):
         return {"changed": False, "reason": "suggestion_not_available"}
