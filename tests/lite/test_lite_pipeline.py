@@ -472,20 +472,22 @@ async def test_read_token_gates_the_read_surface(monkeypatch: pytest.MonkeyPatch
     lite_app = importlib.reload(lite.app)
     try:
         transport = httpx.ASGITransport(app=lite_app.app)
-        async with lite_app.lifespan(lite_app.app):
-            async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
-                assert (await client.get("/api/decisions")).status_code == 401
-                assert (await client.get("/api/stats")).status_code == 401
-                assert (await client.get("/api/decisions", headers={"X-Read-Token": "wrong"})).status_code == 401
-                assert (await client.get("/api/decisions", headers={"X-Read-Token": "rt-secret"})).status_code == 200
-                # Write power implies read power.
-                assert (await client.get("/api/stats", headers={"X-Read-Token": "at-secret"})).status_code == 200
-                # The healthcheck must keep working without any token.
-                assert (await client.get("/health")).status_code == 200
-                # The dashboard shell stays open; its data calls are what is gated.
-                assert (await client.get("/")).status_code == 200
-                # The API map hides once reads are private.
-                assert (await client.get("/docs")).status_code == 404
+        async with (
+            lite_app.lifespan(lite_app.app),
+            httpx.AsyncClient(transport=transport, base_url="http://t") as client,
+        ):
+            assert (await client.get("/api/decisions")).status_code == 401
+            assert (await client.get("/api/stats")).status_code == 401
+            assert (await client.get("/api/decisions", headers={"X-Read-Token": "wrong"})).status_code == 401
+            assert (await client.get("/api/decisions", headers={"X-Read-Token": "rt-secret"})).status_code == 200
+            # Write power implies read power.
+            assert (await client.get("/api/stats", headers={"X-Read-Token": "at-secret"})).status_code == 200
+            # The healthcheck must keep working without any token.
+            assert (await client.get("/health")).status_code == 200
+            # The dashboard shell stays open; its data calls are what is gated.
+            assert (await client.get("/")).status_code == 200
+            # The API map hides once reads are private.
+            assert (await client.get("/docs")).status_code == 404
     finally:
         monkeypatch.delenv("READ_TOKEN")
         monkeypatch.delenv("ADMIN_TOKEN")
