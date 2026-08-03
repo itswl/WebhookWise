@@ -844,3 +844,24 @@ def test_sidebar_never_shows_raw_i18n_keys() -> None:
     assert ready_block, "dictionary-settled hook missing"
     assert "renderSidebar()" in ready_block.group(1)
     assert "renderBreadcrumb(currentDestination)" in ready_block.group(1)
+
+
+def test_js_renderers_carry_no_hardcoded_colors() -> None:
+    """121 hex literals baked into renderers is how the dashboard froze
+    mid-redesign: inline colours never follow the tokens, so every theme
+    change strands them (the light-amber periodic-reminder badge on the dark
+    theme was the reported symptom). Colour comes from var(--...) or a class.
+    Six-digit hex is banned outright; three-digit hex is allowed only as the
+    &#039; HTML entity and inside comment prose (#123 as an example id)."""
+    import re as _re
+
+    from tests.helpers.paths import PROJECT_ROOT as _ROOT
+
+    offenders = {}
+    for path in sorted((_ROOT / "templates/static/js").glob("*.js")):
+        if path.name.startswith("i18n."):
+            continue
+        found = _re.findall(r"(?<!&)#[0-9a-fA-F]{6}\b", path.read_text())
+        if found:
+            offenders[path.name] = sorted(set(found))
+    assert offenders == {}, f"hardcoded colours crept back: {offenders}"
