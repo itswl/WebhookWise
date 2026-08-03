@@ -28,6 +28,7 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 | View the API | After startup, visit `http://localhost:8000/docs`; for export notes see [docs/reference/api.md](docs/reference/api.md) |
 | Understand the full system | [docs/architecture/system-overview.md](docs/architecture/system-overview.md) |
 | Understand module boundaries | [docs/architecture/boundaries.md](docs/architecture/boundaries.md) |
+| Dashboard design language | [docs/design-language.md](docs/design-language.md) |
 | Open the observability stack | [docs/operations/observability/local-lab/README.md](docs/operations/observability/local-lab/README.md) |
 | Query observability data | [docs/operations/observability/query-tools.md](docs/operations/observability/query-tools.md) |
 | Troubleshoot issues | [docs/operations/troubleshooting.md](docs/operations/troubleshooting.md) |

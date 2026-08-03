@@ -49,3 +49,7 @@ same change (and vice versa).
 - Keep metrics labels stable and machine-readable; do not derive metric dimensions by parsing log text or localized strings.
 - Add targeted tests for core delivery channels, especially Feishu, OpenClaw, forwarding, persistence, and dashboard static contracts.
 - Do not introduce new observability instruments unless a dashboard, alert, SLO, or automated decision consumes them.
+- Dashboard UI work follows `docs/design-language.md` (dark-first tokens,
+  colour-in-points, the icon sprite, the type scale). The contract tests in
+  `tests/runtime/test_dashboard_static_contracts.py` enforce it; a red
+  contract is the design system talking, not an obstacle to delete.
