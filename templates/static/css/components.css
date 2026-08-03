@@ -3939,3 +3939,65 @@ body.sidebar-collapsed .sidebar-collapse .sidebar-icon { transform: rotate(180de
   font-size: var(--fs-sm);
   color: var(--text-secondary);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Restraint pass — colour moves from surfaces to points
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Filled chips on every row made the console read as a mosaic. The cold
+   treatment: badge surfaces go neutral (transparent + hairline border,
+   secondary text); the STATUS lives in one small point of colour — the
+   badge's icon when it has one, a 6px dot when it doesn't. Severity stays
+   scannable, at a fraction of the ink. */
+
+.badge-high, .badge-medium, .badge-low, .badge-success, .badge-danger,
+.badge-warning, .badge-info, .badge-duplicate {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.badge-high .icon { color: var(--danger); }
+.badge-medium .icon { color: var(--warning); }
+.badge-low .icon, .badge-success .icon { color: var(--success); }
+.badge-danger .icon { color: var(--danger); }
+.badge-warning .icon { color: var(--warning); }
+.badge-info .icon, .badge-duplicate .icon { color: var(--info); }
+
+.badge-high::before, .badge-medium::before, .badge-low::before,
+.badge-success::before, .badge-danger::before, .badge-warning::before,
+.badge-info::before, .badge-duplicate::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+  background: currentColor;
+}
+
+.badge-high::before { background: var(--danger); }
+.badge-medium::before { background: var(--warning); }
+.badge-low::before, .badge-success::before { background: var(--success); }
+.badge-danger::before { background: var(--danger); }
+.badge-warning::before { background: var(--warning); }
+.badge-info::before, .badge-duplicate::before { background: var(--info); }
+
+/* An icon already carries the point of colour; don't double-mark. */
+.badge-high:has(.icon)::before, .badge-medium:has(.icon)::before,
+.badge-low:has(.icon)::before, .badge-success:has(.icon)::before,
+.badge-danger:has(.icon)::before, .badge-warning:has(.icon)::before,
+.badge-info:has(.icon)::before, .badge-duplicate:has(.icon)::before {
+  display: none;
+}
+
+/* Sidebar active: a permanently-visible element must not be a colour block.
+   Neutral fill, hairline accent, stronger text. */
+.sidebar-item.is-active {
+  background: var(--bg-subtle);
+  color: var(--text-main);
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+
+.icon-primary { color: var(--primary); }

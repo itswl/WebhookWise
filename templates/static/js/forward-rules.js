@@ -95,14 +95,14 @@ function renderRuleCard(rule) {
     const deliveryUnhealthy = deliveryStatus === 'exhausted' || deliveryFailures > 0;
     const deliveryRetrying = deliveryStatus === 'retrying' || deliveryStatus === 'processing';
     const cardBorder = deliveryUnhealthy
-        ? 'border-left: 4px solid var(--danger);'
-        : (isEnabled ? 'border-left: 4px solid var(--primary);' : 'border-left: 4px solid var(--border);');
+        ? 'border-left: 3px solid var(--danger);'
+        : (isEnabled ? '' : '');
     const cardOpacity = isEnabled ? 'opacity: 1;' : 'opacity: 0.65; background: var(--bg-subtle);';
     const titleColor = isEnabled ? 'color: var(--text-main);' : 'color: var(--text-muted); text-decoration: line-through;';
     const deliveryBadge = deliveryUnhealthy
         ? '<span class="badge badge-danger">' + wwIcon('alert-triangle') + ' ' + t('rules.health.failed', { count: deliveryFailures || 1 }) + '</span>'
         : (deliveryRetrying
-            ? '<span class="badge" style="background:var(--warning-bg); color:var(--warning);">' + wwIcon('clock') + ' ' + t('rules.health.retrying') + '</span>'
+            ? '<span class="badge badge-warning">' + wwIcon('clock') + ' ' + t('rules.health.retrying') + '</span>'
             : (deliveryStatus === 'sent'
                 ? '<span class="badge badge-success">' + wwIcon('check') + ' ' + t('rules.health.healthy') + '</span>'
                 : ''));
@@ -171,7 +171,7 @@ function renderRuleCard(rule) {
                         </span>
                     </label>
                     <span style="font-weight: 600; font-size: 1.15rem; ${titleColor}">${escapeHtml(rule.name)}</span>
-                    ${!isEnabled ? '<span class="badge" style="background: var(--bg-subtle); color: var(--text-muted); font-size: 0.75rem; border: 1px solid var(--border);">' + t('rules.card.disabled') + '</span>' : ''}
+                    ${!isEnabled ? '<span class="badge badge-outline" style="color: var(--text-muted); font-size: 0.75rem; border: 1px solid var(--border);">' + t('rules.card.disabled') + '</span>' : ''}
                     ${hitBadge}
                     ${deliveryBadge}
                 </div>

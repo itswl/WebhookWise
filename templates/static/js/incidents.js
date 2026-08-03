@@ -1070,7 +1070,7 @@ const IncidentsModule = (function () {
                 html += '</div>';
                 
                 // Card contents
-                var rootBadge = isRootAlert ? '<span class="badge badge-high" style="font-size:0.65rem; padding:1px 6px; background:var(--primary); color:white; font-weight:bold; border-radius:4px; margin-right:4px;">' + wwIcon('target') + ' ' + t('incidents.timeline.rootAlert') + '</span>' : '';
+                var rootBadge = isRootAlert ? '<span class="badge badge-outline" style="font-size:0.65rem; padding:1px 6px; margin-right:4px;">' + wwIcon('target', 'icon-primary') + ' ' + t('incidents.timeline.rootAlert') + '</span>' : '';
                 var dupBadge = m.is_duplicate ? '<span class="badge badge-outline" style="font-size:0.65rem; padding:1px 4px; margin-left:4px;">' + t('incidents.timeline.duplicate') + '</span>' : '';
                 
                 html += '<div style="background:var(--bg-subtle, var(--bg-subtle)); border:1px solid var(--border); border-radius:6px; padding:0.6rem 0.85rem; display:flex; flex-direction:column; gap:4px;">' +

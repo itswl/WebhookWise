@@ -78,7 +78,7 @@ function renderSandboxResult(d) {
     let html = '';
 
     // Summary banner
-    html += '<div style="background:var(--bg-surface); border:1px solid var(--border); border-left:4px solid ' + verdictColor + '; border-radius:var(--radius); padding:1rem 1.25rem; margin-bottom:1.5rem;">' +
+    html += '<div style="background:var(--bg-surface); border:1px solid var(--border); border-left:3px solid ' + verdictColor + '; border-radius:var(--radius); padding:1rem 1.25rem; margin-bottom:1.5rem;">' +
         '<div style="font-size:1.1rem; font-weight:700; color:' + verdictColor + '; display:flex; align-items:center; gap:8px;">' +
         '<span>' + verdictIcon + '</span> <span>' + escapeHtml(verdictText) + '</span>' +
         '</div>' +
