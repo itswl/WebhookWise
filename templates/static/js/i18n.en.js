@@ -183,7 +183,7 @@
             'overview.skipChip.drill': 'View these in Decision Trace',
             'overview.section.incidents': 'Active Incidents',
             'overview.section.trend': 'Trend',
-            'overview.section.topSources': 'Top Sources',
+            'overview.section.topRules': 'Top Alert Rules',
             'overview.queue.title': 'Ingest queue',
             'overview.queue.backlog': 'Backlog',
             'overview.queue.retention': 'Retention',

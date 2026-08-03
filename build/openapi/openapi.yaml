@@ -5416,12 +5416,12 @@ components:
             type: integer
           type: object
           title: Skip Code Breakdown
-        top_sources:
+        top_rules:
           items:
             additionalProperties: true
             type: object
           type: array
-          title: Top Sources
+          title: Top Rules
         delivery:
           additionalProperties: true
           type: object
@@ -5434,7 +5434,7 @@ components:
       - skipped
       - forward_rate
       - skip_code_breakdown
-      - top_sources
+      - top_rules
       - delivery
       title: OverviewData
       description: One-screen operational summary for the Overview home page.

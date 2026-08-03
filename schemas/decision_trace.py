@@ -51,7 +51,7 @@ class OverviewData(BaseModel):
     skipped: int
     forward_rate: float
     skip_code_breakdown: dict[str, int]
-    top_sources: list[dict[str, Any]]
+    top_rules: list[dict[str, Any]]
     delivery: dict[str, Any]
 
 

@@ -183,7 +183,7 @@
             'overview.skipChip.drill': '在决策追踪中查看这些',
             'overview.section.incidents': '活跃事件',
             'overview.section.trend': '趋势',
-            'overview.section.topSources': 'Top 来源',
+            'overview.section.topRules': 'Top 告警规则',
             'overview.queue.title': '队列积压',
             'overview.queue.backlog': '积压',
             'overview.queue.retention': '留存',
