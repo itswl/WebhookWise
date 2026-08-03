@@ -109,6 +109,66 @@ const DESTINATION_AREA = {
     operations: 'nav.group.operations',
 };
 
+const SIDEBAR_COLLAPSED_KEY = 'ww-sidebar-collapsed';
+
+/** Persistent left rail, rendered from the palette's destination groups so
+ * the two navigation surfaces cannot drift apart. Re-rendered on language
+ * change; active state is driven from recordDestination. */
+function renderSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar || typeof CommandPalette === 'undefined') return;
+    let html = '';
+    CommandPalette._groups.forEach(function (group) {
+        html += '<div class="sidebar-group">' + escapeHtml(t(group.title)) + '</div>';
+        group.items.forEach(function (item) {
+            html += '<button type="button" class="sidebar-item" data-sidebar-slug="' + item.slug + '"'
+                + ' onclick="navigateTo(\'' + item.slug + '\'); closeSidebarDrawer();"'
+                + ' title="' + escapeHtml(t(item.label)) + '">'
+                + '<span class="sidebar-icon" aria-hidden="true">' + item.icon + '</span>'
+                + '<span class="sidebar-label">' + escapeHtml(t(item.label)) + '</span>'
+                + (item.slug === 'incidents' ? '<span class="sidebar-badge" id="sidebarIncidentsBadge" style="display:none;"></span>' : '')
+                + '</button>';
+        });
+    });
+    html += '<button type="button" class="sidebar-collapse" id="sidebarCollapseBtn"'
+        + ' data-i18n-aria-label="nav.collapse" aria-label="Collapse">'
+        + '<span class="sidebar-icon" aria-hidden="true">&#x276E;</span>'
+        + '<span class="sidebar-label">' + escapeHtml(t('nav.collapse')) + '</span></button>';
+    sidebar.innerHTML = html;
+    const collapseBtn = document.getElementById('sidebarCollapseBtn');
+    if (collapseBtn) collapseBtn.addEventListener('click', toggleSidebarCollapsed);
+    updateSidebarActive(currentDestination);
+}
+
+function updateSidebarActive(slug) {
+    document.querySelectorAll('[data-sidebar-slug]').forEach(function (item) {
+        item.classList.toggle('is-active', item.getAttribute('data-sidebar-slug') === slug);
+    });
+}
+
+function toggleSidebarCollapsed() {
+    const collapsed = document.body.classList.toggle('sidebar-collapsed');
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : ''); } catch (e) { /* private mode */ }
+}
+
+function initSidebarState() {
+    try {
+        if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1') {
+            document.body.classList.add('sidebar-collapsed');
+        }
+    } catch (e) { /* private mode */ }
+    const mobileBtn = document.getElementById('sidebarMobileBtn');
+    const scrim = document.getElementById('sidebarScrim');
+    if (mobileBtn) mobileBtn.addEventListener('click', function () {
+        document.body.classList.toggle('sidebar-open');
+    });
+    if (scrim) scrim.addEventListener('click', closeSidebarDrawer);
+}
+
+function closeSidebarDrawer() {
+    document.body.classList.remove('sidebar-open');
+}
+
 /** The tab highlight is gone, so the breadcrumb is the only "where am I". */
 function renderBreadcrumb(slug) {
     const element = document.getElementById('breadcrumb');
@@ -126,6 +186,7 @@ function recordDestination(slug) {
     if (!DESTINATIONS[slug]) return;
     currentDestination = slug;
     renderBreadcrumb(slug);
+    updateSidebarActive(slug);
     const focus = pendingFocus ? '/' + encodeURIComponent(pendingFocus) : '';
     const next = '#/' + slug + focus;
     if (window.location.hash !== next) {
@@ -173,6 +234,7 @@ async function initDashboard() {
         || (typeof I18N.isReady === 'function' && I18N.isReady());
     if (typeof I18N !== 'undefined') {
         I18N.onChange(() => {
+            renderSidebar();
             updateAuthButtonState();
             updateAutoRefreshLabel();
             refreshCurrentTab();
@@ -223,6 +285,8 @@ async function initDashboard() {
     if (typeof CommandPalette !== 'undefined') {
         CommandPalette.init();
     }
+    renderSidebar();
+    initSidebarState();
 
     // Bind global events
     bindGlobalEvents();
@@ -572,6 +636,15 @@ var _incidentsBadgeTimer = null;
 function updateIncidentsBadge() {
     var badge = document.getElementById('incidentsBadge');
     if (!badge) return;
+    // The sidebar mirrors the count so it stays visible when the rail is the
+    // only navigation on screen.
+    var mirror = document.getElementById('sidebarIncidentsBadge');
+    var applyMirror = function () {
+        if (mirror) {
+            mirror.textContent = badge.textContent;
+            mirror.style.display = badge.style.display;
+        }
+    };
     // Only update badge if API is authenticated
     if (typeof API === 'undefined' || !API.getReadToken()) return;
     API.getIncidents({ status: 'active', page_size: 1 }).then(function (res) {
@@ -580,8 +653,10 @@ function updateIncidentsBadge() {
             if (count > 0) {
                 badge.textContent = count > 99 ? '99+' : String(count);
                 badge.style.display = 'inline-block';
+                applyMirror();
             } else {
                 badge.style.display = 'none';
+                applyMirror();
             }
         }
     }).catch(function () { /* badge is best-effort */ });

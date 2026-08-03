@@ -15,6 +15,8 @@
     <!-- Top navigation bar -->
     <nav class="navbar">
         <div class="navbar-content">
+            <button class="btn btn-icon sidebar-toggle-mobile" id="sidebarMobileBtn" type="button"
+                    data-i18n-aria-label="nav.menu" aria-label="Menu">&#9776;</button>
             <div class="logo">
                 <span>🔔</span>
                 <span data-i18n="nav.title">Webhook Monitor</span>
@@ -52,6 +54,12 @@
             </div>
         </div>
     </nav>
+
+    <!-- Persistent navigation: the industry-standard left rail. Rendered from
+         the SAME destination groups as the command palette (one source of
+         truth); the palette stays as the keyboard accelerator on top. -->
+    <aside class="sidebar" id="sidebar" data-i18n-aria-label="nav.menu" aria-label="Menu"></aside>
+    <div class="sidebar-scrim" id="sidebarScrim"></div>
 
     <!-- Main container -->
     <div class="container">
