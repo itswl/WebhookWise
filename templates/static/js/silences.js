@@ -230,8 +230,9 @@ function renderSilenceCard(silence) {
     // keep; an active rule that has suppressed nothing is a "zombie" worth a look.
     const suppressed = Number(silence.suppressed_count || 0);
     const suppressedBadge = suppressed > 0
-        ? '<span class="badge badge-success" title="' + escapeHtml(t('silences.roi.tooltip')) + '">' +
-            t('silences.roi.suppressed', { count: suppressed }) + '</span>'
+        ? '<button type="button" class="badge badge-success badge-drill" title="' + escapeHtml(t('silences.roi.tooltip')) + '"' +
+            ' onclick="navigateTo(\'trace\'); DecisionTraceModule.filterBySilence(' + Number(silence.id) + ');">' +
+            t('silences.roi.suppressed', { count: suppressed }) + '</button>'
         : (isActive
             ? '<span class="badge badge-danger" title="' + escapeHtml(t('silences.roi.zombieTooltip')) + '">' +
                 t('silences.roi.zombie') + '</span>'

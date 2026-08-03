@@ -581,6 +581,8 @@ const API = {
         if (params.skip_code) queryParams.append('skip_code', params.skip_code);
         if (params.source) queryParams.append('source', params.source);
         if (params.delivery) queryParams.append('delivery', params.delivery);
+        if (params.silence_id) queryParams.append('silence_id', params.silence_id);
+        if (params.matched_rule) queryParams.append('matched_rule', params.matched_rule);
         const response = await this.authenticatedFetch('/v1/decision-traces?' + queryParams.toString());
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return await response.json();

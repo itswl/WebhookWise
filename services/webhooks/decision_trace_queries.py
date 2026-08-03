@@ -559,6 +559,8 @@ async def list_decision_traces(
     skip_code: str = "",
     source: str = "",
     delivery: str = "",
+    silence_id: int | None = None,
+    matched_rule: str = "",
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], bool, int | None]:
@@ -576,6 +578,15 @@ async def list_decision_traces(
         query = query.where(DecisionTrace.skip_code == skip_code)
     if source:
         query = query.where(DecisionTrace.source == source)
+    if silence_id is not None:
+        # "Which alerts did THIS silence swallow" — the drill the silence
+        # card's suppressed-count badge points at (partial index on the
+        # column: only silenced rows carry one).
+        query = query.where(DecisionTrace.silence_id == silence_id)
+    if matched_rule:
+        # JSONB containment over matched_rules; no index, but rule-scoped
+        # queries are operator drills, not hot paths.
+        query = query.where(DecisionTrace.matched_rules.contains([matched_rule]))
     if delivery == "failed":
         # "Delivery failed" = the alert was forwarded but at least one of its
         # outbox targets is exhausted/expired. Filter at the SQL level (EXISTS)

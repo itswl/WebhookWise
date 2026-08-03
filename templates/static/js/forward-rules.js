@@ -120,8 +120,9 @@ function renderRuleCard(rule) {
     // load; an enabled rule with zero matches is a "zombie" rule worth reviewing.
     const hits = Number(rule.hit_count || 0);
     const hitBadge = hits > 0
-        ? '<span class="badge badge-success" title="' + escapeHtml(t('rules.roi.tooltip')) + '">' +
-            t('rules.roi.hits', { count: hits }) + '</span>'
+        ? '<button type="button" class="badge badge-success badge-drill" title="' + escapeHtml(t('rules.roi.tooltip')) + '"' +
+            ' data-drill-rule="' + escapeHtml(rule.name) + '">' +
+            t('rules.roi.hits', { count: hits }) + '</button>'
         : (isEnabled
             ? '<span class="badge badge-danger" title="' + escapeHtml(t('rules.roi.zombieTooltip')) + '">' +
                 t('rules.roi.zombie') + '</span>'
@@ -544,3 +545,17 @@ const ForwardRulesModule = {
     },
     loadRules: loadForwardRules
 };
+
+
+// Rule-name drill: delegated because rule names carry arbitrary characters
+// (Chinese, quotes) that inline onclick escaping would mangle. getAttribute
+// returns the decoded original, which is exactly what the filter needs.
+document.addEventListener('click', function (event) {
+    const drill = event.target.closest('[data-drill-rule]');
+    if (!drill) return;
+    const name = drill.getAttribute('data-drill-rule');
+    if (typeof navigateTo === 'function') navigateTo('trace');
+    if (typeof DecisionTraceModule !== 'undefined' && typeof DecisionTraceModule.filterByRule === 'function') {
+        DecisionTraceModule.filterByRule(name);
+    }
+});

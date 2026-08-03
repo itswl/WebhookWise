@@ -95,6 +95,8 @@ async def list_decision_traces_endpoint(
     skip_code: str = Query("", max_length=40),
     source: str = Query("", max_length=100),
     delivery: str = Query("", pattern="^(failed|)$"),
+    silence_id: int | None = Query(None, ge=1),
+    matched_rule: str = Query("", max_length=100),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """List decision traces (newest first), each with its full chain inline."""
@@ -105,6 +107,8 @@ async def list_decision_traces_endpoint(
         skip_code=skip_code,
         source=source,
         delivery=delivery,
+        silence_id=silence_id,
+        matched_rule=matched_rule,
         page=page,
         page_size=page_size,
     )

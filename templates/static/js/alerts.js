@@ -1201,7 +1201,13 @@ const AlertsModule = {
     /** Scroll to and expand the alert item with the given id. */
     _scrollToAlert(eventId) {
         var item = document.querySelector('.alert-item[data-id="' + eventId + '"]');
-        if (!item) return;
+        if (!item) {
+            // The target is filtered out or on another page: the silent no-op
+            // here was audit finding #3. focusAlertById clears filters,
+            // paginates, and fetches from the API if needed.
+            this.focusAlertById(eventId);
+            return;
+        }
         item.scrollIntoView({ behavior: 'smooth', block: 'center' });
         if (!item.classList.contains('expanded')) {
             item.classList.add('expanded');

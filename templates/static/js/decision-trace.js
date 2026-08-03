@@ -15,6 +15,11 @@ var DecisionTraceModule = (function () {
     var currentOutcome = '';
     var currentSource = '';
     var currentDelivery = '';  // '' | 'failed'
+    // Drill filters set from other views (a silence card, a rule card); they
+    // narrow the list to "what did THIS object do" and clear on any manual
+    // result-filter change like the other filters do.
+    var currentSilenceId = null;
+    var currentMatchedRule = '';
     var knownSources = [];     // populated from quality stats to fill the source dropdown
     var loadedTraces = [];
     var nextCursor = null;
@@ -515,7 +520,9 @@ var DecisionTraceModule = (function () {
             outcome: currentOutcome,
             skip_code: currentSkipCode,
             source: currentSource,
-            delivery: currentDelivery
+            delivery: currentDelivery,
+            silence_id: currentSilenceId,
+            matched_rule: currentMatchedRule
         })
             .then(function (res) {
                 if (res && res.success) {
@@ -715,6 +722,8 @@ var DecisionTraceModule = (function () {
     // Apply a result selection: '' (all) / 'forwarded' / 'skipped' / 'failed'.
     function setResult(value) {
         currentSkipCode = '';
+        currentSilenceId = null;
+        currentMatchedRule = '';
         if (value === 'failed') {
             currentDelivery = 'failed';
             currentOutcome = 'forwarded';  // failed delivery implies it was forwarded
@@ -780,6 +789,24 @@ var DecisionTraceModule = (function () {
         loadMore: loadMore,
         setPeriod: setPeriod,
         setResult: setResult,
+        // Drills from other views: land on the trace list scoped to one
+        // silence / one forward rule.
+        filterBySilence: function (silenceId) {
+            currentSilenceId = Number(silenceId) || null;
+            currentMatchedRule = '';
+            currentSkipCode = 'silenced';
+            currentOutcome = '';
+            currentDelivery = '';
+            setView('trace');
+        },
+        filterByRule: function (ruleName) {
+            currentMatchedRule = String(ruleName || '');
+            currentSilenceId = null;
+            currentSkipCode = '';
+            currentOutcome = '';
+            currentDelivery = '';
+            setView('trace');
+        },
         setView: setView,
         toggleExpand: toggleExpand,
         retryDelivery: retryDelivery,

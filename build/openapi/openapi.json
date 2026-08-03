@@ -818,6 +818,34 @@
               "default": "",
               "title": "Delivery"
             }
+          },
+          {
+            "name": "silence_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Silence Id"
+            }
+          },
+          {
+            "name": "matched_rule",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100,
+              "default": "",
+              "title": "Matched Rule"
+            }
           }
         ],
         "responses": {
