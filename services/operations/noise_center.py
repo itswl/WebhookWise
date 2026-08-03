@@ -141,13 +141,16 @@ async def _window_metrics(
     recovery_denominator = len(payload_rows) if recovery_sampled else total
     recoveries = 0
     recovery_by_source: dict[str, int] = {}
+    recovery_by_rule: dict[str, int] = {}
     rule_keys: dict[tuple[str, str], str] = {}
     for source, parsed_data, ai_analysis in payload_rows:
         source_name = str(source or "unknown").strip()
+        identity = _rule_identity(parsed_data)
+        rule_label = identity[1] if identity is not None else source_name
         if is_recovery_payload(parsed_data, ai_analysis):
             recoveries += 1
             recovery_by_source[source_name] = recovery_by_source.get(source_name, 0) + 1
-        identity = _rule_identity(parsed_data)
+            recovery_by_rule[rule_label] = recovery_by_rule.get(rule_label, 0) + 1
         if identity is not None:
             key, rule_name = identity
             rule_keys.setdefault((source_name, rule_name), key)
@@ -227,6 +230,68 @@ async def _window_metrics(
     result["sources"] = sorted(sources, key=lambda item: (-int(item["noise_events"]), -int(item["total"])))[
         :_MAX_SOURCES
     ]
+
+    # The UI table ranks by alert RULE — "grafana: 189" names an ecosystem,
+    # not a culprit. Traces carry alert_name; events without one fall back to
+    # their source so unidentified senders stay visible. The source-grain
+    # list above stays: the suggestion engine matches rules by source.
+    trace_name_rows = (
+        await session.execute(
+            select(
+                DecisionTrace.webhook_event_id, DecisionTrace.alert_name, DecisionTrace.outcome, DecisionTrace.skip_code
+            ).where(trace_window)
+        )
+    ).all()
+    name_by_event: dict[int, str | None] = {}
+    avoided_by_rule: dict[str, int] = {}
+    for event_id, alert_name, _outcome, _skip_code in trace_name_rows:
+        if event_id is not None:
+            name_by_event[int(event_id)] = alert_name
+    event_rows = (
+        await session.execute(
+            select(WebhookEvent.id, WebhookEvent.source, WebhookEvent.is_duplicate).where(event_window)
+        )
+    ).all()
+    noise_ids = {
+        int(row[0])
+        for row in (
+            await session.execute(
+                select(distinct(WebhookEvent.id))
+                .select_from(WebhookEvent)
+                .outerjoin(DecisionTrace, DecisionTrace.webhook_event_id == WebhookEvent.id)
+                .where(event_window, noise_condition)
+            )
+        ).all()
+    }
+    rules_agg: dict[str, dict[str, int]] = {}
+    for event_id, source, is_duplicate in event_rows:
+        label = name_by_event.get(int(event_id)) or str(source or "unknown").strip()
+        stats = rules_agg.setdefault(label, {"total": 0, "duplicates": 0, "noise_events": 0})
+        stats["total"] += 1
+        if is_duplicate:
+            stats["duplicates"] += 1
+        if int(event_id) in noise_ids:
+            stats["noise_events"] += 1
+    for _event_id, alert_name, outcome, skip_code in trace_name_rows:
+        if outcome == "skipped" and str(skip_code or "") in _NOISE_SKIP_CODES and alert_name:
+            avoided_by_rule[alert_name] = avoided_by_rule.get(alert_name, 0) + 1
+    noisy_rules = [
+        {
+            "name": label,
+            "total": stats["total"],
+            "duplicates": stats["duplicates"],
+            "duplicate_rate": _pct(stats["duplicates"], stats["total"]),
+            "noise_events": stats["noise_events"],
+            "noise_rate": _pct(stats["noise_events"], stats["total"]),
+            "recoveries": recovery_by_rule.get(label, 0),
+            "notifications_avoided": avoided_by_rule.get(label, 0),
+        }
+        for label, stats in rules_agg.items()
+    ]
+    noisy_rules.sort(
+        key=lambda item: (-rules_agg[str(item["name"])]["noise_events"], -rules_agg[str(item["name"])]["total"])
+    )
+    result["noisy_rules"] = noisy_rules[:_MAX_SOURCES]
     return result
 
 

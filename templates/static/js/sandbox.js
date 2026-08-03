@@ -194,7 +194,7 @@ function renderSandboxResult(d) {
         'Matches forwarding rules and schedules deliveries.',
         '<div style="display:flex; flex-direction:column; gap:6px;">' +
         '<div><strong>Matched rules:</strong></div>' +
-        '<div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border); border-radius:4px; padding:8px 12px;">' + rulesHtml + '</div>' +
+        '<div style="background:var(--bg-subtle, var(--bg-subtle)); border:1px solid var(--border); border-radius:4px; padding:8px 12px;">' + rulesHtml + '</div>' +
         '</div>'
     );
 
@@ -204,7 +204,7 @@ function renderSandboxResult(d) {
     const idJson = JSON.stringify(d.identity || {}, null, 2);
     html += '<details style="margin-top:1.5rem; border-top: 1px dashed var(--border); padding-top: 1rem;"><summary style="cursor:pointer; font-size:0.85rem; color:var(--text-secondary); font-weight:600;">' +
         escapeHtml(t('sandbox.section.extracted')) + '</summary>' +
-        '<pre style="background:var(--bg-subtle,#f1f5f9); padding:0.75rem; border-radius:6px; overflow:auto; font-size:0.75rem; margin-top:0.5rem; max-height:200px; border:1px solid var(--border);">' +
+        '<pre style="background:var(--bg-subtle,var(--bg-subtle)); padding:0.75rem; border-radius:6px; overflow:auto; font-size:0.75rem; margin-top:0.5rem; max-height:200px; border:1px solid var(--border);">' +
         escapeHtml(idJson) + '</pre></details>';
 
     return html;

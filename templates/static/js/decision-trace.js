@@ -78,10 +78,10 @@ var DecisionTraceModule = (function () {
                     '<div class="stat-value" style="font-size: 2rem;">' + formatNumber(total) + '</div>' +
                     '<div class="stat-trend">' + t('dt.stat.totalTrend') + '</div>' +
                 '</div>' +
-                '<div class="stat-card" style="border-left: 4px solid var(--success); background: #f0fdf4;">' +
-                    '<div class="stat-label" style="color: #059669;">' + wwIcon('check') + ' ' + t('dt.stat.forwarded') + '</div>' +
+                '<div class="stat-card" style="border-left: 4px solid var(--success); background: var(--success-bg);">' +
+                    '<div class="stat-label" style="color: var(--success);">' + wwIcon('check') + ' ' + t('dt.stat.forwarded') + '</div>' +
                     '<div class="stat-value" style="color: var(--success); font-size: 2rem;">' + formatNumber(forwarded) + '</div>' +
-                    '<div class="stat-trend" style="color: #059669;">' + fwdPct.toFixed(1) + '%</div>' +
+                    '<div class="stat-trend" style="color: var(--success);">' + fwdPct.toFixed(1) + '%</div>' +
                 '</div>' +
                 '<div class="stat-card" style="border-left: 4px solid var(--text-muted);">' +
                     '<div class="stat-label">' + wwIcon('skip-forward') + ' ' + t('dt.stat.skipped') + '</div>' +
@@ -144,11 +144,11 @@ var DecisionTraceModule = (function () {
         keys.sort(function (a, b) { return (breakdown[b] || 0) - (breakdown[a] || 0); });
         var segs = keys.map(function (k) {
             var pct = (breakdown[k] / total * 100);
-            var color = (colorMap && colorMap[k]) || '#94a3b8';
+            var color = (colorMap && colorMap[k]) || 'var(--text-muted)';
             return '<div title="' + escapeHtml(k) + ': ' + breakdown[k] + '" style="width:' + pct + '%; background:' + color + ';"></div>';
         }).join('');
         var legend = keys.map(function (k) {
-            var color = (colorMap && colorMap[k]) || '#94a3b8';
+            var color = (colorMap && colorMap[k]) || 'var(--text-muted)';
             var label = (colorMap && colorMap['_label_' + k]) || k;
             return '<span style="display:inline-flex; align-items:center; gap:4px; margin-right:12px; font-size:0.8rem; color:var(--text-secondary);">' +
                 '<span style="width:10px; height:10px; border-radius:2px; background:' + color + '; display:inline-block;"></span>' +
@@ -159,10 +159,10 @@ var DecisionTraceModule = (function () {
     }
 
     var IMPORTANCE_COLORS = {
-        'high': '#e11d48', '_label_high': 'high',
-        'medium': '#d97706', '_label_medium': 'medium',
-        'low': '#059669', '_label_low': 'low',
-        'unknown': '#94a3b8', '_label_unknown': 'unknown'
+        'high': 'var(--danger)', '_label_high': 'high',
+        'medium': 'var(--warning)', '_label_medium': 'medium',
+        'low': 'var(--success)', '_label_low': 'low',
+        'unknown': 'var(--text-muted)', '_label_unknown': 'unknown'
     };
 
     function renderQuality(data) {
@@ -246,7 +246,7 @@ var DecisionTraceModule = (function () {
         if (trace.outcome === 'forwarded') {
             return '<span class="badge badge-success" style="font-size: 0.7rem;">' + wwIcon('check') + ' ' + t('dt.outcome.forwarded') + '</span>';
         }
-        return '<span class="badge" style="background: #e2e8f0; color: #334155; font-size: 0.7rem;">' + wwIcon('skip-forward') + ' ' + t('dt.outcome.skipped') + '</span>';
+        return '<span class="badge" style="background: var(--border); color: var(--text-secondary); font-size: 0.7rem;">' + wwIcon('skip-forward') + ' ' + t('dt.outcome.skipped') + '</span>';
     }
 
     // Delivery (outbox) badge for a forwarded row — shows whether the
@@ -259,7 +259,7 @@ var DecisionTraceModule = (function () {
             return '<span class="badge badge-success" style="font-size: 0.7rem;">' + wwIcon('send') + ' ' + t('dt.delivery.sent') + '</span>';
         }
         if (d.state === 'pending') {
-            return '<span class="badge" style="background: #fef3c7; color: #b45309; font-size: 0.7rem;">' + wwIcon('refresh') + ' ' + t('dt.delivery.pending') + '</span>';
+            return '<span class="badge" style="background: var(--warning-bg); color: var(--warning); font-size: 0.7rem;">' + wwIcon('refresh') + ' ' + t('dt.delivery.pending') + '</span>';
         }
         if (d.state === 'failed') {
             return '<span class="badge badge-danger" style="font-size: 0.7rem;">' + wwIcon('x') + ' ' + t('dt.delivery.failed') + '</span>';
@@ -402,7 +402,7 @@ var DecisionTraceModule = (function () {
             parts.push('<span class="badge badge-outline" style="font-size: 0.7rem;">' + skipCodeLabel(trace.skip_code) + '</span>');
         }
         if (trace.is_periodic_reminder) {
-            parts.push('<span class="badge" style="background: #fef3c7; color: #b45309; font-size: 0.7rem;">' + wwIcon('bell') + ' ' + t('dt.periodicReminder') + '</span>');
+            parts.push('<span class="badge" style="background: var(--warning-bg); color: var(--warning); font-size: 0.7rem;">' + wwIcon('bell') + ' ' + t('dt.periodicReminder') + '</span>');
         }
         var delivery = deliveryBadge(trace);
         if (delivery) parts.push(delivery);

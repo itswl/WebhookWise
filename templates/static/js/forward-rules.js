@@ -96,8 +96,8 @@ function renderRuleCard(rule) {
     const deliveryRetrying = deliveryStatus === 'retrying' || deliveryStatus === 'processing';
     const cardBorder = deliveryUnhealthy
         ? 'border-left: 4px solid var(--danger);'
-        : (isEnabled ? 'border-left: 4px solid var(--primary);' : 'border-left: 4px solid #cbd5e1;');
-    const cardOpacity = isEnabled ? 'opacity: 1;' : 'opacity: 0.65; background: #f8fafc;';
+        : (isEnabled ? 'border-left: 4px solid var(--primary);' : 'border-left: 4px solid var(--border);');
+    const cardOpacity = isEnabled ? 'opacity: 1;' : 'opacity: 0.65; background: var(--bg-subtle);';
     const titleColor = isEnabled ? 'color: var(--text-main);' : 'color: var(--text-muted); text-decoration: line-through;';
     const deliveryBadge = deliveryUnhealthy
         ? '<span class="badge badge-danger">' + wwIcon('alert-triangle') + ' ' + t('rules.health.failed', { count: deliveryFailures || 1 }) + '</span>'
@@ -127,7 +127,7 @@ function renderRuleCard(rule) {
                 t('rules.roi.zombie') + '</span>'
             : '<span class="badge badge-outline">' + t('rules.roi.hits', { count: 0 }) + '</span>');
     const lastMatched = rule.last_matched_at
-        ? '<div style="margin-top: 0.75rem; color: #64748b; font-size: 0.85rem;">' +
+        ? '<div style="margin-top: 0.75rem; color: var(--text-muted); font-size: 0.85rem;">' +
             t('rules.roi.lastMatched', { time: (typeof formatTime === 'function' ? formatTime(rule.last_matched_at) : rule.last_matched_at) }) + '</div>'
         : '';
 

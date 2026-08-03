@@ -87,8 +87,8 @@ function copyToClipboard(btn) {
     navigator.clipboard.writeText(text).then(() => {
         const originalText = btn.textContent;
         btn.textContent = wwIcon('check') + ' ' + t('common.copied');
-        btn.style.background = '#28a745';
-        btn.style.borderColor = '#28a745';
+        btn.style.background = 'var(--success)';
+        btn.style.borderColor = 'var(--success)';
 
         setTimeout(() => {
             btn.textContent = originalText;
@@ -241,9 +241,9 @@ function showToast(message, type = 'info') {
     const toast = document.createElement('div');
     
     let icon = '';
-    let bgColor = 'var(--bg-elevated, #1e293b)';
-    let borderColor = 'var(--border, #475569)';
-    let textColor = 'var(--text-main, #f8fafc)';
+    let bgColor = 'var(--bg-elevated, var(--text-secondary))';
+    let borderColor = 'var(--border, var(--text-secondary))';
+    let textColor = 'var(--text-main, var(--bg-subtle))';
 
     const msgLower = String(message).toLowerCase();
     if (msgLower.includes('') || msgLower.includes('success') || msgLower.includes('成功')) {
@@ -251,25 +251,25 @@ function showToast(message, type = 'info') {
         type = 'success';
         bgColor = 'rgba(16, 185, 129, 0.15)';
         borderColor = 'rgba(16, 185, 129, 0.4)';
-        textColor = 'var(--success, #10b981)';
+        textColor = 'var(--success, var(--success))';
     } else if (msgLower.includes('') || msgLower.includes('failed') || msgLower.includes('error') || msgLower.includes('失败') || msgLower.includes('crashed')) {
         icon = '';
         type = 'error';
         bgColor = 'rgba(239, 68, 68, 0.15)';
         borderColor = 'rgba(239, 68, 68, 0.4)';
-        textColor = 'var(--danger, #ef4444)';
+        textColor = 'var(--danger, var(--danger))';
     } else if (msgLower.includes('') || msgLower.includes('warning') || msgLower.includes('警告') || msgLower.includes('conflict')) {
         icon = '';
         type = 'warning';
         bgColor = 'rgba(245, 158, 11, 0.15)';
         borderColor = 'rgba(245, 158, 11, 0.4)';
-        textColor = 'var(--warning, #f59e0b)';
+        textColor = 'var(--warning, var(--warning))';
     } else if (msgLower.includes('') || msgLower.includes('') || msgLower.includes('fresh') || msgLower.includes('started')) {
         icon = '';
         type = 'info';
         bgColor = 'rgba(99, 102, 241, 0.15)';
         borderColor = 'rgba(99, 102, 241, 0.4)';
-        textColor = 'var(--primary, #6366f1)';
+        textColor = 'var(--primary, var(--primary))';
     }
 
     // Clean prefix emojis

@@ -516,7 +516,7 @@ const AlertsModule = {
             if (webhook.parsed_data) {
                 html += renderJSONBlock(webhook.parsed_data, t('alerts.tab.rawData'));
             } else {
-                html += '<div style="padding: 2rem; text-align: center; color: #94a3b8;">' + t('alerts.noData') + '</div>';
+                html += '<div style="padding: 2rem; text-align: center; color: var(--text-muted);">' + t('alerts.noData') + '</div>';
             }
             html += '</div>';
 
@@ -537,8 +537,8 @@ const AlertsModule = {
                     html += '<div class="ai-item"><div class="ai-label">' + t('alerts.ai.importance') + '</div><div class="ai-value">' + getImportanceText(webhook.importance) + '</div></div>';
                 }
                 html += '</div></div>';
-                html += '<div style="margin-top: 1rem; padding: 0.75rem; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px;">';
-                html += '<p style="margin: 0; color: #0369a1; font-size: 0.9rem;">' + wwIcon('lightbulb') + ' ' + t('alerts.ai.autoLoadHint') + '</p>';
+                html += '<div style="margin-top: 1rem; padding: 0.75rem; background: var(--info-bg); border-left: 3px solid var(--info); border-radius: 4px;">';
+                html += '<p style="margin: 0; color: var(--info); font-size: 0.9rem;">' + wwIcon('lightbulb') + ' ' + t('alerts.ai.autoLoadHint') + '</p>';
                 html += '</div>';
                 html += '</div>';
             }
@@ -590,7 +590,7 @@ const AlertsModule = {
         }
         if (webhook.processing_status === 'failed' || webhook.processing_status === 'dead_letter') {
             const failure = webhook.failure_reason || webhook.error_message || '-';
-            html += '<div class="info-item" style="grid-column: 1 / -1;"><div class="info-label">' + t('alerts.overview.failureReason') + '</div><div class="info-value" style="color:#ef4444; white-space: pre-wrap;">' + escapeHtml(String(failure)) + '</div></div>';
+            html += '<div class="info-item" style="grid-column: 1 / -1;"><div class="info-label">' + t('alerts.overview.failureReason') + '</div><div class="info-value" style="color:var(--danger); white-space: pre-wrap;">' + escapeHtml(String(failure)) + '</div></div>';
         }
         if (webhook.is_duplicate) {
             html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.originalAlert') + '</div><div class="info-value">' + _alertLink(webhook.duplicate_of) + '</div></div>';
@@ -703,7 +703,7 @@ const AlertsModule = {
         html += `<span>${wwIcon('send')} ${t('alerts.ai.routeChannel')}: <strong style="color: var(--text-main);">${escapeHtml(String(analysis._route_type || t('alerts.ai.unknown')))}</strong></span>`;
         if (analysis._cache_hit) {
             const hitCount = analysis._cache_hit_count || 1;
-            html += `<span title="${t('alerts.ai.hitCount', {n: escapeHtml(String(hitCount))})}" style="color: #10b981; font-weight: 600;">${wwIcon('target')} ${t('alerts.ai.cacheHit', {n: escapeHtml(String(hitCount))})}</span>`;
+            html += `<span title="${t('alerts.ai.hitCount', {n: escapeHtml(String(hitCount))})}" style="color: var(--success); font-weight: 600;">${wwIcon('target')} ${t('alerts.ai.cacheHit', {n: escapeHtml(String(hitCount))})}</span>`;
         }
 
         html += `
@@ -903,7 +903,7 @@ const AlertsModule = {
                         }
                         dataTab.innerHTML = renderJSONBlock(rawData, t('alerts.tab.rawData'));
                     } else {
-                        dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">' + t('alerts.noData') + '</div>';
+                        dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--text-muted);">' + t('alerts.noData') + '</div>';
                     }
                 }
 
@@ -922,7 +922,7 @@ const AlertsModule = {
                 if (aiTab && fullData.ai_analysis) {
                     aiTab.innerHTML = this.renderAIAnalysis(fullData.ai_analysis);
                 } else if (aiTab) {
-                    aiTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #94a3b8;">' + t('alerts.ai.noData') + '</div>';
+                    aiTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--text-muted);">' + t('alerts.ai.noData') + '</div>';
                 }
 
             } else {
@@ -931,7 +931,7 @@ const AlertsModule = {
         } catch (error) {
             console.error('Failed to load full data:', error);
             if (dataTab) {
-                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">' + wwIcon('x') + ' ' + t('alerts.error.loadFailed') + ': ' + escapeHtml(String(error.message || error)) + '</div>';
+                dataTab.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--danger);">' + wwIcon('x') + ' ' + t('alerts.error.loadFailed') + ': ' + escapeHtml(String(error.message || error)) + '</div>';
             }
         }
     },
@@ -1092,13 +1092,13 @@ const AlertsModule = {
         try {
             const result = await API.getDecisionTraceByEvent(webhookId);
             if (!result || !result.success || !result.data) {
-                container.innerHTML = '<div style="text-align:center; padding:30px; color:#888;">' + t('alerts.decision.none') + '</div>';
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted);">' + t('alerts.decision.none') + '</div>';
                 return;
             }
             if (typeof DecisionTraceModule !== 'undefined' && DecisionTraceModule.renderDetails) {
                 container.innerHTML = '<div class="da-card da-card-expanded" style="margin:0;">' + DecisionTraceModule.renderDetails(result.data) + '</div>';
             } else {
-                container.innerHTML = '<div style="padding:1rem; color:#888;">' + t('alerts.decision.none') + '</div>';
+                container.innerHTML = '<div style="padding:1rem; color:var(--text-muted);">' + t('alerts.decision.none') + '</div>';
             }
             container.dataset.loaded = 'true';
         } catch (e) {
@@ -1154,7 +1154,7 @@ const AlertsModule = {
             var ev = data.events[i];
             var isAnchor = ev.id === anchorId;
             var isCaused = causedBy[ev.id] !== undefined;
-            var borderColor = isAnchor ? 'var(--primary, #6366f1)' : (isCaused ? 'var(--warning, #f59e0b)' : 'var(--border, #334155)');
+            var borderColor = isAnchor ? 'var(--primary, var(--primary))' : (isCaused ? 'var(--warning, var(--warning))' : 'var(--border, var(--text-secondary))');
             var bg = isAnchor ? 'var(--primary-bg, rgba(99,102,241,0.08))' : 'transparent';
 
             // Causal connector: if this event was caused by a previous one in the
@@ -1209,7 +1209,7 @@ const AlertsModule = {
             var header = item.querySelector('.alert-header');
             if (header) header.click();
         }
-        item.style.boxShadow = '0 0 0 3px var(--primary, #6366f1)';
+        item.style.boxShadow = '0 0 0 3px var(--primary, var(--primary))';
         setTimeout(function () { item.style.boxShadow = ''; }, 2000);
     },
 
@@ -1227,7 +1227,7 @@ const AlertsModule = {
             const records = result.data || [];
 
             if (records.length === 0) {
-                container.innerHTML = '<div style="text-align:center; padding:30px; color:#888;">' +
+                container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted);">' +
                     '<p>' + t('alerts.deep.noRecords') + '</p>' +
                     '<button class="btn btn-primary" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c ' + t('alerts.deep.analyzeNow') + '</button>' +
                     '</div>';
@@ -1241,17 +1241,17 @@ const AlertsModule = {
                 const time = new Date(record.created_at).toLocaleString('zh-CN');
                 const duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
 
-                html += '<div style="border:1px solid #e0e0e0; border-radius:8px; padding:16px; margin-bottom:12px; background:#fafafa;">';
+                html += '<div style="border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:12px; background:var(--bg-subtle);">';
 
                 // Header: engine, time, duration
-                html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #eee;">';
+                html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--bg-subtle);">';
                 html += '<span style="font-weight:600;">' + engineLabel + '</span>';
-                html += '<span style="color:#888; font-size:0.85em;">' + time + ' | ' + t('alerts.deep.duration') + ' ' + duration + '</span>';
+                html += '<span style="color:var(--text-muted); font-size:0.85em;">' + time + ' | ' + t('alerts.deep.duration') + ' ' + duration + '</span>';
                 html += '</div>';
 
                 // User question (if any)
                 if (record.user_question) {
-                    html += '<div style="margin-bottom:10px; padding:8px 12px; background:#e8f4fd; border-radius:4px; font-size:0.9em;">';
+                    html += '<div style="margin-bottom:10px; padding:8px 12px; background:var(--info-bg); border-radius:4px; font-size:0.9em;">';
                     html += '<strong>' + t('alerts.deep.userQuestion') + ': </strong>' + escapeHtml(String(record.user_question));
                     html += '</div>';
                 }
@@ -1259,7 +1259,7 @@ const AlertsModule = {
                 // Check whether the status is pending (OpenClaw asynchronously waiting for results)
                 if (record.status === 'pending') {
                     // Analyzing-state card
-                    html += '<div style="text-align:center; padding:20px; background:var(--info-bg); border:1px solid #bae6fd; border-radius:8px; color:var(--info);">';
+                    html += '<div style="text-align:center; padding:20px; background:var(--info-bg); border:1px solid var(--info-bg); border-radius:8px; color:var(--info);">';
                     html += '<div style="font-size:2em; margin-bottom:12px;"></div>';
                     html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">' + t('alerts.deep.openclawAnalyzing') + '</div>';
                     if (record.openclaw_run_id) {
@@ -1275,7 +1275,7 @@ const AlertsModule = {
                         // If there is a confidence score, display it separately
                         if (analysis.confidence !== undefined) {
                             const pct = (analysis.confidence * 100).toFixed(0);
-                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">' + t('alerts.deep.confidence') + ': ' + pct + '%</div>';
+                            html += '<div style="margin-top:8px; color:var(--text-muted); font-size:0.85em;">' + t('alerts.deep.confidence') + ': ' + pct + '%</div>';
                         }
                     } else {
                         // Original JSON field rendering logic
@@ -1299,12 +1299,12 @@ const AlertsModule = {
                         }
                         if (analysis.confidence !== undefined) {
                             const pct = (analysis.confidence * 100).toFixed(0);
-                            html += '<div style="margin-top:8px; color:#888; font-size:0.85em;">' + t('alerts.deep.confidence') + ': ' + pct + '%</div>';
+                            html += '<div style="margin-top:8px; color:var(--text-muted); font-size:0.85em;">' + t('alerts.deep.confidence') + ': ' + pct + '%</div>';
                         }
 
                         // If there are no structured fields, display the raw JSON directly
                         if (!analysis.root_cause && !analysis.impact && !analysis.recommendations) {
-                            html += '<pre style="background:#f5f5f5; padding:12px; border-radius:4px; overflow-x:auto; font-size:0.85em; max-height:300px;">' + escapeHtml(JSON.stringify(analysis, null, 2)) + '</pre>';
+                            html += '<pre style="background:var(--bg-subtle); padding:12px; border-radius:4px; overflow-x:auto; font-size:0.85em; max-height:300px;">' + escapeHtml(JSON.stringify(analysis, null, 2)) + '</pre>';
                         }
                     }
                 }
@@ -1384,7 +1384,7 @@ const AlertsModule = {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--primary);
             color: white;
             padding: 16px 24px;
             border-radius: 12px;

@@ -218,8 +218,8 @@ function renderSilenceCard(silence) {
     const environmentText = escapeHtml(silence.match_environment || t('common.all'));
 
     const isActive = !!silence.active;
-    const cardBorder = isActive ? 'border-left: 4px solid var(--warning);' : 'border-left: 4px solid #cbd5e1;';
-    const cardOpacity = isActive ? 'opacity: 1;' : 'opacity: 0.65; background: #f8fafc;';
+    const cardBorder = isActive ? 'border-left: 4px solid var(--warning);' : 'border-left: 4px solid var(--border);';
+    const cardOpacity = isActive ? 'opacity: 1;' : 'opacity: 0.65; background: var(--bg-subtle);';
     const titleColor = isActive ? 'color: var(--text-main);' : 'color: var(--text-muted);';
 
     const statusBadge = isActive
@@ -589,7 +589,7 @@ async function backtestSilenceRule() {
             d.sample_matched_events.forEach(function(ev) {
                 const isDupBadge = ev.is_duplicate ? `<span class="badge badge-outline" style="font-size: 0.65rem; padding: 1px 4px;">dup</span>` : '';
                 sampleHtml += `
-                    <div style="font-size: 0.8rem; background: var(--bg-subtle, #f8fafc); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                    <div style="font-size: 0.8rem; background: var(--bg-subtle, var(--bg-subtle)); border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
                         <span style="flex-shrink: 0; color: var(--text-muted);">${formatSilenceTime(ev.timestamp).split(' ')[1] || formatSilenceTime(ev.timestamp)}</span>
                         <span class="badge badge-outline" style="font-size: 0.7rem; flex-shrink: 0;">${escapeHtml(ev.source)}</span>
                         <span class="badge badge-${impClass(ev.importance)}" style="font-size: 0.7rem; flex-shrink: 0;">${escapeHtml(ev.importance)}</span>
@@ -609,7 +609,7 @@ async function backtestSilenceRule() {
                     <span style="font-weight: 600; font-size: 0.9rem; color: var(--primary);">' + wwIcon('flask') + ' Backtest Result (Past 30 Days)</span>
                     <span style="font-size: 0.8rem; color: var(--text-muted);">Scanned: <strong>${d.total_scanned}</strong> events</span>
                 </div>
-                <div style="display: flex; gap: 1.5rem; align-items: center; background: var(--bg-subtle, #f8fafc); border-radius: 4px; padding: 0.75rem; margin-bottom: 0.75rem;">
+                <div style="display: flex; gap: 1.5rem; align-items: center; background: var(--bg-subtle, var(--bg-subtle)); border-radius: 4px; padding: 0.75rem; margin-bottom: 0.75rem;">
                     <div style="text-align: center; border-right: 1px solid var(--border); padding-right: 1.5rem;">
                         <div style="font-size: 1.5rem; font-weight: 700; color: ${d.total_matched > 0 ? 'var(--warning)' : 'var(--success)'};">${d.total_matched}</div>
                         <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Would Mute</div>

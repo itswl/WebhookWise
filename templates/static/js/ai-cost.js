@@ -129,10 +129,10 @@ const AICostModule = {
                         <span>${t('aicost.card.apiCallLabel', { n: formatNumber(totalCalls) })}</span>
                     </div>
                 </div>
-                <div class="stat-card" style="border-left: 4px solid var(--success); background: #f0fdf4;">
-                    <div class="stat-label" style="color: #059669;">${t('aicost.card.totalSaved')}</div>
+                <div class="stat-card" style="border-left: 4px solid var(--success); background: var(--success-bg);">
+                    <div class="stat-label" style="color: var(--success);">${t('aicost.card.totalSaved')}</div>
                     <div class="stat-value" style="color: var(--success); font-size: 2.5rem;">${this.formatCurrency(costSaved)}</div>
-                    <div class="stat-trend" style="color: #059669;">${t('aicost.card.totalSavedTrend')}</div>
+                    <div class="stat-trend" style="color: var(--success);">${t('aicost.card.totalSavedTrend')}</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">${t('aicost.card.inputThroughput')}</div>
@@ -155,7 +155,7 @@ const AICostModule = {
                         <span style="font-weight: 500; color: var(--primary);">${wwIcon('sparkles')} ${t('aicost.route.ai')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeAi), pct: this.formatPercent(percentAi) })}</span>
                     </div>
-                    <div style="height: 8px; background: #e0e7ff; border-radius: 4px; overflow: hidden;">
+                    <div style="height: 8px; background: var(--primary-bg); border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: var(--primary); width: ${percentAi}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
                     </div>
                 </div>
@@ -165,7 +165,7 @@ const AICostModule = {
                         <span style="font-weight: 500; color: var(--success);">${wwIcon('database')} ${t('aicost.route.cache')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeCache), pct: this.formatPercent(percentCache) })}</span>
                     </div>
-                    <div style="height: 8px; background: #d1fae5; border-radius: 4px; overflow: hidden;">
+                    <div style="height: 8px; background: var(--success-bg); border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: var(--success); width: ${percentCache}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
                     </div>
                 </div>
@@ -175,7 +175,7 @@ const AICostModule = {
                         <span style="font-weight: 500; color: var(--warning);">${wwIcon('refresh')} ${t('aicost.route.reuse')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeReuse), pct: this.formatPercent(percentReuse) })}</span>
                     </div>
-                    <div style="height: 8px; background: #fef3c7; border-radius: 4px; overflow: hidden;">
+                    <div style="height: 8px; background: var(--warning-bg); border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: var(--warning); width: ${percentReuse}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
                     </div>
                 </div>
@@ -185,8 +185,8 @@ const AICostModule = {
                         <span style="font-weight: 500; color: var(--text-muted);">${wwIcon('list')} ${t('aicost.route.rule')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeRule), pct: this.formatPercent(percentRule) })}</span>
                     </div>
-                    <div style="height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden;">
-                        <div style="height: 100%; background: #94a3b8; width: ${percentRule}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                    <div style="height: 8px; background: var(--bg-subtle); border-radius: 4px; overflow: hidden;">
+                        <div style="height: 100%; background: var(--text-muted); width: ${percentRule}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
                     </div>
                 </div>
 
