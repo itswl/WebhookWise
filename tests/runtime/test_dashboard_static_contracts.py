@@ -985,3 +985,22 @@ def test_icon_splices_match_their_string_context() -> None:
             if contexts.get(match.start()) == "'"
         )
     assert offenders == [], offenders
+
+
+def test_open_details_carries_context_and_names_its_destination() -> None:
+    """\"Open details\" teleported to an unfiltered page: a dead-letter item
+    landed on the plain alert inbox with nothing connecting the landing to
+    the number just clicked. Two invariants: the button labels WHERE it goes
+    (destinationLabel), and context-bearing kinds arrive filtered — dead
+    letters pre-select the dead_letter status, exhausted deliveries apply the
+    failed result filter via the exported setResult."""
+    action_center = _static_js("action-center.js")
+    assert "function destinationLabel(view)" in action_center
+    assert "btn-dest" in action_center
+    assert "KIND_ARRIVAL" in action_center
+    assert "dead_letter: function" in action_center
+    assert "delivery_exhausted: function" in action_center
+    assert "setResult: setResult," in _static_js("decision-trace.js")
+
+    css = _static_css("components.css")
+    assert ".stat-card[onclick]::after" in css, "clickable cards need a pre-hover mark"

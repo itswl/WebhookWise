@@ -4001,3 +4001,53 @@ body.sidebar-collapsed .sidebar-collapse .sidebar-icon { transform: rotate(180de
 }
 
 .icon-primary { color: var(--primary); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Affordance — restrained is not invisible
+   ═══════════════════════════════════════════════════════════════════════════
+
+   The restraint pass stripped colour from surfaces and took clickability
+   cues with it. Interactive things must read as interactive BEFORE hover:
+   buttons keep a visible border and brighten decisively; clickable stat
+   cards carry a corner mark and answer hover with an accent border. */
+
+.btn {
+  border: 1px solid var(--border);
+}
+
+.btn:hover {
+  border-color: var(--text-muted);
+  background: var(--bg-subtle);
+  color: var(--text-main);
+}
+
+.btn:active { transform: translateY(1px); }
+
+/* The Open-details destination tag: the jump says where it goes. */
+.btn-dest {
+  color: var(--primary);
+  font-size: var(--fs-xs);
+}
+
+/* Clickable summary cards: a quiet corner mark all the time, an unmistakable
+   answer on hover. Non-clickable cards do neither. */
+.stat-card[onclick] { position: relative; }
+
+.stat-card[onclick]::after {
+  content: '↗';
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.stat-card[onclick]:hover {
+  border-color: var(--primary);
+}
+
+.stat-card[onclick]:hover::after { color: var(--primary); }
+
+/* Action items: the whole card acknowledges pointer presence so the buttons
+   inside are discovered, without making the card itself pretend clickable. */
+.action-center-item:hover { border-color: var(--text-muted); }

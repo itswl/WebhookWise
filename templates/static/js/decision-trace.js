@@ -779,6 +779,7 @@ var DecisionTraceModule = (function () {
         load: load,
         loadMore: loadMore,
         setPeriod: setPeriod,
+        setResult: setResult,
         setView: setView,
         toggleExpand: toggleExpand,
         retryDelivery: retryDelivery,
