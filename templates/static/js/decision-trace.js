@@ -662,8 +662,10 @@ var DecisionTraceModule = (function () {
         markRefreshed();
     }
 
+    // Re-enter the tab (navigateTo / auto-refresh). Deliberately does NOT
+    // report a destination: refresh must never rewrite the URL, and the
+    // setView that follows a navigation reports the real target itself.
     function load() {
-        if (typeof recordDestination === 'function') recordDestination(currentView);
         loadActiveView();
     }
 
@@ -683,6 +685,10 @@ var DecisionTraceModule = (function () {
         document.querySelectorAll('[data-dt-view]').forEach(function (btn) {
             btn.classList.toggle('active', btn.getAttribute('data-dt-view') === currentView);
         });
+        // Report from HERE, with the view just entered — reporting from load()
+        // used the stale view, which is exactly why the Overview-tab
+        // destinations needed a second click before the URL and highlight moved.
+        if (typeof recordDestination === 'function') recordDestination(currentView);
         loadActiveView();
     }
 
