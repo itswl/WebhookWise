@@ -418,6 +418,12 @@ var DecisionTraceModule = (function () {
                           + ' onclick="event.stopPropagation(); event.preventDefault(); openAlert(' + Number(trace.webhook_event_id) + ');"'
                           + ' style="color: inherit; text-decoration: none;">' + wwIcon('bell') + ' '
                           + t('dt.alertNumber', { n: escapeHtml(trace.webhook_event_id) }) + '</a></span>' +
+                        (function () {
+                            var what = trace.alert_summary || trace.alert_name;
+                            return what
+                                ? '<span class="da-alert-what" title="' + escapeHtml(what) + '">' + escapeHtml(what) + '</span>'
+                                : '';
+                        })() +
                         '<span class="da-source">' + wwIcon('radio') + ' ' + metaLine + '</span>' +
                     '</div>' +
                 '</div>' +

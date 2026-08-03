@@ -68,6 +68,8 @@ class DecisionTraceItem(BaseModel):
     outcome: str
     skip_code: str
     source: str | None = None
+    alert_name: str | None = None
+    alert_summary: str | None = None
     importance: str | None = None
     is_periodic_reminder: bool = False
     route: str | None = None
