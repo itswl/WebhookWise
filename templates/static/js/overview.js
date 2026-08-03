@@ -142,7 +142,7 @@ const OverviewModule = {
                 html += '<div style="margin-bottom: 0.75rem;">' +
                     '<div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:0.25rem;">' +
                     '<span>' + wwIcon('tag') + ' ' + escapeHtml(s.name) + '</span><span style="color:var(--text-muted);">' + fmt(s.count) + '</span></div>' +
-                    '<div style="height:8px; background:var(--bg-subtle, var(--bg-subtle)); border-radius:4px; overflow:hidden;">' +
+                    '<div style="height:4px; background:var(--bg-subtle, var(--bg-subtle)); border-radius:4px; overflow:hidden;">' +
                     '<div style="height:100%; width:' + pct + '%; background:var(--primary);"></div></div></div>';
             });
             html += '</div>';
@@ -212,7 +212,7 @@ const OverviewModule = {
         const lag = q.lag != null ? fmt(q.lag) : dash;
 
         let html = '<div style="background: var(--bg-surface); border: 1px solid var(--border);' +
-            (q.backlogged ? ' border-left: 4px solid var(--danger);' : '') +
+            (q.backlogged ? ' border-left: 3px solid var(--danger);' : '') +
             ' border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">';
         html += '<div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem;">' +
             '<span style="font-weight: 600;">' + t('overview.queue.title') + '</span>' +
@@ -242,10 +242,10 @@ const OverviewModule = {
     // which are what people look at first, did not.
     _card(icon, label, value, trend, color, onClick) {
         const clickable = onClick ? ' onclick="' + onClick + '" ' : '';
-        return '<div class="stat-card"' + clickable + ' style="border-left: 4px solid ' + color + ';'
-            + (onClick ? ' cursor:pointer;' : '') + '">' +
+        return '<div class="stat-card"' + clickable + ' style="'
+            + (onClick ? 'cursor:pointer;' : '') + '">' +
             '<div class="stat-label">' + icon + ' ' + label + '</div>' +
-            '<div class="stat-value" style="font-size: 2rem; color: ' + color + ';">' + value + '</div>' +
+            '<div class="stat-value" style="font-size: 2rem;">' + value + '</div>' +
             '<div class="stat-trend">' + trend + '</div></div>';
     },
 

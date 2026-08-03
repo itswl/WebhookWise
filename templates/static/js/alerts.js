@@ -618,7 +618,7 @@ const AlertsModule = {
         }
 
         let html = `
-            <div class="ai-analysis" style="border-left: 4px solid var(--primary); background: var(--bg-surface); border: 1px solid var(--border); padding: 1.5rem; border-radius: 12px; box-shadow: var(--shadow-sm); margin-bottom: 1rem;">
+            <div class="ai-analysis" style=" background: var(--bg-surface); border: 1px solid var(--border); padding: 1.5rem; border-radius: 12px; box-shadow: var(--shadow-sm); margin-bottom: 1rem;">
                 <div class="ai-header" style="font-size: 1rem; font-weight: 600; color: var(--primary); display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
                     <span>${wwIcon('sparkles')}</span> ${t('alerts.ai.reportTitle')}
                     <span class="badge ${analysis._degraded ? 'badge-medium' : 'badge-low'}" style="margin-left: auto;">

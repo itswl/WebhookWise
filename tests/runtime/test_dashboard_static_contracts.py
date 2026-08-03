@@ -865,3 +865,30 @@ def test_js_renderers_carry_no_hardcoded_colors() -> None:
         if found:
             offenders[path.name] = sorted(set(found))
     assert offenders == {}, f"hardcoded colours crept back: {offenders}"
+
+
+def test_colour_stays_in_points_not_surfaces() -> None:
+    """The restraint pass: status badges carry colour in an icon or dot, never
+    a filled surface; card accents are 3px state signals (failing delivery,
+    active silence, queue backlog), never 4px decoration on every card. Both
+    regressed easily before because each new badge copied the nearest one."""
+    import re as _re
+
+    from tests.helpers.paths import PROJECT_ROOT as _ROOT
+
+    offenders = {}
+    for path in sorted((_ROOT / "templates/static/js").glob("*.js")):
+        if path.name.startswith("i18n."):
+            continue
+        src = path.read_text()
+        bad_badges = _re.findall(r'class="badge[^"]*"[^>]*style="[^"]*background', src)
+        bad_borders = _re.findall(r"border-left:\s*4px", src)
+        if bad_badges or bad_borders:
+            offenders[path.name] = {"inline_bg_badges": len(bad_badges), "4px_accents": len(bad_borders)}
+    assert offenders == {}, f"colour crept back onto surfaces: {offenders}"
+
+    css = _static_css("components.css")
+    assert ".badge-success {\n  background: transparent;" in css.replace(
+        ".badge-high, .badge-medium, .badge-low, .badge-success, .badge-danger,\n.badge-warning, .badge-info, .badge-duplicate {\n  background: transparent;",
+        ".badge-success {\n  background: transparent;",
+    ), "cold badge treatment missing"

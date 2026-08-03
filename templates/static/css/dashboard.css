@@ -25,21 +25,21 @@
   --primary: #58a6ff;
   --primary-hover: #79b8ff;
   --primary-light: #1f3350;
-  --primary-bg: rgba(88, 166, 255, 0.14);
+  --primary-bg: rgba(88, 166, 255, 0.09);
   --accent: #58a6ff;
-  --accent-bg: rgba(88, 166, 255, 0.14);
+  --accent-bg: rgba(88, 166, 255, 0.09);
   --accent-gradient: linear-gradient(135deg, #58a6ff, #388bfd);
 
   /* Severity. Tuned for legibility on the dark base, not for brightness:
      these get scanned peripherally, so hue must separate them, not chroma. */
   --success: #3fb950;
-  --success-bg: rgba(63, 185, 80, 0.14);
+  --success-bg: rgba(63, 185, 80, 0.09);
   --warning: #f5a524;
-  --warning-bg: rgba(245, 165, 36, 0.14);
+  --warning-bg: rgba(245, 165, 36, 0.09);
   --danger: #ff6169;
-  --danger-bg: rgba(255, 97, 105, 0.14);
+  --danger-bg: rgba(255, 97, 105, 0.09);
   --info: #58a6ff;
-  --info-bg: rgba(88, 166, 255, 0.14);
+  --info-bg: rgba(88, 166, 255, 0.09);
 
   /* Neutrals: even elevation steps over a near-black blue-grey. */
   --text-main: #e6e9ef;

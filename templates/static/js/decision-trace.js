@@ -73,17 +73,17 @@ var DecisionTraceModule = (function () {
 
         var html = '' +
             '<div class="stats-grid" style="margin-bottom: 1.5rem;">' +
-                '<div class="stat-card" style="border-left: 4px solid var(--primary);">' +
+                '<div class="stat-card">' +
                     '<div class="stat-label">' + t('dt.stat.total') + '</div>' +
                     '<div class="stat-value" style="font-size: 2rem;">' + formatNumber(total) + '</div>' +
                     '<div class="stat-trend">' + t('dt.stat.totalTrend') + '</div>' +
                 '</div>' +
-                '<div class="stat-card" style="border-left: 4px solid var(--success); background: var(--success-bg);">' +
+                '<div class="stat-card">' +
                     '<div class="stat-label" style="color: var(--success);">' + wwIcon('check') + ' ' + t('dt.stat.forwarded') + '</div>' +
                     '<div class="stat-value" style="color: var(--success); font-size: 2rem;">' + formatNumber(forwarded) + '</div>' +
                     '<div class="stat-trend" style="color: var(--success);">' + fwdPct.toFixed(1) + '%</div>' +
                 '</div>' +
-                '<div class="stat-card" style="border-left: 4px solid var(--text-muted);">' +
+                '<div class="stat-card">' +
                     '<div class="stat-label">' + wwIcon('skip-forward') + ' ' + t('dt.stat.skipped') + '</div>' +
                     '<div class="stat-value" style="font-size: 2rem;">' + formatNumber(skipped) + '</div>' +
                     '<div class="stat-trend">' + (100 - fwdPct).toFixed(1) + '%</div>' +
@@ -246,7 +246,7 @@ var DecisionTraceModule = (function () {
         if (trace.outcome === 'forwarded') {
             return '<span class="badge badge-success" style="font-size: 0.7rem;">' + wwIcon('check') + ' ' + t('dt.outcome.forwarded') + '</span>';
         }
-        return '<span class="badge" style="background: var(--border); color: var(--text-secondary); font-size: 0.7rem;">' + wwIcon('skip-forward') + ' ' + t('dt.outcome.skipped') + '</span>';
+        return '<span class="badge badge-outline" style="font-size: 0.7rem;">' + wwIcon('skip-forward') + ' ' + t('dt.outcome.skipped') + '</span>';
     }
 
     // Delivery (outbox) badge for a forwarded row — shows whether the
@@ -259,7 +259,7 @@ var DecisionTraceModule = (function () {
             return '<span class="badge badge-success" style="font-size: 0.7rem;">' + wwIcon('send') + ' ' + t('dt.delivery.sent') + '</span>';
         }
         if (d.state === 'pending') {
-            return '<span class="badge" style="background: var(--warning-bg); color: var(--warning); font-size: 0.7rem;">' + wwIcon('refresh') + ' ' + t('dt.delivery.pending') + '</span>';
+            return '<span class="badge badge-warning" style="font-size: 0.7rem;">' + wwIcon('refresh') + ' ' + t('dt.delivery.pending') + '</span>';
         }
         if (d.state === 'failed') {
             return '<span class="badge badge-danger" style="font-size: 0.7rem;">' + wwIcon('x') + ' ' + t('dt.delivery.failed') + '</span>';
@@ -402,7 +402,7 @@ var DecisionTraceModule = (function () {
             parts.push('<span class="badge badge-outline" style="font-size: 0.7rem;">' + skipCodeLabel(trace.skip_code) + '</span>');
         }
         if (trace.is_periodic_reminder) {
-            parts.push('<span class="badge" style="background: var(--warning-bg); color: var(--warning); font-size: 0.7rem;">' + wwIcon('bell') + ' ' + t('dt.periodicReminder') + '</span>');
+            parts.push('<span class="badge badge-warning" style="font-size: 0.7rem;">' + wwIcon('bell') + ' ' + t('dt.periodicReminder') + '</span>');
         }
         var delivery = deliveryBadge(trace);
         if (delivery) parts.push(delivery);

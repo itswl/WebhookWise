@@ -47,7 +47,7 @@ const ActionCenterModule = (function () {
             }).join('');
             return '<div class="action-center-item" data-action-view-target="' +
                 escapeHtml(item.view || '') + '" style="text-align:left; width:100%; background:var(--bg-surface);' +
-                ' border:1px solid var(--border); border-left:4px solid ' + color + '; border-radius:var(--radius-lg);' +
+                ' border:1px solid var(--border); border-left:3px solid ' + color + '; border-radius:var(--radius-lg);' +
                 ' padding:16px; color:inherit;">' +
                 '<div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start;">' +
                 '<div><div style="font-weight:700; margin-bottom:6px;">' + icon + ' ' + escapeHtml(item.title || '') +

@@ -218,7 +218,7 @@ function renderSilenceCard(silence) {
     const environmentText = escapeHtml(silence.match_environment || t('common.all'));
 
     const isActive = !!silence.active;
-    const cardBorder = isActive ? 'border-left: 4px solid var(--warning);' : 'border-left: 4px solid var(--border);';
+    const cardBorder = isActive ? 'border-left: 3px solid var(--warning);' : 'border-left: 3px solid var(--border);';
     const cardOpacity = isActive ? 'opacity: 1;' : 'opacity: 0.65; background: var(--bg-subtle);';
     const titleColor = isActive ? 'color: var(--text-main);' : 'color: var(--text-muted);';
 

@@ -121,17 +121,17 @@ const AICostModule = {
             <!-- Core data dashboard -->
             <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 1.25rem;">${t('aicost.section.coreBilling')}</div>
             <div class="stats-grid" style="margin-bottom: 2.5rem;">
-                <div class="stat-card" style="border-left: 4px solid var(--primary);">
+                <div class="stat-card">
                     <div class="stat-label">${t('aicost.card.totalSpent')}</div>
-                    <div class="stat-value" style="color: var(--primary); font-size: 2.5rem;">${this.formatCurrency(costTotal)}</div>
+                    <div class="stat-value" style="font-size: 2.5rem;">${this.formatCurrency(costTotal)}</div>
                     <div class="stat-trend" style="display: flex; justify-content: space-between;">
                         <span>${t('aicost.card.tokensLabel', { n: formatNumber(tokensTotal) })}</span>
                         <span>${t('aicost.card.apiCallLabel', { n: formatNumber(totalCalls) })}</span>
                     </div>
                 </div>
-                <div class="stat-card" style="border-left: 4px solid var(--success); background: var(--success-bg);">
+                <div class="stat-card">
                     <div class="stat-label" style="color: var(--success);">${t('aicost.card.totalSaved')}</div>
-                    <div class="stat-value" style="color: var(--success); font-size: 2.5rem;">${this.formatCurrency(costSaved)}</div>
+                    <div class="stat-value" style="font-size: 2.5rem;">${this.formatCurrency(costSaved)}</div>
                     <div class="stat-trend" style="color: var(--success);">${t('aicost.card.totalSavedTrend')}</div>
                 </div>
                 <div class="stat-card">
@@ -155,7 +155,7 @@ const AICostModule = {
                         <span style="font-weight: 500; color: var(--primary);">${wwIcon('sparkles')} ${t('aicost.route.ai')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeAi), pct: this.formatPercent(percentAi) })}</span>
                     </div>
-                    <div style="height: 8px; background: var(--primary-bg); border-radius: 4px; overflow: hidden;">
+                    <div style="height: 4px; background: var(--bg-subtle); border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: var(--primary); width: ${percentAi}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
                     </div>
                 </div>
@@ -165,8 +165,8 @@ const AICostModule = {
                         <span style="font-weight: 500; color: var(--success);">${wwIcon('database')} ${t('aicost.route.cache')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeCache), pct: this.formatPercent(percentCache) })}</span>
                     </div>
-                    <div style="height: 8px; background: var(--success-bg); border-radius: 4px; overflow: hidden;">
-                        <div style="height: 100%; background: var(--success); width: ${percentCache}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                    <div style="height: 4px; background: var(--bg-subtle); border-radius: 4px; overflow: hidden;">
+                        <div style="height: 100%; background: var(--primary); width: ${percentCache}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
                     </div>
                 </div>
 
@@ -175,8 +175,8 @@ const AICostModule = {
                         <span style="font-weight: 500; color: var(--warning);">${wwIcon('refresh')} ${t('aicost.route.reuse')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeReuse), pct: this.formatPercent(percentReuse) })}</span>
                     </div>
-                    <div style="height: 8px; background: var(--warning-bg); border-radius: 4px; overflow: hidden;">
-                        <div style="height: 100%; background: var(--warning); width: ${percentReuse}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                    <div style="height: 4px; background: var(--bg-subtle); border-radius: 4px; overflow: hidden;">
+                        <div style="height: 100%; background: var(--primary); width: ${percentReuse}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
                     </div>
                 </div>
 
@@ -185,7 +185,7 @@ const AICostModule = {
                         <span style="font-weight: 500; color: var(--text-muted);">${wwIcon('list')} ${t('aicost.route.rule')}</span>
                         <span style="color: var(--text-muted);">${t('aicost.route.calls', { n: formatNumber(routeRule), pct: this.formatPercent(percentRule) })}</span>
                     </div>
-                    <div style="height: 8px; background: var(--bg-subtle); border-radius: 4px; overflow: hidden;">
+                    <div style="height: 4px; background: var(--bg-subtle); border-radius: 4px; overflow: hidden;">
                         <div style="height: 100%; background: var(--text-muted); width: ${percentRule}%; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);"></div>
                     </div>
                 </div>

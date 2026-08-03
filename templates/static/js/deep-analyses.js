@@ -324,7 +324,7 @@ var DeepAnalysesModule = (function() {
             'auto': { label: t('deep.engine.auto'), class: 'badge-outline', icon: '', bg: 'var(--warning-bg)', color: 'var(--warning)' }
         };
         const engine = engineMap[record.engine] || engineMap['local'];
-        const engineLabel = `<span class="badge" style="background: ${engine.bg}; color: ${engine.color}; border: none; font-size: 0.7rem;">${engine.icon} ${engine.label}</span>`;
+        const engineLabel = `<span class="badge badge-outline" style="border: none; font-size: 0.7rem;">${engine.icon} ${engine.label}</span>`;
 
         const statusMap = {
             'pending': { label: t('deep.status.pending'), class: 'badge-warning', icon: '<div class="spinner" style="width: 10px; height: 10px; border-width: 2px; margin-right: 4px; display: inline-block;"></div>' },
@@ -335,9 +335,9 @@ var DeepAnalysesModule = (function() {
 
         var alertTypeTag = '';
         if (record.is_duplicate) {
-            alertTypeTag = '<span class="badge" style="background: var(--border); color: var(--text-secondary); font-size: 0.7rem;">' + wwIcon('refresh') + ' ' + escapeHtml(t('deep.duplicateAlert')) + '</span>';
+            alertTypeTag = '<span class="badge badge-outline" style="color: var(--text-secondary); font-size: 0.7rem;">' + wwIcon('refresh') + ' ' + escapeHtml(t('deep.duplicateAlert')) + '</span>';
         } else {
-            alertTypeTag = '<span class="badge" style="background: var(--success-bg); color: var(--success); font-size: 0.7rem;">🆕 ' + escapeHtml(t('deep.newAlert')) + '</span>';
+            alertTypeTag = '<span class="badge badge-success" style="font-size: 0.7rem;">🆕 ' + escapeHtml(t('deep.newAlert')) + '</span>';
         }
 
         let html = `
@@ -394,7 +394,7 @@ var DeepAnalysesModule = (function() {
 
         if (record.user_question) {
             detailsHtml += `
-                <div style="background: var(--bg-base); padding: 1rem 1.25rem; border-radius: var(--radius-md); border-left: 4px solid var(--primary); margin-bottom: 1.5rem;">
+                <div style="background: var(--bg-base); padding: 1rem 1.25rem; border-radius: var(--radius-md);  margin-bottom: 1.5rem;">
                     <strong style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.5rem;">${escapeHtml(t('deep.userQuestion'))}</strong>
                     <div style="color: var(--text-main); font-size: 0.95rem;">${escapeHtml(record.user_question)}</div>
                 </div>
