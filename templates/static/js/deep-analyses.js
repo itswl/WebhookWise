@@ -318,24 +318,24 @@ var DeepAnalysesModule = (function() {
         var source = displayValue(record.source || report.alert_identity.source) || t('deep.unknownSource');
 
         const engineMap = {
-            'openclaw': { label: t('deep.engine.openclaw'), class: 'badge-high', icon: '🦞', bg: '#dbeafe', color: '#4338ca' },
-            'hermes': { label: t('deep.engine.hermes'), class: 'badge-medium', icon: '⚡', bg: '#fae8ff', color: '#4c1d95' },
-            'local': { label: t('deep.engine.local'), class: 'badge-low', icon: '💻', bg: '#f3f4f6', color: '#4b5563' },
-            'auto': { label: t('deep.engine.auto'), class: 'badge-outline', icon: '🤖', bg: '#fef3c7', color: '#b45309' }
+            'openclaw': { label: t('deep.engine.openclaw'), class: 'badge-high', icon: '', bg: '#dbeafe', color: '#4338ca' },
+            'hermes': { label: t('deep.engine.hermes'), class: 'badge-medium', icon: '', bg: '#fae8ff', color: '#4c1d95' },
+            'local': { label: t('deep.engine.local'), class: 'badge-low', icon: '', bg: '#f3f4f6', color: '#4b5563' },
+            'auto': { label: t('deep.engine.auto'), class: 'badge-outline', icon: '', bg: '#fef3c7', color: '#b45309' }
         };
         const engine = engineMap[record.engine] || engineMap['local'];
         const engineLabel = `<span class="badge" style="background: ${engine.bg}; color: ${engine.color}; border: none; font-size: 0.7rem;">${engine.icon} ${engine.label}</span>`;
 
         const statusMap = {
             'pending': { label: t('deep.status.pending'), class: 'badge-warning', icon: '<div class="spinner" style="width: 10px; height: 10px; border-width: 2px; margin-right: 4px; display: inline-block;"></div>' },
-            'completed': { label: t('deep.status.completed'), class: 'badge-success', icon: '✅' },
-            'failed': { label: t('deep.status.failed'), class: 'badge-danger', icon: '❌' }
+            'completed': { label: t('deep.status.completed'), class: 'badge-success', icon: wwIcon('check') },
+            'failed': { label: t('deep.status.failed'), class: 'badge-danger', icon: wwIcon('x') }
         };
-        const status = statusMap[record.status] || { label: t('common.unknown'), class: 'badge-outline', icon: '❓' };
+        const status = statusMap[record.status] || { label: t('common.unknown'), class: 'badge-outline', icon: '' };
 
         var alertTypeTag = '';
         if (record.is_duplicate) {
-            alertTypeTag = '<span class="badge" style="background: #e2e8f0; color: #334155; font-size: 0.7rem;">🔁 ' + escapeHtml(t('deep.duplicateAlert')) + '</span>';
+            alertTypeTag = '<span class="badge" style="background: #e2e8f0; color: #334155; font-size: 0.7rem;">' + wwIcon('refresh') + ' ' + escapeHtml(t('deep.duplicateAlert')) + '</span>';
         } else {
             alertTypeTag = '<span class="badge" style="background: #dcfce7; color: #059669; font-size: 0.7rem;">🆕 ' + escapeHtml(t('deep.newAlert')) + '</span>';
         }
@@ -346,8 +346,8 @@ var DeepAnalysesModule = (function() {
                     <div class="da-summary-meta-row">
                         <span class="badge ${status.class}" style="display: flex; align-items: center; font-size: 0.7rem;">${status.icon} ${status.label}</span>
                         ${engineLabel}
-                        <span class="da-alert-title"><a href="#/alerts/${encodeURIComponent(record.webhook_event_id)}" onclick="event.stopPropagation(); event.preventDefault(); openAlert(${Number(record.webhook_event_id)});" style="color: inherit; text-decoration: none;">🔔 ${escapeHtml(t('deep.alertNumber', { n: record.webhook_event_id }))}</a></span>
-                        <span class="da-source">📡 ${escapeHtml(source)}</span>
+                        <span class="da-alert-title"><a href="#/alerts/${encodeURIComponent(record.webhook_event_id)}" onclick="event.stopPropagation(); event.preventDefault(); openAlert(${Number(record.webhook_event_id)});" style="color: inherit; text-decoration: none;">${escapeHtml(t('deep.alertNumber', { n: record.webhook_event_id }))}</a></span>
+                        <span class="da-source">${escapeHtml(source)}</span>
                         ${alertTypeTag}
                     </div>
         `;
@@ -372,14 +372,14 @@ var DeepAnalysesModule = (function() {
         } else if (record.status === 'failed') {
             let errorMsg = record.summary_preview || report.failure_reason || report.root_cause || report.primary_text || t('common.unknownError');
             errorMsg = truncateText(errorMsg, 160);
-            html += `<div class="da-preview da-preview-error">❌ ${escapeHtml(errorMsg)}</div>`;
+            html += `<div class="da-preview da-preview-error">${wwIcon('x')} ${escapeHtml(errorMsg)}</div>`;
         }
 
         html += `
                 </div>
                 <div class="da-summary-runtime">
                     <div>${time}</div>
-                    <div class="da-duration-value">⏱️ ${duration}</div>
+                    <div class="da-duration-value">${duration}</div>
                 </div>
             </div>
         `;
@@ -395,7 +395,7 @@ var DeepAnalysesModule = (function() {
         if (record.user_question) {
             detailsHtml += `
                 <div style="background: var(--bg-base); padding: 1rem 1.25rem; border-radius: var(--radius-md); border-left: 4px solid var(--primary); margin-bottom: 1.5rem;">
-                    <strong style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.5rem;">👤 ${escapeHtml(t('deep.userQuestion'))}</strong>
+                    <strong style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.5rem;">${escapeHtml(t('deep.userQuestion'))}</strong>
                     <div style="color: var(--text-main); font-size: 0.95rem;">${escapeHtml(record.user_question)}</div>
                 </div>
             `;
@@ -412,7 +412,7 @@ var DeepAnalysesModule = (function() {
         } else if (record.status === 'failed') {
             detailsHtml += `
                 <div style="background: var(--danger-bg); border: 1px solid rgba(239,68,68,0.2); padding: 1.5rem; border-radius: var(--radius-md); color: var(--danger);">
-                    <h4 style="margin-bottom: 0.5rem; font-weight: 600;">⚠️ ${escapeHtml(t('deep.taskCrashed'))}</h4>
+                    <h4 style="margin-bottom: 0.5rem; font-weight: 600;">${escapeHtml(t('deep.taskCrashed'))}</h4>
                     <p style="margin: 0; font-size: 0.95rem;">${escapeHtml(report.failure_reason || report.root_cause || report.primary_text || t('deep.unknownException'))}</p>
                 </div>
             `;
@@ -425,16 +425,16 @@ var DeepAnalysesModule = (function() {
         detailsHtml += `<div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); display: flex; gap: 1rem; flex-wrap: wrap;">`;
 
         if (record.status === 'completed') {
-            detailsHtml += `<button class="btn" style="background: var(--bg-subtle); border-color: var(--border); color: var(--text-main);" onclick="DeepAnalysesModule.forwardResult(${record.id})">📨 ${escapeHtml(t('deep.btn.pushResult'))}</button>`;
+            detailsHtml += `<button class="btn" style="background: var(--bg-subtle); border-color: var(--border); color: var(--text-main);" onclick="DeepAnalysesModule.forwardResult(${record.id})">${escapeHtml(t('deep.btn.pushResult'))}</button>`;
         }
         if (record.status === 'failed' || record.status === 'pending') {
-            detailsHtml += `<button class="btn btn-primary" onclick="DeepAnalysesModule.retryAnalysis(${record.id})">🔄 ${escapeHtml(t('deep.btn.refetchResult'))}</button>`;
+            detailsHtml += `<button class="btn btn-primary" onclick="DeepAnalysesModule.retryAnalysis(${record.id})">${escapeHtml(t('deep.btn.refetchResult'))}</button>`;
         }
-        detailsHtml += `<button class="btn" style="border-color: var(--success); color: var(--success); background: var(--success-bg);" onclick="DeepAnalysesModule.reanalyzeFromDeepAnalysis(${record.webhook_event_id})">🔬 ${escapeHtml(t('deep.btn.freshAnalysis'))}</button>`;
+        detailsHtml += `<button class="btn" style="border-color: var(--success); color: var(--success); background: var(--success-bg);" onclick="DeepAnalysesModule.reanalyzeFromDeepAnalysis(${record.webhook_event_id})">${escapeHtml(t('deep.btn.freshAnalysis'))}</button>`;
 
         // Raw Data Toggle
         const rawJsonId = `raw-da-${record.id}`;
-        detailsHtml += `<button class="btn" onclick="DeepAnalysesModule.toggleDebugPayload(${record.id})">💻 ${escapeHtml(t('deep.btn.debugPayload'))}</button>`;
+        detailsHtml += `<button class="btn" onclick="DeepAnalysesModule.toggleDebugPayload(${record.id})">${escapeHtml(t('deep.btn.debugPayload'))}</button>`;
 
         detailsHtml += `</div>`;
 
@@ -607,23 +607,23 @@ var DeepAnalysesModule = (function() {
 
         url = url.trim();
         if (!url) {
-            alert('❌ ' + t('deep.forward.urlEmpty'));
+            alert('' + t('deep.forward.urlEmpty'));
             return;
         }
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
-            alert('❌ ' + t('deep.forward.urlInvalid'));
+            alert('' + t('deep.forward.urlInvalid'));
             return;
         }
 
         try {
             var result = await API.forwardDeepAnalysis(analysisId, url);
             if (result.success) {
-                alert('✅ ' + (result.message || t('deep.forward.pushed')));
+                alert('' + (result.message || t('deep.forward.pushed')));
             } else {
-                alert('❌ ' + t('deep.forward.failed') + ': ' + (result.message || t('common.unknownError')));
+                alert('' + t('deep.forward.failed') + ': ' + (result.message || t('common.unknownError')));
             }
         } catch (e) {
-            alert('❌ ' + t('common.requestFailed') + ': ' + e.message);
+            alert('' + t('common.requestFailed') + ': ' + e.message);
         }
     }
 
@@ -633,13 +633,13 @@ var DeepAnalysesModule = (function() {
         try {
             var result = await API.deepAnalyze(webhookEventId, '', 'auto');
             if (result.success) {
-                alert('🚀 ' + t('deep.reanalyze.started'));
+                alert('' + t('deep.reanalyze.started'));
                 load();
             } else {
-                alert('❌ ' + t('deep.reanalyze.failed') + ': ' + (result.message || result.error || t('common.unknownError')));
+                alert('' + t('deep.reanalyze.failed') + ': ' + (result.message || result.error || t('common.unknownError')));
             }
         } catch (e) {
-            alert('❌ ' + t('common.requestFailed') + ': ' + e.message);
+            alert('' + t('common.requestFailed') + ': ' + e.message);
         }
     }
 
@@ -649,13 +649,13 @@ var DeepAnalysesModule = (function() {
         try {
             var result = await API.retryDeepAnalysis(analysisId);
             if (result.success) {
-                alert('🔄 ' + (result.message || t('deep.retry.triggered')));
+                alert('' + (result.message || t('deep.retry.triggered')));
                 load();
             } else {
-                alert('❌ ' + t('deep.retry.failed') + ': ' + (result.error || result.message || t('common.unknownError')));
+                alert('' + t('deep.retry.failed') + ': ' + (result.error || result.message || t('common.unknownError')));
             }
         } catch (e) {
-            alert('❌ ' + t('common.requestFailed') + ': ' + e.message);
+            alert('' + t('common.requestFailed') + ': ' + e.message);
         }
     }
 

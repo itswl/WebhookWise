@@ -12,13 +12,18 @@
     <!-- The overview trend uses native CSS bars; no third-party runtime script is required. -->
 </head>
 <body>
+    <!-- Icon sprite: single-colour stroke icons (geometry after Lucide, ISC).
+         Self-hosted so the console works on an air-gapped network; every icon
+         inherits currentColor, so state colours come from the design tokens
+         instead of each glyph carrying its own palette the way emoji did. -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></symbol><symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></symbol><symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol><symbol id="i-alert-triangle" viewBox="0 0 24 24"><path d="M21.73 18 13.7 4a2 2 0 0 0-3.4 0L2.27 18A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></symbol><symbol id="i-alert-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol><symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol><symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol><symbol id="i-sliders" viewBox="0 0 24 24"><path d="M20 7h-9M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></symbol><symbol id="i-filter" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54Z"/></symbol><symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol><symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/></symbol><symbol id="i-book-open" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2Z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7Z"/></symbol><symbol id="i-flask" viewBox="0 0 24 24"><path d="M10 2v7.5L4.7 20.6a1 1 0 0 0 .9 1.4h12.8a1 1 0 0 0 .9-1.4L14 9.5V2"/><path d="M8.5 2h7M7 16h10"/></symbol><symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></symbol><symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1Z"/></symbol><symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/></symbol><symbol id="i-dollar" viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></symbol><symbol id="i-bar-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></symbol><symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol><symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.7-6L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.7 6L3 16"/><path d="M3 21v-5h5"/></symbol><symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol><symbol id="i-tag" viewBox="0 0 24 24"><path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4Z"/><circle cx="7.5" cy="7.5" r="0.5"/></symbol><symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></symbol><symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7Z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/></symbol><symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol><symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></symbol><symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></symbol><symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3.5 20 12 6 20.5Z"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol><symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol><symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-volume-x" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4Z"/><path d="m22 9-6 6M16 9l6 6"/></symbol><symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"/></symbol><symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></symbol><symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol><symbol id="i-external-link" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol><symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.9 5.7 5.7 1.9-5.7 1.9L12 18.2l-1.9-5.7-5.7-1.9 5.7-1.9Z"/><path d="M19 15l.7 2.1 2.1.7-2.1.7L19 20.6l-.7-2.1-2.1-.7 2.1-.7Z"/></symbol><symbol id="i-key" viewBox="0 0 24 24"><path d="m21 2-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8Zm0 0L15.5 7.5l3 3L22 7l-3-3"/></symbol><symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol><symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5M4.9 19.1C1 15.2 1 8.8 4.9 4.9M19.1 4.9c3.9 3.9 3.9 10.3 0 14.2"/></symbol><symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol><symbol id="i-lightbulb" viewBox="0 0 24 24"><path d="M15 14c.2-1 .7-1.7 1.5-2.5a5.9 5.9 0 0 0 1.5-3.5A6 6 0 0 0 6 8c0 1.3.5 2.6 1.5 3.5.8.8 1.3 1.5 1.5 2.5"/><path d="M9 18h6M10 22h4"/></symbol><symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></symbol><symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol><symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-rotate-ccw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol><symbol id="i-file-text" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M15 2v5h5"/><path d="M9 13h6M9 17h6"/></symbol><symbol id="i-skip-forward" viewBox="0 0 24 24"><path d="M5 4l10 8-10 8Z"/><path d="M19 5v14"/></symbol><symbol id="i-thumbs-up" viewBox="0 0 24 24"><path d="M7 10v12"/><path d="M15 5.9 14 10h5.8a2 2 0 0 1 1.9 2.6l-2.3 8a2 2 0 0 1-1.9 1.4H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.8a2 2 0 0 0 1.8-1.1L12 2a3.1 3.1 0 0 1 3 3.9Z"/></symbol><symbol id="i-thumbs-down" viewBox="0 0 24 24"><path d="M17 14V2"/><path d="M9 18.1 10 14H4.2a2 2 0 0 1-1.9-2.6l2.3-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.8a2 2 0 0 0-1.8 1.1L12 22a3.1 3.1 0 0 1-3-3.9Z"/></symbol></svg>
     <!-- Top navigation bar -->
     <nav class="navbar">
         <div class="navbar-content">
             <button class="btn btn-icon sidebar-toggle-mobile" id="sidebarMobileBtn" type="button"
-                    data-i18n-aria-label="nav.menu" aria-label="Menu">&#9776;</button>
+                    data-i18n-aria-label="nav.menu" aria-label="Menu"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
             <div class="logo">
-                <span>🔔</span>
+                <svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>
                 <span data-i18n="nav.title">Webhook Monitor</span>
             </div>
             <!-- Navigation lives in the command palette. The breadcrumb is
@@ -27,7 +32,7 @@
             <nav class="breadcrumb" id="breadcrumb" aria-live="polite"></nav>
             <button class="palette-trigger" type="button" data-palette-open
                     data-i18n-aria-label="palette.open" aria-label="Jump to anywhere">
-                <span aria-hidden="true">&#128269;</span>
+                <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
                 <span class="trigger-label" data-i18n="palette.trigger">Jump to anywhere…</span>
                 <span class="trigger-hint" aria-hidden="true">&#8984;K</span>
             </button>
@@ -37,19 +42,19 @@
             <div class="nav-actions">
                 <span class="nav-status-dot" data-i18n-title="nav.status.running" title="Service running" aria-label="Service running" role="img"></span>
                 <button class="btn btn-icon" id="autoRefreshBtn" type="button" data-i18n-title="nav.autoRefresh" title="Auto-refresh" data-i18n-aria-label="nav.autoRefresh" aria-label="Auto-refresh">
-                    <span id="autoRefreshIcon">⏸️</span>
+                    <span id="autoRefreshIcon"><svg class="icon" aria-hidden="true"><use href="#i-pause"/></svg></span>
                     <span id="autoRefreshText" class="sr-only" data-i18n="nav.autoRefresh">Auto-refresh</span>
                 </button>
                 <button class="btn btn-icon" id="refreshBtn" type="button" data-i18n-title="nav.refresh" title="Refresh" data-i18n-aria-label="nav.refresh" aria-label="Refresh">
-                    <span>🔄</span>
+                    <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>
                 </button>
                 <button class="btn btn-icon" id="authBtn" onclick="openAuthModal()" data-i18n-title="nav.credentials" title="Credentials" data-i18n-aria-label="nav.credentials" aria-label="Credentials">
-                    <span>🔐</span>
+                    <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
                     <span id="authBtnText" class="sr-only" data-i18n="nav.credentials">Credentials</span>
                 </button>
                 <button class="btn btn-icon btn-lang" id="langToggleBtn" type="button" onclick="I18N.toggleLang()" data-i18n="nav.langToggle" data-i18n-title="nav.langToggleAria" title="Switch language to Chinese" data-i18n-aria-label="nav.langToggleAria" aria-label="Switch language to Chinese">中文</button>
                 <button class="btn btn-icon" id="themeToggleBtn" type="button" onclick="toggleTheme()" title="Toggle Theme" aria-label="Toggle Theme">
-                    <span id="themeToggleIcon">🌙</span>
+                    <span id="themeToggleIcon"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></span>
                 </button>
             </div>
         </div>
@@ -221,17 +226,17 @@
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <div>
                         <div class="section-title" data-i18n="incidents.title">Incidents</div>
-                        <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="incidents.subtitle">Related alerts auto-grouped into operational incidents. Active incidents are still receiving new alerts; quiet incidents are ready for review.</p>
+                        <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="incidents.subtitle">Related alerts auto-grouped into operational incidents. Active incidents are still receiving new alerts; quiet incidents are ready for review.</p>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <input type="text" id="incidentSearchInput" placeholder="Search incidents..." oninput="IncidentsModule.search()" style="width:180px; padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.82rem;" data-i18n-placeholder="incidents.searchPlaceholder">
-                        <select id="incidentStatusFilter" onchange="IncidentsModule.toggleStatus()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.82rem;">
+                        <input type="text" id="incidentSearchInput" placeholder="Search incidents..." oninput="IncidentsModule.search()" style="width:180px; padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);" data-i18n-placeholder="incidents.searchPlaceholder">
+                        <select id="incidentStatusFilter" onchange="IncidentsModule.toggleStatus()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
                             <option value="">All</option>
-                            <option value="active">🔥 Active</option>
-                            <option value="quiet">🔇 Quiet</option>
-                            <option value="closed">✅ Closed</option>
+                            <option value="active"><svg class="icon" aria-hidden="true"><use href="#i-flame"/></svg> Active</option>
+                            <option value="quiet"><svg class="icon" aria-hidden="true"><use href="#i-volume-x"/></svg> Quiet</option>
+                            <option value="closed"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Closed</option>
                         </select>
-                        <button class="btn" onclick="IncidentsModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                        <button class="btn" onclick="IncidentsModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
                 <div id="incidentsList">
@@ -256,7 +261,7 @@
                             <option value="" data-i18n="deep.engine.all">All engines</option>
                             <option value="openclaw" data-i18n="deep.engine.openclaw">OpenClaw</option>
                         </select>
-                        <button class="btn" onclick="DeepAnalysesModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                        <button class="btn" onclick="DeepAnalysesModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
                 <div id="deepAnalysesList">
@@ -280,17 +285,17 @@
                     <div class="dt-view-switch" style="display: flex; gap: 8px; align-items: center;">
                     </div>
                     <div class="dt-period-selector" style="display: flex; gap: 8px; align-items: center;">
-                        <span id="dtLastRefreshed" class="last-refreshed" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+                        <span id="dtLastRefreshed" class="last-refreshed" style="font-size: var(--fs-xs); color: var(--text-muted);"></span>
                         <button class="btn" data-dt-period="day" data-i18n="dt.period.day">Day</button>
                         <button class="btn" data-dt-period="week" data-i18n="dt.period.week">Week</button>
                         <button class="btn" data-dt-period="month" data-i18n="dt.period.month">Month</button>
-                        <button class="btn" onclick="DecisionTraceModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                        <button class="btn" onclick="DecisionTraceModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
 
                 <!-- View: Overview (landing; merged in from the former Overview tab) -->
                 <div id="dtViewOverview">
-                    <p style="margin: 0 0 16px; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="overview.subtitle">At-a-glance health: volume, forward rate, delivery, AI spend, top sources.</p>
+                    <p style="margin: 0 0 16px; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="overview.subtitle">At-a-glance health: volume, forward rate, delivery, AI spend, top sources.</p>
                     <div id="overviewContent">
                         <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
                     </div>
@@ -298,7 +303,7 @@
 
                 <!-- View: Decision Trace -->
                 <div id="dtViewTrace" style="display: none;">
-                    <p style="margin: 0 0 16px; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="dt.subtitle">Why each alert was forwarded or skipped. Click a reason to filter; expand a row for the full decision chain.</p>
+                    <p style="margin: 0 0 16px; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="dt.subtitle">Why each alert was forwarded or skipped. Click a reason to filter; expand a row for the full decision chain.</p>
                     <div id="decisionTraceStats">
                         <div class="loading">
                             <div class="spinner"></div>
@@ -311,9 +316,9 @@
                     <div class="dt-list-filters" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 12px;">
                         <select id="dtResultFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
                             <option value="" data-i18n="dt.filter.allOutcomes">All outcomes</option>
-                            <option value="forwarded" data-i18n="dt.filter.optForwarded">✅ Forwarded</option>
+                            <option value="forwarded" data-i18n="dt.filter.optForwarded"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Forwarded</option>
                             <option value="skipped" data-i18n="dt.filter.optSkipped">⏭️ Skipped</option>
-                            <option value="failed" data-i18n="dt.filter.optFailed">❌ Delivery failed</option>
+                            <option value="failed" data-i18n="dt.filter.optFailed"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg> Delivery failed</option>
                         </select>
                         <select id="dtSourceFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
                             <option value="" data-i18n="dt.filter.allSources">All sources</option>
@@ -351,9 +356,9 @@
                     <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <div class="section-title" data-i18n="rules.title">Forward Rule Configuration</div>
                         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                            <button class="btn" onclick="RoutingModule.setView('sandbox')">🧪 <span data-i18n="routing.view.sandbox">Test Payload</span></button>
-                            <button class="btn" onclick="RoutingModule.setView('audit')">📋 <span data-i18n="routing.view.audit">Audit</span></button>
-                            <button class="btn btn-primary" onclick="showRuleForm()"><span>➕</span> <span data-i18n="rules.add">Add Rule</span></button>
+                            <button class="btn" onclick="RoutingModule.setView('sandbox')"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> <span data-i18n="routing.view.sandbox">Test Payload</span></button>
+                            <button class="btn" onclick="RoutingModule.setView('audit')"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg> <span data-i18n="routing.view.audit">Audit</span></button>
+                            <button class="btn btn-primary" onclick="showRuleForm()"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="rules.add">Add Rule</span></button>
                         </div>
                     </div>
                     <div id="forwardRulesList">
@@ -369,10 +374,10 @@
                     <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <div>
                             <div class="section-title" data-i18n="silences.title">Silences</div>
-                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="silences.subtitle">While active, alerts matching the criteria are not forwarded. Events are still ingested, deduplicated, and analyzed.</p>
+                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="silences.subtitle">While active, alerts matching the criteria are not forwarded. Events are still ingested, deduplicated, and analyzed.</p>
                         </div>
                         <button class="btn btn-primary" onclick="showSilenceForm()">
-                            <span>➕</span> <span data-i18n="silences.add">Add Silence</span>
+                            <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="silences.add">Add Silence</span>
                         </button>
                     </div>
                     <!-- Silence debt: how much each active silence is suppressing;
@@ -390,10 +395,10 @@
                     <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin: 32px 0 16px;">
                         <div>
                             <div class="section-title" data-i18n="silences.mw.title">Maintenance windows</div>
-                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="silences.mw.subtitle">Weekly recurring mute windows (e.g. weekend maintenance). Matching alerts are silenced automatically while a window is active.</p>
+                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="silences.mw.subtitle">Weekly recurring mute windows (e.g. weekend maintenance). Matching alerts are silenced automatically while a window is active.</p>
                         </div>
                         <button class="btn btn-primary" onclick="showMaintenanceWindowForm()">
-                            <span>➕</span> <span data-i18n="silences.mw.add">Add Window</span>
+                            <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="silences.mw.add">Add Window</span>
                         </button>
                     </div>
                     <div id="maintenanceWindowsList">
@@ -424,7 +429,7 @@
                         <div>
                             <div class="alert-quality-title-line">
                                 <div class="section-title" data-i18n="quality.title">Alert quality center</div>
-                                <span class="alert-quality-readonly">🔒 <span data-i18n="quality.readOnly">Read-only</span></span>
+                                <span class="alert-quality-readonly"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg> <span data-i18n="quality.readOnly">Read-only</span></span>
                             </div>
                             <p data-i18n="quality.subtitle">Inspect alert identity, field coverage, recovery matching, schema drift, and response hygiene. This view never changes source configuration.</p>
                         </div>
@@ -447,7 +452,7 @@
                 <div id="routingViewIntegrations" style="display:none;">
                     <div class="section-header" style="margin-bottom:20px;">
                         <div class="section-title" data-i18n="integration.title">Integration catalog</div>
-                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size:0.85rem;" data-i18n="integration.subtitle">Choose a supported channel, test it, and create a forwarding rule in one guided flow.</p>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="integration.subtitle">Choose a supported channel, test it, and create a forwarding rule in one guided flow.</p>
                     </div>
                     <div id="integrationCatalog"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
                     <div id="integrationSetup" style="display:none; margin-top:20px;"></div>
@@ -460,24 +465,24 @@
                             <div class="section-title" data-i18n="sandbox.title">Payload Sandbox</div>
                             <button class="btn" onclick="RoutingModule.setView('rules')">← <span data-i18n="routing.view.rules">Forward Rules</span></button>
                         </div>
-                        <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="sandbox.subtitle">Paste a raw alert payload and see what WebhookWise would extract and decide — which adapter parses it, the alert identity, and which rules/silences would match. Nothing is queued, analyzed by AI, or saved.</p>
+                        <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="sandbox.subtitle">Paste a raw alert payload and see what WebhookWise would extract and decide — which adapter parses it, the alert identity, and which rules/silences would match. Nothing is queued, analyzed by AI, or saved.</p>
                     </div>
                     <div class="sandbox-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start;">
                         <div>
-                            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.source">Source</label>
-                            <input type="text" id="sandboxSource" placeholder="volcengine, grafana, prometheus…" style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.9rem; margin-bottom:1rem;" />
-                            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.payload">Payload (JSON)</label>
-                            <textarea id="sandboxPayload" rows="18" spellcheck="false" placeholder='{ "RuleName": "...", "Level": "critical" }' style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.82rem; resize:vertical;"></textarea>
+                            <label style="display:block; font-size: var(--fs-sm); font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.source">Source</label>
+                            <input type="text" id="sandboxSource" placeholder="volcengine, grafana, prometheus…" style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-md); margin-bottom:1rem;" />
+                            <label style="display:block; font-size: var(--fs-sm); font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.payload">Payload (JSON)</label>
+                            <textarea id="sandboxPayload" rows="18" spellcheck="false" placeholder='{ "RuleName": "...", "Level": "critical" }' style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size: var(--fs-sm); resize:vertical;"></textarea>
                             <div style="display:flex; gap:0.6rem; margin-top:0.85rem;">
-                                <button class="btn btn-primary" onclick="runSandboxTest()"><span>🧪</span> <span data-i18n="sandbox.run">Test</span></button>
+                                <button class="btn btn-primary" onclick="runSandboxTest()"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> <span data-i18n="sandbox.run">Test</span></button>
                                 <button class="btn" onclick="loadSandboxSample()" data-i18n="sandbox.sample">Load sample</button>
                             </div>
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.result">Result</label>
+                            <label style="display:block; font-size: var(--fs-sm); font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.result">Result</label>
                             <div id="sandboxResult">
                                 <div class="empty-state" style="text-align:center; padding:40px; color:var(--text-secondary);">
-                                    <div style="font-size:40px; margin-bottom:12px;">🧪</div>
+                                    <div style="font-size:40px; margin-bottom:12px;"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg></div>
                                     <p data-i18n="sandbox.empty">Paste a payload and click Test to see how WebhookWise would handle it.</p>
                                 </div>
                             </div>
@@ -490,16 +495,16 @@
                     <div class="section-header" style="margin-bottom: 20px;">
                         <div>
                             <div class="section-title" data-i18n="audit.title">Rule Audit</div>
-                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="audit.subtitle">Surface zombie rules (gone quiet), pure-noise rules (never forwarded), and flapping rules (oscillating near threshold). Read-only over existing data.</p>
+                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="audit.subtitle">Surface zombie rules (gone quiet), pure-noise rules (never forwarded), and flapping rules (oscillating near threshold). Read-only over existing data.</p>
                         </div>
                         <div style="display:flex; gap:8px; align-items:center;">
-                            <select id="auditWindowDays" onchange="RuleAuditModule.load()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size:0.82rem;">
+                            <select id="auditWindowDays" onchange="RuleAuditModule.load()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
                                 <option value="7">7 days</option>
                                 <option value="30" selected>30 days</option>
                                 <option value="90">90 days</option>
                                 <option value="180">180 days</option>
                             </select>
-                            <button class="btn" onclick="RuleAuditModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                            <button class="btn" onclick="RuleAuditModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                             <button class="btn" onclick="RoutingModule.setView('rules')">← <span data-i18n="routing.view.rules">Forward Rules</span></button>
                         </div>
                     </div>
@@ -521,7 +526,7 @@
                 <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap;">
                     <div>
                         <div class="section-title" data-i18n="noise.title">Noise Center</div>
-                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size:0.85rem;" data-i18n="noise.subtitle">Measure alert noise, review safe recommendations, and apply reversible optimizations.</p>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="noise.subtitle">Measure alert noise, review safe recommendations, and apply reversible optimizations.</p>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
                         <select id="noiseWindowDays" class="form-input" style="width:auto; padding:6px 12px;" onchange="NoiseCenterModule.load()">
@@ -529,22 +534,22 @@
                             <option value="30" data-i18n="noise.window.30d">30 days</option>
                             <option value="90" data-i18n="noise.window.90d">90 days</option>
                         </select>
-                        <button class="btn" onclick="NoiseCenterModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                        <button class="btn" onclick="NoiseCenterModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
                 <div id="noiseCenterSummary" class="stats-grid" style="margin-bottom:24px;"></div>
                 <div style="display:grid; grid-template-columns:minmax(0, 2fr) minmax(280px, 1fr); gap:20px; align-items:start;" class="noise-center-grid">
                     <div style="min-width:0;">
-                        <div class="section-title" style="font-size:1rem; margin-bottom:12px;" data-i18n="noise.suggestions.title">Recommended optimizations</div>
+                        <div class="section-title" style="font-size: var(--fs-lg); margin-bottom:12px;" data-i18n="noise.suggestions.title">Recommended optimizations</div>
                         <div id="noiseSuggestions"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
                     </div>
                     <div style="border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; background:var(--bg-surface);">
-                        <div class="section-title" style="font-size:1rem; margin-bottom:8px;" data-i18n="noise.actions.title">Recent optimizations</div>
+                        <div class="section-title" style="font-size: var(--fs-lg); margin-bottom:8px;" data-i18n="noise.actions.title">Recent optimizations</div>
                         <div id="noiseRecentActions"></div>
                     </div>
                 </div>
                 <div style="margin-top:24px; border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; background:var(--bg-surface);">
-                    <div class="section-title" style="font-size:1rem; margin-bottom:12px;" data-i18n="noise.sources.title">Noisiest sources</div>
+                    <div class="section-title" style="font-size: var(--fs-lg); margin-bottom:12px;" data-i18n="noise.sources.title">Noisiest sources</div>
                     <div id="noiseSources"></div>
                 </div>
             </div>
@@ -556,9 +561,9 @@
                 <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px;">
                     <div>
                         <div class="section-title" data-i18n="action.title">Action Center</div>
-                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size:0.85rem;" data-i18n="action.subtitle">Delivery, processing, and AI problems that need operator attention.</p>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="action.subtitle">Delivery, processing, and AI problems that need operator attention.</p>
                     </div>
-                    <button class="btn" onclick="ActionCenterModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                    <button class="btn" onclick="ActionCenterModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                 </div>
                 <div id="actionCenterSummary" class="stats-grid" style="margin-bottom:20px;"></div>
                 <div id="actionCenterList"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
@@ -572,9 +577,9 @@
                 <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px;">
                     <div>
                         <div class="section-title" data-i18n="kb.title">Knowledge drafts</div>
-                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size:0.85rem;" data-i18n="kb.subtitle">Resolved-incident summaries awaiting review before they feed the AI knowledge base (RAG).</p>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="kb.subtitle">Resolved-incident summaries awaiting review before they feed the AI knowledge base (RAG).</p>
                     </div>
-                    <button class="btn" onclick="KbDraftsModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                    <button class="btn" onclick="KbDraftsModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                 </div>
                 <div id="kbDraftsList"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
             </div>
@@ -595,7 +600,7 @@
                             <option value="90" data-i18n="knowledgeGaps.window.90d">90 days</option>
                         </select>
                         <button class="btn" type="button" onclick="ResponseCenterModule.loadKnowledgeGaps()">
-                            🔄 <span data-i18n="common.refresh">Refresh</span>
+                            <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span>
                         </button>
                     </div>
                 </div>
@@ -614,11 +619,11 @@
                 <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;">
                     <div>
                         <div class="section-title" data-i18n="rs.title">Runtime settings</div>
-                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size:0.85rem;" data-i18n="rs.subtitle">Live-tunable policy values. The effective value is the override when set, otherwise the environment default.</p>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="rs.subtitle">Live-tunable policy values. The effective value is the override when set, otherwise the environment default.</p>
                     </div>
-                    <button class="btn" onclick="RuntimeSettingsModule.load()">🔄 <span data-i18n="common.refresh">Refresh</span></button>
+                    <button class="btn" onclick="RuntimeSettingsModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                 </div>
-                <p style="margin:0 0 16px; padding:10px 14px; background:var(--bg-subtle); border:1px dashed var(--border); border-radius:var(--radius); color:var(--text-secondary); font-size:0.85rem;" data-i18n="rs.propagationNote">⏱️ Changes take effect across all processes within about 1 minute (pub/sub + periodic refresh); no restart is required.</p>
+                <p style="margin:0 0 16px; padding:10px 14px; background:var(--bg-subtle); border:1px dashed var(--border); border-radius:var(--radius); color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="rs.propagationNote">⏱️ Changes take effect across all processes within about 1 minute (pub/sub + periodic refresh); no restart is required.</p>
                 <div id="runtimeSettingsList">
                     <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
                 </div>
@@ -778,22 +783,22 @@
                 <div class="form-group">
                     <label class="form-label" data-i18n="auth.apiKeyLabel">API_KEY (read-only)</label>
                     <input type="password" class="form-input" id="authApiKey" data-i18n-placeholder="auth.apiKeyPlaceholder" placeholder="Used for GET queries; leave blank to keep unchanged">
-                    <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="auth.apiKeyHelp">
+                    <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="auth.apiKeyHelp">
                         Used for read-only requests such as the alert list, AI cost, and forward rule list.
                     </p>
                 </div>
                 <div class="form-group">
                     <label class="form-label" data-i18n="auth.adminKeyLabel">ADMIN_WRITE_KEY (write operations)</label>
                     <input type="password" class="form-input" id="authAdminWriteKey" data-i18n-placeholder="auth.adminKeyPlaceholder" placeholder="Used for POST / PUT / DELETE; leave blank to keep unchanged">
-                    <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="auth.adminKeyHelp">
+                    <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="auth.adminKeyHelp">
                         Used for write requests such as re-analysis, manual forwarding, retries, and saving/deleting forward rules.
                     </p>
                 </div>
-                <div style="display: flex; gap: 12px; flex-wrap: wrap; color: var(--text-secondary); font-size: 0.9rem;">
+                <div style="display: flex; gap: 12px; flex-wrap: wrap; color: var(--text-secondary); font-size: var(--fs-md);">
                     <span id="authReadStatus" data-i18n="auth.readNotSaved">API_KEY: not saved</span>
                     <span id="authWriteStatus" data-i18n="auth.writeNotSaved">ADMIN_WRITE_KEY: not saved</span>
                 </div>
-                <p style="margin: 14px 0 0; color: var(--text-secondary); font-size: 0.85rem;" data-i18n="auth.storageNote">
+                <p style="margin: 14px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="auth.storageNote">
                     API_KEY and ADMIN_WRITE_KEY are saved in this browser until you clear them. Use “Clear credentials” to remove both. They are never written to server config.
                 </p>
             </div>
@@ -842,14 +847,14 @@
                     <div class="form-group">
                         <label class="form-label" data-i18n="rule.priorityLabel">Priority</label>
                         <input type="number" class="form-input" id="ruleFormPriority" value="10" min="-1000000" max="1000000">
-                        <small style="color: var(--text-muted); font-size: 0.75rem;" data-i18n="rule.priorityHint">Higher values match first</small>
+                        <small style="color: var(--text-muted); font-size: var(--fs-xs);" data-i18n="rule.priorityHint">Higher values match first</small>
                     </div>
                 </div>
 
                 <!-- Event types -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="rule.scopeEventType">Match Scope — Event Type</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;" data-i18n="rule.scopeEventTypeHint">None selected = match all types</span>
+                    <span style="font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="rule.scopeEventType">Match Scope — Event Type</span>
+                    <span style="font-size: var(--fs-xs); color: var(--text-muted); margin-left: 0.5rem;" data-i18n="rule.scopeEventTypeHint">None selected = match all types</span>
                 </div>
                 <div class="event-type-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem;">
                     <label class="event-type-check" data-i18n-title="rule.evt.forwardTitle" title="Automatic forwarding after the normal webhook processing pipeline completes">
@@ -874,8 +879,8 @@
 
                 <!-- Match conditions -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="rule.fineFilters">Fine-Grained Filters</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;" data-i18n="rule.fineFiltersHint">Optional; applies only to webhook alert events</span>
+                    <span style="font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="rule.fineFilters">Fine-Grained Filters</span>
+                    <span style="font-size: var(--fs-xs); color: var(--text-muted); margin-left: 0.5rem;" data-i18n="rule.fineFiltersHint">Optional; applies only to webhook alert events</span>
                 </div>
                 <div class="form-group" style="margin-bottom: 0.75rem;">
                     <label class="form-label" data-i18n="rule.importanceLabel">Importance</label>
@@ -917,16 +922,16 @@
                         <input type="text" class="form-input" id="ruleFormEnvironment" data-i18n-placeholder="rule.envPlaceholder" placeholder="e.g. prod,dev" autocomplete="off">
                     </div>
                 </div>
-                <small style="display:block; color: var(--text-muted); font-size: 0.75rem; margin: -0.5rem 0 0.75rem;" data-i18n="rule.geoHint">Project, region, and environment support comma-separated values; use !prod / !demo-cn to exclude. Environment is detected from the env/environment/stage field or from dev/prod/test segments in the resource name.</small>
+                <small style="display:block; color: var(--text-muted); font-size: var(--fs-xs); margin: -0.5rem 0 0.75rem;" data-i18n="rule.geoHint">Project, region, and environment support comma-separated values; use !prod / !demo-cn to exclude. Environment is detected from the env/environment/stage field or from dev/prod/test segments in the resource name.</small>
                 <div class="form-group">
                     <label class="form-label" data-i18n="rule.payloadLabel">Payload Field Match</label>
                     <input type="text" class="form-input" id="ruleFormPayload" data-i18n-placeholder="rule.payloadPlaceholder" placeholder='e.g. status=firing,severity=critical' autocomplete="off">
-                    <small style="color: var(--text-muted); font-size: 0.75rem;" data-i18n="rule.payloadHint">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
+                    <small style="color: var(--text-muted); font-size: var(--fs-xs);" data-i18n="rule.payloadHint">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
                 </div>
 
                 <!-- Forward target -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="rule.targetSection">Forward Target</span>
+                    <span style="font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="rule.targetSection">Forward Target</span>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="form-group">
@@ -978,8 +983,8 @@
 
                 <!-- Match conditions -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="silence.matchSection">Match Conditions</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;" data-i18n="silence.matchHint">At least one is required. Same matching as forward rules.</span>
+                    <span style="font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="silence.matchSection">Match Conditions</span>
+                    <span style="font-size: var(--fs-xs); color: var(--text-muted); margin-left: 0.5rem;" data-i18n="silence.matchHint">At least one is required. Same matching as forward rules.</span>
                 </div>
                 <div class="form-group">
                     <label class="form-label" data-i18n="silence.sourceLabel">Source</label>
@@ -1017,16 +1022,16 @@
                         <input type="text" class="form-input" id="silenceFormEnvironment" data-i18n-placeholder="silence.envPlaceholder" placeholder="e.g. prod,dev" autocomplete="off">
                     </div>
                 </div>
-                <small style="display:block; color: var(--text-muted); font-size: 0.75rem; margin: -0.5rem 0 0.75rem;" data-i18n="silence.geoHint">Project, region, and environment support comma-separated values; use !prod / !demo-cn to exclude.</small>
+                <small style="display:block; color: var(--text-muted); font-size: var(--fs-xs); margin: -0.5rem 0 0.75rem;" data-i18n="silence.geoHint">Project, region, and environment support comma-separated values; use !prod / !demo-cn to exclude.</small>
                 <div class="form-group">
                     <label class="form-label" data-i18n="silence.payloadLabel">Payload Field Match</label>
                     <input type="text" class="form-input" id="silenceFormPayload" data-i18n-placeholder="silence.payloadPlaceholder" placeholder='e.g. status=firing,severity=critical' autocomplete="off">
-                    <small style="color: var(--text-muted); font-size: 0.75rem;" data-i18n="silence.payloadHint">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
+                    <small style="color: var(--text-muted); font-size: var(--fs-xs);" data-i18n="silence.payloadHint">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
                 </div>
 
                 <!-- Duration -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="silence.durationSection">Duration</span>
+                    <span style="font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="silence.durationSection">Duration</span>
                 </div>
                 <div class="form-group">
                     <label class="form-label" data-i18n="silence.durationLabel">Mute for</label>
@@ -1039,13 +1044,13 @@
                         <option value="168" data-i18n="silence.duration.7d">7 days</option>
                         <option value="0" data-i18n="silence.duration.permanent">Until manually lifted</option>
                     </select>
-                    <small style="color: var(--text-muted); font-size: 0.75rem;" data-i18n="silence.durationHint">"Keep current" leaves an existing silence's expiry unchanged when editing.</small>
+                    <small style="color: var(--text-muted); font-size: var(--fs-xs);" data-i18n="silence.durationHint">"Keep current" leaves an existing silence's expiry unchanged when editing.</small>
                 </div>
                 <div id="silenceFormExpiresRow" style="display:none;"></div>
                 <div id="silenceFormBacktestResult" style="margin-top: 1rem; border-top: 1px dashed var(--border); padding-top: 1rem; display: none; max-height: 250px; overflow-y: auto;"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn" id="silenceBacktestBtn" onclick="backtestSilenceRule()" data-i18n="silence.action.backtest" style="margin-right: auto; color: var(--primary); border-color: var(--primary);">🧪 Test Rule</button>
+                <button class="btn" id="silenceBacktestBtn" onclick="backtestSilenceRule()" data-i18n="silence.action.backtest" style="margin-right: auto; color: var(--primary); border-color: var(--primary);"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> Test Rule</button>
                 <button class="btn" onclick="closeSilenceForm()" data-i18n="common.cancel">Cancel</button>
                 <button class="btn btn-primary" onclick="saveSilence()" data-i18n="common.save">Save</button>
             </div>
@@ -1078,8 +1083,8 @@
 
                 <!-- Schedule -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="mw.scheduleSection">Schedule</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;" data-i18n="mw.scheduleHint">Repeats weekly on the checked days, in the window's timezone.</span>
+                    <span style="font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="mw.scheduleSection">Schedule</span>
+                    <span style="font-size: var(--fs-xs); color: var(--text-muted); margin-left: 0.5rem;" data-i18n="mw.scheduleHint">Repeats weekly on the checked days, in the window's timezone.</span>
                 </div>
                 <div class="form-group">
                     <label class="form-label" data-i18n="mw.daysLabel">Days of week *</label>
@@ -1110,8 +1115,8 @@
 
                 <!-- Match conditions (mirrors the silence form) -->
                 <div style="margin: 1rem 0 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <span style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="silence.matchSection">Match Conditions</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.5rem;" data-i18n="silence.matchHint">At least one is required. Same matching as forward rules.</span>
+                    <span style="font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="silence.matchSection">Match Conditions</span>
+                    <span style="font-size: var(--fs-xs); color: var(--text-muted); margin-left: 0.5rem;" data-i18n="silence.matchHint">At least one is required. Same matching as forward rules.</span>
                 </div>
                 <div class="form-group">
                     <label class="form-label" data-i18n="silence.sourceLabel">Source</label>
@@ -1149,11 +1154,11 @@
                         <input type="text" class="form-input" id="mwFormEnvironment" data-i18n-placeholder="silence.envPlaceholder" placeholder="e.g. prod,dev" autocomplete="off">
                     </div>
                 </div>
-                <small style="display:block; color: var(--text-muted); font-size: 0.75rem; margin: -0.5rem 0 0.75rem;" data-i18n="silence.geoHint">Project, region, and environment support comma-separated values; use !prod / !demo-cn to exclude.</small>
+                <small style="display:block; color: var(--text-muted); font-size: var(--fs-xs); margin: -0.5rem 0 0.75rem;" data-i18n="silence.geoHint">Project, region, and environment support comma-separated values; use !prod / !demo-cn to exclude.</small>
                 <div class="form-group">
                     <label class="form-label" data-i18n="silence.payloadLabel">Payload Field Match</label>
                     <input type="text" class="form-input" id="mwFormPayload" data-i18n-placeholder="silence.payloadPlaceholder" placeholder='e.g. status=firing,severity=critical' autocomplete="off">
-                    <small style="color: var(--text-muted); font-size: 0.75rem;" data-i18n="silence.payloadHint">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
+                    <small style="color: var(--text-muted); font-size: var(--fs-xs);" data-i18n="silence.payloadHint">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
                 </div>
             </div>
             <div class="modal-footer">

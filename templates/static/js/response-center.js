@@ -159,7 +159,7 @@ const ResponseCenterModule = (function () {
                         (key === 'needs_recovery' ? 'needsRecovery' : key)
                 ))) + '</span>';
         }).join('') +
-            (summary.truncated ? '<em>⚠️ ' + escapeHtml(t('response.queue.truncated')) + '</em>' : '') +
+            (summary.truncated ? '<em>' + wwIcon('alert-triangle') + ' ' + escapeHtml(t('response.queue.truncated')) + '</em>' : '') +
             '</div>';
     }
 
@@ -168,7 +168,7 @@ const ResponseCenterModule = (function () {
         if (!container) return;
         if (!items.length) {
             container.innerHTML = '<div class="empty-state response-empty">' +
-                '<div class="empty-icon">✅</div><div class="empty-title">' +
+                '<div class="empty-icon">' + wwIcon('check') + '</div><div class="empty-title">' +
                 escapeHtml(t('response.queue.emptyTitle')) + '</div><div class="empty-text">' +
                 escapeHtml(t('response.queue.emptyText')) + '</div></div>';
             return;
@@ -234,7 +234,7 @@ const ResponseCenterModule = (function () {
         saveOperatorName(actor);
         if (currentBucket === 'my' && !actor) {
             container.innerHTML = '<div class="empty-state response-empty">' +
-                '<div class="empty-icon">👤</div><div class="empty-title">' +
+                '<div class="empty-icon">' + wwIcon('user') + '</div><div class="empty-title">' +
                 escapeHtml(t('response.queue.actorNeededTitle')) + '</div><div class="empty-text">' +
                 escapeHtml(t('response.queue.actorNeededText')) + '</div></div>';
             document.getElementById('responseQueueActor')?.focus();
@@ -336,7 +336,7 @@ const ResponseCenterModule = (function () {
         const container = document.getElementById('knowledgeGapsList');
         if (!container) return;
         if (!items.length) {
-            container.innerHTML = '<div class="empty-state response-empty"><div class="empty-icon">📚</div>' +
+            container.innerHTML = '<div class="empty-state response-empty"><div class="empty-icon">' + wwIcon('book-open') + '</div>' +
                 '<div class="empty-title">' + escapeHtml(t('knowledgeGaps.emptyTitle')) + '</div>' +
                 '<div class="empty-text">' + escapeHtml(t('knowledgeGaps.emptyText')) + '</div></div>';
             return;

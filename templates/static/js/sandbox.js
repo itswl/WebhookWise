@@ -61,7 +61,7 @@ async function runSandboxTest() {
 
 function sandboxError(msg) {
     return '<div class="empty-state" style="text-align:center; padding:30px; color:var(--danger);">' +
-        '<div style="font-size:34px; margin-bottom:10px;">⚠️</div><p>' + escapeHtml(msg) + '</p></div>';
+        '<div style="font-size:34px; margin-bottom:10px;">' + wwIcon('alert-triangle') + '</div><p>' + escapeHtml(msg) + '</p></div>';
 }
 
 function renderSandboxResult(d) {
@@ -72,7 +72,7 @@ function renderSandboxResult(d) {
 
     const willForward = !!fwd.should_forward;
     const verdictColor = willForward ? 'var(--success)' : (fwd.skip_code === 'silenced' ? 'var(--warning)' : 'var(--text-secondary)');
-    const verdictIcon = willForward ? '✅' : (fwd.skip_code === 'silenced' ? '🔕' : '⏭️');
+    const verdictIcon = willForward ? wwIcon('check') : (fwd.skip_code === 'silenced' ? wwIcon('volume-x') : wwIcon('skip-forward'));
     const verdictText = willForward ? t('sandbox.verdict.forward') : t('sandbox.verdict.skip', { code: fwd.skip_code || '' });
 
     let html = '';
@@ -91,7 +91,7 @@ function renderSandboxResult(d) {
     // Step 1: Ingress
     html += renderPipelineStep(
         1,
-        '✓',
+        wwIcon('check'),
         'var(--success)',
         '1. Ingress 接收',
         'Raw webhook payload is ingested and validated.',
@@ -104,7 +104,7 @@ function renderSandboxResult(d) {
         : '<span class="badge badge-outline" title="' + escapeHtml(t('sandbox.passthroughHint')) + '">passthrough</span>';
     html += renderPipelineStep(
         2,
-        '✓',
+        wwIcon('check'),
         'var(--success)',
         '2. Normalization 归一化',
         'Adapter parses external format into WW standard shape.',
@@ -117,7 +117,7 @@ function renderSandboxResult(d) {
     // Step 3: Deduplication
     html += renderPipelineStep(
         3,
-        'ℹ️',
+        wwIcon('info'),
         'var(--primary)',
         '3. Deduplication 去重指纹',
         'Generates deterministic hash signatures for rate-limiting.',
@@ -125,13 +125,13 @@ function renderSandboxResult(d) {
         '<div>alert_hash: <span style="color:var(--text-secondary);">' + escapeHtml(d.alert_hash || '') + '</span></div>' +
         '<div>dedup_key : <span style="color:var(--text-secondary);">' + escapeHtml(d.dedup_key || '') + '</span></div>' +
         '</div>' +
-        '<div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.4rem; font-style:italic;">ℹ️ ' + escapeHtml(d.dedup_note || '') + '</div>'
+        '<div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.4rem; font-style:italic;">' + wwIcon('info') + ' ' + escapeHtml(d.dedup_note || '') + '</div>'
     );
 
     // Step 4: Silence
     const isSilenced = fwd.skip_code === 'silenced';
     const silenceColor = isSilenced ? 'var(--warning)' : 'var(--success)';
-    const silenceIcon = isSilenced ? '🔕' : '✓';
+    const silenceIcon = isSilenced ? wwIcon('volume-x') : wwIcon('check');
     const silenceDesc = isSilenced ? t('sandbox.silencedBy', { id: fwd.silenced_by.silence_id }) : 'No active silence rules matched.';
     html += renderPipelineStep(
         4,
@@ -145,7 +145,7 @@ function renderSandboxResult(d) {
     // Step 5: AI & Fallback Analysis
     html += renderPipelineStep(
         5,
-        'ℹ️',
+        wwIcon('info'),
         'var(--primary)',
         '5. AI & Fallback Analysis 智能分析',
         'Enriches with KB and runs rule-based simulation.',
@@ -154,13 +154,13 @@ function renderSandboxResult(d) {
         '<div><strong>Event Type:</strong> <code style="font-size:0.8rem;">' + escapeHtml(rb.event_type || '—') + '</code></div>' +
         (rb.summary ? '<div><strong>Summary:</strong> <span style="color:var(--text-main); font-weight:500;">' + escapeHtml(rb.summary) + '</span></div>' : '') +
         '</div>' +
-        '<div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.4rem; font-style:italic;">ℹ️ ' + escapeHtml(rb.note || '') + '</div>'
+        '<div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.4rem; font-style:italic;">' + wwIcon('info') + ' ' + escapeHtml(rb.note || '') + '</div>'
     );
 
     // Step 6: Noise Reduction
     html += renderPipelineStep(
         6,
-        'ℹ️',
+        wwIcon('info'),
         'var(--primary)',
         '6. Noise Reduction 降噪评分',
         'Extracts structural geo metadata for routing.',
@@ -176,7 +176,7 @@ function renderSandboxResult(d) {
     if ((fwd.matched_rules || []).length > 0) {
         rulesHtml = fwd.matched_rules.map(function (r) {
             return '<div style="display:flex; justify-content:space-between; padding:0.3rem 0; border-bottom:1px dashed var(--border);">' +
-                '<span style="font-weight:600;">⚙️ ' + escapeHtml(r.name) + (r.stop_on_match ? ' <span class="badge badge-outline" style="font-size:0.65rem; padding:1px 4px;">stop</span>' : '') + '</span>' +
+                '<span style="font-weight:600;">' + wwIcon('sliders') + ' ' + escapeHtml(r.name) + (r.stop_on_match ? ' <span class="badge badge-outline" style="font-size:0.65rem; padding:1px 4px;">stop</span>' : '') + '</span>' +
                 '<span style="color:var(--text-muted); font-size:0.8rem;">' + escapeHtml(r.target_type) + (r.target_name ? ' · ' + escapeHtml(r.target_name) : '') + '</span>' +
                 '</div>';
         }).join('');
@@ -185,7 +185,7 @@ function renderSandboxResult(d) {
     }
 
     const step7Color = willForward ? 'var(--success)' : 'var(--text-muted)';
-    const step7Icon = willForward ? '✓' : '⏭️';
+    const step7Icon = willForward ? wwIcon('check') : wwIcon('skip-forward');
     html += renderPipelineStep(
         7,
         step7Icon,

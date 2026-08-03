@@ -86,7 +86,7 @@ function copyToClipboard(btn) {
 
     navigator.clipboard.writeText(text).then(() => {
         const originalText = btn.textContent;
-        btn.textContent = '✅ ' + t('common.copied');
+        btn.textContent = wwIcon('check') + ' ' + t('common.copied');
         btn.style.background = '#28a745';
         btn.style.borderColor = '#28a745';
 
@@ -121,13 +121,13 @@ function escapeHtml(value) {
 }
 
 /**
- * Get the alert icon
- * @param {string} importance - Importance level (high/medium/low)
- * @returns {string} The corresponding emoji icon
+ * Severity dot for an alert row. A uniform glyph whose COLOUR carries the
+ * meaning — the tokens decide what "high" looks like, not the glyph.
+ * Trusted markup: callers insert via innerHTML.
  */
 function getAlertIcon(importance) {
-    const icons = { high: '🔴', medium: '🟡', low: '🟢' };
-    return icons[importance] || '⚪';
+    const tone = { high: 'danger', medium: 'warning', low: 'success' }[importance] || 'muted';
+    return '<span class="ww-dot ww-dot-' + tone + '"></span>';
 }
 
 /**
@@ -153,7 +153,7 @@ function renderJSONBlock(data, title = 'JSON') {
     let html = '<div class="code-wrapper">';
     html += '<div class="code-header">';
     html += '<span class="code-lang">' + title + '</span>';
-    html += '<button class="code-copy-btn" onclick="copyToClipboard(this)">📋 ' + t('utils.copy') + '</button>';
+    html += '<button class="code-copy-btn" onclick="copyToClipboard(this)">' + t('utils.copy') + '</button>';
     html += '</div>';
     html += '<div class="code-block">';
     html += '<pre>' + highlighted + '</pre>';
@@ -169,7 +169,7 @@ function renderJSONBlock(data, title = 'JSON') {
  */
 function showError(message) {
     document.getElementById('alertList').innerHTML =
-        '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">' + t('common.loadFailed') + '</div><div class="empty-text">' +
+        '<div class="empty-state"><div class="empty-icon"></div><div class="empty-title">' + t('common.loadFailed') + '</div><div class="empty-text">' +
         escapeHtml(String(message || '')) + '</div><button class="btn btn-primary" onclick="AlertsModule.loadAlerts()">' + t('common.retry') + '</button></div>';
 }
 
@@ -240,32 +240,32 @@ function showToast(message, type = 'info') {
 
     const toast = document.createElement('div');
     
-    let icon = 'ℹ️';
+    let icon = '';
     let bgColor = 'var(--bg-elevated, #1e293b)';
     let borderColor = 'var(--border, #475569)';
     let textColor = 'var(--text-main, #f8fafc)';
 
     const msgLower = String(message).toLowerCase();
-    if (msgLower.includes('✅') || msgLower.includes('success') || msgLower.includes('成功')) {
-        icon = '✅';
+    if (msgLower.includes('') || msgLower.includes('success') || msgLower.includes('成功')) {
+        icon = '';
         type = 'success';
         bgColor = 'rgba(16, 185, 129, 0.15)';
         borderColor = 'rgba(16, 185, 129, 0.4)';
         textColor = 'var(--success, #10b981)';
-    } else if (msgLower.includes('❌') || msgLower.includes('failed') || msgLower.includes('error') || msgLower.includes('失败') || msgLower.includes('crashed')) {
-        icon = '❌';
+    } else if (msgLower.includes('') || msgLower.includes('failed') || msgLower.includes('error') || msgLower.includes('失败') || msgLower.includes('crashed')) {
+        icon = '';
         type = 'error';
         bgColor = 'rgba(239, 68, 68, 0.15)';
         borderColor = 'rgba(239, 68, 68, 0.4)';
         textColor = 'var(--danger, #ef4444)';
-    } else if (msgLower.includes('⚠️') || msgLower.includes('warning') || msgLower.includes('警告') || msgLower.includes('conflict')) {
-        icon = '⚠️';
+    } else if (msgLower.includes('') || msgLower.includes('warning') || msgLower.includes('警告') || msgLower.includes('conflict')) {
+        icon = '';
         type = 'warning';
         bgColor = 'rgba(245, 158, 11, 0.15)';
         borderColor = 'rgba(245, 158, 11, 0.4)';
         textColor = 'var(--warning, #f59e0b)';
-    } else if (msgLower.includes('🚀') || msgLower.includes('🔄') || msgLower.includes('fresh') || msgLower.includes('started')) {
-        icon = '🚀';
+    } else if (msgLower.includes('') || msgLower.includes('') || msgLower.includes('fresh') || msgLower.includes('started')) {
+        icon = '';
         type = 'info';
         bgColor = 'rgba(99, 102, 241, 0.15)';
         borderColor = 'rgba(99, 102, 241, 0.4)';
@@ -274,7 +274,7 @@ function showToast(message, type = 'info') {
 
     // Clean prefix emojis
     let cleanMessage = String(message);
-    if (cleanMessage.startsWith('✅') || cleanMessage.startsWith('❌') || cleanMessage.startsWith('⚠️') || cleanMessage.startsWith('🚀') || cleanMessage.startsWith('🔄') || cleanMessage.startsWith('🗑️') || cleanMessage.startsWith('✏️')) {
+    if (cleanMessage.startsWith('') || cleanMessage.startsWith('') || cleanMessage.startsWith('') || cleanMessage.startsWith('') || cleanMessage.startsWith('') || cleanMessage.startsWith('') || cleanMessage.startsWith('')) {
         cleanMessage = cleanMessage.substring(2).trim();
     }
 
@@ -314,4 +314,15 @@ function showToast(message, type = 'info') {
             toast.remove();
         }, 300);
     }, 4500);
+}
+
+/**
+ * Inline icon from the sprite in dashboard.html.
+ *
+ * Returns trusted markup — never pass the result through escapeHtml. Icons are
+ * decorative (aria-hidden); meaning must always come from the adjacent text.
+ */
+function wwIcon(name, extraClass) {
+    return '<svg class="icon' + (extraClass ? ' ' + extraClass : '') + '" aria-hidden="true">'
+        + '<use href="#i-' + name + '"/></svg>';
 }

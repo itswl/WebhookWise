@@ -133,7 +133,7 @@ function renderSidebar() {
             html += '<button type="button" class="sidebar-item" data-sidebar-slug="' + item.slug + '"'
                 + ' onclick="navigateTo(\'' + item.slug + '\'); closeSidebarDrawer();"'
                 + ' title="' + escapeHtml(t(item.label)) + '">'
-                + '<span class="sidebar-icon" aria-hidden="true">' + item.icon + '</span>'
+                + '<span class="sidebar-icon" aria-hidden="true">' + wwIcon(item.icon) + '</span>'
                 + '<span class="sidebar-label">' + escapeHtml(t(item.label)) + '</span>'
                 + (item.slug === 'incidents' ? '<span class="sidebar-badge" id="sidebarIncidentsBadge" style="display:none;"></span>' : '')
                 + '</button>';
@@ -141,7 +141,7 @@ function renderSidebar() {
     });
     html += '<button type="button" class="sidebar-collapse" id="sidebarCollapseBtn"'
         + ' data-i18n-aria-label="nav.collapse" aria-label="Collapse">'
-        + '<span class="sidebar-icon" aria-hidden="true">&#x276E;</span>'
+        + wwIcon('chevron-left')
         + '<span class="sidebar-label">' + escapeHtml(t('nav.collapse')) + '</span></button>';
     sidebar.innerHTML = html;
     const collapseBtn = document.getElementById('sidebarCollapseBtn');
@@ -622,7 +622,7 @@ function updateAutoRefreshLabel() {
     const icon = document.getElementById('autoRefreshIcon');
     const text = document.getElementById('autoRefreshText');
     const on = !!autoRefreshInterval;
-    if (icon) icon.textContent = on ? '⏵️' : '⏸️';
+    if (icon) icon.innerHTML = wwIcon(on ? 'play' : 'pause');
     if (text) text.textContent = on ? t('nav.autoRefreshOn') : t('nav.autoRefresh');
 }
 
@@ -821,7 +821,7 @@ function applyTheme(theme) {
     const light = theme === 'light';
     document.documentElement.classList.toggle('theme-light', light);
     const icon = document.getElementById('themeToggleIcon');
-    if (icon) icon.textContent = light ? '\u{1F319}' : '\u2600\uFE0F';
+    if (icon) icon.innerHTML = wwIcon(light ? 'moon' : 'sun');
 }
 
 function initTheme() {

@@ -18,9 +18,9 @@ const IncidentsModule = (function () {
     var _focusIncidentId = null;
 
     var STATUS_BADGES = {
-        active: { label: 'Active', cls: 'badge-high', icon: '🔥' },
-        quiet: { label: 'Quiet', cls: 'badge-medium', icon: '🔇' },
-        closed: { label: 'Closed', cls: 'badge-low', icon: '✅' }
+        active: { label: 'Active', cls: 'badge-high', icon: wwIcon('flame') },
+        quiet: { label: 'Quiet', cls: 'badge-medium', icon: wwIcon('volume-x') },
+        closed: { label: 'Closed', cls: 'badge-low', icon: wwIcon('check') }
     };
 
     async function load() {
@@ -60,14 +60,14 @@ const IncidentsModule = (function () {
         if (!container) return;
 
         if (!_rows.length) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">' + t('incidents.empty.title') + '</div><div class="empty-text">' + t('incidents.empty.text') + '</div></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('check') + '</div><div class="empty-title">' + t('incidents.empty.title') + '</div><div class="empty-text">' + t('incidents.empty.text') + '</div></div>';
             return;
         }
 
         var html = '';
         for (var i = 0; i < _rows.length; i++) {
             var row = _rows[i];
-            var badge = STATUS_BADGES[row.status] || { label: row.status, cls: 'badge-outline', icon: '❓' };
+            var badge = STATUS_BADGES[row.status] || { label: row.status, cls: 'badge-outline', icon: wwIcon('info') };
             html += '<div class="incident-card" id="incident-' + row.id + '" style="border:1px solid var(--border); border-radius:8px; padding:1rem 1.25rem; margin-bottom:0.75rem; background:var(--bg-surface); cursor:pointer;" onclick="IncidentsModule.toggle(' + row.id + ')">';
             html += '<div style="display:flex; align-items:center; gap:0.75rem;">';
             html += '<span style="font-size:1.5rem;">' + badge.icon + '</span>';
@@ -83,23 +83,23 @@ const IncidentsModule = (function () {
             html += '<span>' + row.alert_count + ' alerts</span> · ';
             html += '<span>' + (row.started_at ? row.started_at.slice(0, 16).replace('T', ' ') : '?') + '</span>';
             if (row.top_importance) {
-                html += ' · <span>' + (row.top_importance === 'high' ? '🔴 high' : row.top_importance === 'medium' ? '🟠 medium' : '🟢 low') + '</span>';
+                html += ' · <span>' + (row.top_importance === 'high' ? '<span class="ww-dot ww-dot-danger"></span> high' : row.top_importance === 'medium' ? '<span class="ww-dot ww-dot-warning"></span> medium' : '<span class="ww-dot ww-dot-success"></span> low') + '</span>';
             }
             if (row.assignee || row.team) {
-                html += ' · <span>👤 ' + escapeHtml(row.assignee || 'Unassigned') + (row.team ? ' / ' + escapeHtml(row.team) : '') + '</span>';
+                html += ' · <span>' + wwIcon('user') + ' ' + escapeHtml(row.assignee || 'Unassigned') + (row.team ? ' / ' + escapeHtml(row.team) : '') + '</span>';
             }
-            if (row.sla_due_at) html += ' · <span>⏰ ' + escapeHtml(row.sla_due_at.slice(0, 16).replace('T', ' ')) + '</span>';
+            if (row.sla_due_at) html += ' · <span>' + wwIcon('clock') + ' ' + escapeHtml(row.sla_due_at.slice(0, 16).replace('T', ' ')) + '</span>';
             html += '</div>';
             html += '</div>';
             // Action buttons: close / reopen (stop propagation so they don't toggle the card)
             if (row.status === 'active' || row.status === 'quiet') {
-                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">✅</button>';
+                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;"></button>';
             }
             if (row.status === 'closed') {
-                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;">✏️</button>';
-                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">🔄</button>';
+                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;"></button>';
+                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;"></button>';
             }
-            html += '<span style="color:var(--text-muted); font-size:0.8rem;">▶</span>';
+            html += '<span style="color:var(--text-muted); font-size:0.8rem;"></span>';
             html += '</div>';
 
             // Expandable detail (hidden by default)
@@ -426,7 +426,7 @@ const IncidentsModule = (function () {
             used: 'incidents.intelligence.used',
             not_used: 'incidents.intelligence.notUsed'
         }[verdict];
-        return key ? '<span class="incident-intelligence-feedback-state">✓ ' + t(key) + '</span>' : '';
+        return key ? '<span class="incident-intelligence-feedback-state">' + wwIcon('check') + ' ' + t(key) + '</span>' : '';
     }
 
     function intelligenceFeedbackControls(incidentId, recommendationType, candidateRef, verdict) {
@@ -439,11 +439,11 @@ const IncidentsModule = (function () {
             '<summary>' + t('incidents.intelligence.feedbackAction') + '</summary><div>' +
             '<button type="button" class="btn btn-sm' + (verdict === positive ? ' active' : '') +
             '" onclick="IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
-            recommendationType + '\',\'' + encoded + '\',\'' + positive + '\')">👍 ' +
+            recommendationType + '\',\'' + encoded + '\',\'' + positive + '\')">' + wwIcon('thumbs-up') + ' ' +
             t(change ? 'incidents.intelligence.relevant' : 'incidents.intelligence.used') + '</button>' +
             '<button type="button" class="btn btn-sm' + (verdict === negative ? ' active' : '') +
             '" onclick="IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
-            recommendationType + '\',\'' + encoded + '\',\'' + negative + '\')">👎 ' +
+            recommendationType + '\',\'' + encoded + '\',\'' + negative + '\')">' + wwIcon('thumbs-down') + ' ' +
             t(change ? 'incidents.intelligence.irrelevant' : 'incidents.intelligence.notUsed') +
             '</button></div></details>';
     }
@@ -511,7 +511,7 @@ const IncidentsModule = (function () {
         } else {
             html += '<button type="button" class="btn btn-sm incident-runbook-start" ' +
                 'onclick="event.stopPropagation(); IncidentsModule.startRunbookExecution(' + incidentId +
-                ',\'' + encodedRef + '\')">▶ ' + t('incidents.runbook.start') + '</button>';
+                ',\'' + encodedRef + '\')">' + wwIcon('play') + ' ' + t('incidents.runbook.start') + '</button>';
         }
         html += intelligenceFeedbackState(item.feedback);
         html += intelligenceFeedbackControls(
@@ -521,7 +521,7 @@ const IncidentsModule = (function () {
     }
 
     function renderIntelligence(data, embedded) {
-        var heading = embedded ? '' : '<div class="incident-intelligence-title">✨ ' +
+        var heading = embedded ? '' : '<div class="incident-intelligence-title">' + wwIcon('sparkles') + ' ' +
             t('incidents.intelligence.title') + '</div>';
         if (data.intelligenceLoading) {
             return '<section class="incident-intelligence">' + heading + '<div class="incident-intelligence-loading">' +
@@ -534,19 +534,19 @@ const IncidentsModule = (function () {
         var intelligence = data.intelligence || {};
         var groups = [
             {
-                icon: '🕘',
+                icon: wwIcon('history'),
                 title: t('incidents.intelligence.similar'),
                 items: intelligence.similar_incidents || [],
                 render: renderSimilarIncident
             },
             {
-                icon: '🚀',
+                icon: wwIcon('send'),
                 title: t('incidents.intelligence.changes'),
                 items: intelligence.related_changes || [],
                 render: renderRelatedChange
             },
             {
-                icon: '📘',
+                icon: wwIcon('book-open'),
                 title: t('incidents.intelligence.runbooks'),
                 items: intelligence.recommended_runbooks || [],
                 render: renderRunbook
@@ -576,7 +576,7 @@ const IncidentsModule = (function () {
             (intelligence.related_changes || []).length +
             (intelligence.recommended_runbooks || []).length;
         return '<details class="incident-supporting-details" onclick="event.stopPropagation()">' +
-            '<summary>✨ ' + t('incidents.evidence.title') +
+            '<summary>' + wwIcon('sparkles') + ' ' + t('incidents.evidence.title') +
             '<span class="incident-supporting-count">' + count + '</span></summary>' +
             renderIntelligence(data, true) + '</details>';
     }
@@ -620,7 +620,7 @@ const IncidentsModule = (function () {
         var offset = formatRelativeOffset(timestampOffsetSeconds(change.started_at, rootTimestamp));
         var sourceUrl = safeHttpUrl(change.source_url);
         var html = '<div class="tree-node incident-timeline-change-node">';
-        html += '<div class="tree-indicator incident-timeline-change-indicator">🚀</div>';
+        html += '<div class="tree-indicator incident-timeline-change-indicator">' + wwIcon('send') + '</div>';
         html += '<article class="incident-timeline-change">';
         html += '<div class="incident-timeline-change-head"><div><span class="incident-timeline-change-badge">' +
             t('incidents.timeline.changeMarker') + '</span><strong>' + changeTitle(change) + '</strong></div>' +
@@ -685,7 +685,7 @@ const IncidentsModule = (function () {
         if (status === 'pending') {
             html += '<div class="incident-recurrence-actions">' +
                 '<button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.reviewRecurrence(' + data.id + ',\'confirm\')">✓ ' +
+                'IncidentsModule.reviewRecurrence(' + data.id + ',\'confirm\')">' + wwIcon('check') + ' ' +
                 t('incidents.recurrence.confirm') + '</button>' +
                 '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); ' +
                 'IncidentsModule.reviewRecurrence(' + data.id + ',\'dismiss\')">× ' +
@@ -707,68 +707,68 @@ const IncidentsModule = (function () {
 
         secondaryActions.push(
             '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.assign(' +
-            data.id + ')">👤 ' + t('alerts.action.assign') + '</button>'
+            data.id + ')">' + wwIcon('user') + ' ' + t('alerts.action.assign') + '</button>'
         );
         secondaryActions.push(
             '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.feedback(' +
-            data.id + ',\'correct\')">👍 ' + t('alerts.action.feedbackCorrect') + '</button>'
+            data.id + ',\'correct\')">' + wwIcon('thumbs-up') + ' ' + t('alerts.action.feedbackCorrect') + '</button>'
         );
         secondaryActions.push(
             '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.feedback(' +
-            data.id + ',\'grouping_wrong\')">👎 ' + t('incidents.action.groupingWrong') + '</button>'
+            data.id + ',\'grouping_wrong\')">' + wwIcon('thumbs-down') + ' ' + t('incidents.action.groupingWrong') + '</button>'
         );
         secondaryActions.push(
             '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.merge(' +
-            data.id + ')">🔗 ' + t('incidents.action.merge') + '</button>'
+            data.id + ')">' + wwIcon('link') + ' ' + t('incidents.action.merge') + '</button>'
         );
         secondaryActions.push(
             '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.split(' +
-            data.id + ')">✂️ ' + t('incidents.action.split') + '</button>'
+            data.id + ')">' + wwIcon('x') + ' ' + t('incidents.action.split') + '</button>'
         );
         secondaryActions.push(
             '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.exportPostmortem(' +
-            data.id + ')">📄 ' + t('incidents.action.postmortem') + '</button>'
+            data.id + ')">' + wwIcon('file-text') + ' ' + t('incidents.action.postmortem') + '</button>'
         );
         if (sources.length) {
             secondaryActions.push(
                 '<button type="button" class="btn btn-sm btn-warn" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.silenceIncidentSources(' + data.id + ')">🔕 ' +
+                'IncidentsModule.silenceIncidentSources(' + data.id + ')">' + wwIcon('volume-x') + ' ' +
                 t('incidents.action.silenceAll') + ' (' + sources.length + ')</button>'
             );
         }
         if (terminal || data.status === 'closed') {
             secondaryActions.push(
                 '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' +
-                data.id + ')">✏️ ' + t('resolution.edit') + '</button>'
+                data.id + ')">' + wwIcon('pencil') + ' ' + t('resolution.edit') + '</button>'
             );
             secondaryActions.push(
                 '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' +
-                data.id + ')">🔄 ' + t('incidents.action.reopen') + '</button>'
+                data.id + ')">' + wwIcon('refresh') + ' ' + t('incidents.action.reopen') + '</button>'
             );
         }
 
         var html = '<div class="incident-command-bar">';
         html += '<div class="incident-command-meta">';
         html += '<strong>' + escapeHtml(t('alerts.workflow.' + workflowStatus)) + '</strong>';
-        html += '<span>👤 ' + t('incidents.owner') + ': ' +
+        html += '<span>' + wwIcon('user') + ' ' + t('incidents.owner') + ': ' +
             escapeHtml(data.assignee || t('incidents.unassigned')) +
             (data.team ? ' / ' + escapeHtml(data.team) : '') + '</span>';
-        html += '<span>⏰ ' + t('incidents.sla') + ': ' +
+        html += '<span>' + wwIcon('clock') + ' ' + t('incidents.sla') + ': ' +
             escapeHtml(data.sla_due_at ? data.sla_due_at.replace('T', ' ').slice(0, 19) : t('incidents.notSet')) +
             '</span></div>';
         html += '<div class="incident-command-actions alert-primary-actions">';
         if (workflowStatus === 'open') {
             html += '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.updateWorkflow(' + data.id + ',\'acknowledged\')">👋 ' +
+                'IncidentsModule.updateWorkflow(' + data.id + ',\'acknowledged\')">' + wwIcon('check') + ' ' +
                 t('alerts.action.acknowledge') + '</button>';
         }
         if (!terminal) {
             html += '<button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.openResolutionModal(' + data.id + ')">✅ ' +
+                'IncidentsModule.openResolutionModal(' + data.id + ')">' + wwIcon('check') + ' ' +
                 t('alerts.action.resolve') + '</button>';
         }
         html += '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.addNote(' +
-            data.id + ')">📝 ' + t('alerts.action.notes') + '</button>';
+            data.id + ')">' + wwIcon('pencil') + ' ' + t('alerts.action.notes') + '</button>';
         html += '<details class="alert-action-menu incident-action-menu" onclick="event.stopPropagation()">' +
             '<summary class="btn btn-sm alert-more-trigger">••• ' + t('alerts.action.more') +
             '<span class="alert-action-count">' + secondaryActions.length + '</span></summary>' +
@@ -805,7 +805,7 @@ const IncidentsModule = (function () {
         if (rootCause) facts.push(t('incidents.serviceProfile.rootCause', { value: rootCause }));
         var health = profile.health && typeof profile.health === 'object' ? profile.health : {};
         var healthLabel = displayText(health.label);
-        return '<div class="incident-service-profile"><strong>🧭 ' +
+        return '<div class="incident-service-profile"><strong>' + wwIcon('target') + ' ' +
             t('incidents.serviceProfile.title') + ' · ' + escapeHtml(service) +
             (healthLabel ? ' <span class="incident-service-health health-' +
                 escapeHtml(healthLabel) + '">' +
@@ -853,7 +853,7 @@ const IncidentsModule = (function () {
         html += renderRecurrenceReview(data);
         html += '<div class="incident-command-grid">';
 
-        html += '<article class="incident-command-card"><div class="incident-command-label">📣 ' +
+        html += '<article class="incident-command-card"><div class="incident-command-label">' + wwIcon('send') + ' ' +
             t('incidents.command.whatHappened') + '</div><div class="incident-command-body">' +
             escapeHtml(happened || t('incidents.command.noSummary')) + '</div>';
         var impactText = displayText(firstDefined(command, ['impact'])) || displayText(summary.impact);
@@ -863,7 +863,7 @@ const IncidentsModule = (function () {
         }
         html += '</article>';
 
-        html += '<article class="incident-command-card"><div class="incident-command-label">🧩 ' +
+        html += '<article class="incident-command-card"><div class="incident-command-label">' + wwIcon('layers') + ' ' +
             t('incidents.command.likelyCause') + '</div><div class="incident-command-body">' +
             escapeHtml(cause || t('incidents.command.noCause')) + '</div>';
         var confidence = firstDefined(command, ['confidence']);
@@ -874,7 +874,7 @@ const IncidentsModule = (function () {
         }
         html += '</article>';
 
-        html += '<article class="incident-command-card"><div class="incident-command-label">🚀 ' +
+        html += '<article class="incident-command-card"><div class="incident-command-label">' + wwIcon('send') + ' ' +
             t('incidents.command.recentChange') + '</div>';
         if (change) {
             html += '<div class="incident-command-body">' + changeTitle(change) + '</div>';
@@ -895,7 +895,7 @@ const IncidentsModule = (function () {
         }
         html += '</article>';
 
-        html += '<article class="incident-command-card"><div class="incident-command-label">🛠️ ' +
+        html += '<article class="incident-command-card"><div class="incident-command-label">' + wwIcon('wrench') + ' ' +
             t('incidents.command.nextAction') + '</div>';
         if (execution) {
             var progress = runbookProgress(execution);
@@ -909,7 +909,7 @@ const IncidentsModule = (function () {
             if (recommendedRunbook) {
                 html += '<button type="button" class="btn btn-sm incident-runbook-start" ' +
                     'onclick="event.stopPropagation(); IncidentsModule.startRunbookExecution(' + data.id +
-                    ',\'' + encodedReference(recommendedRunbook.candidate_ref) + '\')">▶ ' +
+                    ',\'' + encodedReference(recommendedRunbook.candidate_ref) + '\')">' + wwIcon('play') + ' ' +
                     t('incidents.runbook.start') + '</button>';
             }
         }
@@ -927,7 +927,7 @@ const IncidentsModule = (function () {
         var executionId = Number(execution.id);
         var terminal = ['completed', 'failed', 'abandoned'].indexOf(execution.status) >= 0;
         var html = '<article class="incident-runbook-execution">';
-        html += '<div class="incident-runbook-execution-head"><div><span>📘</span><strong>' +
+        html += '<div class="incident-runbook-execution-head"><div><span>' + wwIcon('book-open') + '</span><strong>' +
             escapeHtml(execution.title || t('incidents.runbook.untitled')) + '</strong></div>' +
             '<span class="incident-runbook-status status-' +
             escapeHtml(String(execution.status || 'in_progress')) + '">' +
@@ -948,7 +948,7 @@ const IncidentsModule = (function () {
                     (terminal ? ' disabled' : '') +
                     ' onclick="event.stopPropagation(); IncidentsModule.toggleRunbookStep(' + incidentId + ',' +
                     executionId + ',' + index + ',' + (!completed) + ')"><span>' +
-                    (completed ? '✓' : (index + 1)) + '</span><strong>' +
+                    (completed ? wwIcon('check') : (index + 1)) + '</span><strong>' +
                     escapeHtml(runbookStepText(step, index)) + '</strong></button>';
             });
         }
@@ -959,7 +959,7 @@ const IncidentsModule = (function () {
         html += '<div class="incident-runbook-actions">';
         if (!terminal) {
             html += '<button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.completeRunbookExecution(' + incidentId + ',' + executionId + ')">✅ ' +
+                'IncidentsModule.completeRunbookExecution(' + incidentId + ',' + executionId + ')">' + wwIcon('check') + ' ' +
                 t('incidents.runbook.complete') + '</button>';
             html += '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); ' +
                 'IncidentsModule.updateRunbookExecution(' + incidentId + ',' + executionId +
@@ -973,12 +973,12 @@ const IncidentsModule = (function () {
             html += '<button type="button" class="btn btn-sm' +
                 (execution.effectiveness === 'effective' ? ' active' : '') +
                 '" onclick="event.stopPropagation(); IncidentsModule.updateRunbookExecution(' + incidentId + ',' +
-                executionId + ',{effectiveness:\'effective\'})">👍 ' +
+                executionId + ',{effectiveness:\'effective\'})">' + wwIcon('thumbs-up') + ' ' +
                 t('incidents.runbook.effective') + '</button>';
             html += '<button type="button" class="btn btn-sm' +
                 (execution.effectiveness === 'ineffective' ? ' active' : '') +
                 '" onclick="event.stopPropagation(); IncidentsModule.updateRunbookExecution(' + incidentId + ',' +
-                executionId + ',{effectiveness:\'ineffective\'})">👎 ' +
+                executionId + ',{effectiveness:\'ineffective\'})">' + wwIcon('thumbs-down') + ' ' +
                 t('incidents.runbook.ineffective') + '</button>';
         }
         html += '<span class="incident-runbook-manual-note">' +
@@ -989,7 +989,7 @@ const IncidentsModule = (function () {
     function renderRunbookExecutions(data) {
         var executions = runbookExecutions(data);
         if (!executions.length) return '';
-        var html = '<section class="incident-runbook-section"><div class="incident-section-title">📘 ' +
+        var html = '<section class="incident-runbook-section"><div class="incident-section-title">' + wwIcon('book-open') + ' ' +
             t('incidents.runbook.executionTitle') + '</div>';
         executions.slice(0, 3).forEach(function (execution) {
             html += renderRunbookExecution(execution, data.id);
@@ -1000,7 +1000,7 @@ const IncidentsModule = (function () {
     function renderOperatorNotes(notes) {
         if (!notes.length) return '';
         var html = '<details class="incident-supporting-details incident-notes" onclick="event.stopPropagation()">' +
-            '<summary>📝 ' + t('incidents.notes.title') +
+            '<summary>' + wwIcon('pencil') + ' ' + t('incidents.notes.title') +
             '<span class="incident-supporting-count">' + notes.length + '</span></summary><div>';
         notes.forEach(function (note) {
             html += '<div class="incident-note"><span>' + escapeHtml(note.actor) + ':</span> ' +
@@ -1016,11 +1016,11 @@ const IncidentsModule = (function () {
         html += renderCommandSummary(data);
         html += renderRunbookExecutions(data);
         if (data.summary_status === 'failed') {
-            html += '<div class="incident-summary-state is-warning">⚠️ ' +
+            html += '<div class="incident-summary-state is-warning">' + wwIcon('alert-triangle') + ' ' +
                 t('incidents.summaryFailed') + '</div>';
         } else if (data.summary_status === 'pending' || data.summary_status === 'retrying' ||
                    data.summary_status === 'processing') {
-            html += '<div class="incident-summary-state">💬 ' + t('incidents.summaryPending') + '</div>';
+            html += '<div class="incident-summary-state">' + wwIcon('message') + ' ' + t('incidents.summaryPending') + '</div>';
         }
         html += renderOperatorNotes(data.notes || []);
         html += renderSupportingEvidence(data);
@@ -1029,7 +1029,7 @@ const IncidentsModule = (function () {
         var relatedChanges = (data.intelligence && data.intelligence.related_changes) || [];
         var timelineItems = buildIncidentTimeline(members, relatedChanges);
         if (timelineItems.length) {
-            html += '<div style="font-weight:600; font-size:0.8rem; color:var(--text-muted); margin-bottom:0.75rem; text-transform:uppercase; letter-spacing:0.04em;">📅 ' +
+            html += '<div style="font-weight:600; font-size:0.8rem; color:var(--text-muted); margin-bottom:0.75rem; text-transform:uppercase; letter-spacing:0.04em;">' + wwIcon('clock') + ' ' +
                 t('incidents.timeline') + ' · ' + t('incidents.timeline.counts', {
                     alerts: members.length,
                     changes: relatedChanges.length
@@ -1056,18 +1056,21 @@ const IncidentsModule = (function () {
                 
                 // Icon and color
                 var dotColor = isRootAlert ? 'var(--primary, #6366f1)' : (m.importance === 'high' ? 'var(--danger, #ef4444)' : (m.importance === 'medium' ? 'var(--warning, #f59e0b)' : 'var(--success, #10b981)'));
-                var dotIcon = isRootAlert ? '👑' : (m.importance === 'high' ? '🔴' : (m.importance === 'medium' ? '🟠' : '🟢'));
+                var dotIcon = isRootAlert
+                    ? wwIcon('target', 'icon-warning')
+                    : (m.importance === 'high' ? '<span class="ww-dot ww-dot-danger"></span>'
+                        : (m.importance === 'medium' ? '<span class="ww-dot ww-dot-warning"></span>' : '<span class="ww-dot ww-dot-success"></span>'));
                 var borderStyle = isRootAlert ? 'border: 2px solid var(--primary); box-shadow: 0 0 8px var(--primary);' : 'border: 1px solid var(--border);';
                 
                 html += '<div class="tree-node" style="position:relative;">';
                 
                 // Indicator dot
                 html += '<div class="tree-indicator" style="position:absolute; left:-2.05rem; top:4px; width:1.1rem; height:1.1rem; border-radius:50%; background:' + dotColor + '; display:flex; align-items:center; justify-content:center; font-size:0.6rem; color:white; font-weight:bold; box-shadow:0 0 0 3px var(--bg-surface); ' + borderStyle + '">';
-                html += isRootAlert ? '★' : '';
+                html += isRootAlert ? wwIcon('target', 'icon-warning icon-sm') : '';
                 html += '</div>';
                 
                 // Card contents
-                var rootBadge = isRootAlert ? '<span class="badge badge-high" style="font-size:0.65rem; padding:1px 6px; background:var(--primary); color:white; font-weight:bold; border-radius:4px; margin-right:4px;">🏆 ' + t('incidents.timeline.rootAlert') + '</span>' : '';
+                var rootBadge = isRootAlert ? '<span class="badge badge-high" style="font-size:0.65rem; padding:1px 6px; background:var(--primary); color:white; font-weight:bold; border-radius:4px; margin-right:4px;">' + wwIcon('target') + ' ' + t('incidents.timeline.rootAlert') + '</span>' : '';
                 var dupBadge = m.is_duplicate ? '<span class="badge badge-outline" style="font-size:0.65rem; padding:1px 4px; margin-left:4px;">' + t('incidents.timeline.duplicate') + '</span>' : '';
                 
                 html += '<div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border); border-radius:6px; padding:0.6rem 0.85rem; display:flex; flex-direction:column; gap:4px;">' +
@@ -1228,7 +1231,7 @@ const IncidentsModule = (function () {
             return item.status === 'completed' && (!item.effectiveness || item.effectiveness === 'unknown');
         });
         if (!similar && !execution) return '';
-        var html = '<details class="resolution-feedback"><summary>✨ ' +
+        var html = '<details class="resolution-feedback"><summary>' + wwIcon('sparkles') + ' ' +
             t('resolution.feedback.title') + '</summary><div>';
         if (similar) {
             html += '<label class="form-group"><span class="form-label">' +
@@ -1774,13 +1777,13 @@ const IncidentsModule = (function () {
             html += _cardHtml(filtered[i]);
         }
         if (!filtered.length) {
-            html = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">' + t('incidents.search.empty') + '</div></div>';
+            html = '<div class="empty-state"><div class="empty-icon">' + wwIcon('search') + '</div><div class="empty-title">' + t('incidents.search.empty') + '</div></div>';
         }
         container.innerHTML = html;
     }
 
     function _cardHtml(row) {
-        var badge = STATUS_BADGES[row.status] || { label: row.status, cls: 'badge-outline', icon: '❓' };
+        var badge = STATUS_BADGES[row.status] || { label: row.status, cls: 'badge-outline', icon: wwIcon('info') };
         var h = '<div class="incident-card" id="incident-' + row.id + '" style="border:1px solid var(--border); border-radius:8px; padding:1rem 1.25rem; margin-bottom:0.75rem; background:var(--bg-surface); cursor:pointer;" onclick="IncidentsModule.toggle(' + row.id + ')">';
         h += '<div style="display:flex; align-items:center; gap:0.75rem;">';
         h += '<span style="font-size:1.5rem;">' + badge.icon + '</span>';
@@ -1797,13 +1800,13 @@ const IncidentsModule = (function () {
         h += '<span>' + (row.started_at ? row.started_at.slice(0, 16).replace('T', ' ') : '?') + '</span>';
         h += '</div></div>';
         if (row.status === 'active' || row.status === 'quiet') {
-            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">✅</button>';
+            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('check') + '</button>';
         }
         if (row.status === 'closed') {
-            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;">✏️</button>';
-            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">🔄</button>';
+            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('pencil') + '</button>';
+            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('refresh') + '</button>';
         }
-        h += '<span style="color:var(--text-muted); font-size:0.8rem;">▶</span>';
+        h += '<span style="color:var(--text-muted); font-size:0.8rem;">' + wwIcon('play') + '</span>';
         h += '</div>';
         h += '<div class="incident-detail" id="incident-detail-' + row.id + '" onclick="event.stopPropagation()" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-light);"></div>';
         h += '</div>';

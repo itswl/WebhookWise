@@ -716,3 +716,64 @@ def test_module_lookup_never_goes_through_window_indexing() -> None:
     assert "window[moduleName]" not in dashboard
     assert "typeof RoutingModule !== 'undefined'" in dashboard
     assert "typeof DecisionTraceModule !== 'undefined'" in dashboard
+
+
+def _emoji_count(text: str) -> int:
+    import re as _re
+
+    return len(_re.findall(r"[\U0001F300-\U0001FAFF☀-➿]", text))
+
+
+def test_dashboard_uses_the_icon_system_not_emoji() -> None:
+    """310 emoji \"icons\" were the single loudest taste problem: each glyph
+    ships its own palette (ignoring the design tokens), renders differently
+    per OS, and varies in visual weight. The sprite gives every icon one
+    stroke voice and currentColor. i18n dictionaries are exempt (their few
+    emoji live in translated copy, not iconography); Feishu card emoji live
+    in services/ — product output, deliberately untouched."""
+    assert _emoji_count(_dashboard_html()) == 0, "emoji left in dashboard.html"
+
+    from tests.helpers.paths import PROJECT_ROOT as _ROOT
+
+    offenders = {}
+    for path in sorted((_ROOT / "templates/static/js").glob("*.js")):
+        if path.name.startswith("i18n."):
+            continue
+        count = _emoji_count(path.read_text())
+        if count:
+            offenders[path.name] = count
+    assert offenders == {}, f"emoji icons remain: {offenders}"
+
+
+def test_every_icon_reference_resolves_to_a_sprite_symbol() -> None:
+    """A dangling <use href=\"#i-x\"> renders as blank space — worse than the
+    emoji it replaced. Checked against every wwIcon() call and every literal
+    use href in HTML and JS."""
+    import re as _re
+
+    from tests.helpers.paths import PROJECT_ROOT as _ROOT
+
+    html = _dashboard_html()
+    defined = set(_re.findall(r'<symbol id="i-([a-z-]+)"', html))
+    assert len(defined) >= 40
+
+    used = set(_re.findall(r'href="#i-([a-z-]+)"', html))
+    for path in (_ROOT / "templates/static/js").glob("*.js"):
+        text = path.read_text()
+        used |= set(_re.findall(r"wwIcon\('([a-z-]+)'", text))
+        used |= set(_re.findall(r'href="#i-([a-z-]+)"', text))
+
+    dangling = used - defined
+    assert dangling == set(), f"icon references with no sprite symbol: {sorted(dangling)}"
+
+
+def test_font_sizes_stay_on_the_scale_ratchet() -> None:
+    """67 distinct font sizes is what \"designed by nobody\" looks like. The
+    scale tokens plus this ratchet stop the number growing back; tighten the
+    bound as the long tail is migrated."""
+    import re as _re
+
+    values = set()
+    for source in (_static_css("components.css"), _static_css("dashboard.css"), _dashboard_html()):
+        values |= set(_re.findall(r"font-size:\s*([0-9.]+(?:rem|px|em))", source))
+    assert len(values) <= 24, f"font-size sprawl is growing again: {len(values)} distinct raw values"

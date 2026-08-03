@@ -28,7 +28,7 @@ const ActionCenterModule = (function () {
         const items = Array.isArray(data.items) ? data.items : [];
         if (!items.length) {
             listEl.innerHTML = '<div class="empty-state" style="text-align:center; padding:60px;">' +
-                '<div style="font-size:48px; margin-bottom:16px;">✅</div>' +
+                '<div style="font-size:48px; margin-bottom:16px;">' + wwIcon('check') + '</div>' +
                 '<div class="empty-title">' + escapeHtml(t('action.empty.title')) + '</div>' +
                 '<div class="empty-text">' + escapeHtml(t('action.empty.text')) + '</div></div>';
             return;
@@ -37,7 +37,7 @@ const ActionCenterModule = (function () {
         listEl.innerHTML = '<div style="display:flex; flex-direction:column; gap:12px;">' + items.map(function (item) {
             const critical = item.severity === 'critical';
             const color = critical ? 'var(--danger)' : 'var(--warning)';
-            const icon = critical ? '🚨' : '⚠️';
+            const icon = critical ? wwIcon('alert-triangle') : wwIcon('alert-triangle');
             const when = item.occurred_at && typeof formatTime === 'function' ? formatTime(item.occurred_at) : '';
             const actionButtons = (item.actions || []).map(function (action) {
                 return '<button type="button" class="btn btn-sm btn-primary" data-remediation="' +
