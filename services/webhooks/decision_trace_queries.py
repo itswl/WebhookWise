@@ -199,16 +199,21 @@ async def get_overview_stats(session: AsyncSession, period: str = "day") -> dict
     ).all()
     skip_code_breakdown = {row[0]: row[1] for row in skip_rows}
 
-    source_rows = (
+    # Ranked by alert RULE, not by source: one ecosystem funnels everything
+    # into a single bucket ("grafana: 21"), which ranks nothing. Traces with no
+    # identifiable rule fall back to their source so unidentified senders stay
+    # visible instead of vanishing from the board.
+    rule_key = func.coalesce(DecisionTrace.alert_name, DecisionTrace.source)
+    rule_rows = (
         await session.execute(
-            select(DecisionTrace.source, func.count(DecisionTrace.id))
-            .where(window, DecisionTrace.source.isnot(None))
-            .group_by(DecisionTrace.source)
+            select(rule_key, func.count(DecisionTrace.id))
+            .where(window, rule_key.isnot(None))
+            .group_by(rule_key)
             .order_by(func.count(DecisionTrace.id).desc())
             .limit(8)
         )
     ).all()
-    top_sources = [{"source": row[0], "count": row[1]} for row in source_rows]
+    top_rules = [{"name": row[0], "count": row[1]} for row in rule_rows]
 
     # Delivery success rate: over outbox rows for forwarded events in the window,
     # how many reached the target (sent) vs failed (exhausted/expired). Joined on
@@ -254,7 +259,7 @@ async def get_overview_stats(session: AsyncSession, period: str = "day") -> dict
         "skipped": skipped,
         "forward_rate": round(forwarded / total * 100, 1) if total else 0.0,
         "skip_code_breakdown": skip_code_breakdown,
-        "top_sources": top_sources,
+        "top_rules": top_rules,
         "delivery": {
             "total": delivery_total,
             "delivered": delivered,

@@ -412,8 +412,9 @@ async def test_overview_stats_composes_volume_delivery_sources(
     assert ov["skipped"] == 1
     assert ov["forward_rate"] == round(2 / 3 * 100, 1)
     assert ov["skip_code_breakdown"] == {"silenced": 1}
-    # Top sources by volume.
-    top = {s["source"]: s["count"] for s in ov["top_sources"]}
+    # Ranked by alert rule; traces without one fall back to their source, so
+    # these fixture rows (no alert_name) surface under their source names.
+    top = {s["name"]: s["count"] for s in ov["top_rules"]}
     assert top == {"volcengine": 2, "aliyun": 1}
     # Delivery: 1 sent / 1 exhausted → 50% success.
     assert ov["delivery"]["delivered"] == 1

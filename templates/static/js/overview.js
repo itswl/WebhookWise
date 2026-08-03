@@ -131,17 +131,17 @@ const OverviewModule = {
             html += '</div>';
         }
 
-        // Top sources.
-        const sources = d.top_sources || [];
+        // Top alert rules (rule grain; unidentified senders fall back to source).
+        const sources = d.top_rules || [];
         if (sources.length) {
             const max = Math.max(...sources.map((s) => s.count || 0), 1);
-            html += '<div style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem;">' + t('overview.section.topSources') + '</div>';
+            html += '<div style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem;">' + t('overview.section.topRules') + '</div>';
             html += '<div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem;">';
             sources.forEach((s) => {
                 const pct = ((s.count || 0) / max) * 100;
                 html += '<div style="margin-bottom: 0.75rem;">' +
                     '<div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:0.25rem;">' +
-                    '<span>' + wwIcon('radio') + ' ' + escapeHtml(s.source) + '</span><span style="color:var(--text-muted);">' + fmt(s.count) + '</span></div>' +
+                    '<span>' + wwIcon('tag') + ' ' + escapeHtml(s.name) + '</span><span style="color:var(--text-muted);">' + fmt(s.count) + '</span></div>' +
                     '<div style="height:8px; background:var(--bg-subtle, #f1f5f9); border-radius:4px; overflow:hidden;">' +
                     '<div style="height:100%; width:' + pct + '%; background:var(--primary);"></div></div></div>';
             });
