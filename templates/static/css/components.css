@@ -873,7 +873,9 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem 1rem;
-  background: #1e293b;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-bottom: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
 }
 
@@ -887,22 +889,23 @@
 
 .code-copy-btn {
   padding: 0.25rem 0.75rem;
-  background: #334155;
-  border: 1px solid #475569;
+  background: transparent;
+  border: 1px solid var(--border);
   border-radius: 4px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   font-size: var(--fs-xs);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .code-copy-btn:hover {
-  background: #475569;
+  background: var(--bg-surface);
+  color: var(--text-main);
 }
 
 .code-block {
-  background: #0f172a;
-  border: 1px solid #1e293b;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
   border-radius: 0 0 var(--radius-md) var(--radius-md);
   padding: 1.25rem;
   overflow-x: auto;
@@ -915,18 +918,36 @@
 
 .code-block pre {
   margin: 0;
-  color: #e2e8f0;
+  color: var(--code-fg);
 }
 
 .code-block pre::-webkit-scrollbar { height: 6px; }
-.code-block pre::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+.code-block pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-/* JSON syntax highlight */
-.json-key { color: #93c5fd; }
-.json-string { color: #f9a8d4; }
-.json-number { color: #86efac; }
-.json-boolean { color: #67e8f9; }
-.json-null { color: #67e8f9; }
+/* JSON syntax highlight — themed via the code tokens, not a palette island. */
+.json-key { color: var(--code-key); }
+.json-string { color: var(--code-string); }
+.json-number { color: var(--code-number); }
+.json-boolean { color: var(--code-literal); }
+.json-null { color: var(--code-literal); }
+
+/* The ONE preformatted style for plain code/text blocks (raw payloads,
+   analysis dumps, sandbox output). Anything mono-and-boxed uses this or the
+   full .code-wrapper component; ad-hoc inline <pre> styling is design debt. */
+.ww-pre {
+  margin: 0;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 0.9rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    AI Analysis Panel (inside alert detail)
@@ -3417,7 +3438,7 @@ body.sidebar-collapsed .sidebar-version { display: none; }
   padding: 1rem;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-base);
+  background: var(--code-bg);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

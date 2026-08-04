@@ -1281,7 +1281,7 @@ const AlertsModule = {
                     // Normal analysis result rendering
                     // If there is full OpenClaw text, render the markdown first
                     if (analysis._openclaw_text) {
-                        html += '<pre style="white-space:pre-wrap; font-size:0.85em;">' + escapeHtml(String(analysis._openclaw_text)) + '</pre>';
+                        html += '<pre class="ww-pre">' + escapeHtml(String(analysis._openclaw_text)) + '</pre>';
                         // If there is a confidence score, display it separately
                         if (analysis.confidence !== undefined) {
                             const pct = (analysis.confidence * 100).toFixed(0);
@@ -1314,7 +1314,7 @@ const AlertsModule = {
 
                         // If there are no structured fields, display the raw JSON directly
                         if (!analysis.root_cause && !analysis.impact && !analysis.recommendations) {
-                            html += '<pre style="background:var(--bg-subtle); padding:12px; border-radius:4px; overflow-x:auto; font-size:0.85em; max-height:300px;">' + escapeHtml(JSON.stringify(analysis, null, 2)) + '</pre>';
+                            html += '<pre class="ww-pre">' + escapeHtml(JSON.stringify(analysis, null, 2)) + '</pre>';
                         }
                     }
                 }

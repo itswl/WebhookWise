@@ -396,6 +396,36 @@ def test_ai_disagreements_review_surface_is_wired() -> None:
         assert "'dt.disagreements.noTrace'" in js
 
 
+def test_mono_blocks_share_one_design() -> None:
+    """Every preformatted block is either the full code component
+    (.code-wrapper, JSON viewer with copy button) or the plain .ww-pre —
+    both drawn from the shared --code-* tokens in BOTH themes. Ad-hoc
+    inline-styled <pre> is exactly how the raw-data and AI views drifted
+    apart."""
+    for name in sorted(p.name for p in (PROJECT_ROOT / "templates/static/js").glob("*.js")):
+        assert "<pre style=" not in _static_js(name), f"{name}: inline-styled <pre>"
+    css = _static_css("components.css")
+    assert ".ww-pre {" in css
+    assert "var(--code-bg)" in css and "var(--code-fg)" in css
+    dashboard_css = _static_css("dashboard.css")
+    # Both themes define the code tokens; the component may not carry its own
+    # hex palette island again.
+    assert dashboard_css.count("--code-bg:") == 2
+    for hexish in ("#0f172a", "#1e293b", "#334155", "#93c5fd"):
+        assert hexish not in css, f"code component regrew its slate palette ({hexish})"
+
+
+def test_html_tagged_template_is_the_new_renderer_path() -> None:
+    """html`` escapes every interpolation unless wrapped in htmlRaw() — the
+    replacement for the quoting dance that produced the splice-defect class.
+    The sidebar item renderer is the living exemplar."""
+    utils = _static_js("utils.js")
+    assert "function html(strings)" in utils
+    assert "function htmlRaw(" in utils
+    assert "__wwHtml" in utils
+    assert "return html`" in _static_js("dashboard.js")
+
+
 def test_inline_handlers_static_zero_and_generated_ratchet() -> None:
     """CSP end-state is script-src-attr 'none': markup carries no code.
 

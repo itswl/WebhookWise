@@ -204,7 +204,7 @@ function renderSandboxResult(d) {
     const idJson = JSON.stringify(d.identity || {}, null, 2);
     html += '<details style="margin-top:1.5rem; border-top: 1px dashed var(--border); padding-top: 1rem;"><summary style="cursor:pointer; font-size:0.85rem; color:var(--text-secondary); font-weight:600;">' +
         escapeHtml(t('sandbox.section.extracted')) + '</summary>' +
-        '<pre style="background:var(--bg-subtle,var(--bg-subtle)); padding:0.75rem; border-radius:6px; overflow:auto; font-size:0.75rem; margin-top:0.5rem; max-height:200px; border:1px solid var(--border);">' +
+        '<pre class="ww-pre">' +
         escapeHtml(idJson) + '</pre></details>';
 
     return html;
