@@ -44,7 +44,7 @@ pyroscope-otel>=1.1.0
 # through — a real migration across 14 tool decorators plus the transport
 # wiring, not a version bump. Tracked separately; the endpoint is public and
 # authenticated, so it gets its own change with its own verification.
-mcp>=1.28.1,<2
+mcp>=2.0.0,<3
 # Security floors for transitive deps (pulled via fastapi[standard]/openai etc.)
 # to keep pip-audit clean; bump as new CVE fixes are published.
 aiohttp>=3.14.3
