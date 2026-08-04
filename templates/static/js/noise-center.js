@@ -1,9 +1,9 @@
 /** Noise analytics, recommendations, and reversible optimization actions. */
 const NoiseCenterModule = (function () {
-    function statCard(label, value, trend, color) {
+    function statCard(label, value, trend, color, trendTone) {
         return '<div class="stat-card"><div class="stat-label">' + escapeHtml(label) +
-            '</div><div class="stat-value" style="color:' + color + ';">' + escapeHtml(String(value)) +
-            '</div><div class="stat-trend">' + escapeHtml(trend || '') + '</div></div>';
+            '</div><div class="stat-value"' + (color ? ' style="color:' + color + ';"' : '') + '>' + escapeHtml(String(value)) +
+            '</div><div class="stat-trend' + (trendTone ? ' ' + trendTone : '') + '">' + escapeHtml(trend || '') + '</div></div>';
     }
 
     function windowDays() {
@@ -57,13 +57,18 @@ const NoiseCenterModule = (function () {
         const recoveryTrend = summary.recovery_sampled
             ? t('noise.summary.recoveriesSampled', { value: summary.recoveries || 0, sample: summary.recovery_sample_size || 0 })
             : t('noise.summary.recoveries', { value: summary.recoveries || 0 });
+        // Numbers stay neutral; colour marks state, and the only stateful figure
+        // here is the noise rate itself (amber when notable, red when severe).
+        // A rising noise trend is bad news, so it is the caption that warns.
+        const noiseRate = Number(summary.noise_rate || 0);
+        const noiseColor = noiseRate >= 50 ? 'var(--danger)' : (noiseRate >= 25 ? 'var(--warning)' : '');
         target.innerHTML =
-            statCard(t('noise.summary.total'), summary.total || 0, t('noise.window.label', { days: data.window_days }), 'var(--text-main)') +
-            statCard(t('noise.summary.noiseRate'), (summary.noise_rate || 0) + '%', trend, Number(summary.noise_rate || 0) >= 50 ? 'var(--danger)' : 'var(--warning)') +
-            statCard(t('noise.summary.duplicateRate'), (summary.duplicate_rate || 0) + '%', t('noise.summary.duplicates', { value: summary.duplicates || 0 }), 'var(--primary)') +
-            statCard(t('noise.summary.recoveryRate'), (summary.recovery_rate || 0) + '%', recoveryTrend, 'var(--success)') +
-            statCard(t('noise.summary.avoided'), summary.notifications_avoided || 0, t('noise.summary.filtered'), 'var(--success)') +
-            statCard(t('noise.summary.timeSaved'), savedTime(summary.estimated_minutes_saved), t('noise.summary.timeAssumption', { minutes: (data.assumptions || {}).minutes_per_avoided_notification || 3 }), 'var(--success)');
+            statCard(t('noise.summary.total'), summary.total || 0, t('noise.window.label', { days: data.window_days }), '') +
+            statCard(t('noise.summary.noiseRate'), noiseRate + '%', trend, noiseColor, delta > 0 ? 'tone-warn' : '') +
+            statCard(t('noise.summary.duplicateRate'), (summary.duplicate_rate || 0) + '%', t('noise.summary.duplicates', { value: summary.duplicates || 0 }), '') +
+            statCard(t('noise.summary.recoveryRate'), (summary.recovery_rate || 0) + '%', recoveryTrend, '') +
+            statCard(t('noise.summary.avoided'), summary.notifications_avoided || 0, t('noise.summary.filtered'), '') +
+            statCard(t('noise.summary.timeSaved'), savedTime(summary.estimated_minutes_saved), t('noise.summary.timeAssumption', { minutes: (data.assumptions || {}).minutes_per_avoided_notification || 3 }), '');
     }
 
     function renderSuggestions(items) {

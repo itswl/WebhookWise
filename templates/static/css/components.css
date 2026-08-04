@@ -3639,15 +3639,23 @@
   .palette-trigger .trigger-hint { display: none; }
 }
 
-/* Breadcrumb — replaces the tab highlight as the "where am I" signal. */
+/* Breadcrumb — replaces the tab highlight as the "where am I" signal.
+   The divider is what keeps it from reading as part of the logo string
+   ("Webhook 监控概览 / 总览" was one visual word without it). */
 .breadcrumb {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-right: auto;
+  margin-left: 1.1rem;
+  padding-left: 1.1rem;
+  border-left: 1px solid var(--border);
+  height: 24px;
   font-size: var(--fs-sm);
   min-width: 0;
 }
+
+.breadcrumb:empty { border-left: none; }
 
 .crumb-area { color: var(--text-muted); }
 .crumb-sep { color: var(--border); }

@@ -777,8 +777,7 @@ const IncidentsModule = (function () {
         html += '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.addNote(' +
             data.id + ')">' + wwIcon('pencil') + ' ' + t('alerts.action.notes') + '</button>';
         html += '<details class="alert-action-menu incident-action-menu" onclick="event.stopPropagation()">' +
-            '<summary class="btn btn-sm alert-more-trigger">••• ' + t('alerts.action.more') +
-            '<span class="alert-action-count">' + secondaryActions.length + '</span></summary>' +
+            '<summary class="btn btn-sm alert-more-trigger">••• ' + t('alerts.action.more') + '</summary>' +
             '<div class="alert-secondary-actions">' + secondaryActions.join('') + '</div></details>';
         return html + '</div></div>';
     }

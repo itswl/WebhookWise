@@ -202,8 +202,8 @@ function renderRuleCard(rule) {
                 </div>
 
                 <!-- Forward target area -->
-                <div class="rule-target" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--success-bg); padding: 1.25rem; border-radius: 8px; border: 1px dashed rgba(5,150,105,0.3);">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--success); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">${wwIcon('send')} ${t('rules.card.action')}</div>
+                <div class="rule-target" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--bg-subtle); padding: 1.25rem; border-radius: 8px; border: 1px dashed var(--border);">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;"><span style="color: var(--success);">${wwIcon('send')}</span> ${t('rules.card.action')}</div>
                     <div style="margin-bottom: 0.75rem;">
                         <strong>${t('rules.card.pushTo')}:</strong> ${targetTypeText}
                         ${rule.target_name ? `(${escapeHtml(rule.target_name)})` : ''}
@@ -211,7 +211,7 @@ function renderRuleCard(rule) {
                     <div style="word-break: break-all; color: var(--text-main); font-family: var(--font-mono); font-size: 0.85rem; background: var(--bg-surface); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border); box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
                         ${escapeHtml(rule.target_url || '-')}
                     </div>
-                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: var(--warning); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;"><span></span> ' + t('rules.card.stopOnMatch') + '</div>' : ''}
+                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: var(--warning); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">' + wwIcon('zap') + ' ' + t('rules.card.stopOnMatch') + '</div>' : ''}
                     ${deliveryDetail}
                 </div>
             </div>
@@ -219,13 +219,13 @@ function renderRuleCard(rule) {
             ${lastMatched}
 
             <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid var(--border);">
-                <button class="btn" onclick="testRule(${rule.id})" style="color: var(--primary); border-color: var(--primary-light); background: var(--primary-bg); font-weight: 600;">
+                <button class="btn" onclick="testRule(${rule.id})" style="color: var(--primary); border-color: var(--primary-light); background: transparent; font-weight: 600;">
                     ${wwIcon('flask')} ${t('rules.action.test')}
                 </button>
                 <button class="btn" onclick="showRuleForm(${rule.id})" style="font-weight: 600;">
                     ${wwIcon('pencil')} ${t('rules.action.edit')}
                 </button>
-                <button class="btn" onclick="deleteRule(${rule.id})" style="color: var(--danger); border-color: rgba(225,29,72,0.2); background: var(--danger-bg); font-weight: 600;">
+                <button class="btn" onclick="deleteRule(${rule.id})" style="color: var(--danger); border-color: transparent; background: transparent;">
                     ${wwIcon('trash')} ${t('rules.action.delete')}
                 </button>
             </div>

@@ -468,7 +468,7 @@ const AlertsModule = {
                 html += '<button type="button" class="btn btn-sm" data-action="acknowledge" data-id="' + webhookId + '">' + wwIcon('check') + ' ' + escapeHtml(t('alerts.action.acknowledge')) + '</button>';
             }
             if (workflowStatus !== 'resolved' && workflowStatus !== 'ignored') {
-                html += '<button type="button" class="btn btn-sm btn-primary" data-action="resolve" data-id="' + webhookId + '">' + wwIcon('check') + ' ' + escapeHtml(t('alerts.action.resolve')) + '</button>';
+                html += '<button type="button" class="btn btn-sm btn-quiet-primary" data-action="resolve" data-id="' + webhookId + '">' + wwIcon('check') + ' ' + escapeHtml(t('alerts.action.resolve')) + '</button>';
             }
             html += '</div>';
 
@@ -486,7 +486,7 @@ const AlertsModule = {
                 secondaryActions.push('<button type="button" class="btn btn-sm btn-danger" data-action="replay-dl" data-id="' + webhookId + '">' + wwIcon('refresh') + ' ' + escapeHtml(t('alerts.action.replayDeadLetter')) + '</button>');
             }
             html += '<details class="alert-action-menu">';
-            html += '<summary class="btn btn-sm alert-more-trigger">••• ' + escapeHtml(t('alerts.action.more')) + '<span class="alert-action-count">' + secondaryActions.length + '</span></summary>';
+            html += '<summary class="btn btn-sm alert-more-trigger">••• ' + escapeHtml(t('alerts.action.more')) + '</summary>';
             html += '<div class="alert-secondary-actions">' + secondaryActions.join('') + '</div>';
             html += '</details></div></div>';
 
@@ -1235,7 +1235,7 @@ const AlertsModule = {
             if (records.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted);">' +
                     '<p>' + t('alerts.deep.noRecords') + '</p>' +
-                    '<button class="btn btn-primary" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c ' + t('alerts.deep.analyzeNow') + '</button>' +
+                    '<button class="btn btn-primary" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">' + wwIcon('flask') + ' ' + t('alerts.deep.analyzeNow') + '</button>' +
                     '</div>';
                 return;
             }
@@ -1243,7 +1243,7 @@ const AlertsModule = {
             let html = '';
             records.forEach(function(record) {
                 const analysis = record.analysis_result || {};
-                const engineLabel = record.engine === 'openclaw' ? 'OpenClaw' : '\ud83e\udd16 ' + t('deep.engine.local');
+                const engineLabel = record.engine === 'openclaw' ? 'OpenClaw' : t('deep.engine.local');
                 const time = new Date(record.created_at).toLocaleString('zh-CN');
                 const duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
 
@@ -1286,10 +1286,10 @@ const AlertsModule = {
                     } else {
                         // Original JSON field rendering logic
                         if (analysis.root_cause) {
-                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udd0d ' + t('alerts.deep.rootCause') + ': </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.root_cause)) + '</p></div>';
+                            html += '<div style="margin-bottom:8px;"><strong>' + wwIcon('search') + ' ' + t('alerts.deep.rootCause') + ': </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.root_cause)) + '</p></div>';
                         }
                         if (analysis.impact) {
-                            html += '<div style="margin-bottom:8px;"><strong>\ud83d\udca5 ' + t('alerts.deep.impactScope') + ': </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.impact)) + '</p></div>';
+                            html += '<div style="margin-bottom:8px;"><strong>' + wwIcon('alert-triangle') + ' ' + t('alerts.deep.impactScope') + ': </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.impact)) + '</p></div>';
                         }
                         if (analysis.recommendations && Array.isArray(analysis.recommendations)) {
                             html += '<div style="margin-bottom:8px;"><strong>\u2705 ' + t('alerts.deep.recommendations') + ': </strong><ul style="margin:4px 0; padding-left:20px;">';
@@ -1320,7 +1320,7 @@ const AlertsModule = {
 
             // Footer: re-analyze button
             html += '<div style="text-align:center; margin-top:12px;">';
-            html += '<button class="btn btn-sm" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">\ud83d\udd2c ' + t('alerts.deep.analyzeAgain') + '</button>';
+            html += '<button class="btn btn-sm" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">' + wwIcon('flask') + ' ' + t('alerts.deep.analyzeAgain') + '</button>';
             html += '</div>';
 
             container.innerHTML = html;
@@ -1401,7 +1401,7 @@ const AlertsModule = {
         `;
         notification.innerHTML = `
             <div style="display:flex; align-items:center; margin-bottom:8px;">
-                <span style="font-size:1.5em; margin-right:10px;">\ud83d\ude80</span>
+                
                 <strong style="font-size:1.1em;">${t('alerts.deep.triggeredTitle')}</strong>
             </div>
             <div style="font-size:0.9em; color:rgba(255,255,255,0.9); margin-bottom:8px;">
