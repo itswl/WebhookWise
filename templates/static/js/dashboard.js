@@ -178,6 +178,11 @@ function renderSidebar() {
         + ' data-i18n-aria-label="nav.collapse" aria-label="Collapse">'
         + wwIcon('chevron-left')
         + '<span class="sidebar-label">' + escapeHtml(t('nav.collapse')) + '</span></button>';
+    // Which build am I looking at — the server stamps its version on <body>.
+    var appVersion = document.body && document.body.getAttribute('data-app-version');
+    if (appVersion) {
+        html += '<div class="sidebar-version">WebhookWise v' + escapeHtml(appVersion) + '</div>';
+    }
     sidebar.innerHTML = html;
     const collapseBtn = document.getElementById('sidebarCollapseBtn');
     if (collapseBtn) collapseBtn.addEventListener('click', toggleSidebarCollapsed);

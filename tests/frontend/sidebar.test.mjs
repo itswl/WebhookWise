@@ -22,7 +22,7 @@ globalThis.document = {
   getElementById: (id) => (id === 'sidebar' || id === 'sidebarCollapseBtn') ? el(id) : null,
   querySelectorAll: (sel) => sel === '[data-sidebar-slug]' ? items : [],
   querySelector: () => null,
-  body: { classList: { toggle: () => true, add(){}, remove(){} } },
+  body: { classList: { toggle: () => true, add(){}, remove(){} }, getAttribute: (n) => n === 'data-app-version' ? '3.6.1' : null },
 };
 globalThis.CommandPalette = new Function(paletteSrc + '; return CommandPalette;')();
 globalThis.currentDestination = 'overview';
@@ -49,6 +49,7 @@ for (const slug of ['sandbox', 'audit', 'integrations', 'kb', 'gaps']) {
 }
 check('主列表不再平铺低频项', !html.slice(0, html.indexOf('<details')).includes('data-sidebar-slug="sandbox"'));
 check('低频计数正确', html.includes('(5)'));
+check('版本脚注渲染', html.includes('sidebar-version') && html.includes('v3.6.1'));
 check('点击项同时关抽屉', html.includes('closeSidebarDrawer()'));
 
 // active-state sync

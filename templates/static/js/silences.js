@@ -99,10 +99,10 @@ function renderSilenceDebt(data) {
     html += '<div class="stats-grid" style="margin-bottom: 1rem;">';
     html += '<div class="stat-card"' + (chronic > 0 ? ' style="border-left: 3px solid var(--warning);"' : '') + '>' +
         '<div class="stat-label">' + wwIcon('volume-x') + ' ' + t('silences.debt.chronicCount') + '</div>' +
-        '<div class="stat-value" style="font-size: 1.75rem;' + (chronic > 0 ? ' color: var(--warning);' : '') + '">' + formatNumber(chronic) + '</div>' +
+        '<div class="stat-value" style="' + (chronic > 0 ? ' color: var(--warning);' : '') + '">' + formatNumber(chronic) + '</div>' +
         '<div class="stat-trend">' + t('silences.debt.chronicTrend', { active: formatNumber(data.active_silences) }) + '</div></div>';
     html += '<div class="stat-card"><div class="stat-label">' + wwIcon('volume-x') + ' ' + t('silences.debt.suppressed') + '</div>' +
-        '<div class="stat-value" style="font-size: 1.75rem;">' + formatNumber(data.total_suppressed || 0) + '</div>' +
+        '<div class="stat-value">' + formatNumber(data.total_suppressed || 0) + '</div>' +
         '<div class="stat-trend">' + t('silences.debt.suppressedTrend', { time: formatSilenceDebtTime(data.estimated_minutes_saved) }) + '</div></div>';
     html += '</div>';
 

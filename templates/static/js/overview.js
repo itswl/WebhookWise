@@ -284,7 +284,7 @@ const OverviewModule = {
         return '<div class="stat-card"' + clickable + ' style="'
             + (onClick ? 'cursor:pointer;' : '') + '">' +
             '<div class="stat-label">' + icon + ' ' + label + '</div>' +
-            '<div class="stat-value" style="font-size: 2rem;">' + value + '</div>' +
+            '<div class="stat-value">' + value + '</div>' +
             '<div class="stat-trend">' + trend + '</div></div>';
     },
 

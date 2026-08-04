@@ -136,12 +136,12 @@ const AICostModule = {
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">${t('aicost.card.inputThroughput')}</div>
-                    <div class="stat-value" style="font-size: 2rem;">${formatNumber(tokensInput)}</div>
+                    <div class="stat-value">${formatNumber(tokensInput)}</div>
                     <div class="stat-trend">${t('aicost.card.tokensSent')}</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">${t('aicost.card.outputGenerated')}</div>
-                    <div class="stat-value" style="font-size: 2rem;">${formatNumber(tokensOutput)}</div>
+                    <div class="stat-value">${formatNumber(tokensOutput)}</div>
                     <div class="stat-trend">${t('aicost.card.tokensReceived')}</div>
                 </div>
             </div>
@@ -197,22 +197,22 @@ const AICostModule = {
             <div class="stats-grid">
                 <div class="stat-card" style="padding: 1.25rem;">
                     <div class="stat-label">${t('aicost.card.activeFingerprints')}</div>
-                    <div class="stat-value" style="font-size: 1.75rem;">${formatNumber(cacheEntries)}</div>
+                    <div class="stat-value">${formatNumber(cacheEntries)}</div>
                     <div class="stat-trend">${t('aicost.card.activeRedisKeys')}</div>
                 </div>
                 <div class="stat-card" style="padding: 1.25rem;">
                     <div class="stat-label">${t('aicost.card.antiPenetration')}</div>
-                    <div class="stat-value" style="font-size: 1.75rem;">${formatNumber(cacheSavedCalls)}</div>
+                    <div class="stat-value">${formatNumber(cacheSavedCalls)}</div>
                     <div class="stat-trend">${t('aicost.card.antiPenetrationTrend')}</div>
                 </div>
                 <div class="stat-card" style="padding: 1.25rem;">
                     <div class="stat-label">${t('aicost.card.avgUtilization')}</div>
-                    <div class="stat-value" style="font-size: 1.75rem;">${cacheAvgHits.toFixed(1)} <span style="font-size:1rem; color:var(--text-muted); font-weight:500;">x</span></div>
+                    <div class="stat-value">${cacheAvgHits.toFixed(1)} <span style="font-size:1rem; color:var(--text-muted); font-weight:500;">x</span></div>
                     <div class="stat-trend">${t('aicost.card.avgUtilizationTrend')}</div>
                 </div>
                 <div class="stat-card" style="padding: 1.25rem; border-left: 3px solid var(--success);">
                     <div class="stat-label">${t('aicost.card.hitRate')}</div>
-                    <div class="stat-value" style="font-size: 1.75rem; color: var(--success);">${this.formatPercent(cacheHitRate)}</div>
+                    <div class="stat-value" style="color: var(--success);">${this.formatPercent(cacheHitRate)}</div>
                     <div class="stat-trend">${t('aicost.card.hitRateTrend')}</div>
                 </div>
             </div>

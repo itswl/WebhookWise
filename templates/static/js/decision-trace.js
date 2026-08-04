@@ -80,17 +80,17 @@ var DecisionTraceModule = (function () {
             '<div class="stats-grid" style="margin-bottom: 1.5rem;">' +
                 '<div class="stat-card">' +
                     '<div class="stat-label">' + t('dt.stat.total') + '</div>' +
-                    '<div class="stat-value" style="font-size: 2rem;">' + formatNumber(total) + '</div>' +
+                    '<div class="stat-value">' + formatNumber(total) + '</div>' +
                     '<div class="stat-trend">' + t('dt.stat.totalTrend') + '</div>' +
                 '</div>' +
                 '<div class="stat-card">' +
                     '<div class="stat-label"><span style="color: var(--success);">' + wwIcon('check') + '</span> ' + t('dt.stat.forwarded') + '</div>' +
-                    '<div class="stat-value" style="font-size: 2rem;">' + formatNumber(forwarded) + '</div>' +
+                    '<div class="stat-value">' + formatNumber(forwarded) + '</div>' +
                     '<div class="stat-trend">' + fwdPct.toFixed(1) + '%</div>' +
                 '</div>' +
                 '<div class="stat-card">' +
                     '<div class="stat-label">' + wwIcon('skip-forward') + ' ' + t('dt.stat.skipped') + '</div>' +
-                    '<div class="stat-value" style="font-size: 2rem;">' + formatNumber(skipped) + '</div>' +
+                    '<div class="stat-value">' + formatNumber(skipped) + '</div>' +
                     '<div class="stat-trend">' + (100 - fwdPct).toFixed(1) + '%</div>' +
                 '</div>' +
             '</div>';
@@ -187,13 +187,13 @@ var DecisionTraceModule = (function () {
                 '<p style="margin: 0 0 1rem; color: var(--text-muted); font-size: 0.8rem;">' + t('dt.quality.note') + '</p>' +
                 '<div class="stats-grid" style="margin-bottom: 1.25rem;">' +
                     '<div class="stat-card"><div class="stat-label">' + wwIcon('lightbulb') + ' ' + t('dt.quality.aiJudgments') + '</div>' +
-                        '<div class="stat-value" style="font-size: 1.75rem;">' + formatNumber(aiTotal) + '</div>' +
+                        '<div class="stat-value">' + formatNumber(aiTotal) + '</div>' +
                         '<div class="stat-trend">' + t('dt.quality.aiJudgmentsTrend') + '</div></div>' +
                     '<div class="stat-card"' + (overrideRate > 0 ? ' style="border-left: 3px solid var(--warning);"' : '') + '><div class="stat-label">' + wwIcon('gauge') + ' ' + t('dt.quality.overrideRate') + '</div>' +
-                        '<div class="stat-value" style="font-size: 1.75rem;' + (overrideRate > 0 ? ' color: var(--warning);' : '') + '">' + overrideRate.toFixed(1) + '%</div>' +
+                        '<div class="stat-value" style="' + (overrideRate > 0 ? ' color: var(--warning);' : '') + '">' + overrideRate.toFixed(1) + '%</div>' +
                         '<div class="stat-trend">' + t('dt.quality.overrideTrend', { n: formatNumber(data.override_count || 0) }) + '</div></div>' +
                     '<div class="stat-card"><div class="stat-label">' + wwIcon('activity') + ' ' + t('dt.quality.degradedRate') + '</div>' +
-                        '<div class="stat-value" style="font-size: 1.75rem;">' + degradedRate.toFixed(1) + '%</div>' +
+                        '<div class="stat-value">' + degradedRate.toFixed(1) + '%</div>' +
                         '<div class="stat-trend">' + t('dt.quality.degradedTrend', { n: formatNumber(data.degraded_total || 0) }) + '</div></div>' +
                 '</div>';
 

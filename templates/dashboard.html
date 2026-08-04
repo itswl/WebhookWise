@@ -284,18 +284,23 @@
              the navbar labels it "Overview" and it is the default landing tab. -->
         <div id="decisionTraceTab" class="tab-content active">
             <div class="decision-trace-section" style="padding: 20px 0;">
-                <details class="dt-suppression-help" style="margin-bottom: 14px;">
-                    <summary style="cursor: pointer; font-weight: 600;" data-i18n="dt.help.title">Why didn't I get notified? — the suppression stack</summary>
-                    <div style="padding: 8px 0 0 4px; line-height: 1.7; opacity: 0.9;" data-i18n="dt.help.body">Every alert passes the same gates, in order: ① ingress backpressure (per-alert storms / queue high-water, opt-in) → ② dedup (repeats join an existing thread) → ③ smart noise reduction (derived alerts of one root cause) → ④ silences and maintenance windows (operator mutes) → ⑤ flapping mute (rapid firing↔recovered oscillation, opt-in) → ⑥ cooldown (just notified) → ⑦ forwarding rules (no matching rule, no delivery) → ⑧ periodic reminder policy. Each trace row below names the exact gate that stopped (or forwarded) the alert.</div>
+                <details class="dt-suppression-help">
+                    <summary>
+                        <svg class="icon dt-help-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+                        <span data-i18n="dt.help.title">Why didn't I get notified? — the suppression stack</span>
+                    </summary>
+                    <div class="dt-help-body" data-i18n="dt.help.body">Every alert passes the same gates, in order: ① ingress backpressure (per-alert storms / queue high-water, opt-in) → ② dedup (repeats join an existing thread) → ③ smart noise reduction (derived alerts of one root cause) → ④ silences and maintenance windows (operator mutes) → ⑤ flapping mute (rapid firing↔recovered oscillation, opt-in) → ⑥ cooldown (just notified) → ⑦ forwarding rules (no matching rule, no delivery) → ⑧ periodic reminder policy. Each trace row below names the exact gate that stopped (or forwarded) the alert.</div>
                 </details>
-                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 12px;">
                     <div class="dt-view-switch" style="display: flex; gap: 8px; align-items: center;">
                     </div>
                     <div class="dt-period-selector" style="display: flex; gap: 8px; align-items: center;">
                         <span id="dtLastRefreshed" class="last-refreshed" style="font-size: var(--fs-xs); color: var(--text-muted);"></span>
-                        <button class="btn" data-dt-period="day" data-i18n="dt.period.day">Day</button>
-                        <button class="btn" data-dt-period="week" data-i18n="dt.period.week">Week</button>
-                        <button class="btn" data-dt-period="month" data-i18n="dt.period.month">Month</button>
+                        <span class="btn-seg-group" role="group" data-i18n-aria-label="dt.period.groupLabel" aria-label="Time window">
+                            <button class="btn" data-dt-period="day" data-i18n="dt.period.day">Day</button>
+                            <button class="btn" data-dt-period="week" data-i18n="dt.period.week">Week</button>
+                            <button class="btn" data-dt-period="month" data-i18n="dt.period.month">Month</button>
+                        </span>
                         <button class="btn" onclick="DecisionTraceModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
@@ -323,9 +328,10 @@
                     <div class="dt-list-filters" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 12px;">
                         <select id="dtResultFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
                             <option value="" data-i18n="dt.filter.allOutcomes">All outcomes</option>
-                            <option value="forwarded" data-i18n="dt.filter.optForwarded"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Forwarded</option>
-                            <option value="skipped" data-i18n="dt.filter.optSkipped">⏭️ Skipped</option>
-                            <option value="failed" data-i18n="dt.filter.optFailed"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg> Delivery failed</option>
+                            <!-- Options are text-only UI: markup inside <option> is dead HTML. -->
+                            <option value="forwarded" data-i18n="dt.filter.optForwarded">Forwarded</option>
+                            <option value="skipped" data-i18n="dt.filter.optSkipped">Skipped</option>
+                            <option value="failed" data-i18n="dt.filter.optFailed">Delivery failed</option>
                         </select>
                         <select id="dtSourceFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
                             <option value="" data-i18n="dt.filter.allSources">All sources</option>
@@ -424,7 +430,7 @@
                             <p data-i18n="ingress.subtitle">Create a scoped source credential and verify the complete ingest path.</p>
                         </div>
                         <button class="btn" type="button" onclick="IngressSetupModule.reset()">
-                            ↻ <span data-i18n="ingress.restart">Start over</span>
+                            <svg class="icon" aria-hidden="true"><use href="#i-rotate-ccw"/></svg> <span data-i18n="ingress.restart">Start over</span>
                         </button>
                     </div>
                     <div id="ingressSetupWizard"></div>
@@ -470,7 +476,7 @@
                     <div class="section-header" style="margin-bottom: 20px;">
                         <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
                             <div class="section-title" data-i18n="sandbox.title">Payload Sandbox</div>
-                            <button class="btn" onclick="RoutingModule.setView('rules')">← <span data-i18n="routing.view.rules">Forward Rules</span></button>
+                            <button class="btn" onclick="RoutingModule.setView('rules')"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg> <span data-i18n="routing.view.rules">Forward Rules</span></button>
                         </div>
                         <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="sandbox.subtitle">Paste a raw alert payload and see what WebhookWise would extract and decide — which adapter parses it, the alert identity, and which rules/silences would match. Nothing is queued, analyzed by AI, or saved.</p>
                     </div>
@@ -512,7 +518,7 @@
                                 <option value="180">180 days</option>
                             </select>
                             <button class="btn" onclick="RuleAuditModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
-                            <button class="btn" onclick="RoutingModule.setView('rules')">← <span data-i18n="routing.view.rules">Forward Rules</span></button>
+                            <button class="btn" onclick="RoutingModule.setView('rules')"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg> <span data-i18n="routing.view.rules">Forward Rules</span></button>
                         </div>
                     </div>
                     <div id="ruleAuditResult">

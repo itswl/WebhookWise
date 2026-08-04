@@ -14,6 +14,8 @@ from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
+from core.version import __version__
+
 dashboard_router = APIRouter()
 
 _TEMPLATES_DIR = Path("templates")
@@ -79,7 +81,11 @@ def _rendered_dashboard() -> str:
     redeploy restarts the process (re-reading the files and recomputing hashes).
     """
     html = _DASHBOARD_HTML.read_text(encoding="utf-8")
-    html = html.replace("<body>", f"<body {_asset_versions_attr()}>", 1)
+    html = html.replace(
+        "<body>",
+        f'<body {_asset_versions_attr()} data-app-version="{__version__}">',
+        1,
+    )
     return _version_static_refs(html)
 
 

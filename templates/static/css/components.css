@@ -1747,6 +1747,62 @@
   white-space: nowrap;
 }
 
+/* Suppression-stack primer: a quiet one-line disclosure, not a floating
+   bold string. The chevron is the affordance; the body reads at prose width. */
+.dt-suppression-help {
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 8px;
+}
+
+.dt-suppression-help summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 2px 4px;
+  border-radius: var(--radius-md);
+}
+
+.dt-suppression-help summary::-webkit-details-marker { display: none; }
+.dt-suppression-help summary:hover { color: var(--text-main); background: var(--bg-subtle); }
+
+.dt-help-chevron { transform: rotate(-90deg); transition: transform 0.15s ease; }
+.dt-suppression-help[open] .dt-help-chevron { transform: rotate(0deg); }
+
+.dt-help-body {
+  padding: 8px 4px 4px 26px;
+  line-height: 1.7;
+  max-width: 60rem;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+
+/* Segmented period switch: one control, not three loose buttons. */
+.btn-seg-group { display: inline-flex; }
+.btn-seg-group .btn { border-radius: 0; margin-left: -1px; position: relative; }
+.btn-seg-group .btn:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); margin-left: 0; }
+.btn-seg-group .btn:last-child { border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.btn-seg-group .btn.active { z-index: 1; }
+
+/* Which build am I looking at — quiet, at the end of the rail. */
+.sidebar-version {
+  padding: 8px 10px 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+body.sidebar-collapsed .sidebar-version { display: none; }
+
+::selection { background: color-mix(in srgb, var(--primary) 30%, transparent); }
+
 /* Per-rule importance list: two columns on wide screens — one 560px bar per
    full-width row left half the card empty. */
 .dt-rule-grid {
