@@ -127,31 +127,33 @@
   white-space: nowrap;
 }
 
+/* Tier state rides the LEFT edge only (border-color painted the card's whole
+   1px outline too — a full alarm ring around a mid score). */
 .alert-quality-score-card {
-  border-left: 4px solid var(--text-muted) !important;
+  border-left: 3px solid var(--text-muted) !important;
 }
 
 .alert-quality-score-card.is-healthy,
 .alert-quality-source-score.is-healthy {
-  border-color: var(--success) !important;
+  border-left-color: var(--success) !important;
   color: var(--success);
 }
 
 .alert-quality-score-card.is-fair,
 .alert-quality-source-score.is-fair {
-  border-color: #6c8e32 !important;
+  border-left-color: #6c8e32 !important;
   color: #6c8e32;
 }
 
 .alert-quality-score-card.is-warning,
 .alert-quality-source-score.is-warning {
-  border-color: var(--warning) !important;
+  border-left-color: var(--warning) !important;
   color: #a96d00;
 }
 
 .alert-quality-score-card.is-poor,
 .alert-quality-source-score.is-poor {
-  border-color: var(--danger) !important;
+  border-left-color: var(--danger) !important;
   color: var(--danger);
 }
 
@@ -214,8 +216,12 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--warning), var(--success));
+  background: var(--text-muted);
 }
+
+.alert-quality-meter.is-ok i { background: var(--success); }
+.alert-quality-meter.is-mid i { background: var(--warning); }
+.alert-quality-meter.is-low i { background: var(--danger); }
 
 .alert-quality-top-list {
   display: grid;
@@ -1710,20 +1716,43 @@
 }
 
 .aicost-trend-bar {
-  width: 60%;
+  /* Sparse windows (2-3 days) get wide flex columns; without a cap the bar
+     becomes a solid slab that out-shouts the entire page. */
+  width: 100%;
+  max-width: 40px;
   min-height: 2px;
-  background: var(--primary);
+  background: color-mix(in srgb, var(--primary) 45%, var(--bg-subtle));
   border-radius: 3px 3px 0 0;
   transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.aicost-trend-col:last-child .aicost-trend-bar { background: var(--primary); }
+
 .aicost-trend-col:hover .aicost-trend-bar { background: var(--primary-hover, #4f46e5); }
+
+.aicost-trend-val {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+.aicost-trend-col:last-child .aicost-trend-val { color: var(--text-main); }
 
 .aicost-trend-x {
   margin-top: 6px;
   font-size: var(--fs-xs);
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+/* Per-rule importance list: two columns on wide screens — one 560px bar per
+   full-width row left half the card empty. */
+.dt-rule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+  gap: 0.25rem 2.5rem;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -2658,9 +2687,32 @@
   white-space: nowrap;
 }
 
+/* Countdown colour is earned by the clock, not worn permanently: neutral by
+   default, amber inside the final 30 minutes, red once overdue. */
 .response-queue-countdown > strong {
-  color: var(--warning);
+  color: var(--text-main);
   font-variant-numeric: tabular-nums;
+}
+
+.response-queue-countdown.is-soon > strong { color: var(--warning); }
+.response-queue-countdown.is-overdue > strong { color: var(--danger); }
+
+.bucket-count {
+  display: inline-block;
+  min-width: 1.4em;
+  margin-left: 6px;
+  padding: 0 0.35em;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.response-bucket-btn.active .bucket-count {
+  /* The active pill is primary-filled; the count must not vanish into it. */
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
 }
 
 .response-next-action {

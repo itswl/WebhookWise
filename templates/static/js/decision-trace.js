@@ -218,6 +218,7 @@ var DecisionTraceModule = (function () {
         var rules = Object.keys(byRule);
         if (rules.length) {
             html += '<div style="font-size: 0.9rem; font-weight: 600; margin: 1.25rem 0 0.5rem;">' + t('dt.quality.byRule') + '</div>';
+            html += '<div class="dt-rule-grid">';
             rules.sort();
             rules.forEach(function (rule) {
                 var dist = byRule[rule];
@@ -228,6 +229,7 @@ var DecisionTraceModule = (function () {
                     + ' <span class="ww-muted">(' + srcTotal + ')</span></div>' +
                     distributionBar(dist, srcTotal, IMPORTANCE_COLORS) + '</div>';
             });
+            html += '</div>';
         }
 
         html += '</div>';

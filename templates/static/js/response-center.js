@@ -89,21 +89,36 @@ const ResponseCenterModule = (function () {
         });
     }
 
-    function countdown(item) {
+    function countdownMs(item) {
         if (Number.isFinite(Number(item.sla_minutes_remaining))) {
-            const minutes = Number(item.sla_minutes_remaining);
-            return minutes < 0
-                ? t('response.queue.overdue', { value: durationLabel(minutes * 60000) })
-                : t('response.queue.dueIn', { value: durationLabel(minutes * 60000) });
+            return Number(item.sla_minutes_remaining) * 60000;
         }
         const deadline = item.sla_due_at || item.deadline || item.recovery_check_due_at;
-        if (!deadline) return t('incidents.notSet');
+        if (!deadline) return null;
         const dueAt = Date.parse(deadline);
-        if (!Number.isFinite(dueAt)) return displayValue(deadline);
-        const delta = dueAt - Date.now();
-        return delta < 0
-            ? t('response.queue.overdue', { value: durationLabel(delta) })
-            : t('response.queue.dueIn', { value: durationLabel(delta) });
+        if (!Number.isFinite(dueAt)) return null;
+        return dueAt - Date.now();
+    }
+
+    function countdown(item) {
+        const ms = countdownMs(item);
+        if (ms === null) {
+            const deadline = item.sla_due_at || item.deadline || item.recovery_check_due_at;
+            return deadline ? displayValue(deadline) : t('incidents.notSet');
+        }
+        return ms < 0
+            ? t('response.queue.overdue', { value: durationLabel(ms) })
+            : t('response.queue.dueIn', { value: durationLabel(ms) });
+    }
+
+    // Tone matches the clock: overdue (or due right now) is red, the final
+    // 30 minutes amber, anything else neutral.
+    function countdownTone(item) {
+        const ms = countdownMs(item);
+        if (ms === null) return '';
+        if (ms <= 0) return ' is-overdue';
+        if (ms <= 30 * 60000) return ' is-soon';
+        return '';
     }
 
     function nextAction(item) {
@@ -148,25 +163,31 @@ const ResponseCenterModule = (function () {
         });
     }
 
+    // Counts render INSIDE the bucket pills (one row of taxonomy, not two):
+    // the old summary strip repeated every bucket name right under the
+    // buttons that already said them.
     function renderQueueSummary(meta) {
         const summary = meta.summary || {};
         const counts = summary.counts || {};
-        const keys = ['my', 'unassigned', 'sla_risk', 'needs_recovery', 'active'];
-        return '<div class="response-queue-summary">' + keys.map(function (key) {
-            return '<span><strong>' + escapeHtml(String(counts[key] || 0)) + '</strong> ' +
-                escapeHtml(t('response.queue.bucket.' + (
-                    key === 'sla_risk' ? 'slaRisk' :
-                        (key === 'needs_recovery' ? 'needsRecovery' : key)
-                ))) + '</span>';
-        }).join('') +
-            (summary.truncated ? '<em>' + wwIcon('alert-triangle') + ' ' + escapeHtml(t('response.queue.truncated')) + '</em>' : '') +
-            '</div>';
+        document.querySelectorAll('[data-bucket-count]').forEach(function (el) {
+            const key = el.getAttribute('data-bucket-count');
+            const n = counts[key];
+            if (n === null || n === undefined) { el.hidden = true; return; }
+            el.textContent = String(n);
+            el.hidden = false;
+        });
+        return summary.truncated
+            ? '<div class="response-queue-summary"><em>' + wwIcon('alert-triangle') + ' ' + escapeHtml(t('response.queue.truncated')) + '</em></div>'
+            : '';
     }
 
     function renderWorkQueue(items, meta) {
         const container = document.getElementById('responseWorkQueueList');
         if (!container) return;
         if (!items.length) {
+            // Still refresh the pill counts: this bucket being empty says
+            // nothing about the others.
+            renderQueueSummary(meta || {});
             container.innerHTML = '<div class="empty-state response-empty">' +
                 '<div class="empty-icon">' + wwIcon('check') + '</div><div class="empty-title">' +
                 escapeHtml(t('response.queue.emptyTitle')) + '</div><div class="empty-text">' +
@@ -193,7 +214,7 @@ const ResponseCenterModule = (function () {
                 '<div class="response-queue-cell"><span>' +
                 escapeHtml(t('incidents.owner')) + '</span><strong>' +
                 escapeHtml(ownerText(item)) + '</strong></div>' +
-                '<div class="response-queue-cell response-queue-countdown"><span>' +
+                '<div class="response-queue-cell response-queue-countdown' + countdownTone(item) + '"><span>' +
                 escapeHtml(t('incidents.sla')) + '</span><strong>' +
                 escapeHtml(countdown(item)) + '</strong></div>' +
                 '<button class="btn btn-primary response-next-action" type="button" data-response-action="' +

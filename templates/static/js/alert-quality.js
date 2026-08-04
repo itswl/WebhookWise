@@ -38,10 +38,13 @@ const AlertQualityModule = (function () {
 
     function coverageItem(key, value) {
         const safeValue = Math.max(0, Math.min(100, number(value)));
+        // Flat threshold tone, not a gradient: the fill's COLOUR carries the
+        // verdict (healthy / needs work / broken), the width carries the value.
+        const tone = safeValue >= 90 ? ' is-ok' : (safeValue >= 60 ? ' is-mid' : ' is-low');
         return '<div class="alert-quality-coverage-item">' +
             '<div><span>' + escapeHtml(t('quality.coverage.' + key)) + '</span><strong>' +
             escapeHtml(percent(safeValue)) + '</strong></div>' +
-            '<div class="alert-quality-meter"><i style="width:' + safeValue + '%"></i></div></div>';
+            '<div class="alert-quality-meter' + tone + '"><i style="width:' + safeValue + '%"></i></div></div>';
     }
 
     function renderSummary(data) {

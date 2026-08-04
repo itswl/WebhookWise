@@ -231,11 +231,15 @@ const AICostModule = {
         const maxCost = Math.max(...trend.map(p => Number(p.cost) || 0), 0.000001);
         const bars = trend.map(p => {
             const cost = Number(p.cost) || 0;
-            const pct = Math.max(2, (cost / maxCost) * 100);
+            // Top out at 82% of the band: the value label sits above the bar.
+            const pct = Math.max(2, (cost / maxCost) * 82);
             const title = `${p.time} · ${this.formatCurrency(cost)} · ${t('aicost.trend.callsTip', { n: formatNumber(p.total_calls || 0), ai: formatNumber(p.ai_calls || 0) })}`;
             const label = String(p.time).slice(5); // MM-DD
             return `<div class="aicost-trend-col" title="${title}">
-                        <div class="aicost-trend-bar-wrap"><div class="aicost-trend-bar" style="height: ${pct}%;"></div></div>
+                        <div class="aicost-trend-bar-wrap" style="flex-direction: column; justify-content: flex-end; align-items: center;">
+                            <div class="aicost-trend-val">${this.formatCurrency(cost)}</div>
+                            <div class="aicost-trend-bar" style="height: ${pct}%;"></div>
+                        </div>
                         <div class="aicost-trend-x">${label}</div>
                     </div>`;
         }).join('');
