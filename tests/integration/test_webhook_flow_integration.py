@@ -146,6 +146,19 @@ async def test_webhook_receive_to_feishu_card_flow(
         rows = (await session.execute(select(WebhookEvent))).scalars().all()
         assert len(rows) == 1
 
+        # Regression (2026-08-04): the trace writer once read "name" off the
+        # forward-match identity — a dict that only carries project/region/
+        # environment — so every row stored NULL alert_name and the per-rule
+        # quality aggregates silently collapsed back to source grain. The name
+        # must come from parsed_data's _alert_identity, end to end.
+        from models import DecisionTrace
+
+        trace = (await session.execute(select(DecisionTrace))).scalar_one_or_none()
+        assert trace is not None
+        identity_name = (event.parsed_data.get("_alert_identity") or {}).get("name")
+        assert identity_name, "adapter should have stamped an identity name"
+        assert trace.alert_name == identity_name
+
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         detail = await client.get(
             f"/v1/webhooks/by-request/{body['request_id']}",
