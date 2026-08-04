@@ -54,6 +54,10 @@ const KbDraftsModule = (function () {
         });
     }
 
+    // Full text per open panel, for the edit textarea (chunks joined; the
+    // server re-chunks on save, so the document edits as one text).
+    const detailText = {};
+
     // Inline detail: fetched on first open, kept in the DOM after that. The
     // review queue must show the material under review — publish/discard
     // without it is approval of the invisible.
@@ -66,12 +70,25 @@ const KbDraftsModule = (function () {
         }
         panel.style.display = 'block';
         if (!panel.getAttribute('data-loaded')) {
-            panel.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem;">' + escapeHtml(t('common.loading')) + '</div>';
             if (button) button.disabled = true;
             try {
-                const result = await API.getKbDraft(sourceRef);
-                const chunks = (result && result.data && result.data.chunks) || [];
-                panel.innerHTML = chunks.map(function (chunk, idx) {
+                await renderDetail(sourceRef, panel);
+                panel.setAttribute('data-loaded', '1');
+            } finally {
+                if (button) button.disabled = false;
+            }
+        }
+    }
+
+    async function renderDetail(sourceRef, panel) {
+        panel.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem;">' + escapeHtml(t('common.loading')) + '</div>';
+        try {
+            const result = await API.getKbDraft(sourceRef);
+            const chunks = (result && result.data && result.data.chunks) || [];
+            detailText[panel.id] = chunks.map(function (c) { return c.content || ''; }).join('\n\n');
+            panel.innerHTML = '<div style="display:flex; justify-content:flex-end; margin-bottom:8px;">' +
+                '<button type="button" class="btn btn-sm" data-kb-edit="1">' + wwIcon('pencil') + ' ' + escapeHtml(t('kb.edit')) + '</button></div>' +
+                (chunks.map(function (chunk, idx) {
                     return '<div style="margin-bottom:12px;">' +
                         (chunks.length > 1
                             ? '<div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">' +
@@ -79,15 +96,43 @@ const KbDraftsModule = (function () {
                             : '') +
                         '<div style="white-space:pre-wrap; overflow-wrap:anywhere; font-size:0.85rem; line-height:1.65; color:var(--text-secondary); max-width:70rem;">' +
                         escapeHtml(chunk.content || '') + '</div></div>';
-                }).join('') || '<div style="color:var(--text-muted);">—</div>';
-                panel.setAttribute('data-loaded', '1');
-            } catch (error) {
-                panel.innerHTML = '<div style="color:var(--danger); font-size:0.85rem;">' +
-                    escapeHtml(t('common.loadFailed') + ': ' + (error.message || String(error))) + '</div>';
-            } finally {
-                if (button) button.disabled = false;
-            }
+                }).join('') || '<div style="color:var(--text-muted);">—</div>');
+            const editBtn = panel.querySelector('[data-kb-edit]');
+            if (editBtn) editBtn.addEventListener('click', function () { enterEdit(sourceRef, panel); });
+        } catch (error) {
+            panel.innerHTML = '<div style="color:var(--danger); font-size:0.85rem;">' +
+                escapeHtml(t('common.loadFailed') + ': ' + (error.message || String(error))) + '</div>';
         }
+    }
+
+    // Amend-before-approve: a wrong AI summary should be corrected, not
+    // published wrong or thrown away whole. Saving re-chunks and re-embeds
+    // server-side, so what you read here is exactly what RAG will retrieve.
+    function enterEdit(sourceRef, panel) {
+        const original = detailText[panel.id] || '';
+        panel.innerHTML = '<textarea class="filter-input" style="width:100%; min-height:260px; font-size:0.85rem; line-height:1.6; resize:vertical; font-family:inherit;"></textarea>' +
+            '<div style="display:flex; gap:8px; margin-top:8px;">' +
+            '<button type="button" class="btn btn-sm btn-quiet-primary" data-kb-save="1">' + wwIcon('check') + ' ' + escapeHtml(t('kb.save')) + '</button>' +
+            '<button type="button" class="btn btn-sm" data-kb-cancel="1">' + escapeHtml(t('kb.cancel')) + '</button></div>';
+        const area = panel.querySelector('textarea');
+        area.value = original;
+        panel.querySelector('[data-kb-cancel]').addEventListener('click', function () { renderDetail(sourceRef, panel); });
+        panel.querySelector('[data-kb-save]').addEventListener('click', async function () {
+            const text = area.value.trim();
+            if (!text) return;
+            const saveBtn = panel.querySelector('[data-kb-save]');
+            saveBtn.disabled = true;
+            try {
+                await API.updateKbDraft(sourceRef, text);
+                if (typeof showToast === 'function') showToast(t('kb.editOk'), 'success');
+                // Refresh in place; a full list reload would collapse this
+                // panel right after the operator saved into it.
+                await renderDetail(sourceRef, panel);
+            } catch (error) {
+                saveBtn.disabled = false;
+                alert(t('kb.editFail') + ': ' + (error.message || String(error)));
+            }
+        });
     }
 
     async function publish(sourceRef, button) {

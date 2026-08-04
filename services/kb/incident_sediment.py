@@ -220,6 +220,38 @@ async def get_kb_draft(session: AsyncSession, source_ref: str) -> list[dict[str,
     ]
 
 
+async def update_kb_draft(session: AsyncSession, source_ref: str, content: str) -> int:
+    """Replace a draft's text with operator-edited content. Returns chunk count.
+
+    Review means being able to amend: without this, a factually-wrong AI
+    summary forces publish-it-wrong or discard-it-entirely. Editing re-ingests
+    the same source_ref through the normal chunk→embed→upsert pipeline, so
+    embeddings can never go stale relative to the visible text; stale chunks
+    are pruned by the ingest itself. Only existing drafts are editable —
+    published knowledge changes through a new revision, not silent rewrites.
+    """
+    await acquire_advisory_xact_lock(session, f"kb_document:{source_ref}")
+    row = (
+        await session.execute(
+            select(KBDocument.title, KBDocument.tags)
+            .where(KBDocument.source_ref == source_ref, KBDocument.status == "draft")
+            .order_by(KBDocument.chunk_index.asc())
+            .limit(1)
+        )
+    ).first()
+    if row is None or not content.strip():
+        return 0
+    result = await ingest_document(
+        session,
+        title=row.title,
+        content=content,
+        source_ref=source_ref,
+        tags=dict(row.tags) if isinstance(row.tags, dict) else None,
+        status="draft",
+    )
+    return int(result.chunks)
+
+
 async def publish_kb_draft(session: AsyncSession, source_ref: str) -> int:
     """Publish all draft chunks of a document into the RAG corpus."""
     await acquire_advisory_xact_lock(session, f"kb_document:{source_ref}")
@@ -244,6 +276,7 @@ __all__ = [
     "discard_kb_draft",
     "draft_kb_from_incident",
     "get_kb_draft",
+    "update_kb_draft",
     "list_kb_drafts",
     "publish_kb_draft",
     "run_pending_kb_drafts",

@@ -978,6 +978,19 @@ const API = {
     },
 
     /**
+     * Amend a draft's text before approval (re-chunked/re-embedded server-side).
+     * Admin-write.
+     */
+    async updateKbDraft(sourceRef, content) {
+        const response = await this.authenticatedFetch('/v1/admin/kb/drafts/' + encodeURIComponent(sourceRef), {
+            method: 'PUT',
+            body: JSON.stringify({ content: content })
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
      * Publish a KB draft into the AI knowledge base (RAG). Admin-write.
      * source_ref (e.g. "incident:123") is a path segment; encodeURIComponent
      * percent-encodes the colon to %3A so the server's :path route matches.
