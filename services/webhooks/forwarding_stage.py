@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from adapters.normalized import extract_alert_identity
 from core.logger import get_logger
 from core.observability.attributes import WEBHOOK_ALERT_HASH, WEBHOOK_EVENT_ID, WEBHOOK_SOURCE
 from core.observability.events import add_span_event, emit_event
@@ -207,9 +208,13 @@ async def finalize_analysis_transaction(
                 session,
                 webhook_event_id=save_res.webhook_id,
                 source=ctx.req_ctx.source,
-                # Reuse the identity already extracted for rule matching; the
-                # rule name is the dimension the quality view aggregates on.
-                alert_name=(ensure_forward_match_identity(ctx) or {}).get("name"),
+                # The alert name lives in the parsed payload's _alert_identity
+                # (same source dedup keys on and migration 0025 backfilled
+                # from). The forward-match identity is the WRONG dict here: it
+                # only carries project/region/environment, so reading "name"
+                # off it silently wrote NULL for every row (2026-08-03/04) and
+                # collapsed the per-rule quality grain back to source.
+                alert_name=(extract_alert_identity(ctx.req_ctx.parsed_data) or {}).get("name"),
                 dedup=analysis_res,
                 final_analysis=final_analysis,
                 noise=noise,
