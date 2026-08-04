@@ -72,7 +72,13 @@ async def get_rule_audit(
     # often each rule name appears in any forwarded outcome (outcome='forwarded').
     # This is a read-only aggregate over the same window, kept outside the main
     # GROUP BY so it adds no round-trips per rule.
-    rule_names = sorted({(r[0] or "").strip() for r in rows if r[0]})
+    # r[1] is rule_name; r[0] is source. Reading r[0] here collected SOURCE
+    # names, matched them against decision_trace.matched_rules (which holds
+    # RULE names), never hit, and left forwarded == 0 for every rule — so the
+    # pure_noise flag fired on every rule with events, including ones that
+    # forward everything. An off-by-one column index that inverted a whole
+    # diagnostic.
+    rule_names = sorted({(r[1] or "").strip() for r in rows if r[1]})
     forwarded_by_rule: dict[str, int] = {}
     skipped_by_rule: dict[str, int] = {}
     if rule_names and include_forward_counts:
