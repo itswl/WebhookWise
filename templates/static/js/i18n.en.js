@@ -824,6 +824,8 @@
             'nav.collapse': 'Collapse',
             'nav.lowfreq': 'Rarely used',
             'dt.period.groupLabel': 'Time window',
+            'kb.detail': 'Details',
+            'kb.chunkLabel': 'Chunk {n}',
             'palette.trigger': 'Jump to anywhere…',
             'palette.open': 'Jump to anywhere',
             'palette.placeholder': 'Search destinations…',

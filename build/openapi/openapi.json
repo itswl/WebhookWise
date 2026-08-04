@@ -4658,11 +4658,52 @@
         ]
       }
     },
-    "/v1/admin/kb/drafts/{source_ref}/publish": {
-      "post": {
-        "summary": "Publish Kb Draft Endpoint",
-        "description": "Publish a KB draft into the RAG corpus (operator approval).",
-        "operationId": "publish_kb_draft_endpoint_v1_admin_kb_drafts__source_ref__publish_post",
+    "/v1/admin/kb/drafts/{source_ref}": {
+      "get": {
+        "summary": "Get Kb Draft Endpoint",
+        "description": "Full ordered content of one KB draft — the material under review.",
+        "operationId": "get_kb_draft_endpoint_v1_admin_kb_drafts__source_ref__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "source_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Ref"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Discard Kb Draft Endpoint",
+        "description": "Discard a KB draft without publishing it.",
+        "operationId": "discard_kb_draft_endpoint_v1_admin_kb_drafts__source_ref__delete",
         "security": [
           {
             "HTTPBearer": []
@@ -4701,11 +4742,11 @@
         }
       }
     },
-    "/v1/admin/kb/drafts/{source_ref}": {
-      "delete": {
-        "summary": "Discard Kb Draft Endpoint",
-        "description": "Discard a KB draft without publishing it.",
-        "operationId": "discard_kb_draft_endpoint_v1_admin_kb_drafts__source_ref__delete",
+    "/v1/admin/kb/drafts/{source_ref}/publish": {
+      "post": {
+        "summary": "Publish Kb Draft Endpoint",
+        "description": "Publish a KB draft into the RAG corpus (operator approval).",
+        "operationId": "publish_kb_draft_endpoint_v1_admin_kb_drafts__source_ref__publish_post",
         "security": [
           {
             "HTTPBearer": []
