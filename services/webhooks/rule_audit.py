@@ -128,33 +128,42 @@ async def get_rule_audit(
 async def _trace_forward_counts(
     session: AsyncSession, start: Any, rule_names: list[str]
 ) -> tuple[dict[str, int], dict[str, int]]:
-    """Count per-rule-name forward/skip totals from decision_trace in one query.
+    """Count per-ALERT-rule forward/skip totals from decision_trace.
 
-    ``matched_rules`` is a JSONB array of rule names on forwarded traces, so
-    with PostgreSQL we could use ``jsonb_array_elements_text``; to keep it
-    portable (SQLite test shim), we load the rows and count in Python. The
-    cardinality is low (one row per forwarded trace in the window), so this is
-    not a bottleneck.
+    Keyed on ``decision_trace.alert_name`` — the alert rule — because that is
+    the dimension this audit groups by. It previously joined against
+    ``matched_rules``, which holds FORWARD rule names ("所有告警通知"): a
+    disjoint namespace from alert rule names ("示例充值超限告警"), so the
+    join could never hit and every rule looked like it forwarded nothing.
+
+    Grouped in SQL on an indexed column (migration 0025 added alert_name with a
+    partial index), so this is one aggregate rather than a row scan.
     """
-    stmt = select(
-        DecisionTrace.outcome,
-        DecisionTrace.matched_rules,
-    ).where(
-        DecisionTrace.created_at >= start,
-        DecisionTrace.matched_rules.isnot(None),
+    stmt = (
+        select(
+            DecisionTrace.alert_name,
+            DecisionTrace.outcome,
+            func.count(DecisionTrace.id),
+        )
+        .where(
+            DecisionTrace.created_at >= start,
+            DecisionTrace.alert_name.isnot(None),
+        )
+        .group_by(DecisionTrace.alert_name, DecisionTrace.outcome)
     )
     rows = (await session.execute(stmt)).all()
-    name_set = set(rule_names)
+    # Alert names arrive from upstream payloads with inconsistent casing
+    # (Grafana sends "DatasourceNoData", the identity extractor lowercases some
+    # paths), so match case-insensitively against the audited names.
+    by_lower = {name.lower(): name for name in rule_names}
     forwarded: dict[str, int] = {}
     skipped: dict[str, int] = {}
-    for outcome, matched in rows:
-        if not isinstance(matched, list):
+    for alert_name, outcome, count in rows:
+        key = by_lower.get(str(alert_name or "").strip().lower())
+        if key is None:
             continue
-        for name in matched:
-            if isinstance(name, str) and name.strip() in name_set:
-                key = name.strip()
-                if outcome == "forwarded":
-                    forwarded[key] = forwarded.get(key, 0) + 1
-                else:
-                    skipped[key] = skipped.get(key, 0) + 1
+        if outcome == "forwarded":
+            forwarded[key] = forwarded.get(key, 0) + int(count)
+        else:
+            skipped[key] = skipped.get(key, 0) + int(count)
     return forwarded, skipped
