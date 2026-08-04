@@ -2844,6 +2844,12 @@ body.sidebar-collapsed .sidebar-version { display: none; }
   line-height: 1.5;
 }
 
+.knowledge-gap-drills {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .knowledge-gap-tags {
   display: flex;
   flex-wrap: wrap;

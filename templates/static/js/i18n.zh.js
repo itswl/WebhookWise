@@ -1178,6 +1178,8 @@
             'knowledgeGaps.reason.ineffective_runbook': '预案需要改进',
             'knowledgeGaps.reason.unproven_runbook': '预案效果尚未验证',
             'knowledgeGaps.nextAction': '建议下一步',
+            'knowledgeGaps.drill.incidents': '相关事件',
+            'knowledgeGaps.drill.alerts': '相关告警',
             'knowledgeGaps.action.create_runbook': '创建预案',
             'knowledgeGaps.action.validate_or_improve_runbook': '验证或改进预案',
             'resolution.title': '解决事故',
