@@ -207,6 +207,24 @@ body {
   align-items: center;
 }
 
+/* Utility actions are chrome, not content: ghost until hovered. Five bordered
+   chips in a row outweighed every real signal on the bar (worst in the light
+   theme, where they rendered as a run of solid blocks). */
+.nav-actions .btn,
+.nav-actions .btn-icon {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.nav-actions .btn:hover,
+.nav-actions .btn-icon:hover {
+  background: var(--bg-subtle);
+  border-color: var(--border);
+  transform: none;
+  box-shadow: none;
+}
+
 /* Compact health indicator: just a pulsing dot, with the full status in a
    tooltip — replaces the verbose "Service running" pill to declutter the bar. */
 .nav-status-dot {
@@ -376,7 +394,7 @@ body {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1.25rem;
 }
 
@@ -429,10 +447,44 @@ body {
   line-height: 1.1;
 }
 
+/* Captions are context, not celebration: muted by default. Anything green
+   here painted "20 failed" and "170 need attention" as good news; colour in
+   a caption must be earned by a real state span, never by the container. */
 .stat-trend {
   font-size: var(--fs-xs);
-  color: var(--success);
+  color: var(--text-muted);
   margin-top: 0.5rem;
+}
+
+.stat-trend.tone-warn { color: var(--warning); }
+.stat-trend.tone-crit { color: var(--danger); }
+
+/* Overview band: queue health beside skip reasons instead of two lonely
+   full-width strips over an empty bottom half. */
+.ov-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+  align-items: stretch;
+}
+
+@media (max-width: 960px) {
+  .ov-row { grid-template-columns: 1fr; }
+}
+
+/* Row-level primary action: accent at the point (text/border), not a filled
+   pill repeated twenty times down the inbox. */
+.btn-quiet-primary {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+  background: transparent;
+}
+
+.btn-quiet-primary:hover {
+  background: var(--primary-bg);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

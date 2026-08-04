@@ -99,10 +99,17 @@ const OverviewModule = {
         html += this._card(wwIcon('check'), t('overview.card.forwardRate'), (d.forward_rate || 0).toFixed(1) + '%',
             t('overview.card.forwardRateTrend', { fwd: fmt(d.forwarded), skip: fmt(d.skipped) }), 'var(--success)',
             "OverviewModule.drillToOutcome('forwarded')");
+        // The one stateful headline: a degraded delivery rate must not sit
+        // there looking as calm as a healthy one.
+        var rateStr = delivery.success_rate != null ? delivery.success_rate.toFixed(1) + '%' : '—';
+        if (delivery.success_rate != null && delivery.failed > 0) {
+            var rateColor = delivery.success_rate < 80 ? 'var(--danger)' : 'var(--warning)';
+            rateStr = '<span style="color:' + rateColor + ';">' + rateStr + '</span>';
+        }
         html += this._card(wwIcon('send'), t('overview.card.deliveryRate'),
-            (delivery.success_rate != null ? delivery.success_rate.toFixed(1) + '%' : '—'),
+            rateStr,
             t('overview.card.deliveryRateTrend', { ok: fmt(delivery.delivered || 0), fail: fmt(delivery.failed || 0) }),
-            (delivery.failed > 0 ? 'var(--danger)' : 'var(--success)'),
+            null,
             "OverviewModule.drillToOutcome('forwarded')");
         if (ai) {
             html += this._card(wwIcon('dollar'), t('overview.card.aiCost'), '$' + (Number(cost) || 0).toFixed(4),
@@ -111,24 +118,14 @@ const OverviewModule = {
         }
         html += '</div>';
 
-        // Ingest-queue health tile (best-effort; omitted if the probe returned nothing).
-        html += this._renderQueueHealth(queue);
-
-        // Skip-reason distribution.
-        const skip = d.skip_code_breakdown || {};
-        const skipKeys = Object.keys(skip);
-        if (skipKeys.length) {
-            html += '<div style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem;">' + t('overview.section.skipReasons') + '</div>';
-            html += '<div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">';
-            skipKeys.sort((a, b) => skip[b] - skip[a]).forEach((k) => {
-                // Clickable: drill from the Overview summary into the Decision Trace
-                // sub-view, pre-filtered to this skip reason.
-                html += '<span class="badge badge-outline" role="button" tabindex="0" style="font-size: 0.8rem; cursor: pointer;"' +
-                    ' title="' + escapeHtml(t('overview.skipChip.drill')) + '"' +
-                    ' onclick="OverviewModule.drillToSkip(\'' + escapeHtml(k) + '\')">' +
-                    escapeHtml(k) + ' <strong>' + fmt(skip[k]) + '</strong></span>';
-            });
-            html += '</div>';
+        // Queue health and skip reasons share one band: both are small, and
+        // stacking them full-width left the bottom half of the screen empty.
+        const queueCard = this._renderQueueHealth(queue);
+        const skipCard = this._renderSkipCard(d.skip_code_breakdown || {}, fmt);
+        if (queueCard && skipCard) {
+            html += '<div class="ov-row">' + queueCard + skipCard + '</div>';
+        } else if (queueCard || skipCard) {
+            html += '<div style="margin-bottom: 1.5rem;">' + (queueCard || skipCard) + '</div>';
         }
 
         // Top alert rules (rule grain; unidentified senders fall back to source).
@@ -156,7 +153,6 @@ const OverviewModule = {
             for (var i = 0; i < Math.min(incidents.length, 5); i++) {
                 var inc = incidents[i];
                 html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="openIncident(' + Number(inc.id) + ')">';
-                html += '<span style="font-size:1.2rem;"></span>';
                 html += '<div style="flex:1; min-width:0;">';
                 html += '<div style="font-weight:500; font-size:0.9rem;">' + escapeHtml(inc.title) + '</div>';
                 html += '<div style="font-size:0.76rem; color:var(--text-muted);">' + escapeHtml(inc.source || '') + ' · ' + inc.alert_count + ' alerts · ' + (impEmoji[inc.top_importance] || '') + (inc.top_importance || '') + '</div>';
@@ -175,15 +171,50 @@ const OverviewModule = {
     },
 
     // Native CSS bars keep the dashboard self-contained and CSP-friendly.
+    // Bars carry their values (a chart the reader has to hover to read is a
+    // riddle, not a chart); the in-progress last day gets the full accent,
+    // completed days step back so "today" is the figure and history the ground.
     _trendInner(sparkData) {
         var maxVal = Math.max.apply(null, sparkData.map(function (d) { return d.count; })) || 1;
-        var bars = sparkData.map(function (d) {
-            var h = Math.max(2, Math.round((d.count / maxVal) * 40));
-            return '<div title="' + d.day + ': ' + d.count + '" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">' +
-                '<div style="width:100%; max-width:24px; height:' + h + 'px; background:var(--primary); border-radius:2px 2px 0 0; min-height:2px;"></div>' +
-                '<span style="font-size:0.55rem; color:var(--text-muted);">' + (d.day || '').slice(5) + '</span></div>';
+        var last = sparkData.length - 1;
+        var bars = sparkData.map(function (d, i) {
+            var h = Math.max(3, Math.round((d.count / maxVal) * 88));
+            var isToday = i === last;
+            var barBg = isToday ? 'var(--primary)' : 'color-mix(in srgb, var(--primary) 45%, var(--bg-subtle))';
+            return '<div title="' + d.day + ': ' + d.count + '" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:4px; height:100%;">' +
+                '<span style="font-size:0.68rem; color:' + (isToday ? 'var(--text-main)' : 'var(--text-muted)') + '; font-variant-numeric:tabular-nums;">' + (d.count || 0) + '</span>' +
+                '<div style="width:100%; max-width:36px; height:' + h + 'px; background:' + barBg + '; border-radius:3px 3px 0 0;"></div>' +
+                '<span style="font-size:0.68rem; color:var(--text-muted);">' + (d.day || '').slice(5) + '</span></div>';
         }).join('');
-        return '<div style="display:flex; align-items:flex-end; gap:2px; height:50px;">' + bars + '</div>';
+        return '<div style="display:flex; align-items:stretch; gap:8px; height:132px;">' + bars + '</div>';
+    },
+
+    // Skip reasons as a card so it can share a band with queue health.
+    // Codes render through the trace view's presenter — the overview endpoint
+    // reports them uppercase, and a raw NOISE_SUPPRESSED must never hit the UI.
+    _renderSkipCard(skip, fmt) {
+        const skipKeys = Object.keys(skip);
+        if (!skipKeys.length) return '';
+        const label = (k) => {
+            const norm = String(k).toLowerCase();
+            if (typeof DecisionTraceModule !== 'undefined' && DecisionTraceModule.skipCodeLabel) {
+                return DecisionTraceModule.skipCodeLabel(norm);
+            }
+            return escapeHtml(norm);
+        };
+        let html = '<div style="background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem;">';
+        html += '<div style="font-weight: 600; margin-bottom: 0.75rem;">' + t('overview.section.skipReasons') + '</div>';
+        html += '<div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">';
+        skipKeys.sort((a, b) => skip[b] - skip[a]).forEach((k) => {
+            // Clickable: drill from the Overview summary into the Decision Trace
+            // sub-view, pre-filtered to this skip reason.
+            html += '<span class="badge badge-outline" role="button" tabindex="0" style="font-size: 0.8rem; cursor: pointer;"' +
+                ' title="' + escapeHtml(t('overview.skipChip.drill')) + '"' +
+                ' onclick="OverviewModule.drillToSkip(\'' + escapeHtml(k) + '\')">' +
+                label(k) + ' <strong>' + fmt(skip[k]) + '</strong></span>';
+        });
+        html += '</div></div>';
+        return html;
     },
 
     // Ingest-queue health. The alarm signal is backlog_fraction (undelivered lag
@@ -201,9 +232,17 @@ const OverviewModule = {
         const pct = hasBf ? Math.round(bf * 100) : null;
         const warn = q.warn_fraction;
         const high = q.high_water_fraction;
-        let color = 'var(--success)';
-        if (q.backlogged || (hasBf && high != null && bf >= high)) color = 'var(--danger)';
-        else if (hasBf && warn != null && bf >= warn) color = 'var(--warning)';
+        // Zero backlog is quiet, not a celebration — and never an alarm: with a
+        // threshold of 0 the old `bf >= high` fired on a perfectly empty queue,
+        // painting a healthy 0% red.
+        let color = 'var(--text-muted)';
+        if (hasBf && bf > 0) {
+            color = 'var(--success)';
+            if (q.backlogged || (high != null && bf >= high)) color = 'var(--danger)';
+            else if (warn != null && bf >= warn) color = 'var(--warning)';
+        } else if (q.backlogged) {
+            color = 'var(--danger)';
+        }
         const barWidth = hasBf ? Math.min(100, Math.max(0, pct)) : 0;
         const backlog = q.backlog != null ? fmt(q.backlog) : dash;
         const depth = q.depth != null ? fmt(q.depth) : dash;
@@ -213,7 +252,7 @@ const OverviewModule = {
 
         let html = '<div style="background: var(--bg-surface); border: 1px solid var(--border);' +
             (q.backlogged ? ' border-left: 3px solid var(--danger);' : '') +
-            ' border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">';
+            ' border-radius: var(--radius-lg); padding: 1.25rem;">';
         html += '<div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem;">' +
             '<span style="font-weight: 600;">' + t('overview.queue.title') + '</span>' +
             '<span style="font-size: 1.25rem; font-weight: 700; color: ' + color + ';">' + (pct != null ? pct + '%' : dash) + '</span></div>';

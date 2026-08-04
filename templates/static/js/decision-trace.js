@@ -84,9 +84,9 @@ var DecisionTraceModule = (function () {
                     '<div class="stat-trend">' + t('dt.stat.totalTrend') + '</div>' +
                 '</div>' +
                 '<div class="stat-card">' +
-                    '<div class="stat-label" style="color: var(--success);">' + wwIcon('check') + ' ' + t('dt.stat.forwarded') + '</div>' +
-                    '<div class="stat-value" style="color: var(--success); font-size: 2rem;">' + formatNumber(forwarded) + '</div>' +
-                    '<div class="stat-trend" style="color: var(--success);">' + fwdPct.toFixed(1) + '%</div>' +
+                    '<div class="stat-label"><span style="color: var(--success);">' + wwIcon('check') + '</span> ' + t('dt.stat.forwarded') + '</div>' +
+                    '<div class="stat-value" style="font-size: 2rem;">' + formatNumber(forwarded) + '</div>' +
+                    '<div class="stat-trend">' + fwdPct.toFixed(1) + '%</div>' +
                 '</div>' +
                 '<div class="stat-card">' +
                     '<div class="stat-label">' + wwIcon('skip-forward') + ' ' + t('dt.stat.skipped') + '</div>' +
@@ -159,15 +159,18 @@ var DecisionTraceModule = (function () {
                 '<span style="width:10px; height:10px; border-radius:2px; background:' + color + '; display:inline-block;"></span>' +
                 escapeHtml(label) + ' <strong>' + breakdown[k] + '</strong></span>';
         }).join('');
-        return '<div style="display:flex; height:10px; border-radius:5px; overflow:hidden; margin-bottom:0.5rem;">' + segs + '</div>' +
+        return '<div style="display:flex; height:6px; max-width:560px; border-radius:3px; overflow:hidden; margin-bottom:0.5rem; background:var(--bg-subtle);">' + segs + '</div>' +
             '<div style="display:flex; flex-wrap:wrap;">' + legend + '</div>';
     }
 
+    // One amber ramp, not a traffic light: "high importance" is a judgement,
+    // not a failure — a full-width solid red bar here read as an outage and
+    // out-shouted every real signal on the page.
     var IMPORTANCE_COLORS = {
-        'high': 'var(--danger)', '_label_high': 'high',
-        'medium': 'var(--warning)', '_label_medium': 'medium',
-        'low': 'var(--success)', '_label_low': 'low',
-        'unknown': 'var(--text-muted)', '_label_unknown': 'unknown'
+        'high': 'var(--warning)', '_label_high': 'high',
+        'medium': 'color-mix(in srgb, var(--warning) 45%, var(--bg-subtle))', '_label_medium': 'medium',
+        'low': 'color-mix(in srgb, var(--text-muted) 50%, var(--bg-subtle))', '_label_low': 'low',
+        'unknown': 'var(--bg-subtle)', '_label_unknown': 'unknown'
     };
 
     function renderQuality(data) {
@@ -186,10 +189,10 @@ var DecisionTraceModule = (function () {
                     '<div class="stat-card"><div class="stat-label">' + wwIcon('lightbulb') + ' ' + t('dt.quality.aiJudgments') + '</div>' +
                         '<div class="stat-value" style="font-size: 1.75rem;">' + formatNumber(aiTotal) + '</div>' +
                         '<div class="stat-trend">' + t('dt.quality.aiJudgmentsTrend') + '</div></div>' +
-                    '<div class="stat-card" style="border-left: 3px solid var(--warning);"><div class="stat-label">' + wwIcon('gauge') + ' ' + t('dt.quality.overrideRate') + '</div>' +
-                        '<div class="stat-value" style="font-size: 1.75rem; color: var(--warning);">' + overrideRate.toFixed(1) + '%</div>' +
+                    '<div class="stat-card"' + (overrideRate > 0 ? ' style="border-left: 3px solid var(--warning);"' : '') + '><div class="stat-label">' + wwIcon('gauge') + ' ' + t('dt.quality.overrideRate') + '</div>' +
+                        '<div class="stat-value" style="font-size: 1.75rem;' + (overrideRate > 0 ? ' color: var(--warning);' : '') + '">' + overrideRate.toFixed(1) + '%</div>' +
                         '<div class="stat-trend">' + t('dt.quality.overrideTrend', { n: formatNumber(data.override_count || 0) }) + '</div></div>' +
-                    '<div class="stat-card" style="border-left: 3px solid var(--text-muted);"><div class="stat-label">' + wwIcon('activity') + ' ' + t('dt.quality.degradedRate') + '</div>' +
+                    '<div class="stat-card"><div class="stat-label">' + wwIcon('activity') + ' ' + t('dt.quality.degradedRate') + '</div>' +
                         '<div class="stat-value" style="font-size: 1.75rem;">' + degradedRate.toFixed(1) + '%</div>' +
                         '<div class="stat-trend">' + t('dt.quality.degradedTrend', { n: formatNumber(data.degraded_total || 0) }) + '</div></div>' +
                 '</div>';
@@ -789,6 +792,9 @@ var DecisionTraceModule = (function () {
         loadMore: loadMore,
         setPeriod: setPeriod,
         setResult: setResult,
+        // Shared skip-code presenter (icon + translated label, trusted markup)
+        // so other views never show a raw enum like NOISE_SUPPRESSED.
+        skipCodeLabel: skipCodeLabel,
         // Drills from other views: land on the trace list scoped to one
         // silence / one forward rule.
         filterBySilence: function (silenceId) {

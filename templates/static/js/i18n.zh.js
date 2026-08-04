@@ -169,7 +169,7 @@
 
             // ── Alerts tab ──
             // ── Overview tab ──
-            'overview.subtitle': '一屏看健康度：告警量、转发率、投递、AI 花费、Top 来源。',
+            'overview.subtitle': '一屏看健康度：告警量、转发率、投递、AI 花费、Top 告警规则。',
             'overview.empty.title': '暂无数据',
             'overview.empty.text': '所选时间段内没有活动。',
             'overview.card.processed': '处理告警数',

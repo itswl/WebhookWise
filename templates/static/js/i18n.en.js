@@ -169,7 +169,7 @@
 
             // ── Alerts tab ──
             // ── Overview tab ──
-            'overview.subtitle': 'At-a-glance health: volume, forward rate, delivery, AI spend, top sources.',
+            'overview.subtitle': 'At-a-glance health: volume, forward rate, delivery, AI spend, top alert rules.',
             'overview.empty.title': 'No data',
             'overview.empty.text': 'No activity in the selected window.',
             'overview.card.processed': 'Alerts Processed',

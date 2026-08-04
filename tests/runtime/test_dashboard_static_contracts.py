@@ -290,7 +290,10 @@ def test_incident_secondary_actions_are_collapsed() -> None:
     assert "renderIncidentToolbar" in incidents
     assert "secondaryActions" in incidents
     assert "alert-action-menu incident-action-menu" in incidents
-    assert "alert-action-count" in incidents
+    # The trigger stays quiet: no count badge (an item count on "more actions"
+    # reads as an unread indicator and earns none of that attention).
+    assert "alert-action-count" not in incidents
+    assert "alert-action-count" not in _static_js("alerts.js")
     assert ".incident-action-menu" in css
     assert "IncidentsModule.silenceIncidentSources" in incidents
 
@@ -674,14 +677,22 @@ def test_empty_palette_shows_the_whole_map_not_a_blank_panel() -> None:
 
 def test_dark_is_the_base_theme_not_an_override() -> None:
     """Dark-first has to be structural: if light lives in :root, an unstyled
-    first paint flashes white and every new rule defaults to the light value."""
+    first paint flashes white and every new rule defaults to the light value.
+
+    It also has to be the default by decision, not by OS preference: following
+    prefers-color-scheme silently served every light-mode OS the second-class
+    theme — four rounds of dark polish that a light-system operator never saw.
+    Only an explicit saved toggle may select light."""
     css = _static_css("dashboard.css")
     assert ".theme-light {" in css, "light should be the override"
     assert ".theme-dark" not in css, "dark should be the base, not a class"
 
     js = _static_js("dashboard.js")
     assert "classList.toggle('theme-light'" in js
-    assert "prefers-color-scheme: light" in js
+    assert "matchMedia('(prefers-color-scheme" not in js, (
+        "theme must not follow the OS: dark is the default, the toggle the opt-out"
+    )
+    assert "saved === 'light' ? 'light' : 'dark'" in js
 
 
 def test_sidebar_renders_the_same_map_as_the_palette() -> None:
