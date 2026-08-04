@@ -8,16 +8,33 @@
  * @param {number} timestamp - Timestamp (milliseconds)
  * @returns {string} The formatted time string (MM/DD HH:mm)
  */
+function _pad2(n) {
+    return n < 10 ? '0' + n : String(n);
+}
+
+/* ONE time family for the whole dashboard (the views had four dialects:
+   slashed locale dates, dashed ISO slices, truncated ISO, relative-only):
+   - formatTime      → lists.  MM-DD HH:mm, year prefixed only when it differs.
+   - formatTimeFull  → detail. YYYY-MM-DD HH:mm:ss.
+   - timeAgo         → relative, next to an absolute or with it in the title.
+   Deterministic output (no locale variance), sortable by eye. */
 function formatTime(timestamp) {
     if (timestamp === null || timestamp === undefined || timestamp === '') return '-';
     const date = new Date(timestamp);
     if (Number.isNaN(date.getTime())) return '-';
-    return date.toLocaleString('zh-CN', {
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+    const base = _pad2(date.getMonth() + 1) + '-' + _pad2(date.getDate())
+        + ' ' + _pad2(date.getHours()) + ':' + _pad2(date.getMinutes());
+    return date.getFullYear() === new Date().getFullYear()
+        ? base
+        : date.getFullYear() + '-' + base;
+}
+
+function formatTimeFull(timestamp) {
+    if (timestamp === null || timestamp === undefined || timestamp === '') return '-';
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.getFullYear() + '-' + _pad2(date.getMonth() + 1) + '-' + _pad2(date.getDate())
+        + ' ' + _pad2(date.getHours()) + ':' + _pad2(date.getMinutes()) + ':' + _pad2(date.getSeconds());
 }
 
 /**

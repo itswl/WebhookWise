@@ -582,15 +582,15 @@ const AlertsModule = {
             html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.fingerprint') + '</div><div class="info-value" style="font-size:0.75rem;">' + escapeHtml(String(webhook.alert_hash).substring(0, 16) + '…') + '</div></div>';
         }
         html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.clientIp') + '</div><div class="info-value">' + escapeHtml(String(webhook.client_ip || '-')) + '</div></div>';
-        html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.receivedAt') + '</div><div class="info-value">' + new Date(webhook.timestamp).toLocaleString('zh-CN') + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.receivedAt') + '</div><div class="info-value">' + formatTimeFull(webhook.timestamp) + '</div></div>';
         const statusMap = { received: t('alerts.status.received'), analyzing: t('alerts.status.analyzing'), completed: t('alerts.status.completed'), failed: t('alerts.status.failed'), dead_letter: t('alerts.status.deadLetter') };
         const statusText = statusMap[webhook.processing_status] || String(webhook.processing_status || '-');
         html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.processingStatus') + '</div><div class="info-value">' + escapeHtml(statusText) + '</div></div>';
         html += '<div class="info-item"><div class="info-label">Workflow</div><div class="info-value">' + escapeHtml(String(webhook.workflow_status || 'open')) + '</div></div>';
         html += '<div class="info-item"><div class="info-label">Owner</div><div class="info-value">' + escapeHtml(String(webhook.assignee || 'Unassigned')) + (webhook.team ? ' · ' + escapeHtml(String(webhook.team)) : '') + '</div></div>';
-        html += '<div class="info-item"><div class="info-label">SLA due</div><div class="info-value">' + escapeHtml(webhook.sla_due_at ? new Date(webhook.sla_due_at).toLocaleString() : 'Not set') + '</div></div>';
+        html += '<div class="info-item"><div class="info-label">SLA due</div><div class="info-value">' + escapeHtml(webhook.sla_due_at ? formatTimeFull(webhook.sla_due_at) : 'Not set') + '</div></div>';
         if (webhook.updated_at) {
-            html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.lastUpdated') + '</div><div class="info-value">' + new Date(webhook.updated_at).toLocaleString('zh-CN') + '</div></div>';
+            html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.lastUpdated') + '</div><div class="info-value">' + formatTimeFull(webhook.updated_at) + '</div></div>';
         }
         if (webhook.processing_status === 'failed' || webhook.processing_status === 'dead_letter') {
             const failure = webhook.failure_reason || webhook.error_message || '-';
@@ -601,7 +601,7 @@ const AlertsModule = {
             if (webhook.prev_alert_id) {
                 let prevValue = _alertLink(webhook.prev_alert_id);
                 if (webhook.prev_alert_timestamp) {
-                    prevValue += ' (' + new Date(webhook.prev_alert_timestamp).toLocaleString('zh-CN') + ')';
+                    prevValue += ' (' + formatTimeFull(webhook.prev_alert_timestamp) + ')';
                 }
                 html += '<div class="info-item"><div class="info-label">' + t('alerts.overview.previousAlert') + '</div><div class="info-value">' + prevValue + '</div></div>';
             }
@@ -1248,7 +1248,7 @@ const AlertsModule = {
             records.forEach(function(record) {
                 const analysis = record.analysis_result || {};
                 const engineLabel = record.engine === 'openclaw' ? 'OpenClaw' : t('deep.engine.local');
-                const time = new Date(record.created_at).toLocaleString('zh-CN');
+                const time = formatTimeFull(record.created_at);
                 const duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
 
                 html += '<div style="border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:12px; background:var(--bg-subtle);">';

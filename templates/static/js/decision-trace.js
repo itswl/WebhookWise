@@ -369,8 +369,8 @@ var DecisionTraceModule = (function () {
         if (tgt.event_type) rows += kvRow(wwIcon('tag') + ' ' + t('dt.delivery.eventType'),
             escapeHtml(tgt.event_type) + (tgt.is_periodic_reminder ? ' <span class="badge badge-outline" style="font-size:0.6rem;">' + t('dt.periodicReminder') + '</span>' : ''));
         rows += kvRow(wwIcon('list') + ' ' + t('dt.delivery.attempts'), escapeHtml((tgt.attempts != null ? tgt.attempts : '—') + ' / ' + (tgt.max_attempts != null ? tgt.max_attempts : '—')));
-        if (tgt.sent_at) rows += kvRow(wwIcon('clock') + ' ' + t('dt.delivery.sentAt'), escapeHtml(new Date(tgt.sent_at).toLocaleString()));
-        if (tgt.next_attempt_at && tgt.status !== 'sent') rows += kvRow(wwIcon('skip-forward') + ' ' + t('dt.delivery.nextRetry'), escapeHtml(new Date(tgt.next_attempt_at).toLocaleString()));
+        if (tgt.sent_at) rows += kvRow(wwIcon('clock') + ' ' + t('dt.delivery.sentAt'), escapeHtml(formatTimeFull(tgt.sent_at)));
+        if (tgt.next_attempt_at && tgt.status !== 'sent') rows += kvRow(wwIcon('skip-forward') + ' ' + t('dt.delivery.nextRetry'), escapeHtml(formatTimeFull(tgt.next_attempt_at)));
         if (tgt.last_error) rows += kvRow(wwIcon('alert-triangle') + ' ' + t('dt.delivery.error'), '<span style="color: var(--danger);">' + escapeHtml(tgt.last_error) + '</span>');
         if (tgt.retryable && DT_ENABLE_RETRY) {
             rows += '<div class="dt-step-row"><div class="dt-step-name"></div><div class="dt-step-value">' +
@@ -408,7 +408,7 @@ var DecisionTraceModule = (function () {
     }
 
     function buildSummaryHtml(trace) {
-        var time = trace.created_at ? new Date(trace.created_at).toLocaleString() : '-';
+        var time = formatTime(trace.created_at);
         var parts = [];
         parts.push(outcomeBadge(trace));
         if (trace.outcome === 'skipped') {
@@ -604,7 +604,7 @@ var DecisionTraceModule = (function () {
         }
         items.forEach(function (item) {
             var eid = Number(item.webhook_event_id);
-            var time = item.created_at ? new Date(item.created_at).toLocaleString() : '-';
+            var time = formatTime(item.created_at);
             var icon = (typeof getAlertIcon === 'function') ? getAlertIcon(item.importance) : '';
             html += '<div id="dt-dis-' + eid + '" class="da-card" style="cursor: pointer;" onclick="DecisionTraceModule.toggleDisagreement(' + eid + ')">' +
                 '<div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">' +

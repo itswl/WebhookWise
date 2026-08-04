@@ -84,14 +84,14 @@ const IncidentsModule = (function () {
             html += '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">';
             html += '<span>' + escapeHtml(row.source || '') + '</span> · ';
             html += '<span>' + row.alert_count + ' alerts</span> · ';
-            html += '<span>' + (row.started_at ? row.started_at.slice(0, 16).replace('T', ' ') : '?') + '</span>';
+            html += '<span>' + formatTime(row.started_at) + '</span>';
             if (row.top_importance) {
                 html += ' · <span>' + (row.top_importance === 'high' ? '<span class="ww-dot ww-dot-danger"></span> high' : row.top_importance === 'medium' ? '<span class="ww-dot ww-dot-warning"></span> medium' : '<span class="ww-dot ww-dot-success"></span> low') + '</span>';
             }
             if (row.assignee || row.team) {
                 html += ' · <span>' + wwIcon('user') + ' ' + escapeHtml(row.assignee || 'Unassigned') + (row.team ? ' / ' + escapeHtml(row.team) : '') + '</span>';
             }
-            if (row.sla_due_at) html += ' · <span>' + wwIcon('clock') + ' ' + escapeHtml(row.sla_due_at.slice(0, 16).replace('T', ' ')) + '</span>';
+            if (row.sla_due_at) html += ' · <span>' + wwIcon('clock') + ' ' + escapeHtml(formatTime(row.sla_due_at)) + '</span>';
             html += '</div>';
             html += '</div>';
             // Action buttons: close / reopen (stop propagation so they don't toggle the card)
@@ -1806,7 +1806,7 @@ const IncidentsModule = (function () {
         h += '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">';
         h += '<span>' + escapeHtml(row.source || '') + '</span> · ';
         h += '<span>' + row.alert_count + ' alerts</span> · ';
-        h += '<span>' + (row.started_at ? row.started_at.slice(0, 16).replace('T', ' ') : '?') + '</span>';
+        h += '<span>' + formatTime(row.started_at) + '</span>';
         h += '</div></div>';
         if (row.status === 'active' || row.status === 'quiet') {
             h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('check') + '</button>';

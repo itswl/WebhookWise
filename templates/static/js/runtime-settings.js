@@ -54,7 +54,7 @@ const RuntimeSettingsModule = (function () {
         if (!iso) return '';
         if (typeof formatTime === 'function') return formatTime(iso);
         try {
-            return new Date(iso).toLocaleString();
+            return formatTimeFull(iso);
         } catch (e) {
             return iso;
         }

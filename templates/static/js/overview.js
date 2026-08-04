@@ -157,7 +157,7 @@ const OverviewModule = {
                 html += '<div style="font-weight:500; font-size:0.9rem;">' + escapeHtml(inc.title) + '</div>';
                 html += '<div style="font-size:0.76rem; color:var(--text-muted);">' + escapeHtml(inc.source || '') + ' · ' + inc.alert_count + ' alerts · ' + (impEmoji[inc.top_importance] || '') + (inc.top_importance || '') + '</div>';
                 html += '</div>';
-                html += '<span style="color:var(--text-muted); font-size:0.7rem;">' + (inc.started_at ? inc.started_at.slice(0, 16).replace('T', ' ') : '') + '</span>';
+                html += '<span style="color:var(--text-muted); font-size:0.7rem;">' + formatTime(inc.started_at) + '</span>';
                 html += '</div>';
             }
             html += '</div>';
