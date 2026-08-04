@@ -39,12 +39,7 @@ pyroscope-io>=1.2.1
 pyroscope-otel>=1.1.0
 # Read-only MCP server (Streamable HTTP) exposing WebhookWise queries to
 # MCP-compatible agents. Official Anthropic Python SDK.
-# Pinned below 2.0: MCP 2.0 renames FastMCP -> MCPServer (mcp.server.mcpserver)
-# and drops the .settings surface this server configures transport security
-# through — a real migration across 14 tool decorators plus the transport
-# wiring, not a version bump. Tracked separately; the endpoint is public and
-# authenticated, so it gets its own change with its own verification.
-mcp>=1.28.1,<2
+mcp>=2.0.0
 # Security floors for transitive deps (pulled via fastapi[standard]/openai etc.)
 # to keep pip-audit clean; bump as new CVE fixes are published.
 aiohttp>=3.14.3

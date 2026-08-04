@@ -323,19 +323,15 @@ async def test_mounted_at_mcp_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
     from api.mcp import auth, build_mcp_app, mcp_server
 
     monkeypatch.setattr(auth, "get_config_manager", lambda: _config_with_key("secret"))
-    # Allow the test client's Host so DNS-rebinding protection doesn't 421 first.
-    # Must be set before build_mcp_app() creates the session manager, which
-    # captures transport_security at construction time.
+    # Allow the test client's Host so DNS-rebinding protection doesn't 421
+    # first. MCP 2.0 takes transport_security as an argument to
+    # streamable_http_app(), so the seam is the builder that produces it.
     monkeypatch.setattr(
-        "api.mcp.server._configure_transport_security",
-        lambda: setattr(
-            mcp_server.settings,
-            "transport_security",
-            TransportSecuritySettings(
-                enable_dns_rebinding_protection=True,
-                allowed_hosts=["testserver"],
-                allowed_origins=["http://testserver"],
-            ),
+        "api.mcp.server._transport_security",
+        lambda: TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=["testserver"],
+            allowed_origins=["http://testserver"],
         ),
     )
 
