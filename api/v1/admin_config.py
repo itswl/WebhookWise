@@ -6,6 +6,7 @@ are unchanged.
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import fail_response, internal_error_response, ok_response
@@ -80,6 +81,32 @@ async def get_kb_draft_endpoint(
     if not chunks:
         return fail_response("KB draft not found", 404)
     return ok_response(http_status=200, data={"source_ref": source_ref, "chunks": chunks})
+
+
+class KbDraftUpdateRequest(BaseModel):
+    """Operator-edited replacement text for a draft under review."""
+
+    content: str = Field(min_length=1, max_length=200_000)
+
+
+@admin_config_router.put("/admin/kb/drafts/{source_ref:path}", dependencies=[Depends(verify_admin_write)])
+async def update_kb_draft_endpoint(
+    source_ref: str,
+    request: KbDraftUpdateRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Amend a draft before approval (re-chunked and re-embedded on save)."""
+    from services.kb.incident_sediment import update_kb_draft
+
+    chunks = await update_kb_draft(session, source_ref, request.content)
+    if not chunks:
+        return fail_response("KB draft not found", 404)
+    await session.commit()
+    from services.operations.feature_adoption import record_feature_use
+
+    await record_feature_use("action:kb_draft_edited")
+    logger.info("[Admin] KB draft edited source_ref=%s chunks=%d", source_ref, chunks)
+    return ok_response(http_status=200, message="draft updated", data={"chunks": chunks})
 
 
 @admin_config_router.post("/admin/kb/drafts/{source_ref:path}/publish", dependencies=[Depends(verify_admin_write)])

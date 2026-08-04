@@ -220,3 +220,38 @@ async def test_get_kb_draft_returns_ordered_reviewable_content(
 
         await publish_kb_draft(session, ref)
         assert await get_kb_draft(session, ref) == []
+
+
+@pytest.mark.asyncio
+async def test_update_kb_draft_amends_before_approval(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Edit-then-publish: the operator's correction is what enters RAG, the
+    replaced text is gone, and only drafts are editable (published/missing
+    refs return 0)."""
+    from services.kb.incident_sediment import get_kb_draft, update_kb_draft
+
+    async with db_session_factory.begin() as session:
+        incident = await _add_incident(session, title="GPU OOM", status="closed", summary=_SUMMARY)
+        await draft_kb_from_incident(session, int(incident.id))
+        ref = f"incident:{incident.id}"
+
+        edited = "## Summary\nOperator-corrected root cause: the GPU pool was undersized."
+        assert await update_kb_draft(session, ref, edited) >= 1
+
+        chunks = await get_kb_draft(session, ref)
+        joined = "\n\n".join(c["content"] for c in chunks)
+        assert "Operator-corrected root cause" in joined
+        rows = list((await session.execute(select(KBDocument))).scalars().all())
+        assert all(r.status == "draft" for r in rows)
+        assert all(r.embedding is not None for r in rows)
+
+        assert await update_kb_draft(session, "incident:999999", "x") == 0
+        assert await update_kb_draft(session, ref, "   ") == 0
+
+        await publish_kb_draft(session, ref)
+        published = list((await session.execute(select(KBDocument))).scalars().all())
+        assert published and all(r.status == "published" for r in published)
+        assert any("Operator-corrected root cause" in r.content for r in published)
+        # Published knowledge is not silently editable.
+        assert await update_kb_draft(session, ref, "post-publish rewrite") == 0

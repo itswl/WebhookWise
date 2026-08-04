@@ -2924,6 +2924,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      summary: Update Kb Draft Endpoint
+      description: Amend a draft before approval (re-chunked and re-embedded on save).
+      operationId: update_kb_draft_endpoint_v1_admin_kb_drafts__source_ref__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: source_ref
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Source Ref
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KbDraftUpdateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     delete:
       summary: Discard Kb Draft Endpoint
       description: Discard a KB draft without publishing it.
@@ -5077,6 +5108,18 @@ components:
       title: KBDocumentRequest
       description: Request to ingest one knowledge-base document (chunked + embedded
         server-side).
+    KbDraftUpdateRequest:
+      properties:
+        content:
+          type: string
+          maxLength: 200000
+          minLength: 1
+          title: Content
+      type: object
+      required:
+      - content
+      title: KbDraftUpdateRequest
+      description: Operator-edited replacement text for a draft under review.
     MaintenanceWindowCreateRequest:
       properties:
         match_source:
