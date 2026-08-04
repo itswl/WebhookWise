@@ -1,4 +1,4 @@
-"""FastMCP server definition and its read-only WebhookWise tools.
+"""MCP server definition and its read-only WebhookWise tools.
 
 Each tool is a thin wrapper over an existing service-layer query function; it
 opens a ``session_scope()`` transaction, calls the query, and returns the same
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,19 +42,11 @@ from services.webhooks.query_service import (
 )
 from services.webhooks.sandbox import test_webhook_payload
 
-# Stateless HTTP + JSON responses: every request is authenticated and served
-# independently (no session affinity needed for read-only queries), which also
-# keeps the endpoint friendly behind a reverse proxy / load balancer.
-#
-# streamable_http_path="/" is important: the app is mounted at "/mcp" in
-# api/app.py, so the transport's own route must be the mount root ("/"),
-# otherwise the effective path becomes "/mcp/mcp" and clients hitting /mcp 404.
-mcp_server = FastMCP(
-    name="webhookwise",
-    stateless_http=True,
-    json_response=True,
-    streamable_http_path="/",
-)
+# MCP 2.0 moved the transport knobs off the server object: stateless_http,
+# json_response, streamable_http_path and transport_security are arguments to
+# streamable_http_app() now (see build_mcp_app), not constructor/settings
+# fields. The server itself only declares identity and tools.
+mcp_server = MCPServer(name="webhookwise")
 
 # Clamp page sizes so a recursing agent cannot request unbounded rows.
 _MAX_PAGE_SIZE = 200
@@ -426,12 +418,12 @@ def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-def _configure_transport_security() -> None:
-    """Apply the configured Host/Origin allowlist for DNS-rebinding protection.
+def _transport_security() -> TransportSecuritySettings:
+    """Build the Host/Origin allowlist for DNS-rebinding protection.
 
-    FastMCP defaults to loopback-only. Behind a reverse proxy the public Host
-    (e.g. dejavu.example.com) must be added explicitly, or every request 421s.
-    Loopback hosts/origins are always kept so local health checks still work.
+    The transport defaults to loopback-only. Behind a reverse proxy the public
+    Host (e.g. dejavu.example.com) must be added explicitly, or every request
+    421s. Loopback hosts/origins are always kept so local health checks work.
     """
     security = get_config_manager().security
     hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*", *_split_csv(security.MCP_ALLOWED_HOSTS)]
@@ -441,7 +433,7 @@ def _configure_transport_security() -> None:
         "http://[::1]:*",
         *_split_csv(security.MCP_ALLOWED_ORIGINS),
     ]
-    mcp_server.settings.transport_security = TransportSecuritySettings(
+    return TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
         allowed_hosts=hosts,
         allowed_origins=origins,
@@ -451,9 +443,23 @@ def _configure_transport_security() -> None:
 def build_mcp_app() -> ASGIApp:
     """Build the Streamable-HTTP ASGI app for mounting, wrapped with auth.
 
+    Stateless HTTP + JSON responses: every request is authenticated and served
+    independently (read-only queries need no session affinity), which keeps the
+    endpoint friendly behind a reverse proxy.
+
+    streamable_http_path="/" matters: the app is mounted at "/mcp" in
+    api/app.py, so the transport's own route must be the mount root, otherwise
+    the effective path becomes "/mcp/mcp" and clients hitting /mcp 404.
+
     The returned app must have its ``session_manager`` lifecycle driven by the
     parent application's lifespan (Starlette does not run a mounted sub-app's
     lifespan). See ``mcp_server.session_manager.run()`` used in ``api/app.py``.
     """
-    _configure_transport_security()
-    return MCPAuthMiddleware(mcp_server.streamable_http_app())
+    return MCPAuthMiddleware(
+        mcp_server.streamable_http_app(
+            streamable_http_path="/",
+            stateless_http=True,
+            json_response=True,
+            transport_security=_transport_security(),
+        )
+    )
