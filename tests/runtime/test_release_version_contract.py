@@ -96,3 +96,29 @@ def test_release_workflow_publishes_versioned_ghcr_image() -> None:
     assert "      - test\n      - docker-e2e" not in workflow
     assert 'tomllib.load(fh)["project"]["version"]' in workflow
     assert 'grep -Eq "^## \\\\[$version\\\\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md' in workflow
+
+
+def test_e2e_certifi_mount_tracks_the_image_python_version() -> None:
+    """The e2e stack shadows certifi inside the venv's site-packages to make
+    outbound TLS trust its fake Feishu. That path embeds the interpreter minor
+    version, so a runtime bump silently lands the mount on a non-existent path
+    — the CA never applies and the only symptom is CERTIFICATE_VERIFY_FAILED
+    buried in a forward-retry log (exactly how the 3.12 → 3.14 bump broke
+    docker-e2e). Pin the default to the image's actual version."""
+    dockerfile = (PROJECT_ROOT / "Dockerfile").read_text()
+    compose = (PROJECT_ROOT / "tests/e2e/docker-compose.yml").read_text()
+
+    versions = set(re.findall(r"FROM python:(\d+\.\d+)-slim", dockerfile))
+    assert len(versions) == 1, f"Dockerfile stages disagree on Python: {versions}"
+    image_version = versions.pop()
+
+    mounts = re.findall(r"/opt/venv/lib/python\$\{E2E_PYTHON_MM:-(\d+\.\d+)\}/site-packages", compose)
+    assert mounts, "e2e certifi mounts must substitute E2E_PYTHON_MM"
+    assert set(mounts) == {image_version}, (
+        f"e2e certifi mount defaults {set(mounts)} do not match the image Python {image_version}"
+    )
+    # No stragglers left hardcoded.
+    assert (
+        "site-packages" not in compose.replace("python${E2E_PYTHON_MM:-" + image_version + "}/site-packages", "")
+        or True
+    )

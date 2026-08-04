@@ -157,8 +157,12 @@ services:
       BACKGROUND_SCAN_INTERVAL_SECONDS: "5"
     volumes:
       # certifi package shadow (bundle + e2e CA) so outbound TLS trusts the
+      # fake Feishu. The interpreter minor version is substituted because a
+      # hardcoded site-packages path turns a runtime bump into a SILENT mount
+      # miss: the volume lands on a non-existent path, the CA never applies,
+      # and the only symptom is CERTIFICATE_VERIFY_FAILED deep in a retry log.
       # fake open.feishu.cn; path matches the image's python:3.12 /opt/venv.
-      - e2e-certs:/opt/venv/lib/python3.12/site-packages/certifi:ro
+      - e2e-certs:/opt/venv/lib/python${E2E_PYTHON_MM:-3.14}/site-packages/certifi:ro
     ports:
       - "18080:8000"
     depends_on:
@@ -227,8 +231,12 @@ services:
       BACKGROUND_SCAN_INTERVAL_SECONDS: "5"
     volumes:
       # certifi package shadow (bundle + e2e CA) so outbound TLS trusts the
+      # fake Feishu. The interpreter minor version is substituted because a
+      # hardcoded site-packages path turns a runtime bump into a SILENT mount
+      # miss: the volume lands on a non-existent path, the CA never applies,
+      # and the only symptom is CERTIFICATE_VERIFY_FAILED deep in a retry log.
       # fake open.feishu.cn; path matches the image's python:3.12 /opt/venv.
-      - e2e-certs:/opt/venv/lib/python3.12/site-packages/certifi:ro
+      - e2e-certs:/opt/venv/lib/python${E2E_PYTHON_MM:-3.14}/site-packages/certifi:ro
     depends_on:
       cert-init:
         condition: service_completed_successfully
@@ -283,8 +291,12 @@ services:
       BACKGROUND_SCAN_INTERVAL_SECONDS: "5"
     volumes:
       # certifi package shadow (bundle + e2e CA) so outbound TLS trusts the
+      # fake Feishu. The interpreter minor version is substituted because a
+      # hardcoded site-packages path turns a runtime bump into a SILENT mount
+      # miss: the volume lands on a non-existent path, the CA never applies,
+      # and the only symptom is CERTIFICATE_VERIFY_FAILED deep in a retry log.
       # fake open.feishu.cn; path matches the image's python:3.12 /opt/venv.
-      - e2e-certs:/opt/venv/lib/python3.12/site-packages/certifi:ro
+      - e2e-certs:/opt/venv/lib/python${E2E_PYTHON_MM:-3.14}/site-packages/certifi:ro
     depends_on:
       cert-init:
         condition: service_completed_successfully
