@@ -4073,6 +4073,14 @@ components:
             type: object
           type: object
           title: Ai Importance By Rule
+        ai_rule_sources:
+          additionalProperties:
+            items:
+              type: string
+            type: array
+          type: object
+          title: Ai Rule Sources
+          default: {}
       type: object
       required:
       - period

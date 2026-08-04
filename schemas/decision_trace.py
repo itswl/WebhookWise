@@ -36,6 +36,9 @@ class DecisionTraceQualityData(BaseModel):
     degraded_reasons: dict[str, int]
     ai_importance_breakdown: dict[str, int]
     ai_importance_by_rule: dict[str, dict[str, int]]
+    # Which system(s) each rule arrives through — rendered as the muted
+    # "· source" suffix next to the rule name.
+    ai_rule_sources: dict[str, list[str]] = {}
 
 
 class DecisionTraceQualityResponse(APIResponse[DecisionTraceQualityData]):
