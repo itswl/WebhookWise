@@ -9,9 +9,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.datetime_utils import utc_isoformat, utcnow
 from models import ForwardOutbox, WebhookEvent
 from services.pagination import apply_cursor_window, trim_cursor_window
+from services.webhooks.types import WebhookProcessingStatus
 
 # Time-window presets for the alert list filter. "all" (or unknown) → no bound.
 _WINDOW_DELTAS = {"today": timedelta(days=1), "7d": timedelta(days=7), "30d": timedelta(days=30)}
+
+# "Stuck" definition shared with the Action Center's stuck_processing card
+# (which imports these): non-terminal for longer than the threshold. One
+# source, or the card's count and its drill-down list drift apart.
+STUCK_STATUSES = (
+    WebhookProcessingStatus.RECEIVED,
+    WebhookProcessingStatus.ANALYZING,
+    WebhookProcessingStatus.RETRY,
+)
+STUCK_THRESHOLD = timedelta(minutes=15)
 
 # Below this row count the unfiltered total uses an exact COUNT instead of the
 # pg_class.reltuples planner estimate (see count_webhook_summaries).
@@ -141,7 +152,16 @@ def _apply_summary_filters(
         query = query.where(WebhookEvent.importance == importance)
     if source:
         query = query.where(WebhookEvent.source == source)
-    if processing_status:
+    if processing_status == "stuck":
+        # Virtual status: the Action Center's stuck_processing card counts
+        # events non-terminal for longer than STUCK_THRESHOLD; its "view
+        # details" arrival must land on exactly those rows, which no single
+        # real status can express.
+        query = query.where(
+            WebhookEvent.processing_status.in_(STUCK_STATUSES),
+            WebhookEvent.updated_at < utcnow() - STUCK_THRESHOLD,
+        )
+    elif processing_status:
         query = query.where(WebhookEvent.processing_status == processing_status)
     if time_from is not None:
         query = query.where(WebhookEvent.timestamp >= time_from)

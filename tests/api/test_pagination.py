@@ -199,3 +199,57 @@ async def test_small_table_estimate_falls_through_to_exact_count(monkeypatch: py
     assert total == 777
     assert "reltuples" in executed[0]
     assert executed[-1] == "exact-count"
+
+
+@pytest.mark.asyncio
+async def test_stuck_virtual_status_filters_nonterminal_old_events(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The Action Center's stuck_processing drill-down uses the virtual
+    ``processing_status=stuck``: non-terminal events older than the shared
+    threshold — and nothing else. A real status filter stays untouched."""
+    from datetime import timedelta
+
+    from sqlalchemy import update
+
+    from core.datetime_utils import utcnow
+    from services.webhooks.query_service import STUCK_THRESHOLD
+    from services.webhooks.types import WebhookProcessingStatus
+
+    async with db_session_factory() as session:
+        stuck = WebhookEvent(
+            source="stucktest",
+            importance="high",
+            is_duplicate=False,
+            processing_status=WebhookProcessingStatus.RECEIVED,
+        )
+        fresh = WebhookEvent(
+            source="stucktest",
+            importance="high",
+            is_duplicate=False,
+            processing_status=WebhookProcessingStatus.RECEIVED,
+        )
+        done_old = WebhookEvent(
+            source="stucktest",
+            importance="high",
+            is_duplicate=False,
+            processing_status=WebhookProcessingStatus.COMPLETED,
+        )
+        session.add_all([stuck, fresh, done_old])
+        await session.commit()
+        stuck_id, fresh_id = stuck.id, fresh.id
+        old = utcnow() - STUCK_THRESHOLD - timedelta(minutes=5)
+        # Explicit values win over onupdate: age the stuck and the completed row.
+        await session.execute(
+            update(WebhookEvent).where(WebhookEvent.id.in_([stuck.id, done_old.id])).values(updated_at=old)
+        )
+        await session.commit()
+
+    async with db_session_factory() as session:
+        items, _, _ = await list_webhook_summaries(session, processing_status="stuck", page_size=50)
+        got = {int(i["id"]) for i in items if i["source"] == "stucktest"}
+        assert got == {stuck_id}
+
+        received, _, _ = await list_webhook_summaries(session, processing_status="received", page_size=50)
+        got_received = {int(i["id"]) for i in received if i["source"] == "stucktest"}
+        assert got_received == {stuck_id, fresh_id}

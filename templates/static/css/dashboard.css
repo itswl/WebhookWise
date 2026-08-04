@@ -506,6 +506,21 @@ body {
   gap: 1rem;
 }
 
+/* Single-row variant: six controls, search widest. Collapses stepwise so
+   narrow screens never get six 90px selects. */
+.filter-grid-inline {
+  grid-template-columns: minmax(180px, 2fr) repeat(5, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+@media (max-width: 1180px) {
+  .filter-grid-inline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .filter-grid-inline { grid-template-columns: 1fr 1fr; }
+}
+
 .filter-item {
   display: flex;
   flex-direction: column;

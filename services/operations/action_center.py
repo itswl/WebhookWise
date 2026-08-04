@@ -15,6 +15,7 @@ from db.session import count_with_timeout
 from models import AnalysisFeedback, AuditLog, ForwardOutbox, ForwardRule, Incident, WebhookEvent
 from services.operations.queue_health import get_queue_health
 from services.webhooks.flapping import list_active_flapping
+from services.webhooks.query_service import STUCK_STATUSES, STUCK_THRESHOLD
 from services.webhooks.types import ForwardOutboxStatus, WebhookProcessingStatus
 
 _URL_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
@@ -72,7 +73,7 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
     """Return a bounded, deduplicated list of current operator actions."""
     now = utcnow()
     recent_cutoff = now - timedelta(days=7)
-    stuck_cutoff = now - timedelta(minutes=15)
+    stuck_cutoff = now - STUCK_THRESHOLD
     outbox_stale_cutoff = now - timedelta(minutes=5)
     items: list[dict[str, Any]] = []
 
@@ -234,13 +235,7 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
             select(func.count())
             .select_from(WebhookEvent)
             .where(
-                WebhookEvent.processing_status.in_(
-                    [
-                        WebhookProcessingStatus.RECEIVED,
-                        WebhookProcessingStatus.ANALYZING,
-                        WebhookProcessingStatus.RETRY,
-                    ]
-                ),
+                WebhookEvent.processing_status.in_(STUCK_STATUSES),
                 WebhookEvent.updated_at < stuck_cutoff,
             ),
         )

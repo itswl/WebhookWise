@@ -22,6 +22,14 @@ const ActionCenterModule = (function () {
             if (sel) sel.value = 'dead_letter';
             navigateTo('alerts');
         },
+        stuck_processing: function () {
+            // "stuck" is a virtual status the list API expands to the same
+            // non-terminal + age predicate the card counted (single-select
+            // could not express two statuses plus an age bound).
+            const sel = document.getElementById('processingStatusFilter');
+            if (sel) sel.value = 'stuck';
+            navigateTo('alerts');
+        },
         delivery_exhausted: function () {
             navigateTo('trace');
             if (typeof DecisionTraceModule !== 'undefined' && typeof DecisionTraceModule.setResult === 'function') {
