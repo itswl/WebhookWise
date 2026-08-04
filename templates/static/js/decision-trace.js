@@ -214,6 +214,7 @@ var DecisionTraceModule = (function () {
 
         // Per-rule importance distribution (only rules with fresh ai judgments).
         var byRule = data.ai_importance_by_rule || {};
+        var ruleSources = data.ai_rule_sources || {};
         var rules = Object.keys(byRule);
         if (rules.length) {
             html += '<div style="font-size: 0.9rem; font-weight: 600; margin: 1.25rem 0 0.5rem;">' + t('dt.quality.byRule') + '</div>';
@@ -222,7 +223,9 @@ var DecisionTraceModule = (function () {
                 var dist = byRule[rule];
                 var srcTotal = Object.keys(dist).reduce(function (s, k) { return s + dist[k]; }, 0);
                 html += '<div style="margin-bottom: 0.75rem;">' +
-                    '<div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.3rem;">' + wwIcon('radio') + ' ' + escapeHtml(rule) + ' <span class="ww-muted">(' + srcTotal + ')</span></div>' +
+                    '<div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.3rem;">' + wwIcon('radio') + ' ' + escapeHtml(rule)
+                    + wwSourceSuffix(rule, ruleSources[rule])
+                    + ' <span class="ww-muted">(' + srcTotal + ')</span></div>' +
                     distributionBar(dist, srcTotal, IMPORTANCE_COLORS) + '</div>';
             });
         }

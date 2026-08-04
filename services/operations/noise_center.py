@@ -264,20 +264,26 @@ async def _window_metrics(
         ).all()
     }
     rules_agg: dict[str, dict[str, int]] = {}
+    sources_by_rule: dict[str, list[str]] = {}
     for event_id, source, is_duplicate in event_rows:
-        label = name_by_event.get(int(event_id)) or str(source or "unknown").strip()
+        source_label = str(source or "unknown").strip()
+        label = name_by_event.get(int(event_id)) or source_label
         stats = rules_agg.setdefault(label, {"total": 0, "duplicates": 0, "noise_events": 0})
         stats["total"] += 1
         if is_duplicate:
             stats["duplicates"] += 1
         if int(event_id) in noise_ids:
             stats["noise_events"] += 1
+        rule_sources = sources_by_rule.setdefault(label, [])
+        if source_label not in rule_sources:
+            rule_sources.append(source_label)
     for _event_id, alert_name, outcome, skip_code in trace_name_rows:
         if outcome == "skipped" and str(skip_code or "") in _NOISE_SKIP_CODES and alert_name:
             avoided_by_rule[alert_name] = avoided_by_rule.get(alert_name, 0) + 1
     noisy_rules = [
         {
             "name": label,
+            "sources": sources_by_rule.get(label, []),
             "total": stats["total"],
             "duplicates": stats["duplicates"],
             "duplicate_rate": _pct(stats["duplicates"], stats["total"]),

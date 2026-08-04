@@ -182,6 +182,9 @@ async def test_quality_stats_proxy_signals(session_factory: async_sessionmaker[A
     assert q["ai_importance_breakdown"] == {"high": 1, "medium": 1, "low": 1}
     # Grouped by alert rule; a trace with no rule name falls back to its source.
     assert q["ai_importance_by_rule"].get("grafana") == {"low": 1}
+    # Each rule carries the system(s) it arrives through, so the UI can show
+    # "rule · source" instead of losing the sender once names took over.
+    assert q["ai_rule_sources"].get("grafana") == ["grafana"]
 
 
 @pytest.mark.asyncio
@@ -417,6 +420,12 @@ async def test_overview_stats_composes_volume_delivery_sources(
     # these fixture rows (no alert_name) surface under their source names.
     top = {s["name"]: s["count"] for s in ov["top_rules"]}
     assert top == {"volcengine": 2, "aliyun": 1}
+    # Rule entries carry their sending system(s); for source-fallback rows the
+    # single source equals the name (the UI suppresses the redundant suffix).
+    assert {s["name"]: s["sources"] for s in ov["top_rules"]} == {
+        "volcengine": ["volcengine"],
+        "aliyun": ["aliyun"],
+    }
     # Delivery: 1 sent / 1 exhausted → 50% success.
     assert ov["delivery"]["delivered"] == 1
     assert ov["delivery"]["failed"] == 1

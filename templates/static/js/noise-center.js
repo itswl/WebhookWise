@@ -115,7 +115,8 @@ const NoiseCenterModule = (function () {
             '</th><th>' + escapeHtml(t('noise.summary.duplicateRate')) + '</th><th>' + escapeHtml(t('noise.summary.noiseRate')) +
             '</th><th>' + escapeHtml(t('noise.summary.avoided')) + '</th><th>' + escapeHtml(t('noise.sources.recoveries')) + '</th></tr></thead><tbody>' +
             sources.map(function (source) {
-                return '<tr><td><strong>' + escapeHtml(source.name || source.source || 'unknown') + '</strong></td><td>' + escapeHtml(String(source.total || 0)) +
+                var label = source.name || source.source || 'unknown';
+                return '<tr><td><strong>' + escapeHtml(label) + '</strong>' + wwSourceSuffix(label, source.sources) + '</td><td>' + escapeHtml(String(source.total || 0)) +
                     '</td><td>' + escapeHtml(String(source.duplicate_rate || 0)) + '%</td><td>' + escapeHtml(String(source.noise_rate || 0)) +
                     '%</td><td>' + escapeHtml(String(source.notifications_avoided || 0)) + '</td><td>' + escapeHtml(String(source.recoveries || 0)) + '</td></tr>';
             }).join('') + '</tbody></table></div>';
