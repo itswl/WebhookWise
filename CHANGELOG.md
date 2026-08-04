@@ -5,6 +5,26 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+## [3.7.0] - 2026-08-04
+
+### Removed
+- The deprecated ingress-storm fallback to `PROCESSING_LOCK_FAILFAST_*`
+  (announced in 3.6.x). `WEBHOOK_INGRESS_STORM_THRESHOLD` /
+  `WEBHOOK_INGRESS_STORM_WINDOW_SECONDS` are now the sole storm knobs; their
+  defaults changed 0/0 → 20/10 to mirror what the fallback delivered, so
+  unconfigured deployments keep the exact same effective gate.
+  `PROCESSING_LOCK_FAILFAST_*` remains for its original single duty (the
+  per-alert processing-slot fail-fast). The startup deprecation warning is
+  gone with the fallback.
+- Frontend legacy-credential migration shim (`webhook_api_key` /
+  `webhook_admin_write_key` localStorage cleanup from the pre-May token
+  storage scheme) and dead CSS/i18n left behind by removed UI (action-count
+  badge styles, orphaned dictionary keys).
+
+### Changed
+- Version stamped on the dashboard (`<body data-app-version>` + sidebar
+  footer) — introduced in the taste pass, first release carrying it.
+
 ## [3.6.1] - 2026-08-02
 
 ### Added

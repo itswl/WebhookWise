@@ -68,19 +68,15 @@ class IngressPolicy:
         cfg = get_config_manager()
         return cls(
             max_body_bytes=max(0, int(cfg.security.MAX_WEBHOOK_BODY_BYTES or 0)),
-            # Canonical storm keys win; 0 falls back to the legacy dual-duty
-            # PROCESSING_LOCK_FAILFAST_* values (naming debt, kept working).
             ingress_backpressure_threshold=max(
                 0,
-                _rt_override("WEBHOOK_INGRESS_STORM_THRESHOLD", int(cfg.mq.WEBHOOK_INGRESS_STORM_THRESHOLD or 0))
-                or int(cfg.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD or 0),
+                _rt_override("WEBHOOK_INGRESS_STORM_THRESHOLD", int(cfg.mq.WEBHOOK_INGRESS_STORM_THRESHOLD or 0)),
             ),
             ingress_backpressure_window_seconds=max(
                 1,
                 _rt_override(
                     "WEBHOOK_INGRESS_STORM_WINDOW_SECONDS", int(cfg.mq.WEBHOOK_INGRESS_STORM_WINDOW_SECONDS or 0)
-                )
-                or int(cfg.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS or 1),
+                ),
             ),
             ingress_backpressure_fail_open_on_redis_error=bool(cfg.retry.INGRESS_BACKPRESSURE_FAIL_OPEN_ON_REDIS_ERROR),
             stream_maxlen=max(0, int(cfg.mq.WEBHOOK_MQ_STREAM_MAXLEN or 0)),
