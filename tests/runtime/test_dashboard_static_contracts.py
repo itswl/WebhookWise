@@ -407,6 +407,14 @@ def test_knowledge_gap_cards_can_be_left() -> None:
     assert "data-gap-alerts" in rc
     assert "drillFromGap" in rc
     assert "navigateTo(slug)" in rc
+    # The suggested next step is executable: create-runbook opens the inline
+    # authoring form, and publishing carries the tags the gap detector matches
+    # deterministically (kind=runbook + this group's alert_pattern).
+    assert "data-gap-create" in rc
+    assert "'runbook:' + pattern" in rc
+    assert "kind: 'runbook'" in rc
+    assert "alert_pattern: pattern" in rc
+    assert "ingestKbDocument" in _static_js("api.js")
     # The landing side honours the pre-filled term.
     assert "incidentSearchInput" in incidents
     assert ".trim()) search();" in incidents

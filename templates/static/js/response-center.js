@@ -353,16 +353,21 @@ const ResponseCenterModule = (function () {
         }).filter(Boolean);
     }
 
+    // Rendered gap items, index-addressed by the create-runbook buttons
+    // (patterns carry Chinese/quotes; attributes are the wrong transport).
+    let lastGapItems = [];
+
     function renderKnowledgeGaps(items) {
         const container = document.getElementById('knowledgeGapsList');
         if (!container) return;
+        lastGapItems = items;
         if (!items.length) {
             container.innerHTML = '<div class="empty-state response-empty"><div class="empty-icon">' + wwIcon('book-open') + '</div>' +
                 '<div class="empty-title">' + escapeHtml(t('knowledgeGaps.emptyTitle')) + '</div>' +
                 '<div class="empty-text">' + escapeHtml(t('knowledgeGaps.emptyText')) + '</div></div>';
             return;
         }
-        container.innerHTML = '<div class="knowledge-gap-list">' + items.map(function (item) {
+        container.innerHTML = '<div class="knowledge-gap-list">' + items.map(function (item, gapIndex) {
             const priority = gapPriority(item);
             const reasons = gapReasons(item);
             const occurrences = item.incident_count || item.occurrences || item.recurrence_count;
@@ -397,11 +402,16 @@ const ResponseCenterModule = (function () {
                     return '<span>' + escapeHtml(reason) + '</span>';
                 }).join('') + '</div>' : '') +
                 '<div class="knowledge-gap-next"><span>' +
-                escapeHtml(t('knowledgeGaps.nextAction')) + '</span><strong>' +
-                escapeHtml(['create_runbook', 'validate_or_improve_runbook'].includes(next.code)
-                    ? t('knowledgeGaps.action.' + next.code)
-                    : (displayValue(next.label) || t('knowledgeGaps.action.create_runbook'))) +
-                '</strong></div>' +
+                escapeHtml(t('knowledgeGaps.nextAction')) + '</span>' +
+                // "Create a runbook" is executable, so it is a BUTTON opening
+                // the inline authoring form; the validate suggestion stays
+                // advisory text (its proof comes from runbook executions).
+                (next.code !== 'validate_or_improve_runbook'
+                    ? '<button type="button" class="btn btn-sm btn-quiet-primary" data-gap-create="' + gapIndex + '">' +
+                      wwIcon('plus') + ' ' + escapeHtml(t('knowledgeGaps.action.create_runbook')) + '</button>'
+                    : '<strong>' + escapeHtml(t('knowledgeGaps.action.validate_or_improve_runbook')) + '</strong>') +
+                '</div>' +
+                '<div class="knowledge-gap-form" id="gapRunbookForm' + gapIndex + '" style="display:none;"></div>' +
                 // The gap names a PATTERN; the evidence lives in the incidents
                 // and alerts that formed it. A card you cannot leave is a
                 // dead end, and the runbook gets written FROM that evidence.
@@ -414,6 +424,11 @@ const ResponseCenterModule = (function () {
                 '</article>';
         }).join('') + '</div>';
 
+        container.querySelectorAll('[data-gap-create]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                openRunbookForm(Number(button.getAttribute('data-gap-create')));
+            });
+        });
         container.querySelectorAll('[data-gap-incidents]').forEach(function (button) {
             button.addEventListener('click', function () {
                 drillFromGap('incidents', 'incidentSearchInput', button.getAttribute('data-gap-incidents'));
@@ -423,6 +438,54 @@ const ResponseCenterModule = (function () {
             button.addEventListener('click', function () {
                 drillFromGap('alerts', 'searchInput', button.getAttribute('data-gap-alerts'));
             });
+        });
+    }
+
+    // Inline runbook authoring. Publishing tags the document so the gap
+    // detector recognises it deterministically (kind=runbook +
+    // alert_pattern equal to this group's pattern); the card then flips from
+    // "missing runbook" to "validate or improve" instead of lying around.
+    function openRunbookForm(gapIndex) {
+        const item = lastGapItems[gapIndex];
+        const panel = document.getElementById('gapRunbookForm' + gapIndex);
+        if (!item || !panel) return;
+        if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+        panel.style.display = 'block';
+        const pattern = displayValue(item.alert_pattern) || serviceName(item);
+        panel.innerHTML =
+            '<input type="text" class="filter-input" data-rb-title style="width:100%; margin-bottom:8px;">' +
+            '<textarea class="filter-input" data-rb-content style="width:100%; min-height:220px; font-size:0.85rem; line-height:1.6; resize:vertical; font-family:inherit;"></textarea>' +
+            '<div style="display:flex; gap:8px; margin-top:8px;">' +
+            '<button type="button" class="btn btn-sm btn-quiet-primary" data-rb-save>' + wwIcon('check') + ' ' + escapeHtml(t('knowledgeGaps.form.publish')) + '</button>' +
+            '<button type="button" class="btn btn-sm" data-rb-cancel>' + escapeHtml(t('common.cancel')) + '</button></div>';
+        panel.querySelector('[data-rb-title]').value = 'Runbook: ' + pattern;
+        panel.querySelector('[data-rb-content]').value = t('knowledgeGaps.form.template');
+        panel.querySelector('[data-rb-cancel]').addEventListener('click', function () {
+            panel.style.display = 'none';
+        });
+        panel.querySelector('[data-rb-save]').addEventListener('click', async function () {
+            const title = panel.querySelector('[data-rb-title]').value.trim();
+            const content = panel.querySelector('[data-rb-content]').value.trim();
+            if (!title || !content) return;
+            const saveBtn = panel.querySelector('[data-rb-save]');
+            saveBtn.disabled = true;
+            try {
+                const tags = { kind: 'runbook', alert_pattern: pattern };
+                if (item.service) tags.service = String(item.service);
+                if (item.environment) tags.environment = String(item.environment);
+                if (item.source) tags.source = String(item.source);
+                await API.ingestKbDocument({
+                    title: title,
+                    content: content,
+                    source_ref: 'runbook:' + pattern,
+                    tags: tags
+                });
+                if (typeof showToast === 'function') showToast(t('knowledgeGaps.form.published'), 'success');
+                await loadKnowledgeGaps();
+            } catch (error) {
+                saveBtn.disabled = false;
+                alert(t('knowledgeGaps.form.publishFail') + ': ' + (error.message || String(error)));
+            }
         });
     }
 
