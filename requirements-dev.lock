@@ -39,7 +39,7 @@ defusedxml==0.7.1
     # via py-serializable
 execnet==2.1.2
     # via pytest-xdist
-fakeredis==2.36.2
+fakeredis==2.37.0
     # via -r requirements-dev.txt
 filelock==3.29.0
     # via cachecontrol
@@ -47,7 +47,7 @@ googleapis-common-protos==1.74.0
     # via
     #   -c requirements.lock
     #   opentelemetry-exporter-otlp-proto-grpc
-greenlet==3.5.3
+greenlet==3.5.4
     # via -r requirements-dev.txt
 grpcio==1.80.0
     # via
@@ -79,7 +79,7 @@ mypy==2.3.0
     # via -r requirements-dev.txt
 mypy-extensions==1.1.0
     # via mypy
-opentelemetry-api==1.43.0
+opentelemetry-api==1.44.0
     # via
     #   -c requirements.lock
     #   -r requirements-dev.txt
@@ -92,15 +92,15 @@ opentelemetry-api==1.43.0
     #   opentelemetry-instrumentation-sqlalchemy
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp-proto-common==1.43.0
+opentelemetry-exporter-otlp-proto-common==1.44.0
     # via
     #   -c requirements.lock
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-exporter-otlp-proto-grpc==1.43.0
+opentelemetry-exporter-otlp-proto-grpc==1.44.0
     # via
     #   -c requirements.lock
     #   -r requirements-dev.txt
-opentelemetry-instrumentation==0.64b0
+opentelemetry-instrumentation==0.65b0
     # via
     #   -c requirements.lock
     #   opentelemetry-instrumentation-asgi
@@ -108,38 +108,38 @@ opentelemetry-instrumentation==0.64b0
     #   opentelemetry-instrumentation-httpx
     #   opentelemetry-instrumentation-redis
     #   opentelemetry-instrumentation-sqlalchemy
-opentelemetry-instrumentation-asgi==0.64b0
+opentelemetry-instrumentation-asgi==0.65b0
     # via
     #   -c requirements.lock
     #   -r requirements-dev.txt
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-fastapi==0.64b0
+opentelemetry-instrumentation-fastapi==0.65b0
     # via
     #   -c requirements.lock
     #   -r requirements-dev.txt
-opentelemetry-instrumentation-httpx==0.64b0
+opentelemetry-instrumentation-httpx==0.65b0
     # via
     #   -c requirements.lock
     #   -r requirements-dev.txt
-opentelemetry-instrumentation-redis==0.64b0
+opentelemetry-instrumentation-redis==0.65b0
     # via
     #   -c requirements.lock
     #   -r requirements-dev.txt
-opentelemetry-instrumentation-sqlalchemy==0.64b0
+opentelemetry-instrumentation-sqlalchemy==0.65b0
     # via
     #   -c requirements.lock
     #   -r requirements-dev.txt
-opentelemetry-proto==1.43.0
+opentelemetry-proto==1.44.0
     # via
     #   -c requirements.lock
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-sdk==1.43.0
+opentelemetry-sdk==1.44.0
     # via
     #   -c requirements.lock
     #   -r requirements-dev.txt
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-semantic-conventions==0.64b0
+opentelemetry-semantic-conventions==0.65b0
     # via
     #   -c requirements.lock
     #   opentelemetry-instrumentation
@@ -149,7 +149,7 @@ opentelemetry-semantic-conventions==0.64b0
     #   opentelemetry-instrumentation-redis
     #   opentelemetry-instrumentation-sqlalchemy
     #   opentelemetry-sdk
-opentelemetry-util-http==0.64b0
+opentelemetry-util-http==0.65b0
     # via
     #   -c requirements.lock
     #   opentelemetry-instrumentation-asgi
@@ -216,7 +216,7 @@ pyyaml==6.0.3
     #   -c requirements.lock
     #   -r requirements-dev.txt
     #   bandit
-redis==8.0.1
+redis==8.1.0
     # via
     #   -c requirements.lock
     #   fakeredis
@@ -230,7 +230,7 @@ rich==13.9.4
     #   -c requirements.lock
     #   bandit
     #   pip-audit
-ruff==0.15.21
+ruff==0.16.1
     # via -r requirements-dev.txt
 sortedcontainers==2.4.0
     # via
@@ -246,7 +246,7 @@ types-cffi==2.0.0.20260429
     # via types-pyopenssl
 types-pyopenssl==24.1.0.20240722
     # via types-redis
-types-pyyaml==6.0.12.20260518
+types-pyyaml==6.0.12.20260724
     # via -r requirements-dev.txt
 types-redis==4.6.0.20241004
     # via -r requirements-dev.txt

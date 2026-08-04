@@ -81,10 +81,13 @@ def test_release_workflow_publishes_versioned_ghcr_image() -> None:
     assert "actions/runs?head_sha=${release_commit}" in workflow
     assert '.github/workflows/ci.yml" and .head_branch == "main"' in workflow
     assert "Waiting for ci.yml to pass" in workflow
-    assert "docker/setup-qemu-action@v3" in workflow
+    # Pin the CAPABILITY, not the action version: qemu is what makes the
+    # arm64 half of the manifest possible, and asserting "@v3" turned every
+    # routine dependabot bump into a red gate.
+    assert "docker/setup-qemu-action@" in workflow
     assert "Log in to Docker Hub" in workflow
     assert "DOCKERHUB_TOKEN" in workflow
-    assert "docker/build-push-action@v6" in workflow
+    assert "docker/build-push-action@" in workflow
     assert "platforms: ${{ env.IMAGE_PLATFORMS }}" in workflow
     assert "APP_VERSION=${{ needs.verify.outputs.version }}" in workflow
     assert "pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db" not in workflow
