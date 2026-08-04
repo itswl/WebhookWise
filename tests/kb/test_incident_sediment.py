@@ -196,3 +196,27 @@ async def test_discard_removes_draft(db_session_factory: async_sessionmaker[Asyn
         discarded = await discard_kb_draft(session, ref)
         assert discarded >= 1
         assert (await session.execute(select(KBDocument))).first() is None
+
+
+@pytest.mark.asyncio
+async def test_get_kb_draft_returns_ordered_reviewable_content(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The detail read behind the reviewer's Details button: ordered chunk
+    content for the draft, empty once published (it left the review queue)."""
+    from services.kb.incident_sediment import get_kb_draft
+
+    async with db_session_factory.begin() as session:
+        incident = await _add_incident(session, title="GPU OOM", status="closed", summary=_SUMMARY)
+        await draft_kb_from_incident(session, int(incident.id))
+        ref = f"incident:{incident.id}"
+
+        chunks = await get_kb_draft(session, ref)
+        assert chunks, "draft content must be readable before approval"
+        assert [c["chunk_index"] for c in chunks] == sorted(c["chunk_index"] for c in chunks)
+        assert all(str(c["content"]).strip() for c in chunks)
+
+        assert await get_kb_draft(session, "incident:999999") == []
+
+        await publish_kb_draft(session, ref)
+        assert await get_kb_draft(session, ref) == []

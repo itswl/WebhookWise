@@ -823,6 +823,8 @@
             'nav.collapse': '收起',
             'nav.lowfreq': '低频功能',
             'dt.period.groupLabel': '时间窗',
+            'kb.detail': '详情',
+            'kb.chunkLabel': '第 {n} 段',
             'palette.trigger': '跳转任意位置…',
             'palette.open': '跳转任意位置',
             'palette.placeholder': '搜索目的地…',

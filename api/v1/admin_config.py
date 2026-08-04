@@ -68,6 +68,20 @@ async def list_kb_drafts_endpoint(
     return ok_response(http_status=200, data=await list_kb_drafts(session))
 
 
+@admin_config_router.get("/admin/kb/drafts/{source_ref:path}", dependencies=[Depends(verify_api_key)])
+async def get_kb_draft_endpoint(
+    source_ref: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Full ordered content of one KB draft — the material under review."""
+    from services.kb.incident_sediment import get_kb_draft
+
+    chunks = await get_kb_draft(session, source_ref)
+    if not chunks:
+        return fail_response("KB draft not found", 404)
+    return ok_response(http_status=200, data={"source_ref": source_ref, "chunks": chunks})
+
+
 @admin_config_router.post("/admin/kb/drafts/{source_ref:path}/publish", dependencies=[Depends(verify_admin_write)])
 async def publish_kb_draft_endpoint(
     source_ref: str,

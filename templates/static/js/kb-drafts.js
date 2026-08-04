@@ -20,7 +20,7 @@ const KbDraftsModule = (function () {
             return;
         }
 
-        listEl.innerHTML = '<div style="display:flex; flex-direction:column; gap:12px;">' + items.map(function (draft) {
+        listEl.innerHTML = '<div style="display:flex; flex-direction:column; gap:12px;">' + items.map(function (draft, i) {
             const ref = draft.source_ref || '';
             const when = draft.updated_at && typeof formatTime === 'function' ? formatTime(draft.updated_at) : '';
             const chunks = escapeHtml(String(draft.chunks != null ? draft.chunks : 0));
@@ -33,17 +33,61 @@ const KbDraftsModule = (function () {
                 escapeHtml(t('kb.chunks', { n: chunks })) + '</div></div>' +
                 '<span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">' + escapeHtml(when) + '</span></div>' +
                 '<div style="display:flex; gap:8px; margin-top:12px;">' +
-                '<button type="button" class="btn btn-sm btn-primary" data-kb-publish="' + escapeHtml(ref) + '">' + wwIcon('check') + ' ' + escapeHtml(t('kb.publish')) + '</button>' +
+                '<button type="button" class="btn btn-sm" data-kb-detail="' + escapeHtml(ref) + '" data-kb-panel="kbDraftDetail' + i + '">' + wwIcon('eye') + ' ' + escapeHtml(t('kb.detail')) + '</button>' +
+                '<button type="button" class="btn btn-sm btn-quiet-primary" data-kb-publish="' + escapeHtml(ref) + '">' + wwIcon('check') + ' ' + escapeHtml(t('kb.publish')) + '</button>' +
                 '<button type="button" class="btn btn-sm" data-kb-discard="' + escapeHtml(ref) + '">' + wwIcon('trash') + ' ' + escapeHtml(t('kb.discard')) + '</button>' +
-                '</div></div>';
+                '</div>' +
+                '<div id="kbDraftDetail' + i + '" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-light);"></div>' +
+                '</div>';
         }).join('') + '</div>';
 
+        listEl.querySelectorAll('[data-kb-detail]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                toggleDetail(button.getAttribute('data-kb-detail'), button.getAttribute('data-kb-panel'), button);
+            });
+        });
         listEl.querySelectorAll('[data-kb-publish]').forEach(function (button) {
             button.addEventListener('click', function () { publish(button.getAttribute('data-kb-publish'), button); });
         });
         listEl.querySelectorAll('[data-kb-discard]').forEach(function (button) {
             button.addEventListener('click', function () { discard(button.getAttribute('data-kb-discard'), button); });
         });
+    }
+
+    // Inline detail: fetched on first open, kept in the DOM after that. The
+    // review queue must show the material under review — publish/discard
+    // without it is approval of the invisible.
+    async function toggleDetail(sourceRef, panelId, button) {
+        const panel = document.getElementById(panelId);
+        if (!panel) return;
+        if (panel.style.display !== 'none') {
+            panel.style.display = 'none';
+            return;
+        }
+        panel.style.display = 'block';
+        if (!panel.getAttribute('data-loaded')) {
+            panel.innerHTML = '<div style="color:var(--text-muted); font-size:0.85rem;">' + escapeHtml(t('common.loading')) + '</div>';
+            if (button) button.disabled = true;
+            try {
+                const result = await API.getKbDraft(sourceRef);
+                const chunks = (result && result.data && result.data.chunks) || [];
+                panel.innerHTML = chunks.map(function (chunk, idx) {
+                    return '<div style="margin-bottom:12px;">' +
+                        (chunks.length > 1
+                            ? '<div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">' +
+                              escapeHtml(t('kb.chunkLabel', { n: idx + 1 })) + '</div>'
+                            : '') +
+                        '<div style="white-space:pre-wrap; overflow-wrap:anywhere; font-size:0.85rem; line-height:1.65; color:var(--text-secondary); max-width:70rem;">' +
+                        escapeHtml(chunk.content || '') + '</div></div>';
+                }).join('') || '<div style="color:var(--text-muted);">—</div>';
+                panel.setAttribute('data-loaded', '1');
+            } catch (error) {
+                panel.innerHTML = '<div style="color:var(--danger); font-size:0.85rem;">' +
+                    escapeHtml(t('common.loadFailed') + ': ' + (error.message || String(error))) + '</div>';
+            } finally {
+                if (button) button.disabled = false;
+            }
+        }
     }
 
     async function publish(sourceRef, button) {

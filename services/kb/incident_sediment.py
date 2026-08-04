@@ -202,6 +202,24 @@ async def list_kb_drafts(session: AsyncSession) -> list[dict[str, Any]]:
     ]
 
 
+async def get_kb_draft(session: AsyncSession, source_ref: str) -> list[dict[str, Any]]:
+    """Ordered chunks of one draft document — what the reviewer is deciding on.
+
+    The list endpoint aggregates (title + chunk count) for the queue; this is
+    the missing detail read: publish/discard without it asks an operator to
+    approve material they cannot see.
+    """
+    stmt = (
+        select(KBDocument.chunk_index, KBDocument.title, KBDocument.content)
+        .where(KBDocument.source_ref == source_ref, KBDocument.status == "draft")
+        .order_by(KBDocument.chunk_index.asc(), KBDocument.id.asc())
+    )
+    return [
+        {"chunk_index": int(row.chunk_index or 0), "title": row.title, "content": row.content}
+        for row in (await session.execute(stmt)).all()
+    ]
+
+
 async def publish_kb_draft(session: AsyncSession, source_ref: str) -> int:
     """Publish all draft chunks of a document into the RAG corpus."""
     await acquire_advisory_xact_lock(session, f"kb_document:{source_ref}")
@@ -225,6 +243,7 @@ async def discard_kb_draft(session: AsyncSession, source_ref: str) -> int:
 __all__ = [
     "discard_kb_draft",
     "draft_kb_from_incident",
+    "get_kb_draft",
     "list_kb_drafts",
     "publish_kb_draft",
     "run_pending_kb_drafts",

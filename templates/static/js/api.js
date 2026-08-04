@@ -969,6 +969,15 @@ const API = {
     },
 
     /**
+     * Full ordered content of one KB draft — what publish/discard decides on.
+     */
+    async getKbDraft(sourceRef) {
+        const response = await this.authenticatedFetch('/v1/admin/kb/drafts/' + encodeURIComponent(sourceRef));
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
      * Publish a KB draft into the AI knowledge base (RAG). Admin-write.
      * source_ref (e.g. "incident:123") is a path segment; encodeURIComponent
      * percent-encodes the colon to %3A so the server's :path route matches.
