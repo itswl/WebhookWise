@@ -370,6 +370,15 @@ const ResponseCenterModule = (function () {
             const next = item.next_action || {};
             const description = displayValue(item.summary || item.reason || item.recommendation) ||
                 t('knowledgeGaps.status.' + status);
+            // The PATTERN is the card's identity (it is also what the drills
+            // search for); service/source step back to a muted suffix. With
+            // the pattern hidden, two "unknown service" cards were
+            // indistinguishable — and clicking searched for text the operator
+            // had never seen.
+            const patternName = displayValue(item.alert_pattern) || serviceName(item);
+            const originParts = [item.service, item.source].filter(function (part, idx, arr) {
+                return part && String(part) !== patternName && arr.indexOf(part) === idx;
+            });
             return '<article class="knowledge-gap-card">' +
                 '<div class="knowledge-gap-head"><div><span class="badge badge-' +
                 (priority === 'high' ? 'danger' : priority) + '">' +
@@ -377,7 +386,9 @@ const ResponseCenterModule = (function () {
                 escapeHtml(t('knowledgeGaps.priorityScore', {
                     value: Math.round(Number(item.priority_score || 0))
                 })) + '</span><strong>' +
-                escapeHtml(serviceName(item)) + '</strong></div>' +
+                escapeHtml(patternName) +
+                (originParts.length ? '<span class="ww-muted"> · ' + escapeHtml(originParts.join(', ')) + '</span>' : '') +
+                '</strong></div>' +
                 (occurrences != null ? '<span class="knowledge-gap-count">' +
                     escapeHtml(t('knowledgeGaps.occurrences', { value: occurrences })) + '</span>' : '') +
                 '</div>' +
