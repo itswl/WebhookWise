@@ -185,8 +185,8 @@ Dependency policy:
 Update the lock files:
 
 ```bash
-uv pip compile requirements.txt -o requirements.lock --python-version 3.12
-uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.lock --python-version 3.12
+uv pip compile requirements.txt -o requirements.lock --python-version 3.14
+uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.lock --python-version 3.14
 ```
 
 ## Common Verification

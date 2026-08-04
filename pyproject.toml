@@ -2,6 +2,9 @@
 name = "webhookwise"
 version = "3.7.0"
 description = "Webhook ingestion, analysis, forwarding, and observability service."
+# Runtime images and CI run 3.14; the SOURCE floor stays 3.12 so the code
+# remains portable (and so ruff does not rewrite it into 3.14-only syntax
+# like PEP 758 unparenthesized except — which would strand any 3.12 venv).
 requires-python = ">=3.12"
 
 [tool.ruff]
