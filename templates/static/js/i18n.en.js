@@ -1179,6 +1179,8 @@
             'knowledgeGaps.reason.ineffective_runbook': 'Runbook needs improvement',
             'knowledgeGaps.reason.unproven_runbook': 'Runbook outcome is unproven',
             'knowledgeGaps.nextAction': 'Suggested next step',
+            'knowledgeGaps.drill.incidents': 'Related incidents',
+            'knowledgeGaps.drill.alerts': 'Related alerts',
             'knowledgeGaps.action.create_runbook': 'Create a runbook',
             'knowledgeGaps.action.validate_or_improve_runbook': 'Validate or improve the runbook',
             'resolution.title': 'Resolve incident',

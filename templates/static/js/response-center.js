@@ -391,8 +391,37 @@ const ResponseCenterModule = (function () {
                     ? t('knowledgeGaps.action.' + next.code)
                     : (displayValue(next.label) || t('knowledgeGaps.action.create_runbook'))) +
                 '</strong></div>' +
+                // The gap names a PATTERN; the evidence lives in the incidents
+                // and alerts that formed it. A card you cannot leave is a
+                // dead end, and the runbook gets written FROM that evidence.
+                '<div class="knowledge-gap-drills">' +
+                '<button type="button" class="btn btn-sm" data-gap-incidents="' + escapeHtml(item.alert_pattern || '') + '">' +
+                wwIcon('flame') + ' ' + escapeHtml(t('knowledgeGaps.drill.incidents')) + '</button>' +
+                '<button type="button" class="btn btn-sm" data-gap-alerts="' + escapeHtml(item.alert_pattern || '') + '">' +
+                wwIcon('bell') + ' ' + escapeHtml(t('knowledgeGaps.drill.alerts')) + '</button>' +
+                '</div>' +
                 '</article>';
         }).join('') + '</div>';
+
+        container.querySelectorAll('[data-gap-incidents]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                drillFromGap('incidents', 'incidentSearchInput', button.getAttribute('data-gap-incidents'));
+            });
+        });
+        container.querySelectorAll('[data-gap-alerts]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                drillFromGap('alerts', 'searchInput', button.getAttribute('data-gap-alerts'));
+            });
+        });
+    }
+
+    // Land on the destination ALREADY filtered to the pattern: both list
+    // views read their search box on load (alerts server-side, incidents via
+    // the post-load search hook).
+    function drillFromGap(slug, inputId, pattern) {
+        const input = document.getElementById(inputId);
+        if (input) input.value = pattern || '';
+        if (typeof navigateTo === 'function') navigateTo(slug);
     }
 
     async function loadKnowledgeGaps() {

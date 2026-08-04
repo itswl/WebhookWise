@@ -44,6 +44,9 @@ const IncidentsModule = (function () {
             _hasMore = !!(result.pagination && result.pagination.has_more);
             _loaded = true;
             render();
+            // Honour a pre-filled search box (a knowledge-gap drill lands
+            // here with the pattern already typed in).
+            if (((document.getElementById('incidentSearchInput') || {}).value || '').trim()) search();
         } catch (e) {
             container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--danger);">' + t('common.loadFailed') + ': ' + escapeHtml(String(e && e.message || e)) + '</div>';
         }

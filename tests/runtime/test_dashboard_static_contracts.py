@@ -396,6 +396,23 @@ def test_ai_disagreements_review_surface_is_wired() -> None:
         assert "'dt.disagreements.noTrace'" in js
 
 
+def test_knowledge_gap_cards_can_be_left() -> None:
+    """A gap names a pattern; its evidence is the incidents/alerts that formed
+    it. The card must offer both drills, landing pre-filtered (the incidents
+    list applies a pre-filled search box after load)."""
+    rc = _static_js("response-center.js")
+    incidents = _static_js("incidents.js")
+
+    assert "data-gap-incidents" in rc
+    assert "data-gap-alerts" in rc
+    assert "drillFromGap" in rc
+    assert "navigateTo(slug)" in rc
+    # The landing side honours the pre-filled term.
+    assert "incidentSearchInput" in incidents
+    assert ".trim()) search();" in incidents
+    assert ".knowledge-gap-drills" in _static_css("components.css")
+
+
 def test_kb_drafts_review_subview_is_wired() -> None:
     # Third Operations sub-view (mirrors the actions/noise toggle): button,
     # panel, module script, setOperationsView routing, API surface, i18n in both.
