@@ -2873,8 +2873,10 @@ body.sidebar-collapsed .sidebar-version { display: none; }
   font-size: var(--fs-xs);
 }
 
+/* Advisory text, not a control: accent blue here read as a link that went
+   nowhere (the drills below are the card's real exits). */
 .knowledge-gap-next strong {
-  color: var(--primary);
+  color: var(--text-main);
   text-align: right;
 }
 
