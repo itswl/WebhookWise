@@ -85,11 +85,13 @@ class MQConfig(StaticSettings):
     # (default), because enabling request rejection is an ops decision that
     # should follow MAXLEN capacity planning and confirmed upstream retries.
     WEBHOOK_MQ_INGRESS_HIGH_WATER_FRACTION: float = Field(default=0.0, ge=0.0, le=1.0)
-    # Canonical names for the per-alert ingress-storm gate. 0 (default) falls
-    # back to the legacy dual-duty keys PROCESSING_LOCK_FAILFAST_* so existing
-    # deployments keep working; set these to decouple the two semantics.
-    WEBHOOK_INGRESS_STORM_THRESHOLD: int = Field(default=0, ge=0)
-    WEBHOOK_INGRESS_STORM_WINDOW_SECONDS: int = Field(default=0, ge=0)
+    # Per-alert ingress-storm gate (sole knobs since 3.7.0 — the historical
+    # fallback to the dual-duty PROCESSING_LOCK_FAILFAST_* keys is gone).
+    # Defaults mirror what the fallback used to deliver, so deployments that
+    # never configured either pair keep the exact same effective gate.
+    # 0 threshold disables the gate.
+    WEBHOOK_INGRESS_STORM_THRESHOLD: int = Field(default=20, ge=0)
+    WEBHOOK_INGRESS_STORM_WINDOW_SECONDS: int = Field(default=10, gt=0)
 
 
 class SecurityConfig(StaticSettings):
