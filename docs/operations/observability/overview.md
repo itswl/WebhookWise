@@ -5,7 +5,7 @@ WebhookWise is OTel-first:
 ```mermaid
 flowchart LR
     app["API / Worker / Scheduler<br/>OpenTelemetry SDK"]
-    browser["Dashboard browser<br/>Faro Web SDK"]
+    browser["Dashboard browser"]
     beyla["Beyla eBPF<br/>API auto-instrumentation"]
     pyrosdk["API / Worker / Scheduler<br/>Pyroscope SDK"]
     k6["k6"]
@@ -20,7 +20,6 @@ flowchart LR
     webhookwise["WebhookWise<br/>Alertmanager ingress"]
 
     app -->|"OTLP metrics, logs, traces"| alloy
-    browser -->|"Faro events and traces"| alloy
     beyla -->|"OTLP metrics and traces"| alloy
     alloy --> prometheus
     alloy --> loki
@@ -48,7 +47,7 @@ Compose network, see
 - Logs: standard Python `logging`, structured as the OTel log data model locally and exported as OTLP logs. `severity` is lowercase (`trace/debug/info/warn/error/fatal`), while `severity_text` keeps the uppercase display value. Logs carry `trace_id`, `span_id`, `trace_flags`, `logger.name`, resource attributes, and canonical domain attributes.
 - Events: `core.observability.events.emit_event(...)`, emitted as span events plus structured log records with `event.name`.
 - Profiles: optional Pyroscope continuous profiling via `PYROSCOPE_ENABLED=true`.
-- Frontend RUM: Grafana Faro Web SDK is loaded by the Dashboard in local mode and posts to Alloy's `faro.receiver`.
+- Frontend RUM: removed in 3.7.x — the Faro SDK loaded from a CDN the dashboard's strict CSP blocks, so it never initialized. Alloy's `faro.receiver` remains configured should RUM return with a self-hosted SDK bundle.
 - Auto-instrumentation: Grafana Beyla watches the API container with eBPF and emits HTTP/SQL/Redis metrics and traces over OTLP.
 - Load testing: k6 sends synthetic webhook traffic and writes `k6_*` metrics to Prometheus remote write.
 - Signals: `core.observability.signals.record_signal(...)`, low-cardinality state transitions for domain health and workflow outcomes.

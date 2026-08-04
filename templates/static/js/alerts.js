@@ -60,6 +60,7 @@ const AlertsModule = {
      * Bind event handlers
      */
     bindEvents() {
+        this._bindBulkEvents();
         // Search and filter events
         const searchInput = document.getElementById('searchInput');
         const importanceFilter = document.getElementById('importanceFilter');
@@ -232,6 +233,10 @@ const AlertsModule = {
             const alertList = document.getElementById('alertList');
             alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('alerts.loadingData') + '</p></div>';
 
+            // A shared #/alerts?… link restores its filters before anything
+            // is fetched; absent keys leave inputs alone so pre-filled drills
+            // (gap cards, dead-letter arrivals) survive.
+            this._applyFiltersFromHash();
             // The search BOX is the source of truth, not the debounce state:
             // a drill from another view lands here with the box pre-filled,
             // and a programmatic fill never fires the input event.
@@ -251,6 +256,9 @@ const AlertsModule = {
             // Real server-side total for the active window (null when unknown).
             this.totalCount = (result.pagination && result.pagination.total != null) ? result.pagination.total : null;
 
+            // The load path is the choke point search/window changes pass
+            // through; selects sync in filterAlerts.
+            this._syncFiltersToHash();
 
             this.updateStats();
             this.currentPage = 1;
@@ -331,7 +339,45 @@ const AlertsModule = {
     /**
      * Filter alerts
      */
+    // Filters ↔ URL: keys q/imp/src/dup/ps/win under #/alerts?…, so a filtered
+    // investigation is a shareable, refresh-proof address. Reading applies
+    // ONLY the keys present (pre-filled drills must survive a clean hash).
+    _filterInputs() {
+        return {
+            q: document.getElementById('searchInput'),
+            imp: document.getElementById('importanceFilter'),
+            src: document.getElementById('sourceFilter'),
+            dup: document.getElementById('duplicateFilter'),
+            ps: document.getElementById('processingStatusFilter'),
+            win: document.getElementById('timeWindowFilter')
+        };
+    },
+
+    _applyFiltersFromHash() {
+        if (typeof hashFilters !== 'function') return;
+        const params = hashFilters();
+        const inputs = this._filterInputs();
+        Object.keys(inputs).forEach((key) => {
+            if (inputs[key] && Object.prototype.hasOwnProperty.call(params, key)) {
+                inputs[key].value = params[key];
+            }
+        });
+    },
+
+    _syncFiltersToHash() {
+        if (typeof writeHashFilters !== 'function') return;
+        const inputs = this._filterInputs();
+        const out = {};
+        Object.keys(inputs).forEach((key) => {
+            const value = inputs[key] ? String(inputs[key].value || '') : '';
+            // "all" is the time window's empty value; drop defaults from the URL.
+            if (value && value !== 'all') out[key] = value;
+        });
+        writeHashFilters('alerts', out);
+    },
+
     filterAlerts(resetPage = true) {
+        this._syncFiltersToHash();
         const importanceFilter = document.getElementById('importanceFilter').value;
         const sourceFilter = document.getElementById('sourceFilter').value;
         const duplicateFilter = document.getElementById('duplicateFilter').value;
@@ -420,6 +466,9 @@ const AlertsModule = {
             html += '<div class="alert-card-top">';
             html += '<div class="alert-left">';
             html += '<div class="alert-title-row">';
+            html += '<input type="checkbox" class="alert-bulk-check" data-bulk-id="' + webhookId + '"' +
+                (this._bulkSelected.has(String(webhookId)) ? ' checked' : '') +
+                ' aria-label="' + escapeHtml(t('alerts.bulk.checkAria')) + '">';
             html += '<span class="alert-icon">' + getAlertIcon(importance) + '</span>';
             html += '<span class="alert-title' + (summaryText ? '' : ' is-muted') + '">' + escapeHtml(summaryText || t('alerts.summaryUnavailable', {id: webhook.id})) + '</span>';
             html += '</div>';
@@ -1438,6 +1487,85 @@ const AlertsModule = {
             notification.style.animation = 'slideOut 0.3s ease-in forwards';
             setTimeout(() => notification.remove(), 300);
         }, 4000);
+    },
+
+    // ── Bulk workflow actions ──────────────────────────────────────────
+    // Clearing twenty stale alerts was forty clicks. Selection is a Set of
+    // ids surviving re-renders; the bar lives above the list and executes
+    // sequentially through the same single-item endpoint.
+    _bulkSelected: new Set(),
+
+    _renderBulkBar() {
+        const bar = document.getElementById('alertsBulkBar');
+        if (!bar) return;
+        const n = this._bulkSelected.size;
+        if (!n) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+        bar.style.display = 'flex';
+        bar.innerHTML = '<span class="bulk-count">' + escapeHtml(t('alerts.bulk.selected', { n: n })) + '</span>' +
+            '<button type="button" class="btn btn-sm" data-bulk="page">' + escapeHtml(t('alerts.bulk.selectPage')) + '</button>' +
+            '<button type="button" class="btn btn-sm btn-quiet-primary" data-bulk="ack">' + wwIcon('check') + ' ' + escapeHtml(t('alerts.bulk.ack')) + '</button>' +
+            '<button type="button" class="btn btn-sm btn-quiet-primary" data-bulk="resolve">' + wwIcon('check') + ' ' + escapeHtml(t('alerts.bulk.resolve')) + '</button>' +
+            '<button type="button" class="btn btn-sm" data-bulk="clear">' + escapeHtml(t('alerts.bulk.clear')) + '</button>';
+    },
+
+    _bindBulkEvents() {
+        const list = document.getElementById('alertList');
+        if (list && !list._bulkBound) {
+            list._bulkBound = true;
+            list.addEventListener('change', (e) => {
+                const box = e.target.closest('.alert-bulk-check');
+                if (!box) return;
+                const id = String(box.getAttribute('data-bulk-id'));
+                if (box.checked) this._bulkSelected.add(id); else this._bulkSelected.delete(id);
+                this._renderBulkBar();
+            });
+            list.addEventListener('click', (e) => {
+                if (e.target.closest('.alert-bulk-check')) e.stopPropagation();
+            }, true);
+        }
+        const bar = document.getElementById('alertsBulkBar');
+        if (bar && !bar._bulkBound) {
+            bar._bulkBound = true;
+            bar.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-bulk]');
+                if (!btn) return;
+                const kind = btn.getAttribute('data-bulk');
+                if (kind === 'clear') {
+                    this._bulkSelected.clear();
+                    document.querySelectorAll('.alert-bulk-check').forEach((b) => { b.checked = false; });
+                    this._renderBulkBar();
+                } else if (kind === 'page') {
+                    document.querySelectorAll('.alert-bulk-check').forEach((b) => {
+                        b.checked = true;
+                        this._bulkSelected.add(String(b.getAttribute('data-bulk-id')));
+                    });
+                    this._renderBulkBar();
+                } else {
+                    this._runBulk(kind === 'ack' ? 'acknowledged' : 'resolved', btn);
+                }
+            });
+        }
+    },
+
+    async _runBulk(status, btn) {
+        const ids = Array.from(this._bulkSelected);
+        if (!ids.length || !window.confirm(t('alerts.bulk.confirm', { n: ids.length }))) return;
+        btn.disabled = true;
+        let failed = 0;
+        for (const id of ids) {
+            try {
+                const response = await API.authenticatedFetch('/v1/webhooks/' + id + '/workflow', {
+                    method: 'PUT', body: JSON.stringify({ workflow_status: status })
+                });
+                if (!response.ok) failed++;
+            } catch (e) { failed++; }
+        }
+        this._bulkSelected.clear();
+        if (typeof showToast === 'function') {
+            showToast(t(failed ? 'alerts.bulk.doneWithFailures' : 'alerts.bulk.done', { n: ids.length - failed, failed: failed }), failed ? 'warning' : 'success');
+        }
+        this._renderBulkBar();
+        await this.loadAlerts();
     },
 
     async updateWorkflow(id, patch) {

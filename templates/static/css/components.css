@@ -4233,3 +4233,26 @@ body.sidebar-collapsed .sidebar-collapse .sidebar-icon { transform: rotate(180de
 /* Action items: the whole card acknowledges pointer presence so the buttons
    inside are discovered, without making the card itself pretend clickable. */
 .action-center-item:hover { border-color: var(--text-muted); }
+
+/* Bulk-selection bar: sticky context for a checked set. */
+.alerts-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-md);
+}
+
+.alerts-bulk-bar .bulk-count { font-weight: 600; margin-right: 4px; }
+
+.alert-bulk-check {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+  flex: 0 0 auto;
+  cursor: pointer;
+}

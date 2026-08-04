@@ -95,8 +95,11 @@ async def test_static_assets_are_content_hash_versioned() -> None:
         path, _, version = ref.partition("?v=")
         assert version == _asset_version(path), f"version for {path} does not match its content hash"
 
-    # faro.js previously shipped with no ?v=; it must now be versioned like the rest.
-    assert any(ref.startswith("/static/js/faro.js?v=") for ref in refs)
+    # faro.js was removed in 3.7.x: its SDK loaded from a CDN the strict CSP
+    # blocks (it never initialized in production) and its default collector
+    # pointed at a port nothing serves. RUM returns only with a real,
+    # explicitly configured consumer.
+    assert not any("faro" in ref for ref in refs)
 
     # Runtime-loaded dictionaries are versioned via the <body> data attribute
     # (a CSP-safe manifest the i18n loader reads).

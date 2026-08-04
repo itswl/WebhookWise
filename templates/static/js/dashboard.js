@@ -259,7 +259,13 @@ function recordDestination(slug) {
     renderBreadcrumb(slug);
     updateSidebarActive(slug);
     const focus = pendingFocus ? '/' + encodeURIComponent(pendingFocus) : '';
-    const next = '#/' + slug + focus;
+    // Re-entering the same destination must not wipe its ?filters (the view
+    // that wrote them re-reads them on load).
+    const rawHash = String(window.location.hash || '');
+    const hashPath = rawHash.replace(/^#\/?/, '').split('?')[0].split('/')[0];
+    const queryIndex = rawHash.indexOf('?');
+    const keptQuery = (!focus && hashPath === slug && queryIndex >= 0) ? rawHash.slice(queryIndex) : '';
+    const next = '#/' + slug + focus + keptQuery;
     if (window.location.hash !== next) {
         // replaceState, not assignment: a sub-view switch is not a separate
         // history entry, otherwise Back would walk every pill the user touched.
@@ -268,14 +274,42 @@ function recordDestination(slug) {
 }
 
 function applyHashRoute() {
+    // Shape: #/slug[/focus][?filters] — the query part carries view filters
+    // (the alerts list writes its own), and must not confuse slug matching.
     const raw = String(window.location.hash || '').replace(/^#\/?/, '');
-    const [slug, focus] = raw.split('/');
+    const [path] = raw.split('?');
+    const [slug, focus] = path.split('/');
     if (!DESTINATIONS[slug]) {
         navigateTo(DEFAULT_DESTINATION);
         return;
     }
     if (slug === currentDestination && !focus) return; // already here; don't refetch
     navigateTo(slug, focus ? { focus: decodeURIComponent(focus) } : null);
+}
+
+/** The current hash's ?filter part, parsed. Views consume their own keys. */
+function hashFilters() {
+    const raw = String(window.location.hash || '');
+    const qIndex = raw.indexOf('?');
+    if (qIndex < 0) return {};
+    const params = {};
+    new URLSearchParams(raw.slice(qIndex + 1)).forEach(function (value, key) {
+        params[key] = value;
+    });
+    return params;
+}
+
+/** Rewrite the hash's ?filter part in place (no history entry, no rerouting). */
+function writeHashFilters(slug, filters) {
+    if (currentDestination !== slug) return;
+    const pairs = new URLSearchParams();
+    Object.keys(filters).forEach(function (key) {
+        if (filters[key] !== undefined && filters[key] !== null && String(filters[key]) !== '') {
+            pairs.set(key, String(filters[key]));
+        }
+    });
+    const query = pairs.toString();
+    window.history.replaceState(null, '', '#/' + slug + (query ? '?' + query : ''));
 }
 
 /**
@@ -375,7 +409,7 @@ async function initDashboard() {
         // Honour a pasted/bookmarked URL. Only fall back to the landing tab
         // when the hash names nothing — otherwise a shared link would load,
         // then immediately bounce the reader to Overview.
-        const slug = String(window.location.hash || '').replace(/^#\/?/, '').split('/')[0];
+        const slug = String(window.location.hash || '').replace(/^#\/?/, '').split('?')[0].split('/')[0];
         if (DESTINATIONS[slug]) {
             applyHashRoute();
             return;

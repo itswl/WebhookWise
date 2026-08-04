@@ -162,6 +162,9 @@
                 </div>
             </div>
 
+            <!-- Bulk-selection bar: appears once any alert is checked. -->
+            <div id="alertsBulkBar" class="alerts-bulk-bar" style="display:none;"></div>
+
             <!-- Alert list -->
             <div class="alerts-section" id="alertList">
                 <div class="loading">
@@ -1188,7 +1191,6 @@
          parse, before DOMContentLoaded). Cache-busting ?v= content hashes are
          injected at render time; see api/dashboard.py. -->
     <script defer src="/static/js/i18n.js"></script>
-    <script defer src="/static/js/faro.js"></script>
     <script defer src="/static/js/utils.js"></script>
     <script defer src="/static/js/api.js"></script>
     <script defer src="/static/js/overview.js"></script>
