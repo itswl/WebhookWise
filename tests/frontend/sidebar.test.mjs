@@ -9,6 +9,14 @@ const store = {};
 globalThis.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = v; } };
 globalThis.escapeHtml = s => String(s);
 globalThis.wwIcon = (n) => `<svg data-icon="${n}"></svg>`;
+globalThis.htmlRaw = (m) => ({ __wwHtml: String(m ?? '') });
+globalThis.html = (strings, ...vals) => strings.reduce((acc, s, i) => {
+  if (i === 0) return s;
+  const v = vals[i - 1];
+  const piece = (v && v.__wwHtml !== undefined) ? v.__wwHtml
+    : (v === null || v === undefined) ? '' : globalThis.escapeHtml(String(v));
+  return acc + piece + s;
+}, '');
 globalThis.t = k => ({'nav.group.overview':'概览','nav.group.inbox':'收件箱','nav.group.routing':'路由','nav.group.operations':'运维'}[k] || k);
 globalThis.navigateTo = () => true;
 

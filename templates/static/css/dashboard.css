@@ -68,6 +68,17 @@
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  /* Code surfaces (raw payloads, AI dumps, JSON viewer). One family of
+     tokens so every mono block reads as the same material in both themes —
+     the old component carried its own hardcoded slate palette and stayed a
+     dark island inside the light theme. */
+  --code-bg: #0a0d13;
+  --code-fg: #d7dde6;
+  --code-key: #79b8ff;
+  --code-string: #f0a6ca;
+  --code-number: #7ee2a8;
+  --code-literal: #6fd7e8;
 }
 
 /* ── Light override ──────────────────────────────────────────────────────
@@ -105,6 +116,13 @@
   --shadow-md: 0 3px 8px rgba(31, 35, 40, 0.10);
   --shadow-lg: 0 12px 28px rgba(31, 35, 40, 0.16);
   --ring-primary: 0 0 0 3px rgba(9, 105, 218, 0.24);
+
+  --code-bg: #f6f8fa;
+  --code-fg: #1f2328;
+  --code-key: #0550ae;
+  --code-string: #b31d5b;
+  --code-number: #1a7f37;
+  --code-literal: #0e7490;
 }
 
 /* Tighten Inter's rendering for a crisper, more premium feel. */

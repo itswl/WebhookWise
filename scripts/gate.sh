@@ -34,6 +34,9 @@ ruff format --check .
 step "frontend headless"
 node tests/frontend/run-all.mjs
 
+step "frontend lint"
+npx --yes eslint@9.39.2 templates/static/js
+
 step "shellcheck"
 shellcheck entrypoint.sh scripts/gate.sh tests/e2e/*.sh
 

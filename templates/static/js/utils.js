@@ -328,6 +328,34 @@ function wwIcon(name, extraClass) {
 }
 
 /**
+ * Trusted-markup wrapper for html`` interpolations: the fragment is spliced
+ * verbatim instead of being escaped. Reserve it for markup a renderer built
+ * itself (wwIcon output, nested html`` results) — never for payload data.
+ */
+function htmlRaw(markup) {
+    return { __wwHtml: String(markup == null ? '' : markup) };
+}
+
+/**
+ * Tagged template for HTML fragments: every interpolation is escaped unless
+ * explicitly wrapped in htmlRaw(). This replaces manual concatenation for
+ * new renderers — the "' + escapeHtml(x) + '" quoting dance is exactly where
+ * the splice-defect class (wwIcon fragments shipping as page text, missed
+ * escapes in attribute position) came from.
+ */
+function html(strings) {
+    let out = strings[0];
+    for (let i = 1; i < arguments.length; i++) {
+        const value = arguments[i];
+        out += (value && value.__wwHtml !== undefined)
+            ? value.__wwHtml
+            : (value === null || value === undefined) ? '' : escapeHtml(String(value));
+        out += strings[i];
+    }
+    return out;
+}
+
+/**
  * Muted " · source" suffix for rule-grain labels (trusted markup; inputs
  * escaped here). Rule aggregates carry the sending system(s) alongside the
  * rule name; unidentified senders fall back to their source AS the name, in

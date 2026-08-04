@@ -297,7 +297,7 @@ var DeepAnalysesModule = (function() {
                 const report = normalizedReport(record);
                 container.innerHTML = `
                     <div class="raw-data">
-                        <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;">${escapeHtml(JSON.stringify({
+                        <pre class="ww-pre">${escapeHtml(JSON.stringify({
                             normalized_report: report,
                             analysis_result: record ? record.analysis_result || null : null
                         }, null, 2))}</pre>

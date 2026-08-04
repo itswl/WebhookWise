@@ -133,15 +133,16 @@ function _sidebarItemHtml(item) {
     // Slug fallback, matching the palette: the dictionary loads async,
     // and a pre-ready render must degrade to "investigations", never
     // to the raw "nav.dest.investigations" key.
+    // Exemplar for the html`` renderer path: interpolations escape by
+    // default, own markup passes through htmlRaw.
     var translated = t(item.label);
     var label = translated === item.label ? item.slug : translated;
-    return '<button type="button" class="sidebar-item" data-sidebar-slug="' + item.slug + '"'
-        + ' onclick="navigateTo(\'' + item.slug + '\'); closeSidebarDrawer();"'
-        + ' title="' + escapeHtml(label) + '">'
-        + '<span class="sidebar-icon" aria-hidden="true">' + wwIcon(item.icon) + '</span>'
-        + '<span class="sidebar-label">' + escapeHtml(label) + '</span>'
-        + (item.slug === 'incidents' ? '<span class="sidebar-badge" id="sidebarIncidentsBadge" style="display:none;"></span>' : '')
-        + '</button>';
+    return html`<button type="button" class="sidebar-item" data-sidebar-slug="${item.slug}"
+        onclick="navigateTo('${item.slug}'); closeSidebarDrawer();"
+        title="${label}">
+        <span class="sidebar-icon" aria-hidden="true">${htmlRaw(wwIcon(item.icon))}</span>
+        <span class="sidebar-label">${label}</span>${htmlRaw(item.slug === 'incidents' ? '<span class="sidebar-badge" id="sidebarIncidentsBadge" style="display:none;"></span>' : '')}
+    </button>`;
 }
 
 function renderSidebar() {
@@ -506,6 +507,33 @@ function bindGlobalEvents() {
         // ESC closes the modal
         if (e.key === 'Escape') {
             document.querySelectorAll('.modal.active').forEach(closeAnyModal);
+        }
+
+        // Focus trap: while a modal is open, Tab cycles inside it. aria-modal
+        // promises assistive tech a contained dialog; the keyboard must keep
+        // that promise too.
+        if (e.key === 'Tab') {
+            const modal = document.querySelector('.modal.active');
+            if (modal) {
+                const focusables = Array.from(modal.querySelectorAll(
+                    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                )).filter((el) => el.offsetParent !== null);
+                if (focusables.length) {
+                    const first = focusables[0];
+                    const last = focusables[focusables.length - 1];
+                    const inside = modal.contains(document.activeElement);
+                    if (!inside) {
+                        e.preventDefault();
+                        first.focus();
+                    } else if (e.shiftKey && document.activeElement === first) {
+                        e.preventDefault();
+                        last.focus();
+                    } else if (!e.shiftKey && document.activeElement === last) {
+                        e.preventDefault();
+                        first.focus();
+                    }
+                }
+            }
         }
 
         // Ctrl/Cmd + R to refresh

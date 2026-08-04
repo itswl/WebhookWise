@@ -72,6 +72,7 @@ jobs:
       # shellcheck ships pre-installed on GitHub-hosted ubuntu runners.
       # Node ships pre-installed on GitHub-hosted ubuntu runners.
       - run: node tests/frontend/run-all.mjs
+      - run: npx --yes eslint@9.39.2 templates/static/js
       - run: shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh tests/e2e/run_feishu_card_actions.sh
       - run: python scripts/check_requirements_locks.py
       - run: mypy
