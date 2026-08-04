@@ -50,7 +50,7 @@ const ActionCenterModule = (function () {
     // that never existed. Each counter now goes where its number came from.
     function statCard(label, value, color, destination) {
         const clickable = destination
-            ? ' onclick="navigateTo(\'' + destination + '\')" style="cursor:pointer;"'
+            ? ' data-act="navigateTo" data-args="\'' + destination + '\'" style="cursor:pointer;"'
             : '';
         return '<div class="stat-card"' + clickable + '><div class="stat-label">' + escapeHtml(label) +
             '</div><div class="stat-value"' + (color ? ' style="color:' + color + ';"' : '') + '>' +

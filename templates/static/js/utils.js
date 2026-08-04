@@ -170,7 +170,7 @@ function renderJSONBlock(data, title = 'JSON') {
     let html = '<div class="code-wrapper">';
     html += '<div class="code-header">';
     html += '<span class="code-lang">' + title + '</span>';
-    html += '<button class="code-copy-btn" onclick="copyToClipboard(this)">' + t('utils.copy') + '</button>';
+    html += '<button class="code-copy-btn" data-act="copyToClipboard" data-self="1">' + t('utils.copy') + '</button>';
     html += '</div>';
     html += '<div class="code-block">';
     html += '<pre>' + highlighted + '</pre>';
@@ -187,7 +187,7 @@ function renderJSONBlock(data, title = 'JSON') {
 function showError(message) {
     document.getElementById('alertList').innerHTML =
         '<div class="empty-state"><div class="empty-icon"></div><div class="empty-title">' + t('common.loadFailed') + '</div><div class="empty-text">' +
-        escapeHtml(String(message || '')) + '</div><button class="btn btn-primary" onclick="AlertsModule.loadAlerts()">' + t('common.retry') + '</button></div>';
+        escapeHtml(String(message || '')) + '</div><button class="btn btn-primary" data-act="AlertsModule.loadAlerts" data-args="">' + t('common.retry') + '</button></div>';
 }
 
 /**
@@ -384,3 +384,66 @@ function wwSourceSuffix(name, sources) {
     if (list.length === 1 && String(list[0]) === String(name)) return '';
     return '<span class="ww-muted"> · ' + escapeHtml(list.join(', ')) + '</span>';
 }
+
+/* ── Global delegated action dispatch ────────────────────────────────────
+   The last mile to script-src-attr 'none': markup carries a function NAME
+   and plain scalar args in data attributes, never code. A click resolves
+   the name against an allowlist — an attacker-controlled data-act cannot
+   reach anything the dashboard did not publish here.
+
+     data-act="DecisionTraceModule.toggleExpand" data-args="123"
+     data-act="navigateTo" data-args="trace"
+     data-self="1"     → the clicked element is passed as the last argument
+     data-stop / data-prevent → stopPropagation / preventDefault first
+*/
+var WW_ACTION_ROOTS = [
+    'AlertsModule', 'DecisionTraceModule', 'DeepAnalysesModule', 'OverviewModule',
+    'SilencesModule', 'RuntimeSettingsModule', 'IncidentsModule', 'ForwardRulesModule',
+    'RoutingModule', 'ResponseCenterModule', 'KbDraftsModule', 'NoiseCenterModule',
+    'ActionCenterModule', 'SandboxModule', 'IngressSetupModule', 'CommandPalette'
+];
+var WW_ACTION_GLOBALS = [
+    'navigateTo', 'openAlert', 'openIncident', 'closeSidebarDrawer', 'copyToClipboard',
+    'loadForwardRules', 'loadSilences', 'loadMaintenanceWindows', 'testRule',
+    'showRuleForm', 'deleteRule', 'showSilenceForm', 'showMaintenanceWindowForm',
+    'liftSilence', 'toggleTheme', 'openAuthModal',
+    'navigateFromSidebar', 'drillSilenceToTrace'
+];
+
+function wwResolveAction(name) {
+    if (!name) return null;
+    var parts = String(name).split('.');
+    if (parts.length === 1) {
+        if (WW_ACTION_GLOBALS.indexOf(parts[0]) < 0) return null;
+        var fn = window[parts[0]] || (typeof globalThis !== 'undefined' ? globalThis[parts[0]] : undefined);
+        return typeof fn === 'function' ? fn : null;
+    }
+    if (parts.length !== 2 || WW_ACTION_ROOTS.indexOf(parts[0]) < 0) return null;
+    var root = window[parts[0]];
+    if (!root || typeof root[parts[1]] !== 'function') return null;
+    return root[parts[1]].bind(root);
+}
+
+function wwParseArgs(raw) {
+    if (raw === null || raw === undefined || raw === '') return [];
+    return String(raw).split(',').map(function (token) {
+        var value = token.trim();
+        if (/^-?\d+$/.test(value)) return Number(value);
+        if (value === 'true') return true;
+        if (value === 'false') return false;
+        return value;
+    });
+}
+
+document.addEventListener('click', function (event) {
+    var el = event.target.closest('[data-act], [data-stop]');
+    if (!el) return;
+    if (el.hasAttribute('data-stop')) event.stopPropagation();
+    if (el.hasAttribute('data-prevent')) event.preventDefault();
+    if (!el.hasAttribute('data-act')) return;
+    var fn = wwResolveAction(el.getAttribute('data-act'));
+    if (!fn) return;
+    var args = wwParseArgs(el.getAttribute('data-args'));
+    if (el.hasAttribute('data-self')) args.push(el);
+    fn.apply(null, args);
+});

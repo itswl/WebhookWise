@@ -138,7 +138,7 @@ function _sidebarItemHtml(item) {
     var translated = t(item.label);
     var label = translated === item.label ? item.slug : translated;
     return html`<button type="button" class="sidebar-item" data-sidebar-slug="${item.slug}"
-        onclick="navigateTo('${item.slug}'); closeSidebarDrawer();"
+        data-act="navigateFromSidebar" data-args="${item.slug}"
         title="${label}">
         <span class="sidebar-icon" aria-hidden="true">${htmlRaw(wwIcon(item.icon))}</span>
         <span class="sidebar-label">${label}</span>${htmlRaw(item.slug === 'incidents' ? '<span class="sidebar-badge" id="sidebarIncidentsBadge" style="display:none;"></span>' : '')}
@@ -194,6 +194,13 @@ function renderSidebar() {
         });
     }
     updateSidebarActive(currentDestination);
+}
+
+/** Sidebar click: navigate, then dismiss the mobile drawer. One name so the
+    markup carries no call chain. */
+function navigateFromSidebar(slug) {
+    navigateTo(slug);
+    if (typeof closeSidebarDrawer === 'function') closeSidebarDrawer();
 }
 
 function updateSidebarActive(slug) {

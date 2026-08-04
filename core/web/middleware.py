@@ -33,7 +33,10 @@ class SecurityHeadersMiddleware:
             b"default-src 'self'; base-uri 'self'; object-src 'none'; "
             b"frame-ancestors 'none'; form-action 'self'; "
             b"script-src-elem 'self'; "
-            b"script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            # No inline event handlers anywhere: every on*= attribute was
+            # migrated to delegated dispatch (markup carries names, not code),
+            # so the browser can enforce what the ratchet contract asserts.
+            b"script-src-attr 'none'; style-src 'self' 'unsafe-inline'; "
             b"img-src 'self' data: https:; font-src 'self' data:; "
             b"connect-src 'self' https: wss:",
         ),

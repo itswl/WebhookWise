@@ -517,19 +517,22 @@ def test_inline_handlers_static_zero_and_generated_ratchet() -> None:
             attr_pair = selector[1:-1].replace('"', '"')
             assert attr_pair in html, f"binding target {selector} missing"
 
-    ratchet = {
-        "action-center.js": 1,
-        "alerts.js": 4,
-        "dashboard.js": 1,
-        "decision-trace.js": 7,
-        "deep-analyses.js": 6,
-        "forward-rules.js": 5,
-        "incidents.js": 0,
-        "overview.js": 3,
-        "runtime-settings.js": 1,
-        "silences.js": 10,
-        "utils.js": 2,
-    }
+    ratchet = dict.fromkeys(
+        [
+            "action-center.js",
+            "alerts.js",
+            "dashboard.js",
+            "decision-trace.js",
+            "deep-analyses.js",
+            "forward-rules.js",
+            "incidents.js",
+            "overview.js",
+            "runtime-settings.js",
+            "silences.js",
+            "utils.js",
+        ],
+        0,
+    )
     for name, ceiling in ratchet.items():
         count = _static_js(name).count("onclick=")
         assert count <= ceiling, (
@@ -798,7 +801,7 @@ def test_summary_counters_drill_into_their_detail_view() -> None:
 
     overview = _static_js("overview.js")
     assert "drillToOutcome" in overview
-    assert "navigateTo('cost')" in overview
+    assert "act: 'navigateTo', args: 'cost'" in overview
 
 
 def test_alert_and_incident_references_are_links() -> None:
@@ -809,9 +812,13 @@ def test_alert_and_incident_references_are_links() -> None:
     assert "focusAlertById(focus)" in _static_js("dashboard.js")
 
     for module in ("decision-trace.js", "deep-analyses.js"):
-        assert "openAlert(" in _static_js(module), f"{module} still renders inert alert ids"
-    assert "openIncident(" in _static_js("incidents.js")
-    assert "openIncident(" in _static_js("overview.js")
+        src = _static_js(module)
+        assert 'data-act="openAlert"' in src or 'data-ic-act="openAlert"' in src, (
+            f"{module} still renders inert alert ids"
+        )
+    # incidents.js dispatches through its own module-local handler.
+    assert 'data-ic-act="openIncident"' in _static_js("incidents.js")
+    assert 'data-act="openIncident"' in _static_js("overview.js")
 
 
 def test_routing_pill_bar_keeps_a_parent_highlighted() -> None:
