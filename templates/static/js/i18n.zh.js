@@ -821,7 +821,7 @@
             'dt.quality.degradedReasons': '降级原因',
             'nav.menu': '菜单',
             'nav.collapse': '收起',
-            'nav.lowfreq': '低频功能',
+            'nav.lowfreq': '更多',
             'dt.period.groupLabel': '时间窗',
             'kb.detail': '详情',
             'kb.chunkLabel': '第 {n} 段',

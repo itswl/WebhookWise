@@ -822,7 +822,7 @@
             'dt.quality.degradedReasons': 'Degradation Reasons',
             'nav.menu': 'Menu',
             'nav.collapse': 'Collapse',
-            'nav.lowfreq': 'Rarely used',
+            'nav.lowfreq': 'More',
             'dt.period.groupLabel': 'Time window',
             'kb.detail': 'Details',
             'kb.chunkLabel': 'Chunk {n}',
