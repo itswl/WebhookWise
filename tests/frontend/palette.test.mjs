@@ -36,4 +36,14 @@ check('陈旧的最近记录被忽略', M._compute('').length, 19);
 store['ww-palette-recent'] = 'not json';
 check('损坏的 localStorage 不崩溃', M._compute('').length, 19);
 
+// Direct record jumps: typing an id is answered by the palette itself
+// (before this, reaching alert 245 meant navigate-then-scroll).
+const jumps = (q) => M._compute(q).filter((i) => i.jump).map((i) => i.jump.kind + ':' + i.jump.id);
+check('纯数字 → 告警+事件跳转', jumps('245'), ['alert:245', 'incident:245']);
+check('#号前缀同样识别', jumps('#245'), ['alert:245', 'incident:245']);
+check('带词的 id', jumps('alert 12'), ['alert:12', 'incident:12']);
+check('说“事件”时只给事件跳转', jumps('事件 7'), ['incident:7']);
+check('纯文字查询无跳转项', jumps('cost'), []);
+check('跳转项排在目的地之前', M._compute('245')[0].jump.kind, 'alert');
+
 process.exit(fails ? 1 : 0);

@@ -399,6 +399,34 @@ def test_ai_disagreements_review_surface_is_wired() -> None:
         assert "'dt.disagreements.noTrace'" in js
 
 
+def test_operator_reach_features_are_wired() -> None:
+    """Three reach features the dashboard lacked, each pinned end to end:
+    bulk workflow actions, filter state in the URL, and palette record jumps."""
+    alerts = _static_js("alerts.js")
+    html = _dashboard_html()
+    dashboard = _static_js("dashboard.js")
+    palette = _static_js("command-palette.js")
+
+    # Bulk: checkbox per row, a bar, and sequential execution.
+    assert 'id="alertsBulkBar"' in html
+    assert "alert-bulk-check" in alerts
+    assert "_runBulk" in alerts
+    assert ".alerts-bulk-bar" in _static_css("components.css")
+
+    # Filters in the URL, with the router understanding ?query.
+    assert "function hashFilters(" in dashboard
+    assert "function writeHashFilters(" in dashboard
+    assert "_applyFiltersFromHash" in alerts and "_syncFiltersToHash" in alerts
+    # Destination recording must preserve an existing ?query.
+    assert "keptQuery" in dashboard
+
+    # Palette jumps to a record id.
+    assert "jumpEntries" in palette
+    assert "openIncident(item.jump.id)" in palette
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        assert "'palette.jump.alert'" in _static_js(dict_name)
+
+
 def test_time_rendering_uses_one_family() -> None:
     """Four time dialects coexisted (slashed locale dates, dashed ISO slices,
     truncated ISO, relative-only). All absolute times go through formatTime
