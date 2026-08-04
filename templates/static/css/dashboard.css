@@ -125,6 +125,15 @@
   --code-literal: #0e7490;
 }
 
+/* Motion is decoration here, never information — honour the OS setting. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Tighten Inter's rendering for a crisper, more premium feel. */
 html { -webkit-text-size-adjust: 100%; }
 body { text-rendering: optimizeLegibility; -moz-osx-font-smoothing: grayscale; }
