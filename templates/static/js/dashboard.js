@@ -793,6 +793,94 @@ function toggleAutoRefresh() {
     updateAutoRefreshLabel();
 }
 
+/* ── Desktop notifications ───────────────────────────────────────────────
+   A monitoring dashboard that only speaks while you are looking at it is
+   half a tool. Opt-in (the browser asks once, via the bell in the nav),
+   throttled to high-importance arrivals, and only while the tab is hidden —
+   a notification for something already on screen is noise. State lives in
+   localStorage so the choice survives reloads. */
+const NOTIFY_KEY = 'ww-desktop-notify';
+const NOTIFY_SEEN_KEY = 'ww-notify-last-id';
+var _notifyTimer = null;
+
+function notifyEnabled() {
+    try { return localStorage.getItem(NOTIFY_KEY) === '1'; } catch (e) { return false; }
+}
+
+function updateNotifyButtonState() {
+    const btn = document.getElementById('notifyToggleBtn');
+    if (!btn) return;
+    const on = notifyEnabled() && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    btn.classList.toggle('is-active', on);
+    const key = on ? 'nav.notifyOn' : 'nav.notifyOff';
+    btn.setAttribute('title', t(key));
+    btn.setAttribute('aria-label', t(key));
+}
+
+async function toggleDesktopNotifications() {
+    if (typeof Notification === 'undefined') {
+        if (typeof showToast === 'function') showToast(t('nav.notifyUnsupported'), 'warning');
+        return;
+    }
+    if (notifyEnabled()) {
+        try { localStorage.setItem(NOTIFY_KEY, ''); } catch (e) { /* private mode */ }
+        updateNotifyButtonState();
+        return;
+    }
+    let permission = Notification.permission;
+    if (permission === 'default') permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+        if (typeof showToast === 'function') showToast(t('nav.notifyDenied'), 'warning');
+        updateNotifyButtonState();
+        return;
+    }
+    try { localStorage.setItem(NOTIFY_KEY, '1'); } catch (e) { /* private mode */ }
+    // Baseline on enable: never fire a burst for history already on screen.
+    _primeNotifyBaseline();
+    updateNotifyButtonState();
+    if (typeof showToast === 'function') showToast(t('nav.notifyOn'), 'success');
+}
+
+async function _primeNotifyBaseline() {
+    try {
+        const res = await API.getWebhooks({ page_size: 1, importance: 'high' });
+        const newest = res && res.data && res.data[0];
+        if (newest) localStorage.setItem(NOTIFY_SEEN_KEY, String(newest.id));
+    } catch (e) { /* baseline is best-effort */ }
+}
+
+async function pollDesktopNotifications() {
+    if (!notifyEnabled() || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    // Only while the operator is elsewhere: the tab in front of them is
+    // already the notification.
+    if (!document.hidden) return;
+    if (typeof API === 'undefined' || !API.getReadToken()) return;
+    try {
+        const res = await API.getWebhooks({ page_size: 5, importance: 'high' });
+        const rows = (res && res.data) || [];
+        if (!rows.length) return;
+        let lastSeen = 0;
+        try { lastSeen = Number(localStorage.getItem(NOTIFY_SEEN_KEY) || 0); } catch (e) { lastSeen = 0; }
+        const fresh = rows.filter(function (row) { return Number(row.id) > lastSeen; });
+        if (!fresh.length) return;
+        localStorage.setItem(NOTIFY_SEEN_KEY, String(Math.max.apply(null, rows.map(function (r) { return Number(r.id); }))));
+        // One notification for a burst, not one per alert.
+        const head = fresh[0];
+        const summary = (head.ai_analysis && head.ai_analysis.summary) || head.source || '';
+        const body = fresh.length > 1 ? t('notify.body.more', { n: fresh.length, summary: summary }) : summary;
+        const note = new Notification(t('notify.title'), { body: body, tag: 'ww-alerts' });
+        note.onclick = function () {
+            window.focus();
+            if (typeof openAlert === 'function') openAlert(head.id);
+            note.close();
+        };
+    } catch (e) { /* polling must never surface an error */ }
+}
+
+if (!_notifyTimer) {
+    _notifyTimer = setInterval(pollDesktopNotifications, 60000);
+}
+
 var _incidentsBadgeTimer = null;
 function updateIncidentsBadge() {
     var badge = document.getElementById('incidentsBadge');
