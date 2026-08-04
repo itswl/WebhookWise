@@ -75,6 +75,7 @@ const CommandPalette = (function () {
     let cursor = 0;
 
     function label(item) {
+        if (item.jumpLabel) return item.jumpLabel;
         const translated = typeof t === 'function' ? t(item.label) : item.label;
         // Fall back to the slug rather than showing a raw i18n key: a missing
         // translation must not make a destination unrecognisable.
@@ -123,11 +124,37 @@ const CommandPalette = (function () {
                 ...ALL.filter((i) => !recent.includes(i.slug)),
             ];
         }
-        return ALL
+        const destinations = ALL
             .map((item) => ({ item, rank: score(item, normalized) }))
             .filter((entry) => entry.rank >= 0)
             .sort((a, b) => b.rank - a.rank)
             .map((entry) => entry.item);
+        // "#245" / "245" / "告警 245" jumps straight to that record. Typing an
+        // id had no answer before: the palette only knew the 19 destinations,
+        // so the fastest path to alert 245 was navigate-then-scroll.
+        return jumpEntries(normalized).concat(destinations);
+    }
+
+    // Synthetic entries for direct record jumps, ranked above destinations.
+    function jumpEntries(normalized) {
+        const idMatch = normalized.match(/(?:^|[^0-9])#?(\d{1,9})\s*$/);
+        if (!idMatch) return [];
+        const id = idMatch[1];
+        const wantsIncident = /事件|事故|incident/.test(normalized);
+        const entries = [];
+        if (!wantsIncident) {
+            entries.push({
+                slug: 'alerts', icon: 'bell', group: 'palette.jump',
+                jump: { kind: 'alert', id: id },
+                jumpLabel: t('palette.jump.alert', { id: id })
+            });
+        }
+        entries.push({
+            slug: 'incidents', icon: 'flame', group: 'palette.jump',
+            jump: { kind: 'incident', id: id },
+            jumpLabel: t('palette.jump.incident', { id: id })
+        });
+        return entries;
     }
 
     function render() {
@@ -165,8 +192,17 @@ const CommandPalette = (function () {
     function choose(index) {
         const item = matches[typeof index === 'number' ? index : cursor];
         if (!item) return;
-        remember(item.slug);
         close();
+        // A jump is a one-off, not a place: never enters the recents list.
+        if (item.jump) {
+            if (item.jump.kind === 'incident' && typeof openIncident === 'function') {
+                openIncident(item.jump.id);
+            } else if (typeof openAlert === 'function') {
+                openAlert(item.jump.id);
+            }
+            return;
+        }
+        remember(item.slug);
         navigateTo(item.slug);
     }
 
