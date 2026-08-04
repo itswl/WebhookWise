@@ -384,16 +384,19 @@ const ResponseCenterModule = (function () {
             const originParts = [item.service, item.source].filter(function (part, idx, arr) {
                 return part && String(part) !== patternName && arr.indexOf(part) === idx;
             });
+            // Title owns a full-width line; badges live on a meta row below.
+            // Long patterns crammed inline next to the badges wrapped one
+            // character per line inside the leftover sliver.
             return '<article class="knowledge-gap-card">' +
-                '<div class="knowledge-gap-head"><div><span class="badge badge-' +
+                '<div class="knowledge-gap-title">' + escapeHtml(patternName) +
+                (originParts.length ? '<span class="ww-muted"> · ' + escapeHtml(originParts.join(', ')) + '</span>' : '') +
+                '</div>' +
+                '<div class="knowledge-gap-meta"><span class="badge badge-' +
                 (priority === 'high' ? 'danger' : priority) + '">' +
                 escapeHtml(t('knowledgeGaps.priority.' + priority)) + '</span><span class="knowledge-gap-score">' +
                 escapeHtml(t('knowledgeGaps.priorityScore', {
                     value: Math.round(Number(item.priority_score || 0))
-                })) + '</span><strong>' +
-                escapeHtml(patternName) +
-                (originParts.length ? '<span class="ww-muted"> · ' + escapeHtml(originParts.join(', ')) + '</span>' : '') +
-                '</strong></div>' +
+                })) + '</span>' +
                 (occurrences != null ? '<span class="knowledge-gap-count">' +
                     escapeHtml(t('knowledgeGaps.occurrences', { value: occurrences })) + '</span>' : '') +
                 '</div>' +
