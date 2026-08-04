@@ -978,6 +978,20 @@ const API = {
     },
 
     /**
+     * Ingest one operator-authored KB document (chunk + embed + upsert,
+     * published immediately). Admin-write. Tags drive gap matching:
+     * kind=runbook + alert_pattern close a knowledge gap deterministically.
+     */
+    async ingestKbDocument(payload) {
+        const response = await this.authenticatedFetch('/v1/admin/kb/documents', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
      * Amend a draft's text before approval (re-chunked/re-embedded server-side).
      * Admin-write.
      */
