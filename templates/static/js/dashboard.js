@@ -70,7 +70,11 @@ const DESTINATIONS = {
 };
 const DEFAULT_DESTINATION = 'overview';
 
-let currentDestination = DEFAULT_DESTINATION;
+// null until a destination is actually entered. Seeding this with
+// DEFAULT_DESTINATION made applyHashRoute's "already here" guard treat a cold
+// load of #/overview as a completed navigation: nothing fetched, permanent
+// spinner. The value must be earned by recordDestination, never assumed.
+let currentDestination = null;
 let pendingFocus = null;
 
 /** Jump anywhere. `opts.focus` is handed to the destination's module. */
@@ -325,7 +329,10 @@ async function initDashboard() {
             applyHashRoute();
             return;
         }
-        if (typeof DecisionTraceModule !== 'undefined') DecisionTraceModule.load();
+        // No (usable) hash: enter the landing destination through navigateTo so
+        // the entry is recorded — breadcrumb, sidebar highlight and #/overview
+        // in the URL — instead of loading data behind an unrecorded location.
+        navigateTo(DEFAULT_DESTINATION);
     };
     if (typeof I18N === 'undefined' || i18nReadyAtStart) {
         loadLandingTab();
@@ -847,9 +854,11 @@ function applyTheme(theme) {
 }
 
 function initTheme() {
+    // Dark-first by decision, not by system preference: the design language is
+    // tuned dark, and following prefers-color-scheme silently handed every
+    // light-mode OS the second-class theme. An explicit toggle still wins.
     const saved = localStorage.getItem('ww-theme');
-    const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
-    applyTheme(saved || (prefersLight ? 'light' : 'dark'));
+    applyTheme(saved === 'light' ? 'light' : 'dark');
 }
 
 function toggleTheme() {

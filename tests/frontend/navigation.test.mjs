@@ -67,4 +67,15 @@ check('未知路由回落默认', calls, ['tab:decision-trace', 'dt:overview']);
 hash = '#/kb'; M.applyHashRoute(); calls.length = 0; M.applyHashRoute();
 check('重复应用同一路由不重复拉取', calls, []);
 
+// Cold load with #/overview on a virgin instance — the pre-claimed-destination
+// regression: seeding currentDestination with DEFAULT_DESTINATION made
+// applyHashRoute's "already here" guard swallow the boot navigation, so the
+// landing URL everyone actually opens rendered a permanent spinner.
+hash = '#/overview'; calls.length = 0;
+const M2 = fn();
+globalThis.recordDestination = M2.recordDestination;
+M2.applyHashRoute();
+check('冷启动 #/overview 真正进入(此前永久转圈)', calls, ['tab:decision-trace', 'dt:overview']);
+check('  → 目的地由进入挣得,而非预置', M2.currentDestination, 'overview');
+
 process.exit(fails ? 1 : 0);
