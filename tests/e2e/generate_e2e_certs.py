@@ -53,6 +53,26 @@ def _build_certificates() -> tuple[bytes, bytes, bytes]:
         .not_valid_before(now - datetime.timedelta(hours=1))
         .not_valid_after(now + VALIDITY)
         .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        # KeyUsage + SKI are what make this a well-formed CA. OpenSSL in the
+        # 3.14 image rejects a chain whose issuer carries no Subject Key
+        # Identifier with "Missing Authority Key Identifier" — the 3.12
+        # OpenSSL accepted it, so the certs were quietly non-standard for as
+        # long as this generator has existed.
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()), critical=False)
         .sign(ca_key, hashes.SHA256())
     )
 
@@ -68,6 +88,13 @@ def _build_certificates() -> tuple[bytes, bytes, bytes]:
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(x509.SubjectAlternativeName([x509.DNSName(HOSTNAME)]), critical=False)
         .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+        # AKI ties the leaf to its issuer's SKI; without the pair a strict
+        # verifier cannot build the chain.
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(server_key.public_key()), critical=False)
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+            critical=False,
+        )
         .sign(ca_key, hashes.SHA256())
     )
 
