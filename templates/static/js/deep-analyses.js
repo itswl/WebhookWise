@@ -313,7 +313,7 @@ var DeepAnalysesModule = (function() {
 
     function buildSummaryHtml(record) {
         var report = normalizedReport(record);
-        var time = record.created_at ? new Date(record.created_at).toLocaleString('zh-CN') : '-';
+        var time = formatTime(record.created_at);
         var duration = typeof record.duration_seconds === 'number' ? record.duration_seconds.toFixed(2) + 's' : '-';
         var source = displayValue(record.source || report.alert_identity.source) || t('deep.unknownSource');
 

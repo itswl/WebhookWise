@@ -396,6 +396,22 @@ def test_ai_disagreements_review_surface_is_wired() -> None:
         assert "'dt.disagreements.noTrace'" in js
 
 
+def test_time_rendering_uses_one_family() -> None:
+    """Four time dialects coexisted (slashed locale dates, dashed ISO slices,
+    truncated ISO, relative-only). All absolute times go through formatTime
+    (lists) / formatTimeFull (detail); toLocaleTimeString stays legal for
+    clock-only refresh stamps. Number formatting keeps its own locale call."""
+    utils = _static_js("utils.js")
+    assert "function formatTime(" in utils
+    assert "function formatTimeFull(" in utils
+    for name in sorted(p.name for p in (PROJECT_ROOT / "templates/static/js").glob("*.js")):
+        if name == "utils.js":
+            continue
+        src = _static_js(name)
+        assert ".toLocaleString(" not in src, f"{name}: date dialect outside the family"
+        assert ".slice(0, 16).replace('T'" not in src, f"{name}: raw ISO truncation"
+
+
 def test_mono_blocks_share_one_design() -> None:
     """Every preformatted block is either the full code component
     (.code-wrapper, JSON viewer with copy button) or the plain .ww-pre —

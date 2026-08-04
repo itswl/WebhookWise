@@ -13,8 +13,8 @@ const KbDraftsModule = (function () {
 
         const items = Array.isArray(drafts) ? drafts : [];
         if (!items.length) {
-            listEl.innerHTML = '<div class="empty-state" style="text-align:center; padding:60px;">' +
-                '<div style="font-size:48px; margin-bottom:16px;">' + wwIcon('book-open') + '</div>' +
+            listEl.innerHTML = '<div class="empty-state">' +
+                '<div class="empty-icon">' + wwIcon('book-open') + '</div>' +
                 '<div class="empty-title">' + escapeHtml(t('kb.empty.title')) + '</div>' +
                 '<div class="empty-text">' + escapeHtml(t('kb.empty.text')) + '</div></div>';
             return;
