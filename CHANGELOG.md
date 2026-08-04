@@ -5,6 +5,73 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+## [3.8.0] - 2026-08-05
+
+### Added
+- Bulk workflow actions on the alert list: a checkbox per row plus a
+  selection bar (select page / acknowledge / resolve). Clearing twenty stale
+  alerts was forty clicks.
+- Alert filters live in the URL (`#/alerts?q=&imp=&src=&dup=&ps=&win=`), so a
+  filtered investigation is a refresh-proof, shareable address.
+- Command palette answers a record id: `245`, `#245`, `alert 245` or `事件 7`
+  jump straight to that alert/incident instead of navigate-then-hunt.
+- Opt-in desktop notifications for high-importance arrivals, only while the
+  tab is hidden, primed on enable so history is never re-announced.
+- KB drafts are reviewable and editable before approval: a detail read
+  (`GET /v1/admin/kb/drafts/{source_ref}`) and an amend path
+  (`PUT`, re-chunked and re-embedded server-side, drafts only).
+- Knowledge-gap cards can be left: drills to the incidents/alerts that formed
+  the pattern, plus inline runbook authoring that tags the published document
+  so the gap detector recognises it and the card's state flips.
+- Virtual `processing_status=stuck` on the alert list, expanded to the same
+  predicate the Action Center's stuck card counts (shared constants).
+- Rarely-used sidebar tier ("More") and a per-destination usage counter
+  feeding the adoption review; dashboard build stamp in the rail.
+- ESLint (pinned) in both `scripts/gate.sh` and CI; modal focus trap;
+  `prefers-reduced-motion` honoured.
+
+### Changed
+- **BREAKING (deployment)**: container images run Python 3.14. The source
+  floor stays `>=3.12` and the CI unit job stays 3.12 so `scripts/gate.sh`
+  remains an exact local replica; 3.14 is exercised by `docker-e2e`.
+- **BREAKING (CSP)**: `script-src-attr` tightened from `'unsafe-inline'` to
+  `'none'`. All 97 inline event handlers moved to delegated dispatch — markup
+  carries a function name plus scalar args, resolved against an allowlist.
+  Any future inline handler is now rejected by both a contract and the browser.
+- Rule-grain aggregates carry their sending system(s), rendered as a muted
+  "· source" suffix.
+- One time family across the dashboard (`formatTime` / `formatTimeFull`)
+  replacing four dialects; one code-surface design (`--code-*` tokens plus
+  `.ww-pre`) replacing a hardcoded palette island and five ad-hoc `<pre>`
+  styles; dark is the default by decision rather than by OS preference.
+- Dependencies: fastapi 0.141, uvicorn 0.52, redis 8.1, openai 2.52,
+  websockets 17, cryptography 50, OTel 1.44, ruff 0.16, and nine GitHub
+  Actions. `mcp` is pinned `<2` — MCP 2.0 renames `FastMCP` → `MCPServer`
+  and drops the `.settings` surface this server configures transport security
+  through, which is a migration, not a bump.
+
+### Fixed
+- A cold load of `#/overview` never fetched: `currentDestination` was seeded
+  with the default, so the router's "already here" guard swallowed the boot
+  navigation and the landing page span forever.
+- `decision_trace.alert_name` had been written NULL since 4d866cb (the writer
+  read `name` off the forward-match identity, which only carries
+  project/region/environment), silently collapsing per-rule analytics back to
+  source grain. Migration 0026 refills the gap.
+- Three incident row actions rendered as empty pills (the emoji purge deleted
+  their glyphs without substituting icons).
+- The e2e TLS fixture carried two latent defects that only 3.14 exposed: its
+  certifi shadow mounted at a hardcoded `python3.12` path (a silent mount miss
+  on any bump — now substituted and contract-bound to the image version), and
+  its generated certificates never emitted SKI/AKI/KeyUsage (a non-standard
+  chain the older OpenSSL happened to accept).
+- Frontend RUM removed: the Faro SDK loaded from a CDN the strict CSP blocks,
+  so it never initialized, and its default collector guessed at a local port.
+
+### Removed
+- The 2026-05 frontend credential-migration shim, 49 orphaned dictionary keys
+  per language (three navigation eras of fossils), and dead CSS.
+
 ## [3.7.0] - 2026-08-04
 
 ### Removed
