@@ -207,16 +207,19 @@
                 </div>
                 <div class="response-bucket-switch" role="tablist" data-i18n-aria-label="response.queue.bucketLabel"
                      aria-label="Incident work queue filter">
-                    <button class="btn response-bucket-btn active" type="button" data-response-bucket="active"
-                            data-i18n="response.queue.bucket.active">Active</button>
-                    <button class="btn response-bucket-btn" type="button" data-response-bucket="my"
-                            data-i18n="response.queue.bucket.my">Mine</button>
-                    <button class="btn response-bucket-btn" type="button" data-response-bucket="unassigned"
-                            data-i18n="response.queue.bucket.unassigned">Unassigned</button>
-                    <button class="btn response-bucket-btn" type="button" data-response-bucket="sla_risk"
-                            data-i18n="response.queue.bucket.slaRisk">SLA risk</button>
-                    <button class="btn response-bucket-btn" type="button" data-response-bucket="needs_recovery"
-                            data-i18n="response.queue.bucket.needsRecovery">Verify recovery</button>
+                    <!-- Counts live in their own span: i18n apply() rewrites the
+                         data-i18n node's text, so a count inside the label span
+                         would be wiped on every language toggle. -->
+                    <button class="btn response-bucket-btn active" type="button" data-response-bucket="active">
+                        <span data-i18n="response.queue.bucket.active">Active</span><span class="bucket-count" data-bucket-count="active" hidden></span></button>
+                    <button class="btn response-bucket-btn" type="button" data-response-bucket="my">
+                        <span data-i18n="response.queue.bucket.my">Mine</span><span class="bucket-count" data-bucket-count="my" hidden></span></button>
+                    <button class="btn response-bucket-btn" type="button" data-response-bucket="unassigned">
+                        <span data-i18n="response.queue.bucket.unassigned">Unassigned</span><span class="bucket-count" data-bucket-count="unassigned" hidden></span></button>
+                    <button class="btn response-bucket-btn" type="button" data-response-bucket="sla_risk">
+                        <span data-i18n="response.queue.bucket.slaRisk">SLA risk</span><span class="bucket-count" data-bucket-count="sla_risk" hidden></span></button>
+                    <button class="btn response-bucket-btn" type="button" data-response-bucket="needs_recovery">
+                        <span data-i18n="response.queue.bucket.needsRecovery">Verify recovery</span><span class="bucket-count" data-bucket-count="needs_recovery" hidden></span></button>
                 </div>
                 <div id="responseWorkQueueList">
                     <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>

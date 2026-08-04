@@ -53,7 +53,7 @@ const ActionCenterModule = (function () {
             ? ' onclick="navigateTo(\'' + destination + '\')" style="cursor:pointer;"'
             : '';
         return '<div class="stat-card"' + clickable + '><div class="stat-label">' + escapeHtml(label) +
-            '</div><div class="stat-value" style="color:' + color + ';">' +
+            '</div><div class="stat-value"' + (color ? ' style="color:' + color + ';"' : '') + '>' +
             escapeHtml(String(value || 0)) + '</div></div>';
     }
 
@@ -64,12 +64,14 @@ const ActionCenterModule = (function () {
         if (!summaryEl || !listEl) return;
 
         summaryEl.innerHTML =
-            statCard(t('action.summary.total'), summary.total, 'var(--text-main)') +
-            statCard(t('action.summary.critical'), summary.critical, 'var(--danger)') +
-            statCard(t('action.summary.warning'), summary.warning, 'var(--warning)') +
-            statCard(t('action.summary.deadLetters'), summary.dead_letters, 'var(--primary)', 'alerts') +
-            statCard(t('action.summary.sla'), summary.sla_breaches, 'var(--danger)', 'work-queue') +
-            statCard(t('action.summary.aiAgreement'), summary.feedback_agreement_pct == null ? '–' : summary.feedback_agreement_pct + '%', 'var(--success)', 'trace');
+            // A zero is quiet: alarm colours are earned by a non-zero count,
+            // otherwise a healthy board reads like a wall of warnings.
+            statCard(t('action.summary.total'), summary.total, '') +
+            statCard(t('action.summary.critical'), summary.critical, summary.critical > 0 ? 'var(--danger)' : '') +
+            statCard(t('action.summary.warning'), summary.warning, summary.warning > 0 ? 'var(--warning)' : '') +
+            statCard(t('action.summary.deadLetters'), summary.dead_letters, summary.dead_letters > 0 ? 'var(--primary)' : '', 'alerts') +
+            statCard(t('action.summary.sla'), summary.sla_breaches, summary.sla_breaches > 0 ? 'var(--danger)' : '', 'work-queue') +
+            statCard(t('action.summary.aiAgreement'), summary.feedback_agreement_pct == null ? '–' : summary.feedback_agreement_pct + '%', '', 'trace');
 
         const items = Array.isArray(data.items) ? data.items : [];
         if (!items.length) {

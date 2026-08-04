@@ -93,13 +93,12 @@ const IncidentsModule = (function () {
             html += '</div>';
             // Action buttons: close / reopen (stop propagation so they don't toggle the card)
             if (row.status === 'active' || row.status === 'quiet') {
-                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;"></button>';
+                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('check') + '</button>';
             }
             if (row.status === 'closed') {
-                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;"></button>';
-                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;"></button>';
+                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('pencil') + '</button>';
+                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('rotate-ccw') + '</button>';
             }
-            html += '<span style="color:var(--text-muted); font-size:0.8rem;"></span>';
             html += '</div>';
 
             // Expandable detail (hidden by default)
