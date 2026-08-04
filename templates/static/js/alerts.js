@@ -232,6 +232,10 @@ const AlertsModule = {
             const alertList = document.getElementById('alertList');
             alertList.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('alerts.loadingData') + '</p></div>';
 
+            // The search BOX is the source of truth, not the debounce state:
+            // a drill from another view lands here with the box pre-filled,
+            // and a programmatic fill never fires the input event.
+            this._searchTerm = ((document.getElementById('searchInput') || {}).value || '').trim();
             const params = { page_size: 200, cursor: null, window: this._windowValue() };
             if (this._searchTerm) params.search = this._searchTerm;
             const result = await API.getWebhooks(params);
