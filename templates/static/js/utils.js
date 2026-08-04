@@ -326,3 +326,16 @@ function wwIcon(name, extraClass) {
     return '<svg class="icon' + (extraClass ? ' ' + extraClass : '') + '" aria-hidden="true">'
         + '<use href="#i-' + name + '"/></svg>';
 }
+
+/**
+ * Muted " · source" suffix for rule-grain labels (trusted markup; inputs
+ * escaped here). Rule aggregates carry the sending system(s) alongside the
+ * rule name; unidentified senders fall back to their source AS the name, in
+ * which case repeating it would be noise — so the suffix self-suppresses.
+ */
+function wwSourceSuffix(name, sources) {
+    var list = Array.isArray(sources) ? sources.filter(Boolean) : [];
+    if (!list.length) return '';
+    if (list.length === 1 && String(list[0]) === String(name)) return '';
+    return '<span class="ww-muted"> · ' + escapeHtml(list.join(', ')) + '</span>';
+}

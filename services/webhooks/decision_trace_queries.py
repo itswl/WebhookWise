@@ -144,14 +144,22 @@ async def get_decision_trace_quality_stats(session: AsyncSession, period: str = 
     rule_key = func.coalesce(DecisionTrace.alert_name, DecisionTrace.source)
     by_rule_rows = (
         await session.execute(
-            select(rule_key, DecisionTrace.importance, func.count(DecisionTrace.id))
+            select(rule_key, DecisionTrace.source, DecisionTrace.importance, func.count(DecisionTrace.id))
             .where(window, DecisionTrace.route == _AI_ROUTE, rule_key.isnot(None))
-            .group_by(rule_key, DecisionTrace.importance)
+            .group_by(rule_key, DecisionTrace.source, DecisionTrace.importance)
         )
     ).all()
     ai_importance_by_rule: dict[str, dict[str, int]] = {}
-    for rule, importance, count in by_rule_rows:
-        ai_importance_by_rule.setdefault(rule, {})[importance or "unknown"] = count
+    # Which system(s) each rule arrives through — one rule name can in
+    # principle span sources, so this is a list, rendered next to the name.
+    ai_rule_sources: dict[str, list[str]] = {}
+    for rule, source, importance, count in by_rule_rows:
+        dist = ai_importance_by_rule.setdefault(rule, {})
+        dist[importance or "unknown"] = dist.get(importance or "unknown", 0) + count
+        if source:
+            sources = ai_rule_sources.setdefault(rule, [])
+            if source not in sources:
+                sources.append(source)
 
     return {
         "period": period,
@@ -165,6 +173,7 @@ async def get_decision_trace_quality_stats(session: AsyncSession, period: str = 
         "degraded_reasons": degraded_reasons,
         "ai_importance_breakdown": ai_importance_breakdown,
         "ai_importance_by_rule": ai_importance_by_rule,
+        "ai_rule_sources": ai_rule_sources,
     }
 
 
@@ -204,16 +213,25 @@ async def get_overview_stats(session: AsyncSession, period: str = "day") -> dict
     # identifiable rule fall back to their source so unidentified senders stay
     # visible instead of vanishing from the board.
     rule_key = func.coalesce(DecisionTrace.alert_name, DecisionTrace.source)
+    # Grouped by (rule, source) and merged in Python: the ranking must stay
+    # per-rule even when one rule name arrives through several sources, and a
+    # dialect-portable DISTINCT string aggregation does not exist (string_agg
+    # is Postgres, group_concat is SQLite). Group count is bounded by the
+    # distinct rules in the window — tens, not thousands.
     rule_rows = (
         await session.execute(
-            select(rule_key, func.count(DecisionTrace.id))
+            select(rule_key, DecisionTrace.source, func.count(DecisionTrace.id))
             .where(window, rule_key.isnot(None))
-            .group_by(rule_key)
-            .order_by(func.count(DecisionTrace.id).desc())
-            .limit(8)
+            .group_by(rule_key, DecisionTrace.source)
         )
     ).all()
-    top_rules = [{"name": row[0], "count": row[1]} for row in rule_rows]
+    rule_agg: dict[str, dict[str, Any]] = {}
+    for name, source, count in rule_rows:
+        entry = rule_agg.setdefault(name, {"name": name, "count": 0, "sources": []})
+        entry["count"] += count
+        if source and source not in entry["sources"]:
+            entry["sources"].append(source)
+    top_rules = sorted(rule_agg.values(), key=lambda e: int(e["count"]), reverse=True)[:8]
 
     # Delivery success rate: over outbox rows for forwarded events in the window,
     # how many reached the target (sent) vs failed (exhausted/expired). Joined on

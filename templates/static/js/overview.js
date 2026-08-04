@@ -138,7 +138,7 @@ const OverviewModule = {
                 const pct = ((s.count || 0) / max) * 100;
                 html += '<div style="margin-bottom: 0.75rem;">' +
                     '<div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:0.25rem;">' +
-                    '<span>' + wwIcon('tag') + ' ' + escapeHtml(s.name) + '</span><span style="color:var(--text-muted);">' + fmt(s.count) + '</span></div>' +
+                    '<span>' + wwIcon('tag') + ' ' + escapeHtml(s.name) + wwSourceSuffix(s.name, s.sources) + '</span><span style="color:var(--text-muted);">' + fmt(s.count) + '</span></div>' +
                     '<div style="height:4px; background:var(--bg-subtle, var(--bg-subtle)); border-radius:4px; overflow:hidden;">' +
                     '<div style="height:100%; width:' + pct + '%; background:var(--primary);"></div></div></div>';
             });
