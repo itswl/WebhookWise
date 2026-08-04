@@ -67,4 +67,5 @@ document.addEventListener('DOMContentLoaded', function () {
     bind('[data-sb="sb30"]', 'click', function (event) { saveSilence(); });
     bind('[data-sb="sb31"]', 'click', function (event) { closeMaintenanceWindowForm(); });
     bind('[data-sb="sb32"]', 'click', function (event) { saveMaintenanceWindow(); });
+    bind('#notifyToggleBtn', 'click', function (event) { toggleDesktopNotifications(); });
 });

@@ -399,6 +399,21 @@ def test_ai_disagreements_review_surface_is_wired() -> None:
         assert "'dt.disagreements.noTrace'" in js
 
 
+def test_desktop_notifications_are_opt_in_and_quiet() -> None:
+    """A monitoring tool should be able to speak while you are elsewhere —
+    but only on opt-in, only for high importance, only while the tab is
+    hidden, and never re-announcing history (a baseline is primed on
+    enable)."""
+    dashboard = _static_js("dashboard.js")
+    assert 'id="notifyToggleBtn"' in _dashboard_html()
+    assert "Notification.requestPermission" in dashboard
+    assert "if (!document.hidden) return;" in dashboard
+    assert "importance: 'high'" in dashboard
+    assert "_primeNotifyBaseline" in dashboard
+    for dict_name in ("i18n.en.js", "i18n.zh.js"):
+        assert "'notify.title'" in _static_js(dict_name)
+
+
 def test_operator_reach_features_are_wired() -> None:
     """Three reach features the dashboard lacked, each pinned end to end:
     bulk workflow actions, filter state in the URL, and palette record jumps."""
@@ -488,7 +503,8 @@ def test_inline_handlers_static_zero_and_generated_ratchet() -> None:
 
     bindings = _static_js("static-bindings.js")
     selectors = re.findall(r"bind\('([^']+)'", bindings)
-    assert len(selectors) == 57
+    # 57 codemodded + hand-written additions since; every one must resolve.
+    assert len(selectors) >= 57
     for selector in set(selectors):
         if selector.startswith("#"):
             assert f'id="{selector[1:]}"' in html, f"binding target {selector} missing"
