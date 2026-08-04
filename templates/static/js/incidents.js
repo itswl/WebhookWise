@@ -24,6 +24,11 @@ const IncidentsModule = (function () {
     };
 
     async function load() {
+        // Self-binding: IncidentsModule.init() is not part of the dashboard
+        // bootstrap (a canary caught the dispatcher never attaching), so the
+        // delegated handler installs on the first load instead of trusting a
+        // caller to remember.
+        _bindDelegation();
         var container = document.getElementById('incidentsList');
         if (!container) return;
         container.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('common.loading') + '</p></div>';
@@ -71,7 +76,7 @@ const IncidentsModule = (function () {
         for (var i = 0; i < _rows.length; i++) {
             var row = _rows[i];
             var badge = STATUS_BADGES[row.status] || { label: row.status, cls: 'badge-outline', icon: wwIcon('info') };
-            html += '<div class="incident-card" id="incident-' + row.id + '" style="border:1px solid var(--border); border-radius:8px; padding:1rem 1.25rem; margin-bottom:0.75rem; background:var(--bg-surface); cursor:pointer;" onclick="IncidentsModule.toggle(' + row.id + ')">';
+            html += '<div class="incident-card" id="incident-' + row.id + '" style="border:1px solid var(--border); border-radius:8px; padding:1rem 1.25rem; margin-bottom:0.75rem; background:var(--bg-surface); cursor:pointer;" data-ic-act="toggle" data-ic-args="' + row.id + '">';
             html += '<div style="display:flex; align-items:center; gap:0.75rem;">';
             html += '<span style="font-size:1.5rem;">' + badge.icon + '</span>';
             html += '<div style="flex:1; min-width:0;">';
@@ -96,16 +101,16 @@ const IncidentsModule = (function () {
             html += '</div>';
             // Action buttons: close / reopen (stop propagation so they don't toggle the card)
             if (row.status === 'active' || row.status === 'quiet') {
-                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('check') + '</button>';
+                html += '<button class="btn btn-sm" data-ic-stop="1" data-ic-act="openResolutionModal" data-ic-args="' + row.id + '" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('check') + '</button>';
             }
             if (row.status === 'closed') {
-                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('pencil') + '</button>';
-                html += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('rotate-ccw') + '</button>';
+                html += '<button class="btn btn-sm" data-ic-stop="1" data-ic-act="openResolutionModal" data-ic-args="' + row.id + '" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('pencil') + '</button>';
+                html += '<button class="btn btn-sm" data-ic-stop="1" data-ic-act="reopenIncident" data-ic-args="' + row.id + '" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('rotate-ccw') + '</button>';
             }
             html += '</div>';
 
             // Expandable detail (hidden by default)
-            html += '<div class="incident-detail" id="incident-detail-' + row.id + '" onclick="event.stopPropagation()" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-light);"></div>';
+            html += '<div class="incident-detail" id="incident-detail-' + row.id + '" data-ic-stop="1" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-light);"></div>';
             html += '</div>';
         }
 
@@ -413,7 +418,7 @@ const IncidentsModule = (function () {
         var calibrationLabel = item && item.calibration && item.calibration.applied === false
             ? t('incidents.intelligence.notAdjusted')
             : t('incidents.intelligence.calibrated');
-        return '<details class="incident-intelligence-calibration" onclick="event.stopPropagation()">' +
+        return '<details class="incident-intelligence-calibration" data-ic-stop="1">' +
             '<summary class="incident-intelligence-score">' + label + ' · ' +
             calibrationLabel + '</summary><p>' +
             escapeHtml(detail || t('incidents.intelligence.calibration.default')) +
@@ -437,15 +442,15 @@ const IncidentsModule = (function () {
         var positive = change ? 'relevant' : 'used';
         var negative = change ? 'irrelevant' : 'not_used';
         var encoded = encodedReference(candidateRef);
-        return '<details class="incident-intelligence-feedback" onclick="event.stopPropagation()">' +
+        return '<details class="incident-intelligence-feedback" data-ic-stop="1">' +
             '<summary>' + t('incidents.intelligence.feedbackAction') + '</summary><div>' +
             '<button type="button" class="btn btn-sm' + (verdict === positive ? ' active' : '') +
-            '" onclick="IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
-            recommendationType + '\',\'' + encoded + '\',\'' + positive + '\')">' + wwIcon('thumbs-up') + ' ' +
+            '" data-ic-act="intelligenceFeedback" data-ic-args="' + incidentId + ',\'' +
+            recommendationType + '\',\'' + encoded + '\',\'' + positive + '\'">' + wwIcon('thumbs-up') + ' ' +
             t(change ? 'incidents.intelligence.relevant' : 'incidents.intelligence.used') + '</button>' +
             '<button type="button" class="btn btn-sm' + (verdict === negative ? ' active' : '') +
-            '" onclick="IncidentsModule.intelligenceFeedback(' + incidentId + ',\'' +
-            recommendationType + '\',\'' + encoded + '\',\'' + negative + '\')">' + wwIcon('thumbs-down') + ' ' +
+            '" data-ic-act="intelligenceFeedback" data-ic-args="' + incidentId + ',\'' +
+            recommendationType + '\',\'' + encoded + '\',\'' + negative + '\'">' + wwIcon('thumbs-down') + ' ' +
             t(change ? 'incidents.intelligence.irrelevant' : 'incidents.intelligence.notUsed') +
             '</button></div></details>';
     }
@@ -455,7 +460,7 @@ const IncidentsModule = (function () {
         var html = '<article class="incident-intelligence-card">';
         html += '<div class="incident-intelligence-card-head"><strong>'
             + '<a href="#/incidents/' + encodeURIComponent(item.incident_id) + '"'
-            + ' onclick="event.preventDefault(); openIncident(' + Number(item.incident_id) + ');"'
+            + ' data-ic-act="openIncident" data-ic-args="' + Number(item.incident_id) + '"'
             + ' style="color: var(--primary); text-decoration: none;">#' + item.incident_id + '</a> '
             + escapeHtml(item.title || '') + '</strong>' + intelligenceScore(item) + '</div>';
         if (item.root_cause) {
@@ -519,8 +524,8 @@ const IncidentsModule = (function () {
                 '</div>';
         } else {
             html += '<button type="button" class="btn btn-sm incident-runbook-start" ' +
-                'onclick="event.stopPropagation(); IncidentsModule.startRunbookExecution(' + incidentId +
-                ',\'' + encodedRef + '\')">' + wwIcon('play') + ' ' + t('incidents.runbook.start') + '</button>';
+                'data-ic-stop="1" data-ic-act="startRunbookExecution" data-ic-args="' + incidentId +
+                ',\'' + encodedRef + '\'">' + wwIcon('play') + ' ' + t('incidents.runbook.start') + '</button>';
         }
         html += intelligenceFeedbackState(item.feedback);
         html += intelligenceFeedbackControls(
@@ -584,7 +589,7 @@ const IncidentsModule = (function () {
         var count = (intelligence.similar_incidents || []).length +
             (intelligence.related_changes || []).length +
             (intelligence.recommended_runbooks || []).length;
-        return '<details class="incident-supporting-details" onclick="event.stopPropagation()">' +
+        return '<details class="incident-supporting-details" data-ic-stop="1">' +
             '<summary>' + wwIcon('sparkles') + ' ' + t('incidents.evidence.title') +
             '<span class="incident-supporting-count">' + count + '</span></summary>' +
             renderIntelligence(data, true) + '</details>';
@@ -651,7 +656,7 @@ const IncidentsModule = (function () {
             t('incidents.intelligence.score', { value: Math.round(Number(change.score || 0) * 100) });
         if (sourceUrl) {
             html += ' · <a href="' + escapeHtml(sourceUrl) +
-                '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();">' +
+                '" target="_blank" rel="noopener noreferrer" data-ic-stop="1">' +
                 t('incidents.timeline.viewChange') + '</a>';
         }
         return html + '</span></div></article></div>';
@@ -693,11 +698,11 @@ const IncidentsModule = (function () {
             })) + '</span></div></div>';
         if (status === 'pending') {
             html += '<div class="incident-recurrence-actions">' +
-                '<button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.reviewRecurrence(' + data.id + ',\'confirm\')">' + wwIcon('check') + ' ' +
+                '<button type="button" class="btn btn-sm btn-primary" data-ic-stop="1" data-ic-act="reviewRecurrence" ' +
+                'data-ic-args="' + data.id + ',\'confirm\'">' + wwIcon('check') + ' ' +
                 t('incidents.recurrence.confirm') + '</button>' +
-                '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.reviewRecurrence(' + data.id + ',\'dismiss\')">× ' +
+                '<button type="button" class="btn btn-sm" data-ic-stop="1" data-ic-act="reviewRecurrence" ' +
+                'data-ic-args="' + data.id + ',\'dismiss\'">× ' +
                 t('incidents.recurrence.dismiss') + '</button></div>';
         } else if (recurrence.reviewed_by) {
             html += '<span class="incident-recurrence-reviewed">' +
@@ -715,44 +720,44 @@ const IncidentsModule = (function () {
         var secondaryActions = [];
 
         secondaryActions.push(
-            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.assign(' +
-            data.id + ')">' + wwIcon('user') + ' ' + t('alerts.action.assign') + '</button>'
+            '<button type="button" class="btn btn-sm" data-ic-stop="1" data-ic-act="assign" data-ic-args="' +
+            data.id + '">' + wwIcon('user') + ' ' + t('alerts.action.assign') + '</button>'
         );
         secondaryActions.push(
-            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.feedback(' +
-            data.id + ',\'correct\')">' + wwIcon('thumbs-up') + ' ' + t('alerts.action.feedbackCorrect') + '</button>'
+            '<button type="button" class="btn btn-sm" data-ic-stop="1" data-ic-act="feedback" data-ic-args="' +
+            data.id + ',\'correct\'">' + wwIcon('thumbs-up') + ' ' + t('alerts.action.feedbackCorrect') + '</button>'
         );
         secondaryActions.push(
-            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.feedback(' +
-            data.id + ',\'grouping_wrong\')">' + wwIcon('thumbs-down') + ' ' + t('incidents.action.groupingWrong') + '</button>'
+            '<button type="button" class="btn btn-sm" data-ic-stop="1" data-ic-act="feedback" data-ic-args="' +
+            data.id + ',\'grouping_wrong\'">' + wwIcon('thumbs-down') + ' ' + t('incidents.action.groupingWrong') + '</button>'
         );
         secondaryActions.push(
-            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.merge(' +
-            data.id + ')">' + wwIcon('link') + ' ' + t('incidents.action.merge') + '</button>'
+            '<button type="button" class="btn btn-sm" data-ic-stop="1" data-ic-act="merge" data-ic-args="' +
+            data.id + '">' + wwIcon('link') + ' ' + t('incidents.action.merge') + '</button>'
         );
         secondaryActions.push(
-            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.split(' +
-            data.id + ')">' + wwIcon('x') + ' ' + t('incidents.action.split') + '</button>'
+            '<button type="button" class="btn btn-sm" data-ic-stop="1" data-ic-act="split" data-ic-args="' +
+            data.id + '">' + wwIcon('x') + ' ' + t('incidents.action.split') + '</button>'
         );
         secondaryActions.push(
-            '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.exportPostmortem(' +
-            data.id + ')">' + wwIcon('file-text') + ' ' + t('incidents.action.postmortem') + '</button>'
+            '<button type="button" class="btn btn-sm" data-ic-stop="1" data-ic-act="exportPostmortem" data-ic-args="' +
+            data.id + '">' + wwIcon('file-text') + ' ' + t('incidents.action.postmortem') + '</button>'
         );
         if (sources.length) {
             secondaryActions.push(
-                '<button type="button" class="btn btn-sm btn-warn" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.silenceIncidentSources(' + data.id + ')">' + wwIcon('volume-x') + ' ' +
+                '<button type="button" class="btn btn-sm btn-warn" data-ic-stop="1" data-ic-act="silenceIncidentSources" ' +
+                'data-ic-args="' + data.id + '">' + wwIcon('volume-x') + ' ' +
                 t('incidents.action.silenceAll') + ' (' + sources.length + ')</button>'
             );
         }
         if (terminal || data.status === 'closed') {
             secondaryActions.push(
-                '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' +
-                data.id + ')">' + wwIcon('pencil') + ' ' + t('resolution.edit') + '</button>'
+                '<button type="button" class="btn btn-sm" data-ic-stop="1" data-ic-act="openResolutionModal" data-ic-args="' +
+                data.id + '">' + wwIcon('pencil') + ' ' + t('resolution.edit') + '</button>'
             );
             secondaryActions.push(
-                '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' +
-                data.id + ')">' + wwIcon('refresh') + ' ' + t('incidents.action.reopen') + '</button>'
+                '<button type="button" class="btn btn-sm" data-ic-stop="1" data-ic-act="reopenIncident" data-ic-args="' +
+                data.id + '">' + wwIcon('refresh') + ' ' + t('incidents.action.reopen') + '</button>'
             );
         }
 
@@ -767,18 +772,18 @@ const IncidentsModule = (function () {
             '</span></div>';
         html += '<div class="incident-command-actions alert-primary-actions">';
         if (workflowStatus === 'open') {
-            html += '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.updateWorkflow(' + data.id + ',\'acknowledged\')">' + wwIcon('check') + ' ' +
+            html += '<button type="button" class="btn btn-sm" data-ic-stop="1" data-ic-act="updateWorkflow" ' +
+                'data-ic-args="' + data.id + ',\'acknowledged\'">' + wwIcon('check') + ' ' +
                 t('alerts.action.acknowledge') + '</button>';
         }
         if (!terminal) {
-            html += '<button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.openResolutionModal(' + data.id + ')">' + wwIcon('check') + ' ' +
+            html += '<button type="button" class="btn btn-sm btn-primary" data-ic-stop="1" data-ic-act="openResolutionModal" ' +
+                'data-ic-args="' + data.id + '">' + wwIcon('check') + ' ' +
                 t('alerts.action.resolve') + '</button>';
         }
-        html += '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.addNote(' +
-            data.id + ')">' + wwIcon('pencil') + ' ' + t('alerts.action.notes') + '</button>';
-        html += '<details class="alert-action-menu incident-action-menu" onclick="event.stopPropagation()">' +
+        html += '<button type="button" class="btn btn-sm" data-ic-stop="1" data-ic-act="addNote" data-ic-args="' +
+            data.id + '">' + wwIcon('pencil') + ' ' + t('alerts.action.notes') + '</button>';
+        html += '<details class="alert-action-menu incident-action-menu" data-ic-stop="1">' +
             '<summary class="btn btn-sm alert-more-trigger">••• ' + t('alerts.action.more') + '</summary>' +
             '<div class="alert-secondary-actions">' + secondaryActions.join('') + '</div></details>';
         return html + '</div></div>';
@@ -916,8 +921,8 @@ const IncidentsModule = (function () {
                 )) + '</div>';
             if (recommendedRunbook) {
                 html += '<button type="button" class="btn btn-sm incident-runbook-start" ' +
-                    'onclick="event.stopPropagation(); IncidentsModule.startRunbookExecution(' + data.id +
-                    ',\'' + encodedReference(recommendedRunbook.candidate_ref) + '\')">' + wwIcon('play') + ' ' +
+                    'data-ic-stop="1" data-ic-act="startRunbookExecution" data-ic-args="' + data.id +
+                    ',\'' + encodedReference(recommendedRunbook.candidate_ref) + '\'">' + wwIcon('play') + ' ' +
                     t('incidents.runbook.start') + '</button>';
             }
         }
@@ -954,8 +959,8 @@ const IncidentsModule = (function () {
                 html += '<button type="button" class="incident-runbook-step' +
                     (completed ? ' is-complete' : '') + '" aria-pressed="' + completed + '"' +
                     (terminal ? ' disabled' : '') +
-                    ' onclick="event.stopPropagation(); IncidentsModule.toggleRunbookStep(' + incidentId + ',' +
-                    executionId + ',' + index + ',' + (!completed) + ')"><span>' +
+                    ' data-ic-stop="1" data-ic-act="toggleRunbookStep" data-ic-args="' + incidentId + ',' +
+                    executionId + ',' + index + ',' + (!completed) + '"><span>' +
                     (completed ? wwIcon('check') : (index + 1)) + '</span><strong>' +
                     escapeHtml(runbookStepText(step, index)) + '</strong></button>';
             });
@@ -966,27 +971,27 @@ const IncidentsModule = (function () {
         }
         html += '<div class="incident-runbook-actions">';
         if (!terminal) {
-            html += '<button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.completeRunbookExecution(' + incidentId + ',' + executionId + ')">' + wwIcon('check') + ' ' +
+            html += '<button type="button" class="btn btn-sm btn-primary" data-ic-stop="1" data-ic-act="completeRunbookExecution" ' +
+                'data-ic-args="' + incidentId + ',' + executionId + '">' + wwIcon('check') + ' ' +
                 t('incidents.runbook.complete') + '</button>';
-            html += '<button type="button" class="btn btn-sm" onclick="event.stopPropagation(); ' +
-                'IncidentsModule.updateRunbookExecution(' + incidentId + ',' + executionId +
-                ',{status:\'abandoned\'})">× ' + t('incidents.runbook.abandon') + '</button>';
+            html += '<button type="button" class="btn btn-sm" ' +
+                'data-ic-stop="1" data-ic-act="setRunbookField" data-ic-args="' + incidentId + ',' +
+                executionId + ',status,abandoned">× ' + t('incidents.runbook.abandon') + '</button>';
         } else if (execution.status === 'failed') {
             html += '<button type="button" class="btn btn-sm btn-primary" ' +
-                'onclick="event.stopPropagation(); IncidentsModule.updateRunbookExecution(' + incidentId + ',' +
-                executionId + ',{status:\'in_progress\'})">↻ ' +
+                'data-ic-stop="1" data-ic-act="setRunbookField" data-ic-args="' + incidentId + ',' +
+                executionId + ',status,in_progress">↻ ' +
                 t('incidents.runbook.resume') + '</button>';
         } else if (execution.status === 'completed') {
             html += '<button type="button" class="btn btn-sm' +
                 (execution.effectiveness === 'effective' ? ' active' : '') +
-                '" onclick="event.stopPropagation(); IncidentsModule.updateRunbookExecution(' + incidentId + ',' +
-                executionId + ',{effectiveness:\'effective\'})">' + wwIcon('thumbs-up') + ' ' +
+                '" data-ic-stop="1" data-ic-act="setRunbookField" data-ic-args="' + incidentId + ',' +
+                executionId + ',effectiveness,effective">' + wwIcon('thumbs-up') + ' ' +
                 t('incidents.runbook.effective') + '</button>';
             html += '<button type="button" class="btn btn-sm' +
                 (execution.effectiveness === 'ineffective' ? ' active' : '') +
-                '" onclick="event.stopPropagation(); IncidentsModule.updateRunbookExecution(' + incidentId + ',' +
-                executionId + ',{effectiveness:\'ineffective\'})">' + wwIcon('thumbs-down') + ' ' +
+                '" data-ic-stop="1" data-ic-act="setRunbookField" data-ic-args="' + incidentId + ',' +
+                executionId + ',effectiveness,ineffective">' + wwIcon('thumbs-down') + ' ' +
                 t('incidents.runbook.ineffective') + '</button>';
         }
         html += '<span class="incident-runbook-manual-note">' +
@@ -1007,7 +1012,7 @@ const IncidentsModule = (function () {
 
     function renderOperatorNotes(notes) {
         if (!notes.length) return '';
-        var html = '<details class="incident-supporting-details incident-notes" onclick="event.stopPropagation()">' +
+        var html = '<details class="incident-supporting-details incident-notes" data-ic-stop="1">' +
             '<summary>' + wwIcon('pencil') + ' ' + t('incidents.notes.title') +
             '<span class="incident-supporting-count">' + notes.length + '</span></summary><div>';
         notes.forEach(function (note) {
@@ -1085,7 +1090,7 @@ const IncidentsModule = (function () {
                     '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">' +
                     '<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">' +
                     rootBadge +
-                    '<a href="#/alerts/' + encodeURIComponent(m.id) + '" onclick="event.preventDefault(); openAlert(' + Number(m.id) + ');"' +
+                    '<a href="#/alerts/' + encodeURIComponent(m.id) + '" data-ic-act="openAlert" data-ic-args="' + Number(m.id) + '"' +
                     ' style="font-size:0.8rem; font-weight:600; color:var(--primary); text-decoration:none;">#' + m.id + '</a>' +
                     '<span class="badge badge-' + impClass(m.importance) + '" style="font-size:0.7rem; font-weight:600;">' + dotIcon + ' ' + escapeHtml(m.importance || t('common.unknown')) + '</span>' +
                     dupBadge +
@@ -1125,7 +1130,68 @@ const IncidentsModule = (function () {
         }
     }
 
+    /* Delegated dispatch for card actions. Markup carries a method NAME and
+       plain scalar args in data attributes — never code — so the CSP can
+       forbid inline handlers outright. Only names in ACTIONS are callable. */
+    function setRunbookField(incidentId, executionId, field, value) {
+        var changes = {};
+        changes[field] = value;
+        return updateRunbookExecution(incidentId, executionId, changes);
+    }
+
+    var ACTIONS = null;
+    function _actions() {
+        if (ACTIONS) return ACTIONS;
+        ACTIONS = {
+            toggle: toggle,
+            openResolutionModal: openResolutionModal,
+            reopenIncident: reopenIncident,
+            updateWorkflow: updateWorkflow,
+            assign: assign,
+            feedback: feedback,
+            intelligenceFeedback: intelligenceFeedback,
+            reviewRecurrence: reviewRecurrence,
+            silenceIncidentSources: silenceIncidentSources,
+            startRunbookExecution: startRunbookExecution,
+            completeRunbookExecution: completeRunbookExecution,
+            toggleRunbookStep: toggleRunbookStep,
+            updateRunbookExecution: updateRunbookExecution,
+            setRunbookField: setRunbookField,
+            openIncident: function (id) { if (typeof openIncident === 'function') openIncident(id); },
+            openAlert: function (id) { if (typeof openAlert === 'function') openAlert(id); }
+        };
+        return ACTIONS;
+    }
+
+    function _parseArgs(raw) {
+        if (!raw) return [];
+        return String(raw).split(',').map(function (token) {
+            var value = token.trim();
+            return /^-?\d+$/.test(value) ? Number(value) : value;
+        });
+    }
+
+    function _bindDelegation() {
+        var root = document.getElementById('inboxViewIncidents') || document.body;
+        if (root._icBound) return;
+        root._icBound = true;
+        root.addEventListener('click', function (event) {
+            var stopper = event.target.closest('[data-ic-stop]');
+            var actor = event.target.closest('[data-ic-act]');
+            if (stopper && (!actor || stopper.contains(actor) || actor.contains(stopper))) {
+                event.stopPropagation();
+            }
+            if (!actor) return;
+            var name = actor.getAttribute('data-ic-act');
+            var fn = _actions()[name];
+            if (typeof fn !== 'function') return;
+            event.preventDefault();
+            fn.apply(null, _parseArgs(actor.getAttribute('data-ic-args')));
+        });
+    }
+
     function init() {
+        _bindDelegation();
         // No auto-load on init; content is lazy-loaded when the Incidents tab is opened.
     }
 
@@ -1793,7 +1859,7 @@ const IncidentsModule = (function () {
 
     function _cardHtml(row) {
         var badge = STATUS_BADGES[row.status] || { label: row.status, cls: 'badge-outline', icon: wwIcon('info') };
-        var h = '<div class="incident-card" id="incident-' + row.id + '" style="border:1px solid var(--border); border-radius:8px; padding:1rem 1.25rem; margin-bottom:0.75rem; background:var(--bg-surface); cursor:pointer;" onclick="IncidentsModule.toggle(' + row.id + ')">';
+        var h = '<div class="incident-card" id="incident-' + row.id + '" style="border:1px solid var(--border); border-radius:8px; padding:1rem 1.25rem; margin-bottom:0.75rem; background:var(--bg-surface); cursor:pointer;" data-ic-act="toggle" data-ic-args="' + row.id + '">';
         h += '<div style="display:flex; align-items:center; gap:0.75rem;">';
         h += '<span style="font-size:1.5rem;">' + badge.icon + '</span>';
         h += '<div style="flex:1; min-width:0;">';
@@ -1809,15 +1875,15 @@ const IncidentsModule = (function () {
         h += '<span>' + formatTime(row.started_at) + '</span>';
         h += '</div></div>';
         if (row.status === 'active' || row.status === 'quiet') {
-            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('check') + '</button>';
+            h += '<button class="btn btn-sm" data-ic-stop="1" data-ic-act="openResolutionModal" data-ic-args="' + row.id + '" title="' + t('incidents.action.closeTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('check') + '</button>';
         }
         if (row.status === 'closed') {
-            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.openResolutionModal(' + row.id + ')" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('pencil') + '</button>';
-            h += '<button class="btn btn-sm" onclick="event.stopPropagation(); IncidentsModule.reopenIncident(' + row.id + ')" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('refresh') + '</button>';
+            h += '<button class="btn btn-sm" data-ic-stop="1" data-ic-act="openResolutionModal" data-ic-args="' + row.id + '" title="' + t('resolution.edit') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('pencil') + '</button>';
+            h += '<button class="btn btn-sm" data-ic-stop="1" data-ic-act="reopenIncident" data-ic-args="' + row.id + '" title="' + t('incidents.action.reopenTitle') + '" style="font-size:0.7rem; margin-left:0.5rem;">' + wwIcon('refresh') + '</button>';
         }
         h += '<span style="color:var(--text-muted); font-size:0.8rem;">' + wwIcon('play') + '</span>';
         h += '</div>';
-        h += '<div class="incident-detail" id="incident-detail-' + row.id + '" onclick="event.stopPropagation()" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-light);"></div>';
+        h += '<div class="incident-detail" id="incident-detail-' + row.id + '" data-ic-stop="1" style="display:none; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border-light);"></div>';
         h += '</div>';
         return h;
     }

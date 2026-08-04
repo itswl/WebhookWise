@@ -298,7 +298,8 @@ def test_incident_secondary_actions_are_collapsed() -> None:
     assert "alert-action-count" not in incidents
     assert "alert-action-count" not in _static_js("alerts.js")
     assert ".incident-action-menu" in css
-    assert "IncidentsModule.silenceIncidentSources" in incidents
+    # Dispatched by name through the delegated handler since the CSP burn-down.
+    assert 'data-ic-act="silenceIncidentSources"' in incidents
 
 
 def test_incident_change_impact_is_rendered() -> None:
@@ -343,7 +344,11 @@ def test_incident_detail_interactions_do_not_toggle_parent_card() -> None:
     css = _static_css("components.css")
 
     assert incidents.count('class="incident-detail"') >= 2
-    assert incidents.count('onclick="event.stopPropagation()"') >= 2
+    # Propagation is stopped by the delegated dispatcher via data-ic-stop
+    # markers (inline handlers are gone), so detail controls still never
+    # collapse the card they live in.
+    assert incidents.count('data-ic-stop="1"') >= 2
+    assert "data-ic-stop" in incidents and "event.stopPropagation();" in incidents
     assert ".incident-detail" in css
     assert "cursor: default" in css
 
@@ -519,7 +524,7 @@ def test_inline_handlers_static_zero_and_generated_ratchet() -> None:
         "decision-trace.js": 7,
         "deep-analyses.js": 6,
         "forward-rules.js": 5,
-        "incidents.js": 42,
+        "incidents.js": 0,
         "overview.js": 3,
         "runtime-settings.js": 1,
         "silences.js": 10,
