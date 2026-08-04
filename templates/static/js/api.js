@@ -13,7 +13,6 @@ const API = {
         write: 'webhookwise_dashboard_admin_write_key'
     },
     _authStorageInitialized: false,
-    _legacyStorageCleared: false,
     /**
      * Get the read-only API Token
      */
@@ -49,12 +48,6 @@ const API = {
         this._tokenCache.write = '';
         this.persistLocalToken(this._localStorageKeys.read, '');
         this.persistLocalToken(this._localStorageKeys.write, '');
-        try {
-            window.sessionStorage?.removeItem(this._localStorageKeys.write);
-        } catch (_error) {
-            // Older releases used sessionStorage; cleanup is best effort.
-        }
-        this.clearLegacyPersistedTokens();
     },
 
     getTokenStatus() {
@@ -67,13 +60,10 @@ const API = {
     async initAuthStorage() {
         if (this._authStorageInitialized) return;
 
-        this.clearLegacyPersistedTokens();
         try {
             const storage = window.localStorage;
             this._tokenCache.read = storage?.getItem(this._localStorageKeys.read) || '';
             this._tokenCache.write = storage?.getItem(this._localStorageKeys.write) || '';
-            // Remove the session-scoped copy used by older dashboard releases.
-            window.sessionStorage?.removeItem(this._localStorageKeys.write);
         } catch (error) {
             // Fall back to page memory when browser privacy settings block local storage.
             console.warn('Browser local storage is unavailable; credentials will not survive a reload', error);
@@ -94,22 +84,6 @@ const API = {
         } catch (error) {
             // Keep the in-memory token usable even if local storage is unavailable.
             console.warn('Failed to update browser credentials', error);
-        }
-    },
-
-    clearLegacyPersistedTokens() {
-        if (this._legacyStorageCleared) return;
-        this._legacyStorageCleared = true;
-        try {
-            window.localStorage?.removeItem('webhook_api_key');
-            window.localStorage?.removeItem('webhook_admin_write_key');
-        } catch (_error) {
-            // Storage can be unavailable under strict privacy settings.
-        }
-        try {
-            window.indexedDB?.deleteDatabase('webhookwise_auth_crypto');
-        } catch (_error) {
-            // Best-effort cleanup of the obsolete local encryption key.
         }
     },
 

@@ -606,7 +606,11 @@ def test_dashboard_keeps_read_and_write_tokens_separate() -> None:
     assert "webhookwise_dashboard_admin_write_key" in api_js
     assert "storage?.getItem" in api_js
     assert "storage.setItem" in api_js
-    assert "window.indexedDB?.deleteDatabase('webhookwise_auth_crypto')" in api_js
+    # The 2026-05 legacy-credential migration shim (webhook_api_key /
+    # webhookwise_auth_crypto cleanup) was removed in 3.7.0; nothing may
+    # reference those stores again.
+    assert "webhook_api_key" not in api_js
+    assert "webhookwise_auth_crypto" not in api_js
     assert "await openAuthModal(authMode)" in api_js
     assert "prompt(this.authPromptText" not in api_js
     assert "return authModalPromise" in dashboard_js
@@ -765,10 +769,6 @@ vm.runInNewContext(source + '\\nthis.__API = API;', context, {{ filename: 'api.j
   if (localValues.get('webhookwise_dashboard_admin_write_key') !== 'write-token') {{
     throw new Error('write token was not saved in local storage');
   }}
-  if (sessionValues.has('webhookwise_dashboard_admin_write_key')) {{
-    throw new Error('obsolete session-scoped write token was not removed');
-  }}
-
   api._tokenCache.read = '';
   api._tokenCache.write = '';
   api._authStorageInitialized = false;
@@ -780,11 +780,6 @@ vm.runInNewContext(source + '\\nthis.__API = API;', context, {{ filename: 'api.j
   await api.clearTokens();
   if (api.getReadToken() || api.getWriteToken()) throw new Error('tokens were not cleared');
   if (localValues.size !== 0) throw new Error('local storage credentials were not cleared');
-  if (sessionValues.size !== 0) throw new Error('session storage credentials were not cleared');
-  if (!removed.includes('webhook_api_key') || !removed.includes('webhook_admin_write_key')) {{
-    throw new Error('legacy persisted tokens were not removed');
-  }}
-  if (!removed.includes('webhookwise_auth_crypto')) throw new Error('legacy encryption key was not removed');
   console.log('ok');
 }})().catch((error) => {{
   console.error(error.stack || error.message);

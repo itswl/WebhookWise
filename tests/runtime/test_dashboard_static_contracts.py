@@ -412,7 +412,9 @@ def test_kb_drafts_review_subview_is_wired() -> None:
     assert "/v1/admin/kb/drafts" in api_js
     for dict_name in ("i18n.en.js", "i18n.zh.js"):
         js = _static_js(dict_name)
-        assert "'operations.view.kb'" in js
+        # The KB destination's live label (the old operations.view.* pill
+        # labels died with the tab bar and were purged in 3.7.0).
+        assert "'nav.dest.kb'" in js
         assert "'kb.title'" in js
         assert "'kb.empty.text'" in js
 
@@ -474,14 +476,14 @@ def test_runtime_settings_i18n_keys_exist_in_both_dictionaries() -> None:
     assert rs_keys
     for dict_name in ("i18n.en.js", "i18n.zh.js"):
         dictionary = _static_js(dict_name)
-        assert "'operations.view.settings'" in dictionary
+        assert "'nav.dest.settings'" in dictionary
         missing = [key for key in sorted(rs_keys) if f"'{key}':" not in dictionary]
         assert missing == []
         for domain in ("flapping", "escalation", "backpressure", "kb", "noise", "cadence", "retention"):
             assert f"'rs.domain.{domain}'" in dictionary
 
     zh = _static_js("i18n.zh.js")
-    assert "'operations.view.settings': '运行时设置'" in zh
+    assert "'nav.dest.settings': '运行时设置'" in zh
     assert "'rs.col.override': '覆盖'" in zh
     assert "'rs.col.effective': '生效值'" in zh
     assert "'rs.col.envDefault': '环境默认'" in zh
