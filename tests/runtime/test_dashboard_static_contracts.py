@@ -416,7 +416,7 @@ def test_inline_handlers_static_zero_and_generated_ratchet() -> None:
         if selector.startswith("#"):
             assert f'id="{selector[1:]}"' in html, f"binding target {selector} missing"
         else:
-            attr_pair = selector[1:-1].replace('\"', '"')
+            attr_pair = selector[1:-1].replace('"', '"')
             assert attr_pair in html, f"binding target {selector} missing"
 
     ratchet = {
