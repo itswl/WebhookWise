@@ -136,8 +136,8 @@ dependency manifests. `requirements.lock` and `requirements-dev.lock` are the
 installable lock files generated with uv:
 
 ```bash
-uv pip compile requirements.txt -o requirements.lock --python-version 3.12
-uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.lock --python-version 3.12
+uv pip compile requirements.txt -o requirements.lock --python-version 3.14
+uv pip compile requirements-dev.txt -c requirements.lock -o requirements-dev.lock --python-version 3.14
 ```
 
 Runtime images install from `requirements.lock`. Local development and CI should

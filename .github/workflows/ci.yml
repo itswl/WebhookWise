@@ -47,6 +47,9 @@ jobs:
               - "requirements*.txt"
               - "requirements*.lock"
 
+  # Unit job runs the SOURCE floor (3.12), which keeps scripts/gate.sh an exact
+  # local replica. Production's 3.14 runtime is covered by docker-e2e, which
+  # builds the real image — so both versions are actually exercised.
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
