@@ -479,22 +479,33 @@ function bindGlobalEvents() {
     });
 
     // Keyboard shortcuts
+    // One close path for every route out of a modal (ESC, the header ×):
+    // a few modals own teardown logic beyond the class toggle.
+    const closeAnyModal = (modal) => {
+        if (modal.id === 'authModal') {
+            closeAuthModal();
+        } else if (modal.id === 'incidentResolutionModal' &&
+                   typeof IncidentsModule !== 'undefined') {
+            IncidentsModule.closeResolutionModal();
+        } else if (modal.id === 'runbookCompletionModal' &&
+                   typeof IncidentsModule !== 'undefined') {
+            IncidentsModule.closeRunbookCompletionModal();
+        } else {
+            modal.classList.remove('active');
+        }
+    };
+
+    document.addEventListener('click', (e) => {
+        const closer = e.target.closest('[data-modal-close]');
+        if (!closer) return;
+        const modal = closer.closest('.modal');
+        if (modal) closeAnyModal(modal);
+    });
+
     document.addEventListener('keydown', (e) => {
         // ESC closes the modal
         if (e.key === 'Escape') {
-            document.querySelectorAll('.modal.active').forEach(modal => {
-                if (modal.id === 'authModal') {
-                    closeAuthModal();
-                } else if (modal.id === 'incidentResolutionModal' &&
-                           typeof IncidentsModule !== 'undefined') {
-                    IncidentsModule.closeResolutionModal();
-                } else if (modal.id === 'runbookCompletionModal' &&
-                           typeof IncidentsModule !== 'undefined') {
-                    IncidentsModule.closeRunbookCompletionModal();
-                } else {
-                    modal.classList.remove('active');
-                }
-            });
+            document.querySelectorAll('.modal.active').forEach(closeAnyModal);
         }
 
         // Ctrl/Cmd + R to refresh
