@@ -831,6 +831,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -2854,6 +2855,28 @@ body.sidebar-collapsed .sidebar-version { display: none; }
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border-light);
+}
+
+/* Shared modal close: quiet in the corner, unmissable on hover. Every modal
+   header carries one; ESC and the × leave through the same close routing. */
+.modal-close {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  background: var(--bg-subtle);
+  color: var(--text-main);
 }
 
 /* Card head, two lines: the pattern title owns the full width (wraps at word

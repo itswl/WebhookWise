@@ -701,23 +701,41 @@ body {
     padding: 0 1rem;
   }
 
+  /* Two rows, not five: [menu · logo ······ actions] over [breadcrumb · search].
+     A column layout gave every child its own row and the chrome ate a third
+     of a phone screen before any content. */
   .navbar-content {
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
     height: auto;
-    padding: 1rem 0;
-    gap: 1rem;
-    align-items: stretch;
+    padding: 0.6rem 0;
+    gap: 0.5rem 0.75rem;
+    align-items: center;
   }
 
-
-
+  .sidebar-toggle-mobile { order: 0; }
+  .logo { order: 1; }
+  #incidentsBadge { order: 2; }
 
   .nav-actions {
-    width: 100%;
-    justify-content: flex-start;
+    order: 3;
+    margin-left: auto;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 0.25rem;
     align-items: center;
+  }
+
+  .breadcrumb {
+    order: 4;
+    flex: 0 1 auto;
+    margin-left: 0;
+    padding-left: 2px;
+    border-left: none;
+  }
+
+  .palette-trigger {
+    order: 5;
+    flex: 1 1 160px;
   }
 
   /* Icon buttons keep their square size on mobile rather than stretching. */
