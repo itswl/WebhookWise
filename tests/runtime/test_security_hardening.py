@@ -642,7 +642,7 @@ def test_dashboard_incident_learning_workspace_static_contracts() -> None:
     assert "priority_reasons" in response_center_js
     assert "responseQueueLoadMore" in response_center_js
 
-    assert "IncidentsModule.intelligenceFeedback" in incidents_js
+    assert 'data-ic-act="intelligenceFeedback"' in incidents_js
     assert "record.root_cause || ''" in incidents_js
     assert "savedChange.dataset.candidateRef = 'change:' + selectedChangeId" in incidents_js
     assert "resolution.feedback.partialFailure" in incidents_js
