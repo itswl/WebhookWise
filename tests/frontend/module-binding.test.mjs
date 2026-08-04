@@ -11,7 +11,7 @@ globalThis.window = {
 globalThis.switchMainTab = () => {};
 globalThis.setInboxView = (v) => recordDestination(v);
 globalThis.setOperationsView = (v) => recordDestination(v);
-globalThis.document = { getElementById: () => null, querySelectorAll: () => [] };
+globalThis.document = { getElementById: () => null, querySelectorAll: () => [], querySelector: () => null };
 const M = new Function(nav + 'return {navigateTo, recordDestination};')();
 globalThis.recordDestination = M.recordDestination;
 

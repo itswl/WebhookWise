@@ -22,7 +22,7 @@ globalThis.setOperationsView = (v) => { calls.push('op:' + v); recordDestination
 const fn = new Function(nav + `
   return { navigateTo, applyHashRoute, recordDestination, takePendingFocus,
            DESTINATIONS, get currentDestination(){return currentDestination;} };`);
-globalThis.document = { getElementById: () => null, querySelectorAll: () => [] };
+globalThis.document = { getElementById: () => null, querySelectorAll: () => [], querySelector: () => null };
 const M = fn();
 globalThis.recordDestination = M.recordDestination;
 

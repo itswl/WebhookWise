@@ -127,29 +127,53 @@ const SIDEBAR_COLLAPSED_KEY = 'ww-sidebar-collapsed';
 /** Persistent left rail, rendered from the palette's destination groups so
  * the two navigation surfaces cannot drift apart. Re-rendered on language
  * change; active state is driven from recordDestination. */
+const SIDEBAR_LOWFREQ_OPEN_KEY = 'ww-sidebar-lowfreq-open';
+
+function _sidebarItemHtml(item) {
+    // Slug fallback, matching the palette: the dictionary loads async,
+    // and a pre-ready render must degrade to "investigations", never
+    // to the raw "nav.dest.investigations" key.
+    var translated = t(item.label);
+    var label = translated === item.label ? item.slug : translated;
+    return '<button type="button" class="sidebar-item" data-sidebar-slug="' + item.slug + '"'
+        + ' onclick="navigateTo(\'' + item.slug + '\'); closeSidebarDrawer();"'
+        + ' title="' + escapeHtml(label) + '">'
+        + '<span class="sidebar-icon" aria-hidden="true">' + wwIcon(item.icon) + '</span>'
+        + '<span class="sidebar-label">' + escapeHtml(label) + '</span>'
+        + (item.slug === 'incidents' ? '<span class="sidebar-badge" id="sidebarIncidentsBadge" style="display:none;"></span>' : '')
+        + '</button>';
+}
+
 function renderSidebar() {
     const sidebar = document.getElementById('sidebar');
     if (!sidebar || typeof CommandPalette === 'undefined') return;
     let html = '';
+    const lowFreq = [];
     CommandPalette._groups.forEach(function (group) {
         var groupLabel = t(group.title);
         if (groupLabel === group.title) groupLabel = group.title.split('.').pop();
         html += '<div class="sidebar-group">' + escapeHtml(groupLabel) + '</div>';
         group.items.forEach(function (item) {
-            // Slug fallback, matching the palette: the dictionary loads async,
-            // and a pre-ready render must degrade to "investigations", never
-            // to the raw "nav.dest.investigations" key.
-            var translated = t(item.label);
-            var label = translated === item.label ? item.slug : translated;
-            html += '<button type="button" class="sidebar-item" data-sidebar-slug="' + item.slug + '"'
-                + ' onclick="navigateTo(\'' + item.slug + '\'); closeSidebarDrawer();"'
-                + ' title="' + escapeHtml(label) + '">'
-                + '<span class="sidebar-icon" aria-hidden="true">' + wwIcon(item.icon) + '</span>'
-                + '<span class="sidebar-label">' + escapeHtml(label) + '</span>'
-                + (item.slug === 'incidents' ? '<span class="sidebar-badge" id="sidebarIncidentsBadge" style="display:none;"></span>' : '')
-                + '</button>';
+            if (item.lowFreq) { lowFreq.push(item); return; }
+            html += _sidebarItemHtml(item);
         });
     });
+    // Rarely-used tier: same buttons, same navigation, one fold away. Every
+    // slug still renders (palette↔sidebar parity is about reachability, not
+    // about all nineteen items competing at once). Open state persists.
+    if (lowFreq.length) {
+        var lfLabel = t('nav.lowfreq');
+        if (lfLabel === 'nav.lowfreq') lfLabel = 'more';
+        var open = false;
+        try { open = localStorage.getItem(SIDEBAR_LOWFREQ_OPEN_KEY) === '1'; } catch (e) { /* private mode */ }
+        html += '<details class="sidebar-lowfreq" id="sidebarLowfreq"' + (open ? ' open' : '') + '>'
+            + '<summary class="sidebar-item sidebar-lowfreq-summary">'
+            + '<span class="sidebar-icon" aria-hidden="true">' + wwIcon('chevron-down') + '</span>'
+            + '<span class="sidebar-label">' + escapeHtml(lfLabel) + ' (' + lowFreq.length + ')</span>'
+            + '</summary>'
+            + lowFreq.map(_sidebarItemHtml).join('')
+            + '</details>';
+    }
     html += '<button type="button" class="sidebar-collapse" id="sidebarCollapseBtn"'
         + ' data-i18n-aria-label="nav.collapse" aria-label="Collapse">'
         + wwIcon('chevron-left')
@@ -157,6 +181,12 @@ function renderSidebar() {
     sidebar.innerHTML = html;
     const collapseBtn = document.getElementById('sidebarCollapseBtn');
     if (collapseBtn) collapseBtn.addEventListener('click', toggleSidebarCollapsed);
+    const lf = document.getElementById('sidebarLowfreq');
+    if (lf) {
+        lf.addEventListener('toggle', function () {
+            try { localStorage.setItem(SIDEBAR_LOWFREQ_OPEN_KEY, lf.open ? '1' : ''); } catch (e) { /* private mode */ }
+        });
+    }
     updateSidebarActive(currentDestination);
 }
 
@@ -164,6 +194,13 @@ function updateSidebarActive(slug) {
     document.querySelectorAll('[data-sidebar-slug]').forEach(function (item) {
         item.classList.toggle('is-active', item.getAttribute('data-sidebar-slug') === slug);
     });
+    // An active destination must never hide inside the folded tier — losing
+    // the "where am I" highlight is worse than the fold.
+    var lfActive = document.querySelector('#sidebarLowfreq .sidebar-item.is-active');
+    if (lfActive) {
+        var lf = document.getElementById('sidebarLowfreq');
+        if (lf && !lf.open) lf.open = true;
+    }
 }
 
 function toggleSidebarCollapsed() {
@@ -205,6 +242,14 @@ function renderBreadcrumb(slug) {
 function recordDestination(slug) {
     if (!DESTINATIONS[slug]) return;
     currentDestination = slug;
+    // Per-destination usage counter (this is the one choke point every real
+    // navigation passes through). Feeds the adoption review with actual
+    // numbers; the server-side ledger only covers a handful of endpoints.
+    try {
+        var freq = JSON.parse(localStorage.getItem('ww-nav-freq') || '{}');
+        freq[slug] = Math.min((freq[slug] || 0) + 1, 99999);
+        localStorage.setItem('ww-nav-freq', JSON.stringify(freq));
+    } catch (e) { /* private mode; counting is best-effort */ }
     renderBreadcrumb(slug);
     updateSidebarActive(slug);
     const focus = pendingFocus ? '/' + encodeURIComponent(pendingFocus) : '';
