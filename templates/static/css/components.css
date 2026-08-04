@@ -3789,6 +3789,11 @@ body.sidebar-collapsed .sidebar-version { display: none; }
   transition: width 0.15s ease, transform 0.2s ease;
 }
 
+/* When the rail outgrows the viewport (e.g. the More tier expanded), it must
+   SCROLL — flex children default to shrink, which crushed the group labels
+   into clipped slivers before overflow-y ever engaged. */
+.sidebar > * { flex-shrink: 0; }
+
 /* Content shifts with the rail; nothing overlaps. */
 .container { margin-left: var(--sidebar-width); transition: margin-left 0.15s ease; }
 body.sidebar-collapsed .container { margin-left: var(--sidebar-collapsed-width); }
