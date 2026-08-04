@@ -3714,6 +3714,14 @@ body.sidebar-collapsed .sidebar { width: var(--sidebar-collapsed-width); }
   overflow: hidden;
 }
 
+/* Rarely-used tier: one fold at the end of the rail. The summary row reads
+   like an item, the marker rotates, and the folded items are plain items. */
+.sidebar-lowfreq { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+.sidebar-lowfreq-summary { list-style: none; cursor: pointer; color: var(--text-muted); }
+.sidebar-lowfreq-summary::-webkit-details-marker { display: none; }
+.sidebar-lowfreq-summary .sidebar-icon { transform: rotate(-90deg); transition: transform 0.15s ease; }
+.sidebar-lowfreq[open] .sidebar-lowfreq-summary .sidebar-icon { transform: rotate(0deg); }
+
 .sidebar-item,
 .sidebar-collapse {
   display: flex;

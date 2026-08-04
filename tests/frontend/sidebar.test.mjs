@@ -21,6 +21,7 @@ const items = [];
 globalThis.document = {
   getElementById: (id) => (id === 'sidebar' || id === 'sidebarCollapseBtn') ? el(id) : null,
   querySelectorAll: (sel) => sel === '[data-sidebar-slug]' ? items : [],
+  querySelector: () => null,
   body: { classList: { toggle: () => true, add(){}, remove(){} } },
 };
 globalThis.CommandPalette = new Function(paletteSrc + '; return CommandPalette;')();
@@ -38,6 +39,16 @@ check('4 个分组头', (html.match(/sidebar-group/g) || []).length === 4);
 check('分组已翻译', html.includes('收件箱') && html.includes('运维'));
 check('incidents 带徽章占位', html.includes('sidebarIncidentsBadge'));
 check('折叠按钮存在', html.includes('sidebarCollapseBtn'));
+
+// Rarely-used tier: every lowFreq slug still renders (parity is about
+// reachability), inside one collapsed <details> after the groups.
+check('低频层存在', html.includes('sidebarLowfreq'));
+const detailsHtml = html.slice(html.indexOf('<details'));
+for (const slug of ['sandbox', 'audit', 'integrations', 'kb', 'gaps']) {
+  check('低频层包含 ' + slug, detailsHtml.includes('data-sidebar-slug="' + slug + '"'));
+}
+check('主列表不再平铺低频项', !html.slice(0, html.indexOf('<details')).includes('data-sidebar-slug="sandbox"'));
+check('低频计数正确', html.includes('(5)'));
 check('点击项同时关抽屉', html.includes('closeSidebarDrawer()'));
 
 // active-state sync

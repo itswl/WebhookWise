@@ -44,11 +44,16 @@ const CommandPalette = (function () {
             items: [
                 { slug: 'rules', icon: 'filter', label: 'nav.dest.rules', keywords: 'forward rules routing targets 转发 规则 路由' },
                 { slug: 'silences', icon: 'volume-x', label: 'nav.dest.silences', keywords: 'silence mute maintenance 静音 屏蔽 维护窗' },
-                { slug: 'sandbox', icon: 'zap', label: 'nav.dest.sandbox', keywords: 'sandbox test payload dry run 沙箱 测试' },
-                { slug: 'audit', icon: 'history', label: 'nav.dest.audit', keywords: 'audit rule history 审计 变更' },
+                // lowFreq: rendered in the sidebar's collapsed "rarely used"
+                // tier (palette search unaffected). Seeded from the 6-week
+                // adoption ledger + operator behaviour; the ww-nav-freq
+                // counter recordDestination keeps will let the Aug review
+                // re-tier on real numbers instead of judgement.
+                { slug: 'sandbox', icon: 'zap', label: 'nav.dest.sandbox', keywords: 'sandbox test payload dry run 沙箱 测试', lowFreq: true },
+                { slug: 'audit', icon: 'history', label: 'nav.dest.audit', keywords: 'audit rule history 审计 变更', lowFreq: true },
                 { slug: 'ingress', icon: 'inbox', label: 'nav.dest.ingress', keywords: 'inbound setup webhook source 接入 来源' },
                 { slug: 'quality', icon: 'gauge', label: 'nav.dest.quality', keywords: 'alert quality schema 质量 数据质量' },
-                { slug: 'integrations', icon: 'link', label: 'nav.dest.integrations', keywords: 'integrations feishu lark 集成 飞书' },
+                { slug: 'integrations', icon: 'link', label: 'nav.dest.integrations', keywords: 'integrations feishu lark 集成 飞书', lowFreq: true },
             ],
         },
         {
@@ -56,8 +61,8 @@ const CommandPalette = (function () {
             items: [
                 { slug: 'actions', icon: 'wrench', label: 'nav.dest.actions', keywords: 'action center queue todo 行动 待处理' },
                 { slug: 'noise', icon: 'activity', label: 'nav.dest.noise', keywords: 'noise reduction dedup 降噪 噪音' },
-                { slug: 'kb', icon: 'book-open', label: 'nav.dest.kb', keywords: 'knowledge base drafts runbook 知识库 草稿' },
-                { slug: 'gaps', icon: 'lightbulb', label: 'nav.dest.gaps', keywords: 'knowledge gaps missing 知识缺口' },
+                { slug: 'kb', icon: 'book-open', label: 'nav.dest.kb', keywords: 'knowledge base drafts runbook 知识库 草稿', lowFreq: true },
+                { slug: 'gaps', icon: 'lightbulb', label: 'nav.dest.gaps', keywords: 'knowledge gaps missing 知识缺口', lowFreq: true },
                 { slug: 'settings', icon: 'sliders', label: 'nav.dest.settings', keywords: 'runtime settings policy config 设置 配置 策略' },
             ],
         },

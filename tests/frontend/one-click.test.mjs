@@ -35,7 +35,7 @@ const harness = new Function('window', 'document', 'console', 'events',
   return { navigateTo, get hash() { return window.location.hash; } };
 `);
 const M = harness(winStub,
-  { hidden: false, getElementById: () => null, querySelectorAll: () => [], body: { classList: { toggle(){}, add(){}, remove(){} } } },
+  { hidden: false, getElementById: () => null, querySelectorAll: () => [], querySelector: () => null, body: { classList: { toggle(){}, add(){}, remove(){} } } },
   { warn: () => {}, log: () => {} }, events,
   (v) => { events.push('ib:' + v); }, (v) => { events.push('op:' + v); });
 

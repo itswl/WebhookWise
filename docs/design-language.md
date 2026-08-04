@@ -98,5 +98,7 @@ enforcing test, it is named; treat a red contract as the design system talking.
   ones for patterns a class already covers.
 - 17 raw font-size values remain in CSS/HTML under the ratchet (bound: 24,
   lower it as they migrate).
-- The light theme is functional but tuned second; visual QA happens on dark.
+- The light theme passed a screenshot review (overview/alerts/rules, 2026-08-04)
+  after the restraint pass: no known visual gaps. Dark remains the default and
+  the reference; light gets re-checked when tokens change, not per-PR.
 - Spacing tokens exist but are not yet contract-enforced.
