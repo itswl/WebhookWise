@@ -104,11 +104,11 @@ var DecisionTraceModule = (function () {
             html += '<div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem;">';
             // "All" chip resets the filter.
             var allActive = currentSkipCode === '' && currentOutcome === '';
-            html += '<button class="btn dt-chip' + (allActive ? ' active' : '') + '" onclick="DecisionTraceModule.filterByOutcome(\'\')">' + t('common.all') + '</button>';
+            html += '<button class="btn dt-chip' + (allActive ? ' active' : '') + '" data-act="DecisionTraceModule.filterByOutcome" data-args="\'\'">' + t('common.all') + '</button>';
             codes.sort(function (a, b) { return (skipBreakdown[b] || 0) - (skipBreakdown[a] || 0); });
             codes.forEach(function (code) {
                 var active = currentSkipCode === code;
-                html += '<button class="btn dt-chip' + (active ? ' active' : '') + '" onclick="DecisionTraceModule.filterBySkipCode(\'' + escapeHtml(code) + '\')">' +
+                html += '<button class="btn dt-chip' + (active ? ' active' : '') + '" data-act="DecisionTraceModule.filterBySkipCode" data-args="\'' + escapeHtml(code) + '\'">' +
                     skipCodeLabel(code) + ' <strong>' + formatNumber(skipBreakdown[code]) + '</strong></button>';
             });
             html += '</div>';
@@ -374,7 +374,7 @@ var DecisionTraceModule = (function () {
         if (tgt.last_error) rows += kvRow(wwIcon('alert-triangle') + ' ' + t('dt.delivery.error'), '<span style="color: var(--danger);">' + escapeHtml(tgt.last_error) + '</span>');
         if (tgt.retryable && DT_ENABLE_RETRY) {
             rows += '<div class="dt-step-row"><div class="dt-step-name"></div><div class="dt-step-value">' +
-                '<button class="btn btn-sm" onclick="DecisionTraceModule.retryDelivery(' + tgt.outbox_id + ')">' + wwIcon('refresh') + ' ' + t('dt.delivery.retry') + '</button></div></div>';
+                '<button class="btn btn-sm" data-act="DecisionTraceModule.retryDelivery" data-args="' + tgt.outbox_id + '">' + wwIcon('refresh') + ' ' + t('dt.delivery.retry') + '</button></div></div>';
         }
         return '<div class="dt-chain" style="padding-top: 0;">' + rows + '</div>';
     }
@@ -423,12 +423,12 @@ var DecisionTraceModule = (function () {
             .filter(Boolean).join(' · ');
 
         return '' +
-            '<div class="da-summary" onclick="DecisionTraceModule.toggleExpand(' + trace.id + ')">' +
+            '<div class="da-summary" data-act="DecisionTraceModule.toggleExpand" data-args="' + trace.id + '">' +
                 '<div class="da-summary-main">' +
                     '<div class="da-summary-meta-row">' +
                         parts.join(' ') +
                         '<span class="da-alert-title"><a href="#/alerts/' + encodeURIComponent(trace.webhook_event_id) + '"'
-                          + ' onclick="event.stopPropagation(); event.preventDefault(); openAlert(' + Number(trace.webhook_event_id) + ');"'
+                          + ' data-stop="1" data-prevent="1" data-act="openAlert" data-args="' + Number(trace.webhook_event_id) + '"'
                           + ' style="color: inherit; text-decoration: none;">' + wwIcon('bell') + ' '
                           + t('dt.alertNumber', { n: escapeHtml(trace.webhook_event_id) }) + '</a></span>' +
                         (function () {
@@ -606,7 +606,7 @@ var DecisionTraceModule = (function () {
             var eid = Number(item.webhook_event_id);
             var time = formatTime(item.created_at);
             var icon = (typeof getAlertIcon === 'function') ? getAlertIcon(item.importance) : '';
-            html += '<div id="dt-dis-' + eid + '" class="da-card" style="cursor: pointer;" onclick="DecisionTraceModule.toggleDisagreement(' + eid + ')">' +
+            html += '<div id="dt-dis-' + eid + '" class="da-card" style="cursor: pointer;" data-act="DecisionTraceModule.toggleDisagreement" data-args="' + eid + '">' +
                 '<div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">' +
                     '<span class="badge badge-outline" style="font-size: 0.7rem;">' + skipCodeLabel(item.skip_code) + '</span>' +
                     '<span style="font-weight: 500;">' + icon + ' ' + escapeHtml(item.source || '—') + '</span>' +
@@ -614,7 +614,7 @@ var DecisionTraceModule = (function () {
                 '</div>' +
                 // stopPropagation so clicks inside the expanded chain (e.g. a retry
                 // button) don't bubble up and collapse the row.
-                '<div id="dt-dis-details-' + eid + '" style="display: none; margin-top: 0.75rem;" onclick="event.stopPropagation()"></div>' +
+                '<div id="dt-dis-details-' + eid + '" style="display: none; margin-top: 0.75rem;" data-stop="1"></div>' +
             '</div>';
         });
         if (data && data.truncated) {

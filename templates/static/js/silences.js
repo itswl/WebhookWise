@@ -36,7 +36,7 @@ async function loadSilences() {
             container.innerHTML = `
                 <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                     <p>${wwIcon('x')} ${t('common.loadFailed')}: ${escapeHtml(result.error || t('common.unknownError'))}</p>
-                    <button class="btn" onclick="loadSilences()" style="margin-top: 10px;">${t('common.retry')}</button>
+                    <button class="btn" data-act="loadSilences" data-args="" style="margin-top: 10px;">${t('common.retry')}</button>
                 </div>
             `;
         }
@@ -45,7 +45,7 @@ async function loadSilences() {
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                 <p>${wwIcon('x')} ${t('common.loadFailed')}: ${escapeHtml(error.message || String(error))}</p>
-                <button class="btn" onclick="loadSilences()" style="margin-top: 10px;">${t('common.retry')}</button>
+                <button class="btn" data-act="loadSilences" data-args="" style="margin-top: 10px;">${t('common.retry')}</button>
             </div>
         `;
     }
@@ -231,7 +231,7 @@ function renderSilenceCard(silence) {
     const suppressed = Number(silence.suppressed_count || 0);
     const suppressedBadge = suppressed > 0
         ? '<button type="button" class="badge badge-success badge-drill" title="' + escapeHtml(t('silences.roi.tooltip')) + '"' +
-            ' onclick="navigateTo(\'trace\'); DecisionTraceModule.filterBySilence(' + Number(silence.id) + ');">' +
+            ' data-act="drillSilenceToTrace" data-args="' + Number(silence.id) + '">' +
             t('silences.roi.suppressed', { count: suppressed }) + '</button>'
         : (isActive
             ? '<span class="badge badge-danger" title="' + escapeHtml(t('silences.roi.zombieTooltip')) + '">' +
@@ -291,9 +291,9 @@ function renderSilenceCard(silence) {
             </div>
 
             <div class="silence-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1rem; border-top: 1px solid var(--border);">
-                ${isActive ? '<button class="btn" onclick="liftSilence(' + silence.id + ')" style="color: var(--warning); border-color: rgba(217,119,6,0.25); background: var(--warning-bg); font-weight: 600;">' + t('silences.action.lift') + '</button>' : ''}
-                <button class="btn" onclick="showSilenceForm(${silence.id})" style="font-weight: 600;">${wwIcon('pencil')} ${t('silences.action.edit')}</button>
-                <button class="btn" onclick="deleteSilence(${silence.id})" style="color: var(--danger); border-color: rgba(225,29,72,0.25); background: var(--danger-bg); font-weight: 600;">${wwIcon('trash')} ${t('silences.action.delete')}</button>
+                ${isActive ? '<button class="btn" data-act="liftSilence" data-args="' + silence.id + '" style="color: var(--warning); border-color: rgba(217,119,6,0.25); background: var(--warning-bg); font-weight: 600;">' + t('silences.action.lift') + '</button>' : ''}
+                <button class="btn" data-act="showSilenceForm" data-args="${silence.id}" style="font-weight: 600;">${wwIcon('pencil')} ${t('silences.action.edit')}</button>
+                <button class="btn" data-act="deleteSilence" data-args="${silence.id}" style="color: var(--danger); border-color: rgba(225,29,72,0.25); background: var(--danger-bg); font-weight: 600;">${wwIcon('trash')} ${t('silences.action.delete')}</button>
             </div>
         </div>
     `;
@@ -483,6 +483,15 @@ async function saveSilence() {
  * Lift (deactivate) a silence
  * @param {number} id - silence ID
  */
+/** Silence ROI badge drill: land on the trace list scoped to this silence.
+    One name because a data attribute must not carry a call chain. */
+function drillSilenceToTrace(silenceId) {
+    navigateTo('trace');
+    if (typeof DecisionTraceModule !== 'undefined' && typeof DecisionTraceModule.filterBySilence === 'function') {
+        DecisionTraceModule.filterBySilence(Number(silenceId));
+    }
+}
+
 async function liftSilence(id) {
     if (!confirm(t('silences.confirm.lift'))) {
         return;
@@ -655,7 +664,7 @@ async function loadMaintenanceWindows() {
             container.innerHTML = `
                 <div class="empty-state" style="text-align: center; padding: 30px; color: var(--text-secondary);">
                     <p>${wwIcon('x')} ${t('common.loadFailed')}: ${escapeHtml(result.error || t('common.unknownError'))}</p>
-                    <button class="btn" onclick="loadMaintenanceWindows()" style="margin-top: 10px;">${t('common.retry')}</button>
+                    <button class="btn" data-act="loadMaintenanceWindows" data-args="" style="margin-top: 10px;">${t('common.retry')}</button>
                 </div>
             `;
         }
@@ -664,7 +673,7 @@ async function loadMaintenanceWindows() {
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 30px; color: var(--text-secondary);">
                 <p>${wwIcon('x')} ${t('common.loadFailed')}: ${escapeHtml(error.message || String(error))}</p>
-                <button class="btn" onclick="loadMaintenanceWindows()" style="margin-top: 10px;">${t('common.retry')}</button>
+                <button class="btn" data-act="loadMaintenanceWindows" data-args="" style="margin-top: 10px;">${t('common.retry')}</button>
             </div>
         `;
     }
@@ -763,8 +772,8 @@ function renderMaintenanceWindows(list) {
             '<td style="' + td + ' color: var(--text-secondary);">' + escapeHtml(formatMwMatch(mw)) + '</td>' +
             '<td style="' + td + '">' + statusBadge + '</td>' +
             '<td style="' + td + ' text-align: right; white-space: nowrap;">' +
-            '<button class="btn btn-sm" onclick="showMaintenanceWindowForm(' + mw.id + ')" style="font-weight: 600;">' + t('silences.action.edit') + '</button> ' +
-            '<button class="btn btn-sm" onclick="deleteMaintenanceWindow(' + mw.id + ')" style="color: var(--danger); border-color: rgba(225,29,72,0.25); background: var(--danger-bg); font-weight: 600;">' + t('silences.action.delete') + '</button>' +
+            '<button class="btn btn-sm" data-act="showMaintenanceWindowForm" data-args="' + mw.id + '" style="font-weight: 600;">' + t('silences.action.edit') + '</button> ' +
+            '<button class="btn btn-sm" data-act="deleteMaintenanceWindow" data-args="' + mw.id + '" style="color: var(--danger); border-color: rgba(225,29,72,0.25); background: var(--danger-bg); font-weight: 600;">' + t('silences.action.delete') + '</button>' +
             '</td></tr>';
     });
     html += '</tbody></table></div>';

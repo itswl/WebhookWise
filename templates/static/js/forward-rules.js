@@ -30,7 +30,7 @@ async function loadForwardRules() {
             container.innerHTML = `
                 <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                     <p>${wwIcon('x')} ${t('common.loadFailed')}: ${escapeHtml(result.error || t('common.unknownError'))}</p>
-                    <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">${t('common.retry')}</button>
+                    <button class="btn" data-act="loadForwardRules" data-args="" style="margin-top: 10px;">${t('common.retry')}</button>
                 </div>
             `;
         }
@@ -39,7 +39,7 @@ async function loadForwardRules() {
         container.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                 <p>${wwIcon('x')} ${t('common.loadFailed')}: ${escapeHtml(error.message || String(error))}</p>
-                <button class="btn" onclick="loadForwardRules()" style="margin-top: 10px;">${t('common.retry')}</button>
+                <button class="btn" data-act="loadForwardRules" data-args="" style="margin-top: 10px;">${t('common.retry')}</button>
             </div>
         `;
     }
@@ -219,13 +219,13 @@ function renderRuleCard(rule) {
             ${lastMatched}
 
             <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid var(--border);">
-                <button class="btn" onclick="testRule(${rule.id})" style="color: var(--primary); border-color: var(--primary-light); background: transparent; font-weight: 600;">
+                <button class="btn" data-act="testRule" data-args="${rule.id}" style="color: var(--primary); border-color: var(--primary-light); background: transparent; font-weight: 600;">
                     ${wwIcon('flask')} ${t('rules.action.test')}
                 </button>
-                <button class="btn" onclick="showRuleForm(${rule.id})" style="font-weight: 600;">
+                <button class="btn" data-act="showRuleForm" data-args="${rule.id}" style="font-weight: 600;">
                     ${wwIcon('pencil')} ${t('rules.action.edit')}
                 </button>
-                <button class="btn" onclick="deleteRule(${rule.id})" style="color: var(--danger); border-color: transparent; background: transparent;">
+                <button class="btn" data-act="deleteRule" data-args="${rule.id}" style="color: var(--danger); border-color: transparent; background: transparent;">
                     ${wwIcon('trash')} ${t('rules.action.delete')}
                 </button>
             </div>

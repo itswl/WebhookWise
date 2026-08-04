@@ -290,7 +290,7 @@ const RuntimeSettingsModule = (function () {
         } catch (error) {
             container.innerHTML = '<div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">' +
                 '<p>' + escapeHtml(t('common.loadFailed')) + ': ' + escapeHtml(error.message || String(error)) + '</p>' +
-                '<button class="btn" onclick="RuntimeSettingsModule.load()" style="margin-top: 10px;">' + t('common.retry') + '</button></div>';
+                '<button class="btn" data-act="RuntimeSettingsModule.load" data-args="" style="margin-top: 10px;">' + t('common.retry') + '</button></div>';
         }
     }
 

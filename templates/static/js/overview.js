@@ -98,7 +98,7 @@ const OverviewModule = {
         html += this._card(wwIcon('inbox'), t('overview.card.processed'), fmt(d.total) + (totalDelta ? ' <span style="font-size:0.7em;color:' + (prev.total_delta_pct > 0 ? 'var(--danger)' : 'var(--success)') + ';">' + totalDelta + '</span>' : ''), t('overview.card.processedTrend'), 'var(--primary)');
         html += this._card(wwIcon('check'), t('overview.card.forwardRate'), (d.forward_rate || 0).toFixed(1) + '%',
             t('overview.card.forwardRateTrend', { fwd: fmt(d.forwarded), skip: fmt(d.skipped) }), 'var(--success)',
-            "OverviewModule.drillToOutcome('forwarded')");
+            { act: 'OverviewModule.drillToOutcome', args: 'forwarded' });
         // The one stateful headline: a degraded delivery rate must not sit
         // there looking as calm as a healthy one.
         var rateStr = delivery.success_rate != null ? delivery.success_rate.toFixed(1) + '%' : '—';
@@ -110,11 +110,11 @@ const OverviewModule = {
             rateStr,
             t('overview.card.deliveryRateTrend', { ok: fmt(delivery.delivered || 0), fail: fmt(delivery.failed || 0) }),
             null,
-            "OverviewModule.drillToOutcome('forwarded')");
+            { act: 'OverviewModule.drillToOutcome', args: 'forwarded' });
         if (ai) {
             html += this._card(wwIcon('dollar'), t('overview.card.aiCost'), '$' + (Number(cost) || 0).toFixed(4),
                 t('overview.card.aiCostTrend', { n: fmt(aiCalls || 0) }), 'var(--warning)',
-                "navigateTo('cost')");
+                { act: 'navigateTo', args: 'cost' });
         }
         html += '</div>';
 
@@ -152,7 +152,7 @@ const OverviewModule = {
             var impEmoji = { high: '<span class="ww-dot ww-dot-danger"></span>', medium: '<span class="ww-dot ww-dot-warning"></span>', low: '<span class="ww-dot ww-dot-success"></span>' };
             for (var i = 0; i < Math.min(incidents.length, 5); i++) {
                 var inc = incidents[i];
-                html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="openIncident(' + Number(inc.id) + ')">';
+                html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" data-act="openIncident" data-args="' + Number(inc.id) + '">';
                 html += '<div style="flex:1; min-width:0;">';
                 html += '<div style="font-weight:500; font-size:0.9rem;">' + escapeHtml(inc.title) + '</div>';
                 html += '<div style="font-size:0.76rem; color:var(--text-muted);">' + escapeHtml(inc.source || '') + ' · ' + inc.alert_count + ' alerts · ' + (impEmoji[inc.top_importance] || '') + (inc.top_importance || '') + '</div>';
@@ -210,7 +210,7 @@ const OverviewModule = {
             // sub-view, pre-filtered to this skip reason.
             html += '<span class="badge badge-outline" role="button" tabindex="0" style="font-size: 0.8rem; cursor: pointer;"' +
                 ' title="' + escapeHtml(t('overview.skipChip.drill')) + '"' +
-                ' onclick="OverviewModule.drillToSkip(\'' + escapeHtml(k) + '\')">' +
+                ' data-act="OverviewModule.drillToSkip" data-args="\'' + escapeHtml(k) + '\'">' +
                 label(k) + ' <strong>' + fmt(skip[k]) + '</strong></span>';
         });
         html += '</div></div>';
@@ -280,7 +280,11 @@ const OverviewModule = {
     // below these cards have drilled in for a while; the headline numbers,
     // which are what people look at first, did not.
     _card(icon, label, value, trend, color, onClick) {
-        const clickable = onClick ? ' onclick="' + onClick + '" ' : '';
+        // Action descriptor, not a code string: {act, args} becomes data
+        // attributes the global dispatcher resolves against its allowlist.
+        const clickable = onClick
+            ? ' data-act="' + escapeHtml(onClick.act) + '" data-args="' + escapeHtml(String(onClick.args === undefined ? '' : onClick.args)) + '" '
+            : '';
         return '<div class="stat-card"' + clickable + ' style="'
             + (onClick ? 'cursor:pointer;' : '') + '">' +
             '<div class="stat-label">' + icon + ' ' + label + '</div>' +

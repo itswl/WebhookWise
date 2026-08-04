@@ -14,7 +14,7 @@
 function _alertLink(id, label) {
     if (!id) return escapeHtml(String(label == null ? '' : label));
     return '<a href="#/alerts/' + encodeURIComponent(id) + '"'
-        + ' onclick="event.preventDefault(); openAlert(' + Number(id) + ');"'
+        + ' data-prevent="1" data-act="openAlert" data-args="' + Number(id) + '"'
         + ' style="color: var(--primary); text-decoration: none;">'
         + escapeHtml(String(label == null ? '#' + id : label)) + '</a>';
 }
@@ -1232,7 +1232,7 @@ const AlertsModule = {
             if (connectorHtml) html += connectorHtml;
             html += '<div style="font-size:0.8rem; font-weight:600; margin-bottom:0.15rem;">';
             if (isAnchor) html += '';
-            html += '<a href="javascript:void(0)" onclick="AlertsModule._scrollToAlert(' + ev.id + ')" style="color:var(--text-main); text-decoration:none;">#' + ev.id + '</a>';
+            html += '<a href="javascript:void(0)" data-act="AlertsModule._scrollToAlert" data-args="' + ev.id + '" style="color:var(--text-main); text-decoration:none;">#' + ev.id + '</a>';
             html += ' <span style="color:var(--text-muted); font-weight:400;">' + escapeHtml(ev.source) + '</span>';
             html += ' <span>' + (impEmoji[ev.importance] || '<span class="ww-dot ww-dot-muted"></span>') + ' ' + escapeHtml(ev.importance) + '</span>';
             if (ev.is_duplicate) html += ' <span class="badge badge-outline" style="font-size:0.6rem;">' + t('alerts.status.duplicate') + '</span>';
@@ -1288,7 +1288,7 @@ const AlertsModule = {
             if (records.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted);">' +
                     '<p>' + t('alerts.deep.noRecords') + '</p>' +
-                    '<button class="btn btn-primary" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">' + wwIcon('flask') + ' ' + t('alerts.deep.analyzeNow') + '</button>' +
+                    '<button class="btn btn-primary" data-act="AlertsModule.deepAnalyzeAlert" data-args="' + webhookId + '">' + wwIcon('flask') + ' ' + t('alerts.deep.analyzeNow') + '</button>' +
                     '</div>';
                 return;
             }
@@ -1373,7 +1373,7 @@ const AlertsModule = {
 
             // Footer: re-analyze button
             html += '<div style="text-align:center; margin-top:12px;">';
-            html += '<button class="btn btn-sm" onclick="window.alertsModule.deepAnalyzeAlert(' + webhookId + ')">' + wwIcon('flask') + ' ' + t('alerts.deep.analyzeAgain') + '</button>';
+            html += '<button class="btn btn-sm" data-act="AlertsModule.deepAnalyzeAlert" data-args="' + webhookId + '">' + wwIcon('flask') + ' ' + t('alerts.deep.analyzeAgain') + '</button>';
             html += '</div>';
 
             container.innerHTML = html;

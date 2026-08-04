@@ -341,12 +341,12 @@ var DeepAnalysesModule = (function() {
         }
 
         let html = `
-            <div class="da-summary" onclick="DeepAnalysesModule.toggleExpand(${record.id})">
+            <div class="da-summary" data-act="DeepAnalysesModule.toggleExpand" data-args="${record.id}">
                 <div class="da-summary-main">
                     <div class="da-summary-meta-row">
                         <span class="badge ${status.class}" style="display: flex; align-items: center; font-size: 0.7rem;">${status.icon} ${status.label}</span>
                         ${engineLabel}
-                        <span class="da-alert-title"><a href="#/alerts/${encodeURIComponent(record.webhook_event_id)}" onclick="event.stopPropagation(); event.preventDefault(); openAlert(${Number(record.webhook_event_id)});" style="color: inherit; text-decoration: none;">${escapeHtml(t('deep.alertNumber', { n: record.webhook_event_id }))}</a></span>
+                        <span class="da-alert-title"><a href="#/alerts/${encodeURIComponent(record.webhook_event_id)}" data-stop="1" data-prevent="1" data-act="openAlert" data-args="${Number(record.webhook_event_id)}" style="color: inherit; text-decoration: none;">${escapeHtml(t('deep.alertNumber', { n: record.webhook_event_id }))}</a></span>
                         <span class="da-source">${escapeHtml(source)}</span>
                         ${alertTypeTag}
                     </div>
@@ -425,16 +425,16 @@ var DeepAnalysesModule = (function() {
         detailsHtml += `<div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); display: flex; gap: 1rem; flex-wrap: wrap;">`;
 
         if (record.status === 'completed') {
-            detailsHtml += `<button class="btn" style="background: var(--bg-subtle); border-color: var(--border); color: var(--text-main);" onclick="DeepAnalysesModule.forwardResult(${record.id})">${escapeHtml(t('deep.btn.pushResult'))}</button>`;
+            detailsHtml += `<button class="btn" style="background: var(--bg-subtle); border-color: var(--border); color: var(--text-main);" data-act="DeepAnalysesModule.forwardResult" data-args="${record.id}">${escapeHtml(t('deep.btn.pushResult'))}</button>`;
         }
         if (record.status === 'failed' || record.status === 'pending') {
-            detailsHtml += `<button class="btn btn-primary" onclick="DeepAnalysesModule.retryAnalysis(${record.id})">${escapeHtml(t('deep.btn.refetchResult'))}</button>`;
+            detailsHtml += `<button class="btn btn-primary" data-act="DeepAnalysesModule.retryAnalysis" data-args="${record.id}">${escapeHtml(t('deep.btn.refetchResult'))}</button>`;
         }
-        detailsHtml += `<button class="btn" style="border-color: var(--success); color: var(--success); background: var(--success-bg);" onclick="DeepAnalysesModule.reanalyzeFromDeepAnalysis(${record.webhook_event_id})">${escapeHtml(t('deep.btn.freshAnalysis'))}</button>`;
+        detailsHtml += `<button class="btn" style="border-color: var(--success); color: var(--success); background: var(--success-bg);" data-act="DeepAnalysesModule.reanalyzeFromDeepAnalysis" data-args="${record.webhook_event_id}">${escapeHtml(t('deep.btn.freshAnalysis'))}</button>`;
 
         // Raw Data Toggle
         const rawJsonId = `raw-da-${record.id}`;
-        detailsHtml += `<button class="btn" onclick="DeepAnalysesModule.toggleDebugPayload(${record.id})">${escapeHtml(t('deep.btn.debugPayload'))}</button>`;
+        detailsHtml += `<button class="btn" data-act="DeepAnalysesModule.toggleDebugPayload" data-args="${record.id}">${escapeHtml(t('deep.btn.debugPayload'))}</button>`;
 
         detailsHtml += `</div>`;
 

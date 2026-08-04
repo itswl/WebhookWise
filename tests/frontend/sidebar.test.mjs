@@ -58,7 +58,9 @@ for (const slug of ['sandbox', 'audit', 'integrations', 'kb', 'gaps']) {
 check('主列表不再平铺低频项', !html.slice(0, html.indexOf('<details')).includes('data-sidebar-slug="sandbox"'));
 check('低频计数正确', html.includes('(5)'));
 check('版本脚注渲染', html.includes('sidebar-version') && html.includes('v3.6.1'));
-check('点击项同时关抽屉', html.includes('closeSidebarDrawer()'));
+// Navigation + drawer dismissal now travel as ONE dispatched action name
+// (markup carries no call chain since the CSP burn-down).
+check('点击项走派发器', html.includes('data-act="navigateFromSidebar"'));
 
 // active-state sync
 const mk = (slug) => ({ _a: false, getAttribute: () => slug, classList: { toggle(cls, on) { if (cls === 'is-active') this._on = on; } } });
