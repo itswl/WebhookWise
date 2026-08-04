@@ -37,7 +37,7 @@
                 <span class="trigger-hint" aria-hidden="true">&#8984;K</span>
             </button>
             <span id="incidentsBadge" class="inbox-badge" style="display:none;"
-                  role="button" tabindex="0" onclick="navigateTo('incidents')"
+                  role="button" tabindex="0"
                   data-i18n-title="nav.tab.incidents" title="Incidents"></span>
             <div class="nav-actions">
                 <span class="nav-status-dot" data-i18n-title="nav.status.running" title="Service running" aria-label="Service running" role="img"></span>
@@ -48,12 +48,12 @@
                 <button class="btn btn-icon" id="refreshBtn" type="button" data-i18n-title="nav.refresh" title="Refresh" data-i18n-aria-label="nav.refresh" aria-label="Refresh">
                     <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>
                 </button>
-                <button class="btn btn-icon" id="authBtn" onclick="openAuthModal()" data-i18n-title="nav.credentials" title="Credentials" data-i18n-aria-label="nav.credentials" aria-label="Credentials">
+                <button class="btn btn-icon" id="authBtn" data-i18n-title="nav.credentials" title="Credentials" data-i18n-aria-label="nav.credentials" aria-label="Credentials">
                     <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
                     <span id="authBtnText" class="sr-only" data-i18n="nav.credentials">Credentials</span>
                 </button>
-                <button class="btn btn-icon btn-lang" id="langToggleBtn" type="button" onclick="I18N.toggleLang()" data-i18n="nav.langToggle" data-i18n-title="nav.langToggleAria" title="Switch language to Chinese" data-i18n-aria-label="nav.langToggleAria" aria-label="Switch language to Chinese">中文</button>
-                <button class="btn btn-icon" id="themeToggleBtn" type="button" onclick="toggleTheme()" title="Toggle Theme" aria-label="Toggle Theme">
+                <button class="btn btn-icon btn-lang" id="langToggleBtn" type="button" data-i18n="nav.langToggle" data-i18n-title="nav.langToggleAria" title="Switch language to Chinese" data-i18n-aria-label="nav.langToggleAria" aria-label="Switch language to Chinese">中文</button>
+                <button class="btn btn-icon" id="themeToggleBtn" type="button" title="Toggle Theme" aria-label="Toggle Theme">
                     <span id="themeToggleIcon"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></span>
                 </button>
             </div>
@@ -114,7 +114,7 @@
                     </div>
                     <div class="filter-item">
                         <label class="filter-label sr-only" for="importanceFilter" data-i18n="alerts.filter.priority">Priority</label>
-                        <select class="filter-input" id="importanceFilter" onchange="filterAlerts()">
+                        <select class="filter-input" id="importanceFilter">
                             <option value="" data-i18n="alerts.filter.allPriority">All priorities</option>
                             <option value="high" data-i18n="common.high">High</option>
                             <option value="medium" data-i18n="common.medium">Medium</option>
@@ -123,7 +123,7 @@
                     </div>
                     <div class="filter-item">
                         <label class="filter-label sr-only" for="sourceFilter" data-i18n="alerts.filter.source">Source</label>
-                        <select class="filter-input" id="sourceFilter" onchange="filterAlerts()">
+                        <select class="filter-input" id="sourceFilter">
                             <option value="" data-i18n="alerts.filter.allSource">All sources</option>
                             <option value="volcengine" data-i18n="source.volcengine">Volcengine</option>
                             <option value="aliyun" data-i18n="source.aliyun">Alibaba Cloud</option>
@@ -132,7 +132,7 @@
                     </div>
                     <div class="filter-item">
                         <label class="filter-label sr-only" for="duplicateFilter" data-i18n="alerts.filter.status">Status</label>
-                        <select class="filter-input" id="duplicateFilter" onchange="filterAlerts()">
+                        <select class="filter-input" id="duplicateFilter">
                             <option value="" data-i18n="alerts.filter.allStatus">All statuses</option>
                             <option value="original" data-i18n="alerts.filter.original">Original</option>
                             <option value="duplicate" data-i18n="alerts.filter.duplicate">Duplicate</option>
@@ -140,7 +140,7 @@
                     </div>
                     <div class="filter-item">
                         <label class="filter-label sr-only" for="processingStatusFilter" data-i18n="alerts.filter.processingStatus">Processing Status</label>
-                        <select class="filter-input" id="processingStatusFilter" onchange="filterAlerts()">
+                        <select class="filter-input" id="processingStatusFilter">
                             <option value="" data-i18n="alerts.filter.allProcessing">All processing states</option>
                             <option value="received" data-i18n="alerts.status.received">Received</option>
                             <option value="analyzing" data-i18n="alerts.status.analyzing">Analyzing</option>
@@ -176,13 +176,13 @@
                     <span data-i18n="alerts.page.label">Page</span> <strong id="currentPageNum">1</strong> / <strong id="totalPages">1</strong>, <strong id="totalCount2">0</strong> <span data-i18n="alerts.page.totalSuffix">total</span>
                 </div>
                 <div class="pagination-buttons">
-                    <button id="firstPage" onclick="goToPage(1)" data-i18n="alerts.page.first">First</button>
-                    <button id="prevPage" onclick="goToPage('prev')" data-i18n="alerts.page.prev">Previous</button>
-                    <button id="nextPage" onclick="goToPage('next')" data-i18n="alerts.page.next">Next</button>
-                    <button id="lastPage" onclick="goToPage('last')" data-i18n="alerts.page.last">Last</button>
-                    <button id="loadMoreBtn" onclick="loadMoreWebhooks()" style="display: none;" data-i18n="alerts.page.loadMore">Load 200 more</button>
+                    <button id="firstPage" data-i18n="alerts.page.first">First</button>
+                    <button id="prevPage" data-i18n="alerts.page.prev">Previous</button>
+                    <button id="nextPage" data-i18n="alerts.page.next">Next</button>
+                    <button id="lastPage" data-i18n="alerts.page.last">Last</button>
+                    <button id="loadMoreBtn" style="display: none;" data-i18n="alerts.page.loadMore">Load 200 more</button>
                 </div>
-                <select class="filter-input" id="pageSize" onchange="changePageSize()" style="width: auto;">
+                <select class="filter-input" id="pageSize" style="width: auto;">
                     <option value="10" data-i18n="alerts.page.perPage10">10 / page</option>
                     <option value="20" selected data-i18n="alerts.page.perPage20">20 / page</option>
                     <option value="50" data-i18n="alerts.page.perPage50">50 / page</option>
@@ -236,14 +236,14 @@
                         <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="incidents.subtitle">Related alerts auto-grouped into operational incidents. Active incidents are still receiving new alerts; quiet incidents are ready for review.</p>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <input type="text" id="incidentSearchInput" placeholder="Search incidents..." oninput="IncidentsModule.search()" style="width:180px; padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);" data-i18n-placeholder="incidents.searchPlaceholder">
-                        <select id="incidentStatusFilter" onchange="IncidentsModule.toggleStatus()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
+                        <input type="text" id="incidentSearchInput" placeholder="Search incidents..." style="width:180px; padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);" data-i18n-placeholder="incidents.searchPlaceholder">
+                        <select id="incidentStatusFilter" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
                             <option value="">All</option>
                             <option value="active"><svg class="icon" aria-hidden="true"><use href="#i-flame"/></svg> Active</option>
                             <option value="quiet"><svg class="icon" aria-hidden="true"><use href="#i-volume-x"/></svg> Quiet</option>
                             <option value="closed"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Closed</option>
                         </select>
-                        <button class="btn" onclick="IncidentsModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                        <button data-sb="sb1" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
                 <div id="incidentsList">
@@ -268,7 +268,7 @@
                             <option value="" data-i18n="deep.engine.all">All engines</option>
                             <option value="openclaw" data-i18n="deep.engine.openclaw">OpenClaw</option>
                         </select>
-                        <button class="btn" onclick="DeepAnalysesModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                        <button data-sb="sb2" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
                 <div id="deepAnalysesList">
@@ -301,7 +301,7 @@
                             <button class="btn" data-dt-period="week" data-i18n="dt.period.week">Week</button>
                             <button class="btn" data-dt-period="month" data-i18n="dt.period.month">Month</button>
                         </span>
-                        <button class="btn" onclick="DecisionTraceModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                        <button data-sb="sb3" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
 
@@ -369,9 +369,9 @@
                     <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <div class="section-title" data-i18n="rules.title">Forward Rule Configuration</div>
                         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                            <button class="btn" onclick="RoutingModule.setView('sandbox')"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> <span data-i18n="routing.view.sandbox">Test Payload</span></button>
-                            <button class="btn" onclick="RoutingModule.setView('audit')"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg> <span data-i18n="routing.view.audit">Audit</span></button>
-                            <button class="btn btn-primary" onclick="showRuleForm()"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="rules.add">Add Rule</span></button>
+                            <button data-sb="sb4" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> <span data-i18n="routing.view.sandbox">Test Payload</span></button>
+                            <button data-sb="sb5" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg> <span data-i18n="routing.view.audit">Audit</span></button>
+                            <button data-sb="sb6" class="btn btn-primary"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="rules.add">Add Rule</span></button>
                         </div>
                     </div>
                     <div id="forwardRulesList">
@@ -389,7 +389,7 @@
                             <div class="section-title" data-i18n="silences.title">Silences</div>
                             <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="silences.subtitle">While active, alerts matching the criteria are not forwarded. Events are still ingested, deduplicated, and analyzed.</p>
                         </div>
-                        <button class="btn btn-primary" onclick="showSilenceForm()">
+                        <button data-sb="sb7" class="btn btn-primary">
                             <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="silences.add">Add Silence</span>
                         </button>
                     </div>
@@ -410,7 +410,7 @@
                             <div class="section-title" data-i18n="silences.mw.title">Maintenance windows</div>
                             <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="silences.mw.subtitle">Weekly recurring mute windows (e.g. weekend maintenance). Matching alerts are silenced automatically while a window is active.</p>
                         </div>
-                        <button class="btn btn-primary" onclick="showMaintenanceWindowForm()">
+                        <button data-sb="sb8" class="btn btn-primary">
                             <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="silences.mw.add">Add Window</span>
                         </button>
                     </div>
@@ -429,7 +429,7 @@
                             <div class="section-title" data-i18n="ingress.title">Inbound setup</div>
                             <p data-i18n="ingress.subtitle">Create a scoped source credential and verify the complete ingest path.</p>
                         </div>
-                        <button class="btn" type="button" onclick="IngressSetupModule.reset()">
+                        <button data-sb="sb9" class="btn" type="button">
                             <svg class="icon" aria-hidden="true"><use href="#i-rotate-ccw"/></svg> <span data-i18n="ingress.restart">Start over</span>
                         </button>
                     </div>
@@ -476,7 +476,7 @@
                     <div class="section-header" style="margin-bottom: 20px;">
                         <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
                             <div class="section-title" data-i18n="sandbox.title">Payload Sandbox</div>
-                            <button class="btn" onclick="RoutingModule.setView('rules')"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg> <span data-i18n="routing.view.rules">Forward Rules</span></button>
+                            <button data-sb="sb10" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg> <span data-i18n="routing.view.rules">Forward Rules</span></button>
                         </div>
                         <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="sandbox.subtitle">Paste a raw alert payload and see what WebhookWise would extract and decide — which adapter parses it, the alert identity, and which rules/silences would match. Nothing is queued, analyzed by AI, or saved.</p>
                     </div>
@@ -487,8 +487,8 @@
                             <label style="display:block; font-size: var(--fs-sm); font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.payload">Payload (JSON)</label>
                             <textarea id="sandboxPayload" rows="18" spellcheck="false" placeholder='{ "RuleName": "...", "Level": "critical" }' style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size: var(--fs-sm); resize:vertical;"></textarea>
                             <div style="display:flex; gap:0.6rem; margin-top:0.85rem;">
-                                <button class="btn btn-primary" onclick="runSandboxTest()"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> <span data-i18n="sandbox.run">Test</span></button>
-                                <button class="btn" onclick="loadSandboxSample()" data-i18n="sandbox.sample">Load sample</button>
+                                <button data-sb="sb11" class="btn btn-primary"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> <span data-i18n="sandbox.run">Test</span></button>
+                                <button data-sb="sb12" class="btn" data-i18n="sandbox.sample">Load sample</button>
                             </div>
                         </div>
                         <div>
@@ -511,14 +511,14 @@
                             <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="audit.subtitle">Surface zombie rules (gone quiet), pure-noise rules (never forwarded), and flapping rules (oscillating near threshold). Read-only over existing data.</p>
                         </div>
                         <div style="display:flex; gap:8px; align-items:center;">
-                            <select id="auditWindowDays" onchange="RuleAuditModule.load()" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
+                            <select id="auditWindowDays" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
                                 <option value="7">7 days</option>
                                 <option value="30" selected>30 days</option>
                                 <option value="90">90 days</option>
                                 <option value="180">180 days</option>
                             </select>
-                            <button class="btn" onclick="RuleAuditModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
-                            <button class="btn" onclick="RoutingModule.setView('rules')"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg> <span data-i18n="routing.view.rules">Forward Rules</span></button>
+                            <button data-sb="sb13" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                            <button data-sb="sb14" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg> <span data-i18n="routing.view.rules">Forward Rules</span></button>
                         </div>
                     </div>
                     <div id="ruleAuditResult">
@@ -542,12 +542,12 @@
                         <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="noise.subtitle">Measure alert noise, review safe recommendations, and apply reversible optimizations.</p>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <select id="noiseWindowDays" class="form-input" style="width:auto; padding:6px 12px;" onchange="NoiseCenterModule.load()">
+                        <select id="noiseWindowDays" class="form-input" style="width:auto; padding:6px 12px;">
                             <option value="7" data-i18n="noise.window.7d">7 days</option>
                             <option value="30" data-i18n="noise.window.30d">30 days</option>
                             <option value="90" data-i18n="noise.window.90d">90 days</option>
                         </select>
-                        <button class="btn" onclick="NoiseCenterModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                        <button data-sb="sb15" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
                 </div>
                 <div id="noiseCenterSummary" class="stats-grid" style="margin-bottom:24px;"></div>
@@ -576,7 +576,7 @@
                         <div class="section-title" data-i18n="action.title">Action Center</div>
                         <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="action.subtitle">Delivery, processing, and AI problems that need operator attention.</p>
                     </div>
-                    <button class="btn" onclick="ActionCenterModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                    <button data-sb="sb16" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                 </div>
                 <div id="actionCenterSummary" class="stats-grid" style="margin-bottom:20px;"></div>
                 <div id="actionCenterList"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
@@ -592,7 +592,7 @@
                         <div class="section-title" data-i18n="kb.title">Knowledge drafts</div>
                         <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="kb.subtitle">Resolved-incident summaries awaiting review before they feed the AI knowledge base (RAG).</p>
                     </div>
-                    <button class="btn" onclick="KbDraftsModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                    <button data-sb="sb17" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                 </div>
                 <div id="kbDraftsList"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
             </div>
@@ -607,12 +607,12 @@
                         <p data-i18n="knowledgeGaps.subtitle">Repeated work that lacks a proven runbook or complete resolution evidence.</p>
                     </div>
                     <div class="response-header-actions">
-                        <select id="knowledgeGapWindow" class="filter-input" onchange="ResponseCenterModule.loadKnowledgeGaps()">
+                        <select id="knowledgeGapWindow" class="filter-input">
                             <option value="7" data-i18n="knowledgeGaps.window.7d">7 days</option>
                             <option value="30" selected data-i18n="knowledgeGaps.window.30d">30 days</option>
                             <option value="90" data-i18n="knowledgeGaps.window.90d">90 days</option>
                         </select>
-                        <button class="btn" type="button" onclick="ResponseCenterModule.loadKnowledgeGaps()">
+                        <button data-sb="sb18" class="btn" type="button">
                             <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span>
                         </button>
                     </div>
@@ -634,7 +634,7 @@
                         <div class="section-title" data-i18n="rs.title">Runtime settings</div>
                         <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="rs.subtitle">Live-tunable policy values. The effective value is the override when set, otherwise the environment default.</p>
                     </div>
-                    <button class="btn" onclick="RuntimeSettingsModule.load()"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                    <button data-sb="sb19" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                 </div>
                 <p style="margin:0 0 16px; padding:10px 14px; background:var(--bg-subtle); border:1px dashed var(--border); border-radius:var(--radius); color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="rs.propagationNote">⏱️ Changes take effect across all processes within about 1 minute (pub/sub + periodic refresh); no restart is required.</p>
                 <div id="runtimeSettingsList">
@@ -656,7 +656,7 @@
                     <p class="modal-subtitle" id="incidentResolutionSubtitle"></p>
                 </div>
                 <button type="button" class="modal-close" data-modal-close data-i18n-aria-label="common.close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
-                <button class="btn btn-icon" type="button" onclick="IncidentsModule.closeResolutionModal()"
+                <button data-sb="sb20" class="btn btn-icon" type="button"
                         data-i18n-aria-label="common.close" aria-label="Close">×</button>
             </div>
             <div class="modal-body">
@@ -738,12 +738,10 @@
                 <div class="form-error" id="incidentResolutionError" role="alert"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn" type="button" onclick="IncidentsModule.closeResolutionModal()"
+                <button data-sb="sb21" class="btn" type="button"
                         data-i18n="common.cancel">Cancel</button>
-                <button class="btn" id="incidentResolutionDraftBtn" type="button"
-                        onclick="IncidentsModule.saveResolutionDraft()" data-i18n="resolution.saveDraft">Save draft</button>
-                <button class="btn btn-primary" id="incidentResolutionCloseBtn" type="button"
-                        onclick="IncidentsModule.submitResolution()" data-i18n="resolution.resolveNow">Resolve incident</button>
+                <button class="btn" id="incidentResolutionDraftBtn" type="button" data-i18n="resolution.saveDraft">Save draft</button>
+                <button class="btn btn-primary" id="incidentResolutionCloseBtn" type="button" data-i18n="resolution.resolveNow">Resolve incident</button>
             </div>
         </div>
     </div>
@@ -776,10 +774,9 @@
                 <div class="form-error" id="runbookCompletionError" role="alert"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn" type="button" onclick="IncidentsModule.closeRunbookCompletionModal()"
+                <button data-sb="sb22" class="btn" type="button"
                         data-i18n="common.cancel">Cancel</button>
-                <button class="btn btn-primary" id="runbookCompletionSubmitBtn" type="button"
-                        onclick="IncidentsModule.submitRunbookCompletion()" data-i18n="incidents.runbook.complete">
+                <button class="btn btn-primary" id="runbookCompletionSubmitBtn" type="button" data-i18n="incidents.runbook.complete">
                     Complete runbook
                 </button>
             </div>
@@ -817,9 +814,9 @@
                 </p>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="clearAuthKeys()" data-i18n="auth.clear">Clear credentials</button>
-                <button class="btn" onclick="closeAuthModal()" data-i18n="common.cancel">Cancel</button>
-                <button class="btn btn-primary" onclick="saveAuthKeys()" data-i18n="common.save">Save</button>
+                <button data-sb="sb23" class="btn" data-i18n="auth.clear">Clear credentials</button>
+                <button data-sb="sb24" class="btn" data-i18n="common.cancel">Cancel</button>
+                <button data-sb="sb25" class="btn btn-primary" data-i18n="common.save">Save</button>
             </div>
         </div>
     </div>
@@ -838,8 +835,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="closeForwardModal()" data-i18n="common.cancel">Cancel</button>
-                <button class="btn btn-primary" id="confirmForwardBtn" onclick="confirmForward()" data-i18n="forward.confirm">Confirm Forward</button>
+                <button data-sb="sb26" class="btn" data-i18n="common.cancel">Cancel</button>
+                <button class="btn btn-primary" id="confirmForwardBtn" data-i18n="forward.confirm">Confirm Forward</button>
             </div>
         </div>
     </div>
@@ -952,7 +949,7 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="form-group">
                         <label class="form-label" data-i18n="rule.targetTypeLabel">Target Type *</label>
-                        <select class="form-input" id="ruleFormTargetType" onchange="onTargetTypeChange()">
+                        <select class="form-input" id="ruleFormTargetType">
                             <option value="feishu" data-i18n="rule.targetType.feishu">Feishu</option>
                             <option value="openclaw" data-i18n="rule.targetType.openclaw">OpenClaw</option>
                             <option value="webhook" data-i18n="rule.targetType.webhook">Webhook</option>
@@ -977,8 +974,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="closeRuleForm()" data-i18n="common.cancel">Cancel</button>
-                <button class="btn btn-primary" onclick="saveRule()" data-i18n="common.save">Save</button>
+                <button data-sb="sb27" class="btn" data-i18n="common.cancel">Cancel</button>
+                <button data-sb="sb28" class="btn btn-primary" data-i18n="common.save">Save</button>
             </div>
         </div>
     </div>
@@ -1067,9 +1064,9 @@
                 <div id="silenceFormBacktestResult" style="margin-top: 1rem; border-top: 1px dashed var(--border); padding-top: 1rem; display: none; max-height: 250px; overflow-y: auto;"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn" id="silenceBacktestBtn" onclick="backtestSilenceRule()" data-i18n="silence.action.backtest" style="margin-right: auto; color: var(--primary); border-color: var(--primary);"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> Test Rule</button>
-                <button class="btn" onclick="closeSilenceForm()" data-i18n="common.cancel">Cancel</button>
-                <button class="btn btn-primary" onclick="saveSilence()" data-i18n="common.save">Save</button>
+                <button class="btn" id="silenceBacktestBtn" data-i18n="silence.action.backtest" style="margin-right: auto; color: var(--primary); border-color: var(--primary);"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> Test Rule</button>
+                <button data-sb="sb29" class="btn" data-i18n="common.cancel">Cancel</button>
+                <button data-sb="sb30" class="btn btn-primary" data-i18n="common.save">Save</button>
             </div>
         </div>
     </div>
@@ -1180,8 +1177,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="closeMaintenanceWindowForm()" data-i18n="common.cancel">Cancel</button>
-                <button class="btn btn-primary" onclick="saveMaintenanceWindow()" data-i18n="common.save">Save</button>
+                <button data-sb="sb31" class="btn" data-i18n="common.cancel">Cancel</button>
+                <button data-sb="sb32" class="btn btn-primary" data-i18n="common.save">Save</button>
             </div>
         </div>
     </div>
@@ -1215,6 +1212,7 @@
     <script defer src="/static/js/ingress-setup.js"></script>
     <script defer src="/static/js/command-palette.js"></script>
     <script defer src="/static/js/dashboard.js"></script>
+    <script defer src="/static/js/static-bindings.js"></script>
 
     <!-- Command palette: the whole navigation surface. -->
     <div class="command-palette" id="commandPalette" role="dialog" aria-modal="true" aria-hidden="true"

@@ -396,6 +396,50 @@ def test_ai_disagreements_review_surface_is_wired() -> None:
         assert "'dt.disagreements.noTrace'" in js
 
 
+def test_inline_handlers_static_zero_and_generated_ratchet() -> None:
+    """CSP end-state is script-src-attr 'none': markup carries no code.
+
+    The static page is already there — every on*= attribute was codemodded
+    into static-bindings.js (one binding per original handler, selectors that
+    must exist in the markup). Generated HTML still emits inline onclick=;
+    each file's count is RATCHETED: touching a page may only hold or reduce
+    it. When the table reaches zero everywhere, tighten the CSP and collapse
+    this test to the zero assertion."""
+    html = _dashboard_html()
+    for attr in ("onclick=", "onchange=", "oninput=", "onsubmit="):
+        assert attr not in html, f"static markup must not carry {attr}"
+
+    bindings = _static_js("static-bindings.js")
+    selectors = re.findall(r"bind\('([^']+)'", bindings)
+    assert len(selectors) == 57
+    for selector in set(selectors):
+        if selector.startswith("#"):
+            assert f'id="{selector[1:]}"' in html, f"binding target {selector} missing"
+        else:
+            attr_pair = selector[1:-1].replace('\"', '"')
+            assert attr_pair in html, f"binding target {selector} missing"
+
+    ratchet = {
+        "action-center.js": 1,
+        "alerts.js": 4,
+        "dashboard.js": 1,
+        "decision-trace.js": 7,
+        "deep-analyses.js": 6,
+        "forward-rules.js": 5,
+        "incidents.js": 42,
+        "overview.js": 3,
+        "runtime-settings.js": 1,
+        "silences.js": 10,
+        "utils.js": 2,
+    }
+    for name, ceiling in ratchet.items():
+        count = _static_js(name).count("onclick=")
+        assert count <= ceiling, (
+            f"{name}: {count} inline onclick= (ratchet is {ceiling}) — "
+            "convert handlers to delegated listeners instead of adding more"
+        )
+
+
 def test_knowledge_gap_cards_can_be_left() -> None:
     """A gap names a pattern; its evidence is the incidents/alerts that formed
     it. The card must offer both drills, landing pre-filtered (the incidents
