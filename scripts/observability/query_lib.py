@@ -198,6 +198,10 @@ _OTEL_METRIC_RE = re.compile(r"=\s*(Counter|Gauge|Histogram)\(\s*\n?\s*\"([a-zA-
 _RECORDING_RULE_RE = re.compile(r"^\s*-\s*record:\s*([^\s]+)\s*$", re.MULTILINE)
 _QUOTED_RE = re.compile(r'"(?:\\.|[^"\\])*"')
 _EXTERNAL_METRIC_PREFIXES = (
+    # hookrelay is a separate service (the alert estate's front door) that
+    # exposes its own /metrics; this repo consumes those series in dashboards
+    # and rules but does not define them, exactly like alloy_/loki_.
+    "hookrelay_",
     "http_",
     "process_",
     "traces_",

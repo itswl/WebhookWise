@@ -3,12 +3,28 @@ global:
 
 route:
   receiver: webhookwise-local
+  routes:
+    # An alert about the front door cannot travel THROUGH the front door.
+    # These go straight to the chat bot, bypassing hookrelay and WebhookWise
+    # both — the same reasoning as the relay's own dead-letter self-alarm.
+    - matchers:
+        - bypass_relay="true"
+      receiver: chat-direct
+      continue: false
   group_by: ["alertname", "service", "severity"]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
 
 receivers:
+  # Direct to the chat bot: no relay, no brain, nothing that could be the
+  # thing that broke. Set ALERT_BYPASS_WEBHOOK_URL in the stack env.
+  - name: chat-direct
+    webhook_configs:
+      - url: ${ALERT_BYPASS_WEBHOOK_URL}
+        send_resolved: true
+        max_alerts: 5
+
   - name: webhookwise-local
     webhook_configs:
       # Alerts enter through the hookrelay front door (transparent edge:

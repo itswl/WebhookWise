@@ -4526,6 +4526,307 @@
       ],
       "title": "SLO Burn Rate (Error Budget)",
       "type": "timeseries"
+    },
+    {
+      "type": "row",
+      "title": "hookrelay — 告警前门",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 209
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "前门到达与结局 (events/min)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 210
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "refId": "A",
+          "expr": "sum by (source) (rate(hookrelay_events_total[5m])) * 60",
+          "legendFormat": "{{source}} 总量"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "refId": "B",
+          "expr": "sum by (outcome) (rate(hookrelay_events_total[5m])) * 60",
+          "legendFormat": "结局 {{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8
+          },
+          "links": [
+            {
+              "title": "View related logs",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_source}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            },
+            {
+              "title": "View related traces",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.source = \\\"${__field.labels.webhook_source}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            },
+            {
+              "title": "View profile",
+              "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "description": "每扇门的到达速率与结局分布。skipped 的具体原因见 outcome 标签(duplicate / silenced / no_route / storm_suppressed)。"
+    },
+    {
+      "type": "timeseries",
+      "title": "投递账本状态 (outbox)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 210
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "refId": "A",
+          "expr": "hookrelay_outbox",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8
+          },
+          "links": [
+            {
+              "title": "View related logs",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_source}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            },
+            {
+              "title": "View related traces",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.source = \\\"${__field.labels.webhook_source}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            },
+            {
+              "title": "View profile",
+              "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "description": "queued 持续增长 = 有东西堵着(看限速/断路器);dead > 0 触发告警,页面上可逐条重试。"
+    },
+    {
+      "type": "timeseries",
+      "title": "投递结果 (per channel)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 217
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "refId": "A",
+          "expr": "sum by (channel, result) (rate(hookrelay_deliveries_total[5m])) * 60",
+          "legendFormat": "{{channel}} · {{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8
+          },
+          "links": [
+            {
+              "title": "View related logs",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_source}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            },
+            {
+              "title": "View related traces",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.source = \\\"${__field.labels.webhook_source}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            },
+            {
+              "title": "View profile",
+              "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "description": "result=deferred 是限速或断路器推迟(不烧尝试次数),failed 是可重试失败,dead 是终态。"
+    },
+    {
+      "type": "timeseries",
+      "title": "保护装置:断路器 / 保险丝 / 静音",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 217
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "refId": "A",
+          "expr": "hookrelay_breaker_open",
+          "legendFormat": "断路器 {{channel}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "refId": "B",
+          "expr": "sum by (source, stage) (increase(hookrelay_fuse_total[10m]))",
+          "legendFormat": "保险丝 {{source}} · {{stage}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "range": true,
+          "refId": "C",
+          "expr": "hookrelay_silences_active",
+          "legendFormat": "生效静音数"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8
+          },
+          "links": [
+            {
+              "title": "View related logs",
+              "url": "/explore?orgId=1&left={\"datasource\":\"loki\",\"queries\":[{\"refId\":\"A\",\"expr\":\"{service_name=~\\\"webhookwise.*|webhookwise\\\"} |= \\\"${__field.labels.webhook_source}\\\" | json\",\"queryType\":\"range\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            },
+            {
+              "title": "View related traces",
+              "url": "/explore?orgId=1&left={\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"query\":\"{ resource.service.name =~ \\\"webhookwise.*\\\" %26%26 span.webhook.source = \\\"${__field.labels.webhook_source}\\\" }\",\"queryType\":\"traceql\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            },
+            {
+              "title": "View profile",
+              "url": "/explore?orgId=1&left={\"datasource\":\"pyroscope\",\"queries\":[{\"refId\":\"A\",\"query\":\"{service_name=~\\\"webhookwise-api|webhookwise-worker|webhookwise-scheduler\\\", profile_type=\\\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\\\"}\",\"queryType\":\"profile\",\"profileTypeId\":\"process_cpu:cpu:nanoseconds:cpu:nanoseconds\"}],\"range\":{\"from\":\"${__from}\",\"to\":\"${__to}\"}}",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "description": "三条都应长期为 0。断路器=1 表示某渠道对端持续拒收;保险丝 hard 段说明有上游在 10 倍阈值上刷屏。"
     }
   ],
   "refresh": "10s",

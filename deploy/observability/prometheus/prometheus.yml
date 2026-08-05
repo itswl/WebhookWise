@@ -17,3 +17,13 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
+
+  # The alert estate's front door. Its /metrics is read-token guarded like
+  # /status (those numbers describe the alert flow), so the token rides in a
+  # header — set HOOKRELAY_READ_TOKEN in the observability stack's env.
+  - job_name: hookrelay
+    static_configs:
+      - targets: ["hookrelay:8100"]
+    http_headers:
+      X-Read-Token:
+        values: ["${HOOKRELAY_READ_TOKEN}"]
