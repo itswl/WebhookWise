@@ -1,4 +1,4 @@
-"""Alert-rule audit: surface zombie rules, pure-noise rules, and flapping rules.
+"""Alert-rule audit: surface zombie rules, pure-noise rules, and per-rule volume.
 
 Reads already-collected webhook_events + decision_trace tables; no new
 instruments, no hot-path impact. Grouped by (source, rule_name) — the
@@ -24,6 +24,9 @@ _RULE_NAME_EXPR = func.coalesce(
 )
 
 
+_HIGH_VOLUME_PER_DAY = 10.0
+
+
 async def get_rule_audit(
     session: AsyncSession,
     *,
@@ -39,9 +42,10 @@ async def get_rule_audit(
     - **pure_noise**: every event was a duplicate or was skipped (silenced /
       noise_suppressed). The rule fires, but never forwards — possibly a
       misconfigured threshold or a candidate for a silence rule.
-    - **flapping**: fired in more than 70% of the intervals within the window
-      (bin day-resolution). Suggests the threshold is set right at the noise
-      floor — the alert oscillates between firing/resolving on its own.
+    Volume comes back as ``events_per_active_day`` — a number, not a verdict.
+    True flapping (firing↔resolved oscillation) is detected live by
+    services/webhooks/flapping.py and surfaced in the Action Center; this
+    read-only audit deliberately does not guess at it.
     """
     window_days = max(1, int(window_days))
     min_events = max(1, int(min_events))
@@ -100,13 +104,27 @@ async def get_rule_audit(
             flags.append("zombie")
         if include_forward_counts and forwarded == 0 and total > 0:
             flags.append("pure_noise")
-        if first_seen is not None and last_seen is not None and first_seen != last_seen:
-            days_active = max(1, (last_seen - first_seen).days)
-            # More than 70% of the window days had at least one event.
-            if total >= int(days_active * 0.7):
-                flags.append("flapping")
+        # No "flapping" flag here on purpose. This module used to derive one
+        # from `total >= days_active * 0.7` — i.e. any rule averaging more than
+        # 0.7 events per active day — which flagged EVERY rule in a real
+        # estate (all 8 in production, business alerts included) and so carried
+        # zero signal. Real flapping is firing↔resolved OSCILLATION, which
+        # services/webhooks/flapping.py already detects properly (Redis state
+        # machine, FLAPPING_MIN_TRANSITIONS) and the Action Center surfaces
+        # live. Reproducing it historically would need a per-event recovery
+        # marker that is not persisted; a second-rate proxy next to a working
+        # detector is worse than no flag. `events_per_active_day` below gives
+        # the volume this heuristic was gesturing at, as a number to judge
+        # rather than a verdict to trust.
 
         duplicate_pct = round(100.0 * duplicates / total, 1) if total else 0.0
+        days_active = max(1, (last_seen - first_seen).days) if first_seen is not None and last_seen is not None else 1
+        events_per_active_day = round(total / days_active, 2)
+        # A stated threshold, not a hidden one: ten a day is where a single
+        # rule starts dominating an operator's notification stream. This is a
+        # VOLUME observation ("this one is loud"), never a diagnosis of why.
+        if events_per_active_day >= _HIGH_VOLUME_PER_DAY:
+            flags.append("high_volume")
         results.append(
             {
                 "source": source,
@@ -114,6 +132,7 @@ async def get_rule_audit(
                 "total": total,
                 "duplicates": duplicates,
                 "duplicate_pct": duplicate_pct,
+                "events_per_active_day": events_per_active_day,
                 "forwarded": forwarded,
                 "skipped": total - forwarded,
                 "last_seen": last_seen.isoformat() if last_seen is not None else None,
