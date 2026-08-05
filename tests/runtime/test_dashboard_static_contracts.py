@@ -419,6 +419,33 @@ def test_desktop_notifications_are_opt_in_and_quiet() -> None:
         assert "'notify.title'" in _static_js(dict_name)
 
 
+def test_cache_hit_definition_has_one_source() -> None:
+    """ "Cache hit" on the AI-cost view means "answered without calling the LLM".
+    That route list used to be hand-spelled in the aggregate query AND again in
+    the dashboard renderer, so a future reuse route added to one and not the
+    other would silently under-report the hit rate with nothing failing.
+
+    One definition now (NO_LLM_REUSE_ROUTE_TYPES), and the renderer takes the
+    backend's total instead of re-summing. Verified against production: the
+    constant's routes covered exactly the rows marked cache_hit=true
+    (redis_reuse 128 + rechain 8 = 136)."""
+    from services.webhooks.types import ALLOWED_ANALYSIS_ROUTE_TYPES, NO_LLM_REUSE_ROUTE_TYPES
+
+    # Every no-LLM route must be a real route ("reuse" is the legacy alias kept
+    # for historical rows and is deliberately not in the allowed set).
+    assert NO_LLM_REUSE_ROUTE_TYPES - {"reuse"} <= ALLOWED_ANALYSIS_ROUTE_TYPES
+    # Routes that skipped the LLM by policy or degradation are NOT cache hits.
+    assert {"rule", "rule_routed", "ai"}.isdisjoint(NO_LLM_REUSE_ROUTE_TYPES)
+
+    queries = (PROJECT_ROOT / "services/analysis/analysis_queries.py").read_text()
+    assert "NO_LLM_REUSE_ROUTE_TYPES" in queries
+    assert 'route_breakdown.get("redis_reuse"' not in queries, "route list re-spelled in the aggregator"
+
+    ai_cost = _static_js("ai-cost.js")
+    assert "cache_statistics.saved_calls" in ai_cost
+    assert "'redis_reuse'" not in ai_cost, "route list re-spelled in the renderer"
+
+
 def test_operator_reach_features_are_wired() -> None:
     """Three reach features the dashboard lacked, each pinned end to end:
     bulk workflow actions, filter state in the URL, and palette record jumps."""
