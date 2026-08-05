@@ -553,3 +553,62 @@ groups:
         annotations:
           summary: Alloy configuration failed to load.
           runbook: Inspect Alloy logs and validate deploy/observability/alloy/config.alloy.
+
+  # ── hookrelay: the estate's single alert front door ──────────────────────
+  # Consumers of hookrelay_* metrics live here. Note the routing subtlety in
+  # alertmanager.yml: HookrelayDown must NOT be delivered through hookrelay.
+  - name: hookrelay-alerts
+    interval: 30s
+    rules:
+      - alert: HookrelayDown
+        expr: up{job="hookrelay"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: hookrelay
+          # Routed to a receiver that bypasses the relay — an alert about the
+          # front door cannot travel through the front door.
+          bypass_relay: "true"
+        annotations:
+          summary: hookrelay is not scrapeable — every inbound alert path is down.
+          runbook: ssh the host, `docker compose -f deploy/docker-compose.prod.yml logs hookrelay`. Rollback path is the Caddyfile backup.
+
+      - alert: HookrelayDeadLetters
+        expr: hookrelay_outbox{status="dead"} > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: hookrelay
+        annotations:
+          summary: hookrelay has dead-lettered deliveries ({{ $value }}).
+          runbook: Open the relay page, read last_error on the dead chips, fix the channel, then use the retry button.
+
+      - alert: HookrelayOutboxBacklog
+        expr: hookrelay_outbox{status="queued"} > 50
+        for: 10m
+        labels:
+          severity: warning
+          service: hookrelay
+        annotations:
+          summary: hookrelay outbox backlog is {{ $value }} and not draining.
+          runbook: Check hookrelay_breaker_open and hookrelay_deliveries_total{result="deferred"} — a rate limit or an open breaker is holding the queue.
+
+      - alert: HookrelayChannelBreakerOpen
+        expr: hookrelay_breaker_open == 1
+        for: 5m
+        labels:
+          severity: warning
+          service: hookrelay
+        annotations:
+          summary: hookrelay channel {{ $labels.channel }} breaker is open — the peer keeps refusing.
+          runbook: The channel URL or token is likely dead. Deliveries defer (not fail) while it is open.
+
+      - alert: HookrelayStormFuseHard
+        expr: increase(hookrelay_fuse_total{stage="hard"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: hookrelay
+        annotations:
+          summary: hookrelay rejected traffic at the hard fuse stage on door {{ $labels.source }}.
+          runbook: An upstream is flooding at 10x its door threshold. Rejected requests are NOT stored; find the sender.
