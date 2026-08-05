@@ -325,6 +325,11 @@ class NotificationConfig(StaticSettings):
     # against harvested action values being replayed under fresh event ids.
     FEISHU_CARD_ACTION_TTL_SECONDS: int = Field(default=86400, ge=60, le=2592000)
     AI_ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = Field(default=3600, gt=0)
+    # Pilot of the delivery split: rules with target_type=feishu_relay hand
+    # their RENDERED card to the hookrelay front door instead of posting to
+    # Feishu directly. Empty secret = relay targets refuse to send (a relay
+    # door must never be fed unsigned).
+    FORWARD_RELAY_SECRET: str = Field(default="")
     DASHBOARD_PUBLIC_URL: str = Field(default="")
 
     # Periodic alert-health digest (cost + noise report). Reads already-collected
