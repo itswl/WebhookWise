@@ -264,10 +264,87 @@ class _WebhookChannel:
         return False
 
 
+class _FeishuRelayChannel:
+    """Delivery-split pilot: render the SAME Feishu card, but hand it to the
+    hookrelay front door instead of posting to Feishu ourselves.
+
+    The relay owns transport (retry / rate limit / dead letters / bot signing)
+    and must stay content-blind, so this channel ships the FINISHED message
+    under {"notification": ...} — hookrelay's feishu channel in raw mode
+    forwards it untouched. The request is HMAC-signed over the exact bytes
+    sent (X-Hook-Signature), because the door refuses unsigned strangers.
+
+    The outbox keeps its own ledger of THIS hop, so during the pilot both
+    ledgers exist: WW answers "did the relay accept it", the relay answers
+    "did Feishu accept it". Rollback is flipping the rule's target back.
+    """
+
+    name = "feishu_relay"
+
+    def matches(self, record: ForwardOutbox) -> bool:
+        return str(record.channel_name or record.target_type or "") == self.name
+
+    async def deliver(self, record: ForwardOutbox) -> ForwardResult:
+        import hashlib
+        import hmac as hmac_mod
+        import json as json_mod
+
+        import httpx
+
+        from core.app_context import get_config_manager
+        from services.notifications import feishu
+
+        secret = str(get_config_manager().notifications.FORWARD_RELAY_SECRET or "")
+        if not secret:
+            return {"status": "failed", "reason": "FORWARD_RELAY_SECRET is not configured", "retryable": False}
+
+        # The same card _FeishuChannel would build — _build_http_payload picks
+        # the card by target URL, and ours is the relay's, so build explicitly.
+        if isinstance(record.formatted_payload, dict):
+            message: JsonObject = record.formatted_payload
+        elif isinstance(record.forward_data, dict) and isinstance(record.analysis_result, dict):
+            kb_links = await _kb_links_for_alert_card(record)
+            message = feishu.build_feishu_card(
+                cast(WebhookData, dict(record.forward_data)),
+                cast(AnalysisResult, dict(record.analysis_result)),
+                is_periodic_reminder=bool(record.is_periodic_reminder),
+                kb_links=kb_links,
+            )
+        else:
+            return {"status": "failed", "reason": "no payload to relay", "retryable": False}
+
+        body = json_mod.dumps({"notification": message}, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        signature = hmac_mod.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    str(record.target_url or ""),
+                    content=body,
+                    headers={"content-type": "application/json", "X-Hook-Signature": signature},
+                )
+        except httpx.HTTPError as error:
+            return {"status": "failed", "reason": f"relay unreachable: {error.__class__.__name__}", "retryable": True}
+        if response.status_code >= 300:
+            return {
+                "status": "failed",
+                "reason": f"relay http {response.status_code}: {response.text[:200]}",
+                "status_code": response.status_code,
+                "retryable": response.status_code >= 500,
+            }
+        # 200 from the door = the relay accepted responsibility (its own
+        # ledger tracks the Feishu hop). A relay-side silence is an operator
+        # decision, not a delivery failure.
+        return {"status": "success", "status_code": response.status_code}
+
+    def needs_followup_on_success(self, record: ForwardOutbox, result: ForwardResult) -> bool:
+        return False
+
+
 # Order matters: openclaw, feishu, dingtalk, and wecom are specific (the last
 # three keyed on their bot URL shapes); webhook is the fallback.
 _CHANNELS: tuple[ForwardChannel, ...] = (
     _OpenClawChannel(),
+    _FeishuRelayChannel(),
     _FeishuAppChannel(),
     _FeishuChannel(),
     _DingTalkChannel(),
