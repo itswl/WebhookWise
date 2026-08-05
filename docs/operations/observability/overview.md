@@ -54,6 +54,10 @@ Compose network, see
   in `alerts.yml` under `hookrelay-alerts`; `HookrelayDown` deliberately routes
   through Alertmanager's `chat-direct` receiver, because an alert about the
   front door must not travel through the front door.
+  The token file needs `chmod 640` + `chgrp 65534` — Prometheus runs as
+  `nobody:nobody` in the container, so `600 root-only` produces a `down` target
+  whose lastError reads "permission denied" (learned the hard way; check
+  `/api/v1/targets` after any host move).
 - Frontend RUM: removed in 3.7.x — the Faro SDK loaded from a CDN the dashboard's strict CSP blocks, so it never initialized. Alloy's `faro.receiver` remains configured should RUM return with a self-hosted SDK bundle.
 - Auto-instrumentation: Grafana Beyla watches the API container with eBPF and emits HTTP/SQL/Redis metrics and traces over OTLP.
 - Load testing: k6 sends synthetic webhook traffic and writes `k6_*` metrics to Prometheus remote write.
