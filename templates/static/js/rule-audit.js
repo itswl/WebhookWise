@@ -1,5 +1,5 @@
 /**
- * Rule Audit Module — surfaces zombie, pure-noise, and flapping alert rules.
+ * Rule Audit Module — surfaces zombie and pure-noise alert rules plus per-rule volume.
  *
  * Read-only aggregation over webhook_events + decision_trace. Fires on the
  * "Audit" sub-view under the Routing tab.
@@ -11,7 +11,10 @@ const RuleAuditModule = (function () {
         var map = {
             zombie: { label: t('audit.flag.zombie'), cls: 'badge-medium' },
             pure_noise: { label: t('audit.flag.pureNoise'), cls: 'badge-low' },
-            flapping: { label: t('audit.flag.flapping'), cls: 'badge-high' }
+            // 'flapping' retired: the audit's day-bin heuristic flagged every
+            // rule, so it carried no signal. Real oscillation is detected live
+            // (services/webhooks/flapping.py) and shown in the Action Center.
+            high_volume: { label: t('audit.flag.highVolume'), cls: 'badge-medium' }
         };
         var f = map[flag] || { label: flag, cls: 'badge-outline' };
         return '<span class="badge ' + f.cls + '" style="font-size:0.7rem; margin-right:4px;">' + f.label + '</span>';
@@ -38,7 +41,7 @@ const RuleAuditModule = (function () {
 
     function render(container, rows) {
         if (!rows.length) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('check') + '</div><div class="empty-title" data-i18n="audit.empty.title">All rules look healthy</div><div class="empty-text" data-i18n="audit.empty.text">No zombie, pure-noise, or flapping rules detected in the selected window.</div></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('check') + '</div><div class="empty-title" data-i18n="audit.empty.title">All rules look healthy</div><div class="empty-text" data-i18n="audit.empty.text">No zombie or pure-noise rules detected in the selected window.</div></div>';
             return;
         }
 
@@ -48,11 +51,14 @@ const RuleAuditModule = (function () {
         // Summary bar
         var zombies = rows.filter(function (r) { return r.flags.indexOf('zombie') >= 0; }).length;
         var noises = rows.filter(function (r) { return r.flags.indexOf('pure_noise') >= 0; }).length;
-        var flaps = rows.filter(function (r) { return r.flags.indexOf('flapping') >= 0; }).length;
+        // Median volume replaces the retired flapping counter: an honest
+        // "how loud is this estate" number instead of a verdict that always fired.
+        var rates = rows.map(function (r) { return Number(r.events_per_active_day || 0); }).sort(function (a, b) { return a - b; });
+        var medianRate = rates.length ? rates[Math.floor(rates.length / 2)] : 0;
         html += '<div class="stats-grid" style="margin-bottom: 1.5rem;">';
         html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">' + wwIcon('alert-circle') + ' ' + t('audit.summary.zombies') + '</div><div class="stat-value" style="color:var(--warning);">' + zombies + '</div></div>';
         html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">' + wwIcon('volume-x') + ' ' + t('audit.summary.noise') + '</div><div class="stat-value" style="color:var(--text-muted);">' + noises + '</div></div>';
-        html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">' + wwIcon('activity') + ' ' + t('audit.summary.flapping') + '</div><div class="stat-value" style="color:var(--danger);">' + flaps + '</div></div>';
+        html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">' + wwIcon('activity') + ' ' + t('audit.summary.medianRate') + '</div><div class="stat-value">' + medianRate + '</div></div>';
         html += '<div class="stat-card"><div class="stat-label" style="color:var(--text-muted);">' + wwIcon('list') + ' ' + t('audit.summary.total') + '</div><div class="stat-value">' + rows.length + '</div></div>';
         html += '</div>';
 
