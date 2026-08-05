@@ -24,6 +24,9 @@ scrape_configs:
   - job_name: hookrelay
     static_configs:
       - targets: ["hookrelay:8100"]
-    http_headers:
-      X-Read-Token:
-        values: ["${HOOKRELAY_READ_TOKEN}"]
+    # Prometheus does NOT expand environment variables in its config, so the
+    # credential comes from a FILE (gitignored, written per host) and rides in
+    # the standard Authorization: Bearer form the relay also accepts.
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/hookrelay.token

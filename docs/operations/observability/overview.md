@@ -47,6 +47,13 @@ Compose network, see
 - Logs: standard Python `logging`, structured as the OTel log data model locally and exported as OTLP logs. `severity` is lowercase (`trace/debug/info/warn/error/fatal`), while `severity_text` keeps the uppercase display value. Logs carry `trace_id`, `span_id`, `trace_flags`, `logger.name`, resource attributes, and canonical domain attributes.
 - Events: `core.observability.events.emit_event(...)`, emitted as span events plus structured log records with `event.name`.
 - Profiles: optional Pyroscope continuous profiling via `PYROSCOPE_ENABLED=true`.
+- hookrelay (the alert estate's front door) is scraped at `hookrelay:8100/metrics`.
+  Its read token is NOT in the config (Prometheus has no env-var expansion):
+  write it to `deploy/observability/prometheus/hookrelay.token` on each host
+  (gitignored) and Prometheus sends it as `Authorization: Bearer`. Rules live
+  in `alerts.yml` under `hookrelay-alerts`; `HookrelayDown` deliberately routes
+  through Alertmanager's `chat-direct` receiver, because an alert about the
+  front door must not travel through the front door.
 - Frontend RUM: removed in 3.7.x — the Faro SDK loaded from a CDN the dashboard's strict CSP blocks, so it never initialized. Alloy's `faro.receiver` remains configured should RUM return with a self-hosted SDK bundle.
 - Auto-instrumentation: Grafana Beyla watches the API container with eBPF and emits HTTP/SQL/Redis metrics and traces over OTLP.
 - Load testing: k6 sends synthetic webhook traffic and writes `k6_*` metrics to Prometheus remote write.
