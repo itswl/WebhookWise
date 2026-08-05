@@ -134,3 +134,18 @@ async def test_alert_records_render_the_real_card(relay_env: None, monkeypatch: 
     assert result["status"] == "success"
     body = json.loads(_FakeClient.sent[0]["content"].decode())
     assert body["notification"] == sentinel, "the relay receives WW's OWN card, not a re-rendering"
+
+
+@pytest.mark.asyncio
+async def test_rule_validation_accepts_private_relay_urls() -> None:
+    """The public-IP rule guard must not reject the relay door: it is private
+    BY DESIGN (guarded by admin-write + HMAC), unlike user-supplied forward
+    targets. Shape is still enforced."""
+    from api.v1.forwarding import _validated_target_url
+    from core.url_security import UnsafeTargetUrlError
+
+    assert await _validated_target_url("feishu_relay", "http://hookrelay:8100/hook/ww-notify") == (
+        "http://hookrelay:8100/hook/ww-notify"
+    )
+    with pytest.raises(UnsafeTargetUrlError):
+        await _validated_target_url("feishu_relay", "ftp://hookrelay:8100/x")
