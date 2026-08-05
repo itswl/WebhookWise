@@ -9,6 +9,7 @@ semantics rather than raising.
 import hashlib
 import hmac
 import json
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -20,6 +21,7 @@ from services.forwarding.channels import _FeishuRelayChannel, resolve_channel
 
 def _record(**overrides: Any) -> Any:
     base: dict[str, Any] = {
+        "id": 42,
         "channel_name": None,
         "target_type": "feishu_relay",
         "target_url": "http://hookrelay:8100/hook/ww-notify",
@@ -80,8 +82,14 @@ async def test_signature_covers_the_exact_bytes_sent(relay_env: None) -> None:
     assert result["status"] == "success"
     sent = _FakeClient.sent[0]
     assert sent["url"] == "http://hookrelay:8100/hook/ww-notify"
-    expected = hmac.new(b"door-secret", sent["content"], hashlib.sha256).hexdigest()
+    # Timestamped: the door verifies "{ts}.{body}" within a freshness window,
+    # so a captured delivery cannot be replayed into the group later.
+    stamp = sent["headers"]["X-Hook-Timestamp"]
+    expected = hmac.new(b"door-secret", stamp.encode() + b"." + sent["content"], hashlib.sha256).hexdigest()
     assert sent["headers"]["X-Hook-Signature"] == expected
+    assert abs(int(stamp) - int(time.time())) < 60, "the stamp must be now, not a constant"
+    # At-least-once made safe for the receiver.
+    assert sent["headers"]["X-Hook-Idempotency-Key"].startswith("outbox-")
     body = json.loads(sent["content"].decode())
     # The FINISHED message rides under "notification" — the relay never
     # rebuilds content, so the interactive card must arrive whole.
