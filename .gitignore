@@ -43,3 +43,6 @@ openclaw-main/
 # Local virtualenv
 .venv/
 .claude/
+
+# hookrelay scrape credential (per host)
+deploy/observability/prometheus/hookrelay.token

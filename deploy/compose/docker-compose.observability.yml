@@ -46,6 +46,9 @@ services:
     volumes:
       - ../../deploy/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ../../deploy/observability/prometheus/alerts.yml:/etc/prometheus/rules/webhookwise-alerts.yml:ro
+      # hookrelay scrape credential: gitignored, written per host. Absent on a
+      # stack without a relay — Prometheus then fails only that one scrape.
+      - ../../deploy/observability/prometheus/hookrelay.token:/etc/prometheus/hookrelay.token:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
