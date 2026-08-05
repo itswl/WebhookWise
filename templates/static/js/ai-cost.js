@@ -103,7 +103,12 @@ const AICostModule = {
         const routeAi = this.routeCount(data, ['ai']);
         const routeRule = this.routeCount(data, ['rule']);
         const routeCache = this.routeCount(data, ['cache']);
-        const routeReuse = this.routeCount(data, ['reuse', 'redis_reuse', 'db_reuse', 'rechain']);
+        // The no-LLM route list lives in ONE place (services/webhooks/types.py,
+        // NO_LLM_REUSE_ROUTE_TYPES) and the backend already sums it into
+        // cache_statistics. Re-listing the routes here would mean a future
+        // reuse route silently missing from the funnel while the headline hit
+        // rate counted it.
+        const routeReuse = this.safeGet(data, 'cache_statistics.saved_calls', 0) - this.routeCount(data, ['cache']);
 
         const percentAi = this.routePercent(routeAi, totalCalls);
         const percentRule = this.routePercent(routeRule, totalCalls);

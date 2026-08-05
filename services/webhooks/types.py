@@ -55,6 +55,14 @@ ALLOWED_ANALYSIS_ROUTE_TYPES: Final = frozenset(
     {"ai", "cache", "rule", "rule_routed", "redis_reuse", "db_reuse", "rechain", "silenced_skip"}
 )
 
+# The routes that answered WITHOUT calling the LLM, i.e. what "cache hit" means
+# for the AI-cost view. One definition, because it was previously spelled out
+# by hand in the aggregate query AND again in the dashboard renderer: adding a
+# future reuse route to one list and not the other would silently under-report
+# the hit rate, with nothing failing. "rule" and "rule_routed" are excluded on
+# purpose — those skipped the LLM by policy or degradation, not by reuse.
+NO_LLM_REUSE_ROUTE_TYPES: Final = frozenset({"cache", "reuse", "redis_reuse", "db_reuse", "rechain"})
+
 
 class AnalysisResult(TypedDict):
     """AI/rule analysis contract shared by cache, noise reduction and persistence."""

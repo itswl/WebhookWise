@@ -11,6 +11,7 @@ from db.session import count_with_timeout
 from models import AIUsageLog, DeepAnalysis, WebhookEvent
 from schemas.analysis import deep_analysis_to_summary_dict
 from services.pagination import apply_cursor_window, clamp_page_params, trim_cursor_window
+from services.webhooks.types import NO_LLM_REUSE_ROUTE_TYPES
 
 
 async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict[str, Any]:
@@ -52,15 +53,9 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict
     )
     cache_entries = (await session.execute(cache_entries_stmt)).scalar() or 0
 
-    # Sum all routes that avoid re-calling the LLM; keep the legacy route name for backward compatibility with historical data.
-    reuses = (
-        route_breakdown.get("reuse", 0)
-        + route_breakdown.get("redis_reuse", 0)
-        + route_breakdown.get("db_reuse", 0)
-        + route_breakdown.get("rechain", 0)
-    )
-    cache_hits = route_breakdown.get("cache", 0)
-    total_hits = reuses + cache_hits
+    # Every route that answered without calling the LLM, from the shared
+    # definition ("reuse" is a legacy name kept for historical rows).
+    total_hits = sum(route_breakdown.get(route, 0) for route in NO_LLM_REUSE_ROUTE_TYPES)
     avg_hits = round(total_hits / cache_entries, 2) if cache_entries > 0 else 0.0
     hit_rate = round(total_hits / max(total, 1) * 100, 2)
 
