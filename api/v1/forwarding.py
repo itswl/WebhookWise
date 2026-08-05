@@ -45,6 +45,16 @@ async def _validated_target_url(target_type: str, target_url: object) -> str:
         return str(target_url or "").strip()
     if not isinstance(target_url, str) or not target_url.strip():
         raise UnsafeTargetUrlError("Target URL cannot be empty")
+    if target_type == "feishu_relay":
+        # The relay door is PRIVATE infrastructure by design — the public-IP
+        # requirement exists to stop user-data-driven exfiltration to internal
+        # hosts, while a relay flip already demands the admin write key and
+        # the relay hop itself is HMAC-signed. Require plain http(s) shape and
+        # skip the public-resolution probe.
+        stripped = target_url.strip()
+        if not stripped.startswith(("http://", "https://")):
+            raise UnsafeTargetUrlError("feishu_relay target must be an http(s) URL")
+        return stripped
     return await validate_outbound_url(target_url)
 
 
@@ -56,7 +66,10 @@ async def _validate_enabled_delivery_target(
     enabled: bool,
 ) -> bool:
     """Probe an HTTP target before it is allowed into the enabled rule set."""
-    if not enabled or target_type == "openclaw":
+    # feishu_relay: the door answers 404/405 to probes (it only accepts POSTs
+    # with a valid HMAC), so a liveness probe here would reject every valid
+    # relay flip. The delivery ledger surfaces a dead relay within a minute.
+    if not enabled or target_type in ("openclaw", "feishu_relay"):
         return True
 
     from services.forwarding.remote import send_forward_rule_test
