@@ -132,7 +132,9 @@ def test_local_observability_images_are_pinned_and_alerts_have_receiver() -> Non
 
     receiver = next(item for item in alertmanager["receivers"] if item["name"] == "webhookwise-local")
     webhook_config = receiver["webhook_configs"][0]
-    assert webhook_config["url"] == "http://webhook-service:8000/v1/webhook/alertmanager"
+    # Alerts enter through the hookrelay front door since the WW split —
+    # the edge forwards the raw payload into WW's own ingest, signed.
+    assert webhook_config["url"] == "http://hookrelay:8100/hook/alertmanager"
     assert webhook_config["send_resolved"] is True
     assert webhook_config["max_alerts"] == 20
 
