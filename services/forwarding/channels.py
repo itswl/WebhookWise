@@ -288,6 +288,7 @@ class _FeishuRelayChannel:
         import hashlib
         import hmac as hmac_mod
         import json as json_mod
+        import time
 
         import httpx
 
@@ -314,13 +315,27 @@ class _FeishuRelayChannel:
             return {"status": "failed", "reason": "no payload to relay", "retryable": False}
 
         body = json_mod.dumps({"notification": message}, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        signature = hmac_mod.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        # Timestamped signature: the relay door verifies "{ts}.{body}" and a
+        # freshness window, so a captured delivery cannot be replayed into the
+        # group later. (The door still accepts the body-only form until every
+        # sender has migrated; then it flips require_timestamp.)
+        stamp = str(int(time.time()))
+        signature = hmac_mod.new(secret.encode(), stamp.encode() + b"." + body, hashlib.sha256).hexdigest()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     str(record.target_url or ""),
                     content=body,
-                    headers={"content-type": "application/json", "X-Hook-Signature": signature},
+                    headers={
+                        "content-type": "application/json",
+                        "X-Hook-Signature": signature,
+                        "X-Hook-Timestamp": stamp,
+                        # At-least-once made safe for the receiver: the key is
+                        # stable across retries of THIS outbox row, so a
+                        # re-send after a crash between send and bookkeeping is
+                        # recognisable as the same delivery.
+                        "X-Hook-Idempotency-Key": f"outbox-{record.id}",
+                    },
                 )
         except httpx.HTTPError as error:
             return {"status": "failed", "reason": f"relay unreachable: {error.__class__.__name__}", "retryable": True}
