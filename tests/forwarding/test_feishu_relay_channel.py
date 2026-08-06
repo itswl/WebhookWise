@@ -22,6 +22,8 @@ from services.forwarding.channels import _FeishuRelayChannel, resolve_channel
 def _record(**overrides: Any) -> Any:
     base: dict[str, Any] = {
         "id": 42,
+        "webhook_event_id": 7,
+        "rule_name": "所有告警通知",
         "channel_name": None,
         "target_type": "feishu_relay",
         "target_url": "http://hookrelay:8100/hook/ww-notify",
@@ -95,6 +97,10 @@ async def test_signature_covers_the_exact_bytes_sent(relay_env: None) -> None:
     # rebuilds content, so the interactive card must arrive whole.
     assert body["notification"]["msg_type"] == "interactive"
     assert body["notification"]["card"]["header"]["title"]["content"] == "事故"
+    # And a meta envelope beside it, because a card header is generic by design:
+    # without this the relay's ledger cannot say WHICH alert a notification was
+    # about (84 outbound events shared 3 titles before this existed).
+    assert body["meta"]["event_id"] == 7 and body["meta"]["outbox_id"] == 42
 
 
 @pytest.mark.asyncio
@@ -183,3 +189,25 @@ async def test_rule_test_button_uses_the_real_channel(relay_env: None) -> None:
     assert sent["headers"]["X-Hook-Signature"] and sent["headers"]["X-Hook-Timestamp"]
     body = json.loads(sent["content"].decode())
     assert body["notification"]["msg_type"] == "interactive", "a real card, not a raw JSON envelope"
+
+
+@pytest.mark.asyncio
+async def test_meta_carries_identity_and_echoes_the_correlation_id(relay_env: None) -> None:
+    """The relay stamps X-Request-Id on the way in; echoing it back in meta is
+    what links the outbound half of a round trip to the inbound one."""
+    record = _record(
+        formatted_payload={"msg_type": "text"},
+        forward_data={
+            "source": "grafana",
+            "parsed_data": {"RuleName": "示例充值超限告警"},
+            "headers": {"x-request-id": "hr-86"},
+        },
+        analysis_result=None,
+    )
+    result = await _FeishuRelayChannel().deliver(record)
+
+    assert result["status"] == "success"
+    meta = json.loads(_FakeClient.sent[0]["content"].decode())["meta"]
+    assert meta["alert_name"] == "示例充值超限告警", "the ledger must be searchable by alert"
+    assert meta["source"] == "grafana" and meta["rule_name"] == "所有告警通知"
+    assert meta["correlation_id"] == "hr-86", "the round trip is linkable"
