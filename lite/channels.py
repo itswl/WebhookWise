@@ -16,6 +16,8 @@ _COLOR = {"high": "red", "medium": "orange", "low": "grey"}
 def build_payload(kind: str, event: dict[str, Any]) -> dict[str, Any]:
     if kind == "feishu":
         return _feishu_card(event)
+    # Shaped as {meta: ...} so a relay door can read identity with one template
+    # and gather this reading beside other brains' readings of the same alert.
     return {
         "source": event["source"],
         "title": event["title"],
@@ -24,6 +26,15 @@ def build_payload(kind: str, event: dict[str, Any]) -> dict[str, Any]:
         "summary": event["summary"],
         "body": event["body"],
         "route": event["route"],
+        "meta": {
+            "brain": "ww-lite",
+            "alert_name": event["title"],
+            "source": event["source"],
+            "importance": event["importance"],
+            "summary": event["summary"],
+            "route": event["route"],
+            "correlation_id": event.get("correlation_id", ""),
+        },
     }
 
 

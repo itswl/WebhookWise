@@ -47,10 +47,17 @@ async def process(
     settings: Any,
     source: str,
     payload: Any,
+    correlation_id: str = "",
 ) -> dict[str, Any]:
     """Run one alert through the chain. Always produces exactly one decision."""
     decision = Decision()
     event = normalize(source, payload)
+    # Quoted back on the way out (see channels.build_payload): a relay fanning
+    # this same alert to several brains can then gather what each one made of
+    # it under the original.
+    if correlation_id:
+        event["correlation_id"] = correlation_id
+        decision.record("correlate", "quoted", correlation_id=correlation_id)
     decision.record(
         "normalize",
         "ok",
