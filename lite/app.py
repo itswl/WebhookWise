@@ -107,7 +107,12 @@ async def health() -> dict[str, Any]:
 
 
 @app.post("/webhook/{source}")
-async def ingest(source: str, request: Request, x_ingest_token: str = Header(default="")) -> JSONResponse:
+async def ingest(
+    source: str,
+    request: Request,
+    x_ingest_token: str = Header(default=""),
+    x_hook_correlation_id: str = Header(default=""),
+) -> JSONResponse:
     if settings.ingest_token and x_ingest_token != settings.ingest_token:
         raise HTTPException(status_code=401, detail="invalid ingest token")
     try:
@@ -115,7 +120,17 @@ async def ingest(source: str, request: Request, x_ingest_token: str = Header(def
     except Exception:  # noqa: BLE001 - accept non-JSON senders rather than dropping them
         payload = {"body": (await request.body()).decode("utf-8", "replace")}
 
-    result = await pipeline.process(store, request.app.state.client, settings, source[:100], payload)
+    # A relay in front of us stamps this so the work we send back can be
+    # gathered under the alert it came from. Quoting it back is the whole
+    # contract — three lines here buy an end-to-end view over there.
+    result = await pipeline.process(
+        store,
+        request.app.state.client,
+        settings,
+        source[:100],
+        payload,
+        correlation_id=x_hook_correlation_id.strip()[:120],
+    )
     logger.info("ingest source=%s outcome=%s skip=%s", source, result["outcome"], result["skip_code"])
     return JSONResponse(result, status_code=202)
 
