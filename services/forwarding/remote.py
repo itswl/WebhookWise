@@ -88,6 +88,8 @@ async def send_forward_rule_test(*, rule_name: str, target_url: str, target_type
 
         probe = SimpleNamespace(
             id=0,
+            webhook_event_id=0,
+            rule_name=rule_name,
             channel_name="feishu_relay",
             target_type="feishu_relay",
             target_url=target_url,

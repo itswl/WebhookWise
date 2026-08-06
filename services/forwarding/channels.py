@@ -314,7 +314,33 @@ class _FeishuRelayChannel:
         else:
             return {"status": "failed", "reason": "no payload to relay", "retryable": False}
 
-        body = json_mod.dumps({"notification": message}, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        # A meta envelope beside the card. Without it the relay's ledger shows
+        # 84 outbound events under 3 titles ("📡 告警通知" ...) because a card
+        # header is generic by design — "did the notification for THIS alert go
+        # out" was unanswerable. The relay's door extracts these fields, so the
+        # identity travels with the message rather than being inferred.
+        parsed_obj = (record.forward_data or {}).get("parsed_data") if isinstance(record.forward_data, dict) else {}
+        parsed = parsed_obj if isinstance(parsed_obj, dict) else {}
+        headers_obj = (record.forward_data or {}).get("headers") if isinstance(record.forward_data, dict) else {}
+        headers_in = headers_obj if isinstance(headers_obj, dict) else {}
+        meta = {
+            "event_id": record.webhook_event_id,
+            "outbox_id": record.id,
+            "rule_name": record.rule_name,
+            "alert_name": str(parsed.get("RuleName") or parsed.get("AlertName") or parsed.get("alert_name") or ""),
+            "source": str((record.forward_data or {}).get("source") or "")
+            if isinstance(record.forward_data, dict)
+            else "",
+            "importance": str((record.analysis_result or {}).get("importance") or "")
+            if isinstance(record.analysis_result, dict)
+            else "",
+            # Quoted straight back: the relay stamped this on the way in, so
+            # echoing it links the outbound half to the inbound one.
+            "correlation_id": str(headers_in.get("x-request-id") or headers_in.get("X-Request-Id") or ""),
+        }
+        body = json_mod.dumps({"notification": message, "meta": meta}, ensure_ascii=False, sort_keys=True).encode(
+            "utf-8"
+        )
         # Timestamped signature: the relay door verifies "{ts}.{body}" and a
         # freshness window, so a captured delivery cannot be replayed into the
         # group later. (The door still accepts the body-only form until every
