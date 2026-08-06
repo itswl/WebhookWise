@@ -76,6 +76,29 @@ async def send_forward_rule_test(*, rule_name: str, target_url: str, target_type
     test_webhook: WebhookData = {"source": "test", "parsed_data": {"test": True, "rule_name": rule_name}}
     test_analysis: AnalysisResult = {"summary": f"Test rule: {rule_name}", "importance": "low", "event_type": "test"}
 
+    if target_type == "feishu_relay":
+        # Exercise the SAME channel a real delivery would use. Posting raw JSON
+        # at the relay door instead (what the generic fallback below does) is
+        # unsigned, so the door answers 401 and the button reports a delivery
+        # failure for a rule that in fact delivers fine — a test that lies
+        # about a healthy rule is worse than no test.
+        from types import SimpleNamespace
+
+        from services.forwarding.channels import resolve_channel
+
+        probe = SimpleNamespace(
+            id=0,
+            channel_name="feishu_relay",
+            target_type="feishu_relay",
+            target_url=target_url,
+            formatted_payload=build_feishu_card(test_webhook, test_analysis),
+            forward_data=None,
+            analysis_result=None,
+            is_periodic_reminder=False,
+            idempotency_key=f"rule-test-{rule_name}",
+        )
+        return await resolve_channel(cast(Any, probe)).deliver(cast(Any, probe))
+
     if is_feishu_url(target_url):
         payload: JsonObject = build_feishu_card(test_webhook, test_analysis)
         return await send_to_feishu(target_url, payload)

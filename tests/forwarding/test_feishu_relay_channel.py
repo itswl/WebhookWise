@@ -157,3 +157,29 @@ async def test_rule_validation_accepts_private_relay_urls() -> None:
     )
     with pytest.raises(UnsafeTargetUrlError):
         await _validated_target_url("feishu_relay", "ftp://hookrelay:8100/x")
+
+
+@pytest.mark.asyncio
+async def test_rule_test_button_uses_the_real_channel(relay_env: None) -> None:
+    """The test button must exercise the SAME path a real delivery takes.
+
+    It used to fall through to the generic webhook sender, which posts raw
+    JSON at the relay door with no signature — the door answers 401 and the
+    button reports a delivery failure for a rule that in fact delivers fine.
+    A test that lies about a healthy rule is worse than no test.
+    """
+    from services.forwarding.remote import send_forward_rule_test
+
+    result = await send_forward_rule_test(
+        rule_name="所有告警通知",
+        target_url="http://hookrelay:8100/hook/ww-notify",
+        target_type="feishu_relay",
+    )
+
+    assert result["status"] == "success"
+    sent = _FakeClient.sent[0]
+    assert sent["url"] == "http://hookrelay:8100/hook/ww-notify"
+    # Signed and timestamped exactly like a real delivery.
+    assert sent["headers"]["X-Hook-Signature"] and sent["headers"]["X-Hook-Timestamp"]
+    body = json.loads(sent["content"].decode())
+    assert body["notification"]["msg_type"] == "interactive", "a real card, not a raw JSON envelope"
