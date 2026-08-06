@@ -93,9 +93,12 @@ async def send_forward_rule_test(*, rule_name: str, target_url: str, target_type
             channel_name="feishu_relay",
             target_type="feishu_relay",
             target_url=target_url,
+            # Both shapes present, because the probe must work in whichever
+            # mode the relay target is running: the card for pass-through mode,
+            # the data for processed mode (where the relay does the rendering).
             formatted_payload=build_feishu_card(test_webhook, test_analysis),
-            forward_data=None,
-            analysis_result=None,
+            forward_data=test_webhook,
+            analysis_result=test_analysis,
             is_periodic_reminder=False,
             idempotency_key=f"rule-test-{rule_name}",
         )
