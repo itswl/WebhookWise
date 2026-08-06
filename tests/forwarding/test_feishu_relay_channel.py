@@ -65,6 +65,7 @@ class _FakeClient:
 @pytest.fixture
 def relay_env(monkeypatch: pytest.MonkeyPatch, temp_config: Any) -> None:
     monkeypatch.setattr(temp_config.notifications, "FORWARD_RELAY_SECRET", "door-secret")
+    monkeypatch.setattr(temp_config.notifications, "FORWARD_RELAY_MODE", "processed")
     monkeypatch.setattr(httpx, "AsyncClient", _FakeClient)
     _FakeClient.sent = []
     _FakeClient.response = _FakeResponse(200)
@@ -93,13 +94,10 @@ async def test_signature_covers_the_exact_bytes_sent(relay_env: None) -> None:
     # At-least-once made safe for the receiver.
     assert sent["headers"]["X-Hook-Idempotency-Key"].startswith("outbox-")
     body = json.loads(sent["content"].decode())
-    # The FINISHED message rides under "notification" — the relay never
-    # rebuilds content, so the interactive card must arrive whole.
-    assert body["notification"]["msg_type"] == "interactive"
-    assert body["notification"]["card"]["header"]["title"]["content"] == "事故"
-    # And a meta envelope beside it, because a card header is generic by design:
-    # without this the relay's ledger cannot say WHICH alert a notification was
-    # about (84 outbound events shared 3 titles before this existed).
+    # The RESULT, not a rendering of it: this service no longer decides what a
+    # Feishu card looks like — the relay does, per downstream.
+    assert "notification" not in body, "processed mode must not ship a rendered card"
+    assert set(body) == {"meta", "analysis", "identity", "links"}
     assert body["meta"]["event_id"] == 7 and body["meta"]["outbox_id"] == 42
 
 
@@ -132,9 +130,45 @@ async def test_unreachable_relay_is_retryable(relay_env: None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_alert_records_render_the_real_card(relay_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_processed_mode_sends_judgement_not_presentation(relay_env: None) -> None:
+    """What crosses the wire is what this service DECIDED: the analysis, the
+    identity as data, the links as data. No colours, no markdown, no card
+    schema — those are the pipe's business now."""
+    record = _record(
+        formatted_payload=None,
+        forward_data={
+            "source": "grafana",
+            "timestamp": "2026-08-07 10:32:50",
+            "parsed_data": {"RuleName": "充值金额单次超500报警", "project": "alarm-prod", "environment": "prod"},
+        },
+        analysis_result={
+            "summary": "9 分钟内 3 次大额充值",
+            "importance": "high",
+            "event_type": "business",
+            "impact_scope": "未观察到服务影响",
+        },
+    )
+    result = await _FeishuRelayChannel().deliver(record)
+
+    assert result["status"] == "success"
+    body = json.loads(_FakeClient.sent[0]["content"].decode())
+    assert body["analysis"]["summary"] == "9 分钟内 3 次大额充值"
+    assert body["analysis"]["impact_scope"] == "未观察到服务影响"
+    # Identity as DATA, not a pre-rendered breadcrumb: separators and order are
+    # formatting, and formatting moved to the pipe.
+    assert body["identity"] == {"project": "alarm-prod", "environment": "prod", "rule": "充值金额单次超500报警"}
+    assert body["meta"]["is_recovery"] is False and body["meta"]["timestamp"] == "2026-08-07 10:32:50"
+    assert "card" not in json.dumps(body), "no presentation crossed the wire"
+
+
+async def test_card_mode_remains_available_as_the_rollback(
+    relay_env: None, monkeypatch: pytest.MonkeyPatch, temp_config: Any
+) -> None:
+    """Until the relay's rendering is proven in the group, flipping one env var
+    puts this service back in charge of the card."""
     from services.notifications import feishu
 
+    monkeypatch.setattr(temp_config.notifications, "FORWARD_RELAY_MODE", "card")
     sentinel = {"msg_type": "interactive", "card": {"built": "by-ww"}}
     monkeypatch.setattr(feishu, "build_feishu_card", lambda *a, **k: dict(sentinel))
 
@@ -147,7 +181,7 @@ async def test_alert_records_render_the_real_card(relay_env: None, monkeypatch: 
 
     assert result["status"] == "success"
     body = json.loads(_FakeClient.sent[0]["content"].decode())
-    assert body["notification"] == sentinel, "the relay receives WW's OWN card, not a re-rendering"
+    assert body["notification"] == sentinel, "the relay receives WW's OWN card, untouched"
 
 
 @pytest.mark.asyncio
@@ -188,7 +222,7 @@ async def test_rule_test_button_uses_the_real_channel(relay_env: None) -> None:
     # Signed and timestamped exactly like a real delivery.
     assert sent["headers"]["X-Hook-Signature"] and sent["headers"]["X-Hook-Timestamp"]
     body = json.loads(sent["content"].decode())
-    assert body["notification"]["msg_type"] == "interactive", "a real card, not a raw JSON envelope"
+    assert body["analysis"]["summary"], "the test exercises the real processed envelope"
 
 
 @pytest.mark.asyncio

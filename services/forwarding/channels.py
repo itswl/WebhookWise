@@ -264,15 +264,49 @@ class _WebhookChannel:
         return False
 
 
+def _relay_identity(parsed: dict[str, Any]) -> dict[str, str]:
+    """The meaningful identity values, as DATA for the relay to lay out.
+
+    Deliberately not a pre-rendered breadcrumb: choosing separators and order is
+    formatting, and formatting is the pipe's job now.
+    """
+    keys = ("project", "region", "environment", "env", "service", "cluster", "namespace", "host", "instance")
+    identity = {key: str(parsed[key]) for key in keys if str(parsed.get(key) or "").strip()}
+    rule = str(parsed.get("RuleName") or parsed.get("AlertName") or parsed.get("alert_name") or "").strip()
+    if rule:
+        identity["rule"] = rule
+    return identity
+
+
+def _is_recovery_for_relay(record: ForwardOutbox, analysis: dict[str, Any]) -> bool:
+    """A recovery must not arrive dressed as a fresh alarm; the relay colours
+    the card, so it needs to be TOLD."""
+    from services.incidents.grouping import is_recovery_payload
+
+    parsed_obj = (record.forward_data or {}).get("parsed_data") if isinstance(record.forward_data, dict) else {}
+    parsed = parsed_obj if isinstance(parsed_obj, dict) else {}
+    try:
+        return bool(is_recovery_payload(parsed, cast(AnalysisResult, analysis)))
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 class _FeishuRelayChannel:
     """Delivery-split pilot: render the SAME Feishu card, but hand it to the
     hookrelay front door instead of posting to Feishu ourselves.
 
-    The relay owns transport (retry / rate limit / dead letters / bot signing)
-    and must stay content-blind, so this channel ships the FINISHED message
-    under {"notification": ...} — hookrelay's feishu channel in raw mode
-    forwards it untouched. The request is HMAC-signed over the exact bytes
-    sent (X-Hook-Signature), because the door refuses unsigned strangers.
+    The relay owns transport (retry / rate limit / dead letters / signing) AND
+    presentation. Two shapes, chosen by FORWARD_RELAY_MODE:
+
+      processed (default) — send the RESULT (analysis, identity, links) and let
+        the relay build each downstream's format. This is the point of the
+        split: nothing in this service should know what a Feishu card looks
+        like, let alone a WeCom or DingTalk one.
+      card — send the card this service rendered, for pass-through. The
+        rollback path while the pilot proves the relay's rendering.
+
+    The request is HMAC-signed over the exact bytes sent (X-Hook-Signature),
+    because the door refuses unsigned strangers.
 
     The outbox keeps its own ledger of THIS hop, so during the pilot both
     ledgers exist: WW answers "did the relay accept it", the relay answers
@@ -299,20 +333,20 @@ class _FeishuRelayChannel:
         if not secret:
             return {"status": "failed", "reason": "FORWARD_RELAY_SECRET is not configured", "retryable": False}
 
-        # The same card _FeishuChannel would build — _build_http_payload picks
-        # the card by target URL, and ours is the relay's, so build explicitly.
-        if isinstance(record.formatted_payload, dict):
-            message: JsonObject = record.formatted_payload
-        elif isinstance(record.forward_data, dict) and isinstance(record.analysis_result, dict):
-            kb_links = await _kb_links_for_alert_card(record)
-            message = feishu.build_feishu_card(
-                cast(WebhookData, dict(record.forward_data)),
-                cast(AnalysisResult, dict(record.analysis_result)),
-                is_periodic_reminder=bool(record.is_periodic_reminder),
-                kb_links=kb_links,
-            )
-        else:
-            return {"status": "failed", "reason": "no payload to relay", "retryable": False}
+        mode = str(get_config_manager().notifications.FORWARD_RELAY_MODE or "processed").strip().lower()
+        message: JsonObject | None = None
+        if mode == "card":
+            if isinstance(record.formatted_payload, dict):
+                message = record.formatted_payload
+            elif isinstance(record.forward_data, dict) and isinstance(record.analysis_result, dict):
+                message = feishu.build_feishu_card(
+                    cast(WebhookData, dict(record.forward_data)),
+                    cast(AnalysisResult, dict(record.analysis_result)),
+                    is_periodic_reminder=bool(record.is_periodic_reminder),
+                    kb_links=await _kb_links_for_alert_card(record),
+                )
+            if message is None:
+                return {"status": "failed", "reason": "no payload to relay", "retryable": False}
 
         # A meta envelope beside the card. Without it the relay's ledger shows
         # 84 outbound events under 3 titles ("📡 告警通知" ...) because a card
@@ -338,9 +372,36 @@ class _FeishuRelayChannel:
             # echoing it links the outbound half to the inbound one.
             "correlation_id": str(headers_in.get("x-request-id") or headers_in.get("X-Request-Id") or ""),
         }
-        body = json_mod.dumps({"notification": message, "meta": meta}, ensure_ascii=False, sort_keys=True).encode(
-            "utf-8"
+        analysis = dict(record.analysis_result) if isinstance(record.analysis_result, dict) else {}
+        meta["is_recovery"] = _is_recovery_for_relay(record, analysis)
+        meta["is_periodic_reminder"] = bool(record.is_periodic_reminder)
+        meta["timestamp"] = (
+            str((record.forward_data or {}).get("timestamp") or "") if isinstance(record.forward_data, dict) else ""
         )
+
+        if mode == "card":
+            envelope: JsonObject = {"notification": message, "meta": meta}
+        else:
+            # The RESULT, not a rendering of it. Identity travels as DATA so the
+            # relay chooses the layout; links travel as data so every channel
+            # type can place them its own way.
+            kb_links = await _kb_links_for_alert_card(record) or []
+            envelope = {
+                "meta": meta,
+                "analysis": {
+                    "summary": str(analysis.get("summary") or ""),
+                    "event_type": str(analysis.get("event_type") or ""),
+                    "impact_scope": str(analysis.get("impact_scope") or ""),
+                    "importance": str(analysis.get("importance") or ""),
+                },
+                "identity": _relay_identity(parsed),
+                "links": [
+                    {"text": str(link.get("title") or link.get("text") or ""), "url": str(link.get("url") or "")}
+                    for link in kb_links
+                    if link.get("url")
+                ],
+            }
+        body = json_mod.dumps(envelope, ensure_ascii=False, sort_keys=True).encode("utf-8")
         # Timestamped signature: the relay door verifies "{ts}.{body}" and a
         # freshness window, so a captured delivery cannot be replayed into the
         # group later. (The door still accepts the body-only form until every

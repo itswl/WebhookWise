@@ -330,6 +330,11 @@ class NotificationConfig(StaticSettings):
     # Feishu directly. Empty secret = relay targets refuse to send (a relay
     # door must never be fed unsigned).
     FORWARD_RELAY_SECRET: str = Field(default="")
+    # What a relay target receives: "processed" sends the RESULT and lets the
+    # relay build each downstream's format (the point of the split — nothing
+    # here should know what a Feishu card looks like); "card" sends the card
+    # this service rendered, for pass-through. "card" is the rollback path.
+    FORWARD_RELAY_MODE: str = Field(default="processed")
     DASHBOARD_PUBLIC_URL: str = Field(default="")
 
     # Periodic alert-health digest (cost + noise report). Reads already-collected
