@@ -2,7 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.openapi.docs import get_redoc_html
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -128,16 +128,33 @@ setup_observability(app)
 app.mount("/static", ImmutableStaticFiles(directory="templates/static"), name="static")
 
 
+# Hand-rolled rather than get_swagger_ui_html(): that helper emits the
+# SwaggerUIBundle(...) call as an INLINE <script>, which `script-src-elem
+# 'self'` blocks. Self-hosting the bundle alone left the page still blank —
+# the assets loaded and the call that mounts them never ran. The init lives in
+# a file, so no CSP change, no nonce plumbing, no hash to keep in sync.
+_SWAGGER_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title} - Swagger UI</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/vendor/swagger-ui.css">
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="/static/vendor/swagger-ui-bundle.js"></script>
+<script src="/static/vendor/swagger-init.js"></script>
+</body>
+</html>
+"""
+
+
 @app.get("/docs", include_in_schema=False)
 async def swagger_ui() -> HTMLResponse:
-    """Swagger UI from our own origin."""
-    return get_swagger_ui_html(
-        openapi_url=app.openapi_url or "/openapi.json",
-        title=f"{app.title} - Swagger UI",
-        swagger_js_url="/static/vendor/swagger-ui-bundle.js",
-        swagger_css_url="/static/vendor/swagger-ui.css",
-        swagger_favicon_url="/static/favicon.svg",
-    )
+    """Swagger UI from our own origin, with no inline script."""
+    return HTMLResponse(_SWAGGER_HTML.format(title=app.title))
 
 
 @app.get("/redoc", include_in_schema=False)
