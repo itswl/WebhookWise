@@ -933,6 +933,14 @@
             // ── Rule Audit tab ──
             'routing.view.audit': 'Audit',
             'audit.title': 'Rule Audit',
+
+            'audit.window.180d': '180 days',
+
+            'audit.window.90d': '90 days',
+
+            'audit.window.30d': '30 days',
+
+            'audit.window.7d': '7 days',
             'audit.subtitle': 'Surface zombie rules (gone quiet), pure-noise rules (never forwarded), and flapping rules (oscillating near threshold). Read-only over existing data.',
             'audit.flag.zombie': 'Zombie',
             'audit.flag.pureNoise': 'Pure noise',
@@ -954,6 +962,16 @@
             // ── Incidents tab ──
             'nav.tab.incidents': 'Incidents',
             'incidents.title': 'Incidents',
+
+            'incidents.filter.search': 'Search incidents…',
+
+            'incidents.filter.closed': 'Closed',
+
+            'incidents.filter.quiet': 'Quiet',
+
+            'incidents.filter.active': 'Active',
+
+            'incidents.filter.all': 'All',
             'incidents.subtitle': 'Related alerts auto-grouped into operational incidents.',
             'incidents.empty.title': 'No incidents',
             'incidents.empty.text': 'No incidents match the current filter.',
