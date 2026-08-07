@@ -856,3 +856,53 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ── Form controls must not fall back to platform chrome ──────────────────
+   WebKit renders <select>, <input type="search"> and friends with native
+   macOS appearance and IGNORES `background` unless appearance is turned off.
+   So on Safari the filter row came out as a white search field and a light
+   grey dropdown in the middle of a dark page — the CSS was correct and simply
+   was not being applied. Firefox honours the background, which is why this
+   survived every screenshot taken here. */
+.form-input,
+.filter-input,
+select.form-input,
+select.filter-input,
+input[type="search"].filter-input,
+input[type="search"].form-input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  color: var(--text-main);
+}
+
+/* Turning appearance off also removes the dropdown arrow, so it has to be
+   drawn — as a token-coloured chevron, not a hex literal. */
+select.form-input,
+select.filter-input {
+  padding-right: 2rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+                    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(50% + 2px), calc(100% - 10px) calc(50% + 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+/* The native search cancel button is a dark-on-dark blob once the field is
+   themed; the field clears fine without it. */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+}
+
+.filter-input::placeholder { color: var(--text-muted); }
+
+/* Autofill repaints with the browser's own light background and drags the
+   text colour with it — same treatment as .form-input. */
+.filter-input:-webkit-autofill,
+.filter-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-main);
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-base) inset;
+  caret-color: var(--text-main);
+}
