@@ -4256,3 +4256,48 @@ body.sidebar-collapsed .sidebar-collapse .sidebar-icon { transform: rotate(180de
   flex: 0 0 auto;
   cursor: pointer;
 }
+
+
+/* Toggle buttons must LOOK toggled. `.is-active` was set on these by the JS
+   for months while only .palette-item and .sidebar-item had rules for it, so
+   the class changed nothing you could see and the only signal of state was a
+   tooltip you had to hover for. */
+.btn.is-active {
+  background: var(--primary-bg);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.btn.is-active .icon { color: var(--primary); }
+
+/* These two carry a short state word beside the glyph. Small and quiet — the
+   point is that the state is legible at rest, not that it shouts. */
+#autoRefreshText,
+#notifyToggleText {
+  font-size: 11px;
+  margin-left: 0.3rem;
+  letter-spacing: 0.01em;
+}
+
+
+/* A badge that is also a control. Without this the <button> arrives with the
+   browser's own border, background and font, so the one clickable badge on the
+   card looked unlike every badge beside it — which is the opposite of the
+   point: it should read as the same object, only actionable. */
+.badge-action {
+  border: 1px dashed transparent;
+  background-clip: padding-box;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: border-color 0.15s ease;
+}
+.badge-action:hover,
+.badge-action:focus-visible {
+  /* The affordance appears on approach rather than shouting all the time:
+     a dashed edge says "editable" without competing with the severity colour. */
+  border-color: currentColor;
+}
+.badge-action:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }

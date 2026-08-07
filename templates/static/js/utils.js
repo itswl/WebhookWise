@@ -424,6 +424,81 @@ function _wwDialog({ title, message, defaultValue, withInput, confirmLabel, canc
     });
 }
 
+/**
+ * Pick one of a few values. Resolves the chosen value, or null if dismissed.
+ *
+ * A prompt() asking you to type "acknowledged" is a spelling test. These are
+ * closed sets, so the choices should be the control.
+ */
+function wwChoose(message, choices) {
+    return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+
+        const content = document.createElement('div');
+        content.className = 'modal-content';
+        content.style.maxWidth = '380px';
+
+        const header = document.createElement('div');
+        header.className = 'modal-header';
+        const heading = document.createElement('div');
+        heading.className = 'modal-title';
+        heading.textContent = message || '';
+        header.appendChild(heading);
+
+        const body = document.createElement('div');
+        body.className = 'modal-body';
+        body.style.cssText = 'display:flex; flex-direction:column; gap:0.5rem;';
+
+        let settled = false;
+        const finish = (value) => {
+            if (settled) return;
+            settled = true;
+            modal.remove();
+            document.removeEventListener('keydown', onKey, true);
+            resolve(value);
+        };
+        const onKey = (event) => {
+            if (event.key === 'Escape') { event.stopPropagation(); finish(null); }
+        };
+
+        (choices || []).forEach((choice) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn' + (choice.active ? ' is-active' : '');
+            button.style.cssText = 'justify-content:flex-start; text-align:left;';
+            // The current value is marked, not hidden: knowing where you are is
+            // half of choosing where to go. Marked with the sprite, not a check
+            // emoji — every glyph must share one stroke voice and currentColor.
+            button.textContent = choice.label;
+            if (choice.active && typeof wwIcon === 'function') {
+                button.insertAdjacentHTML('beforeend', ' ' + wwIcon('check'));
+            }
+            button.addEventListener('click', () => finish(choice.value));
+            body.appendChild(button);
+        });
+
+        const footer = document.createElement('div');
+        footer.className = 'modal-footer';
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'btn btn-sm';
+        cancel.textContent = typeof t === 'function' ? t('common.cancel') : 'Cancel';
+        cancel.addEventListener('click', () => finish(null));
+        footer.appendChild(cancel);
+
+        content.append(header, body, footer);
+        modal.appendChild(content);
+        modal.addEventListener('click', (event) => { if (event.target === modal) finish(null); });
+        document.addEventListener('keydown', onKey, true);
+        document.body.appendChild(modal);
+        const first = body.querySelector('button');
+        if (first) first.focus();
+    });
+}
+
 /** Styled confirm(). Resolves true/false — never throws, never blocks. */
 function wwConfirm(message, options) {
     const opts = options || {};

@@ -349,11 +349,16 @@ async function initDashboard() {
             renderSidebar();
             updateAuthButtonState();
             updateAutoRefreshLabel();
+            // The notify button was only ever refreshed from inside its own
+            // click handler, so on a fresh load it kept whatever the markup
+            // said — which is why "off" was a state nobody had ever seen.
+            updateNotifyButtonState();
             refreshCurrentTab();
         });
         if (i18nReadyAtStart) {
             I18N.apply();
         }
+        updateNotifyButtonState();
     }
 
     if (typeof API !== 'undefined') {
@@ -406,6 +411,9 @@ async function initDashboard() {
 
     // Start auto-refresh
     startAutoRefresh();
+    // After, not before: painting the toggle before the interval exists showed
+    // "paused" on a dashboard that was in fact refreshing.
+    updateAutoRefreshLabel();
 
     // Load the Overview landing tab. If the active dictionary is already loaded,
     // render now; otherwise wait for it to settle so the first (and only) render
@@ -780,9 +788,24 @@ function startAutoRefresh() {
 function updateAutoRefreshLabel() {
     const icon = document.getElementById('autoRefreshIcon');
     const text = document.getElementById('autoRefreshText');
+    const btn = document.getElementById('autoRefreshBtn');
     const on = !!autoRefreshInterval;
-    if (icon) icon.innerHTML = wwIcon(on ? 'play' : 'pause');
-    if (text) text.textContent = on ? t('nav.autoRefreshOn') : t('nav.autoRefresh');
+    // The icon shows what the CLICK will do, which is how every transport
+    // control works. It used to show a play glyph while refreshing, so the one
+    // reading everybody gives it — "stopped, press to start" — was the exact
+    // opposite of the truth.
+    if (icon) icon.innerHTML = wwIcon(on ? 'pause' : 'play');
+    // Visible, not sr-only. A state you can only reach by hovering or with a
+    // screen reader is a state most people never see.
+    // Kept screen-reader-only: this is a fixed-width icon button, and a word
+    // inside it wraps one character per line. The visible signal is the icon
+    // plus the is-active tint.
+    if (text) text.textContent = on ? t('nav.autoRefreshOn') : t('nav.autoRefreshOff');
+    if (btn) {
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.setAttribute('title', on ? t('nav.autoRefreshPause') : t('nav.autoRefreshStart'));
+    }
 }
 
 /**
@@ -819,9 +842,16 @@ function updateNotifyButtonState() {
     if (!btn) return;
     const on = notifyEnabled() && typeof Notification !== 'undefined' && Notification.permission === 'granted';
     btn.classList.toggle('is-active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     const key = on ? 'nav.notifyOn' : 'nav.notifyOff';
     btn.setAttribute('title', t(key));
     btn.setAttribute('aria-label', t(key));
+    // A bell and a struck-through bell, so "off" is a thing you can SEE rather
+    // than the absence of a thing you cannot.
+    const icon = document.getElementById('notifyToggleIcon');
+    if (icon) icon.innerHTML = wwIcon(on ? 'bell' : 'volume-x');
+    const label = document.getElementById('notifyToggleText');
+    if (label) label.textContent = on ? t('nav.notifyOnShort') : t('nav.notifyOffShort');
 }
 
 async function toggleDesktopNotifications() {

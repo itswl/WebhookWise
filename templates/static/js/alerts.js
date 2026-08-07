@@ -131,7 +131,8 @@ const AlertsModule = {
                 },
                 'assign': () => this.assignWorkflow(id),
                 'notes': () => this.manageNotes(id),
-                'override-importance': () => this.overrideImportance(id)
+                'override-importance': () => this.overrideImportance(id),
+                'cycle-workflow': () => this.chooseWorkflow(id)
             };
             const handler = handlers[action];
             if (handler) {
@@ -516,7 +517,14 @@ const AlertsModule = {
             }
             var workflowStatus = webhook.workflow_status || 'open';
             var workflowClass = workflowStatus === 'resolved' || workflowStatus === 'ignored' ? 'badge-low' : (workflowStatus === 'open' ? 'badge-high' : 'badge-medium');
-            html += '<span class="badge ' + workflowClass + '">' + escapeHtml(t('alerts.workflow.' + workflowStatus)) + '</span>';
+            // Clickable, not decorative. Acknowledge and Resolve used to be
+            // buried in the secondary actions and only reversible through a
+            // toast that vanished — so the status you were looking at was the
+            // one thing on the card you could not change by touching it.
+            html += '<button type="button" class="badge badge-action ' + workflowClass +
+                '" data-action="cycle-workflow" data-id="' + webhookId + '" title="' +
+                escapeHtml(t('alerts.workflow.clickToChange')) + '">' +
+                escapeHtml(t('alerts.workflow.' + workflowStatus)) + '</button>';
             html += '<span class="alert-time">' + timeAgo(webhook.timestamp) + '</span>';
             html += '</div></div>';
 
@@ -1582,13 +1590,14 @@ const AlertsModule = {
             const target = this.alerts.find(function (item) { return String(item.id) === String(id); });
             if (target) Object.assign(target, payload.data || {});
             this.filterAlerts(false);
-            if (patch && patch.workflow_status && typeof showUndoToast === 'function') {
-                const self = this;
-                showUndoToast(
-                    t('alerts.workflow.changedTo', { status: t('alerts.workflow.' + patch.workflow_status) }),
-                    function () { return self.undoWorkflow(id); },
-                    t('alerts.workflow.undo')
-                );
+            // No undo toast: the badge itself is now the control, so putting
+            // the status back is the same gesture as setting it — visible on
+            // the card, available whenever you notice rather than for twelve
+            // seconds after the click.
+            if (patch && patch.workflow_status && typeof showToast === 'function') {
+                showToast(t('alerts.workflow.changedTo', {
+                    status: t('alerts.workflow.' + patch.workflow_status)
+                }), 'success');
             }
         } catch (error) {
             showToast('Workflow update failed: ' + (error.message || String(error)), 'error');
@@ -1656,6 +1665,17 @@ const AlertsModule = {
     // and "incorrect" sent a free-text comment nothing ever read — it did not
     // even send the corrected importance the backend has always supported. One
     // action that changes something beats two that imply they teach the model.
+    async chooseWorkflow(id) {
+        const target = this.alerts.find(function (item) { return String(item.id) === String(id); }) || {};
+        const current = target.workflow_status || 'open';
+        const states = ['open', 'acknowledged', 'in_progress', 'resolved', 'ignored'];
+        const choice = await wwChoose(t('alerts.workflow.choose'), states.map(function (s) {
+            return { value: s, label: t('alerts.workflow.' + s), active: s === current };
+        }));
+        if (!choice || choice === current) return;
+        await this.updateWorkflow(id, { workflow_status: choice });
+    },
+
     async overrideImportance(id) {
         const target = this.alerts.find(function (item) { return String(item.id) === String(id); }) || {};
         const current = target.importance || '';
