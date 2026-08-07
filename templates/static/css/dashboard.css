@@ -906,3 +906,53 @@ input[type="search"]::-webkit-search-decoration {
   -webkit-box-shadow: 0 0 0 1000px var(--bg-base) inset;
   caret-color: var(--text-main);
 }
+
+
+/* ── Every form control, whether or not it remembered a class ─────────────
+   The class-based rules missed six controls that carry only inline layout
+   styles (the payload sandbox's source field and its textarea among them),
+   and `textarea` had no rule anywhere in the stylesheet at all — so those
+   stayed white-on-white in the dark theme after the .form-input fix.
+
+   Typing the ELEMENT is the fix that ends the game: a control cannot forget
+   to be an input. Checked first that no inline style declares background or
+   color, so nothing here is fighting a `style=` attribute it would lose to.
+   Class rules still win where they are more specific. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+textarea,
+select {
+  background: var(--bg-base);
+  color: var(--text-main);
+  border-color: var(--border);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;   /* Firefox dims placeholders by default; the token already is muted. */
+}
+
+textarea {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--ring-primary);
+}
+
+input:-webkit-autofill,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text-main);
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-base) inset;
+  caret-color: var(--text-main);
+}
