@@ -2,7 +2,8 @@ from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
 
 from adapters.ecosystem_adapters import initialize_adapters
@@ -100,7 +101,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             stop_log_listener()
 
 
-app = FastAPI(title="Webhook AI Assistant", lifespan=lifespan, debug=False)
+# docs_url/redoc_url off: FastAPI's built-ins load Swagger UI and ReDoc from
+# jsdelivr, and this app's CSP is `script-src-elem 'self'` — so both pages
+# rendered as a blank white screen, the policy working exactly as intended.
+# Served below from templates/static/vendor instead, which keeps the policy
+# intact and means the docs do not depend on a third-party CDN being reachable
+# (or uncompromised — it would be executing scripts on the origin that holds
+# the alert data and the credentials).
+app = FastAPI(
+    title="Webhook AI Assistant",
+    lifespan=lifespan,
+    debug=False,
+    docs_url=None,
+    redoc_url=None,
+)
 app.state.app_context = get_default_app_context() or init_default_app_context()
 
 
@@ -112,6 +126,31 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 setup_observability(app)
 app.mount("/static", ImmutableStaticFiles(directory="templates/static"), name="static")
+
+
+@app.get("/docs", include_in_schema=False)
+async def swagger_ui() -> HTMLResponse:
+    """Swagger UI from our own origin."""
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url or "/openapi.json",
+        title=f"{app.title} - Swagger UI",
+        swagger_js_url="/static/vendor/swagger-ui-bundle.js",
+        swagger_css_url="/static/vendor/swagger-ui.css",
+        swagger_favicon_url="/static/favicon.svg",
+    )
+
+
+@app.get("/redoc", include_in_schema=False)
+async def redoc_ui() -> HTMLResponse:
+    """ReDoc from our own origin."""
+    return get_redoc_html(
+        openapi_url=app.openapi_url or "/openapi.json",
+        title=f"{app.title} - ReDoc",
+        redoc_js_url="/static/vendor/redoc.standalone.js",
+        redoc_favicon_url="/static/favicon.svg",
+        with_google_fonts=False,
+    )
+
 
 app.add_middleware(SecurityHeadersMiddleware)
 

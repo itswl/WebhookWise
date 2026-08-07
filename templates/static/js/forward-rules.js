@@ -148,7 +148,7 @@ function renderRuleCard(rule) {
                 <div style="display: flex; align-items: center; gap: 1rem;">
                     <!-- Modern Toggle Switch -->
                     <label class="switch" style="position: relative; display: inline-block; width: 44px; height: 24px; margin: 0;">
-                        <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleRule(${rule.id}, this.checked)" style="opacity: 0; width: 0; height: 0;">
+                        <input type="checkbox" ${isEnabled ? 'checked' : ''} data-toggle-rule="${rule.id}" style="opacity: 0; width: 0; height: 0;">
                         <span class="slider" style="
                             position: absolute;
                             cursor: pointer;
@@ -558,4 +558,15 @@ document.addEventListener('click', function (event) {
     if (typeof DecisionTraceModule !== 'undefined' && typeof DecisionTraceModule.filterByRule === 'function') {
         DecisionTraceModule.filterByRule(name);
     }
+});
+
+// The rule enable/disable switch was the last inline handler in the codebase —
+// the CSP burn-down took 97 of them to zero and missed this one, so
+// `script-src-attr 'none'` has been silently blocking it: clicking the switch
+// did nothing at all, and only the console said why. Delegated like the rest.
+document.addEventListener('change', function (event) {
+    const box = event.target.closest('[data-toggle-rule]');
+    if (!box) return;
+    const id = box.getAttribute('data-toggle-rule');
+    if (typeof toggleRule === 'function') toggleRule(id, box.checked);
 });
