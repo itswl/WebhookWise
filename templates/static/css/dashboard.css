@@ -264,6 +264,15 @@ body {
   flex: 0 0 auto;
   cursor: default;
   transition: background 0.2s ease, box-shadow 0.2s ease;
+  /* Healthy breathes too — a still dot reads as a dead pixel. Slower and
+     shallower than the unhealthy states on purpose: "alive" and "look at me"
+     must not move the same way. */
+  animation: breathe 4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.72; }
 }
 
 /* Healthy is STILL. This dot pulsed forever, so the one moving thing in the
@@ -622,7 +631,21 @@ body {
   border-radius: var(--radius-md);
   font-size: var(--fs-md);
   background: var(--bg-surface);
+  /* Never declared a colour, so it inherited the UA default — near-black text
+     on a near-black surface. Legible in light mode by luck, unreadable in the
+     dark theme that is this dashboard's default. */
+  color: var(--text-main);
   transition: all 0.2s;
+}
+
+.form-input::placeholder { color: var(--text-muted); }
+/* Password managers and Chromium's autofill repaint the field with their own
+   light background; the inset shadow trick keeps the themed surface. */
+.form-input:-webkit-autofill,
+.form-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-main);
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-surface) inset;
+  caret-color: var(--text-main);
 }
 
 .form-input:focus {
