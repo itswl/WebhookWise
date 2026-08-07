@@ -122,7 +122,13 @@ const AlertsModule = {
                 'quick-silence': () => this.quickSilence(id),
                 'replay-dry': () => this.replayDryRun(id),
                 'acknowledge': () => this.updateWorkflow(id, { workflow_status: 'acknowledged' }),
-                'resolve': () => this.updateWorkflow(id, { workflow_status: 'resolved' }),
+                // Resolve is terminal and closes the alert out of the queue, so it
+                // asks first. Acknowledge stays one click: it is cheap to take back
+                // and asking on every claim would train people to click through.
+                'resolve': () => {
+                    if (!confirm(t('alerts.workflow.confirmResolve'))) return;
+                    return this.updateWorkflow(id, { workflow_status: 'resolved' });
+                },
                 'assign': () => this.assignWorkflow(id),
                 'notes': () => this.manageNotes(id),
                 'feedback-correct': () => this.sendFeedback(id, 'correct'),
@@ -1578,8 +1584,40 @@ const AlertsModule = {
             const target = this.alerts.find(function (item) { return String(item.id) === String(id); });
             if (target) Object.assign(target, payload.data || {});
             this.filterAlerts(false);
+            if (patch && patch.workflow_status && typeof showUndoToast === 'function') {
+                const self = this;
+                showUndoToast(
+                    t('alerts.workflow.changedTo', { status: t('alerts.workflow.' + patch.workflow_status) }),
+                    function () { return self.undoWorkflow(id); },
+                    t('alerts.workflow.undo')
+                );
+            }
         } catch (error) {
             alert('Workflow update failed: ' + (error.message || String(error)));
+        }
+    },
+
+    async undoWorkflow(id) {
+        try {
+            const response = await API.authenticatedFetch('/v1/webhooks/' + id + '/workflow/undo', { method: 'POST' });
+            const payload = await response.json();
+            if (!response.ok || !payload.success) {
+                // The refusal is the useful part: it means somebody else moved
+                // the alert on, and saying so is better than silently winning.
+                if (typeof showToast === 'function') {
+                    showToast(payload.error || t('alerts.workflow.undoFailed'), 'warning');
+                }
+                await this.loadAlerts();
+                return;
+            }
+            const target = this.alerts.find(function (item) { return String(item.id) === String(id); });
+            if (target) Object.assign(target, payload.data || {});
+            this.filterAlerts(false);
+            if (typeof showToast === 'function') showToast(t('alerts.workflow.undone'), 'success');
+        } catch (error) {
+            if (typeof showToast === 'function') {
+                showToast(t('alerts.workflow.undoFailed') + ': ' + (error.message || String(error)), 'error');
+            }
         }
     },
 

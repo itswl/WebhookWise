@@ -69,6 +69,40 @@ class NoiseReductionAction(Base):
     __table_args__ = (Index("ix_noise_reduction_actions_status_created", "status", "created_at"),)
 
 
+class WorkflowTransition(Base):
+    """One reversible operator workflow change, kept so it can be taken back.
+
+    The audit log records what a change BECAME, in prose. That is enough to
+    read the history and not enough to reverse it — undoing needs the prior
+    values, structurally, and it needs to know whether anything has happened
+    since. Both live here.
+
+    Same shape and same safety rule as NoiseReductionAction: an undo applies
+    only while the resource still matches `after_state`, so taking back your
+    own misclick can never quietly discard somebody else's later decision.
+    """
+
+    __tablename__ = "workflow_transitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # "webhook_event" | "incident"
+    resource_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    resource_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    before_state: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=False)
+    after_state: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=False)
+    # "applied" | "undone"
+    status: Mapped[str] = mapped_column(String(20), default="applied", nullable=False)
+    actor: Mapped[str] = mapped_column(String(100), default="dashboard", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow(), nullable=False)
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    __table_args__ = (
+        # The undo path always asks the same question: what was the most recent
+        # still-applied change to THIS resource?
+        Index("ix_workflow_transitions_resource", "resource_type", "resource_id", "id"),
+    )
+
+
 class RuntimeSetting(Base):
     """One live override for an operator-policy config key.
 

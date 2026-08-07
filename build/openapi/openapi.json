@@ -3506,6 +3506,108 @@
         }
       }
     },
+    "/v1/{kind}/{resource_id}/workflow/undo": {
+      "post": {
+        "summary": "Undo Workflow Endpoint",
+        "description": "Take back the last workflow change — Acknowledge and Resolve are one tap\naway on a card, and a mis-tap should not need a database to fix.",
+        "operationId": "undo_workflow_endpoint_v1__kind___resource_id__workflow_undo_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "resource_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Resource Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Workflow Undo Available Endpoint",
+        "description": "What an undo would take back, or null. The dashboard asks before drawing\nthe control: an undo button that fails when pressed is worse than none.",
+        "operationId": "workflow_undo_available_endpoint_v1__kind___resource_id__workflow_undo_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "resource_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Resource Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/{kind}/{resource_id}/notes": {
       "get": {
         "summary": "List Notes Endpoint",

@@ -2,18 +2,58 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
-from models import AnalysisFeedback, Incident, IncidentMember, OperationalNote, WebhookEvent
+from models import (
+    AnalysisFeedback,
+    Incident,
+    IncidentMember,
+    OperationalNote,
+    WebhookEvent,
+    WorkflowTransition,
+)
 from services.incidents.summary import queue_summary_if_needed
 from services.operations.audit_logger import add_audit
 
 TERMINAL_WORKFLOW_STATUSES = {"resolved", "ignored"}
+
+# Exactly the fields update_workflow can mutate. A snapshot that misses one
+# restores a resource that only LOOKS like it was put back.
+_SNAPSHOT_FIELDS = (
+    "workflow_status",
+    "assignee",
+    "team",
+    "acknowledged_at",
+    "resolved_at",
+    "sla_due_at",
+)
+_INCIDENT_SNAPSHOT_FIELDS = ("status", "ended_at")
+
+
+def _snapshot(resource: WebhookEvent | Incident) -> dict[str, Any]:
+    """The reversible state of one resource, as JSON-safe values."""
+    fields = _SNAPSHOT_FIELDS + (_INCIDENT_SNAPSHOT_FIELDS if isinstance(resource, Incident) else ())
+    state: dict[str, Any] = {}
+    for name in fields:
+        value = getattr(resource, name, None)
+        state[name] = utc_isoformat(value) if isinstance(value, datetime) else value
+    return state
+
+
+def _restore(resource: WebhookEvent | Incident, state: dict[str, Any]) -> None:
+    """Put a snapshot back, parsing the timestamps it was serialized from."""
+    for name, value in state.items():
+        if not hasattr(resource, name):
+            continue
+        if name.endswith("_at") and isinstance(value, str):
+            setattr(resource, name, datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None))
+        else:
+            setattr(resource, name, value)
 
 
 async def get_resource(session: AsyncSession, resource_type: str, resource_id: int) -> WebhookEvent | Incident | None:
@@ -47,12 +87,14 @@ async def update_workflow(
     resource_type: str,
     resource_id: int,
     changes: dict[str, Any],
+    actor: str = "dashboard",
 ) -> dict[str, Any] | None:
     """Apply one explicit operator workflow patch and audit the transition."""
     resource = await get_resource(session, resource_type, resource_id)
     if resource is None:
         return None
 
+    before = _snapshot(resource)
     now = utcnow()
     new_status = changes.get("workflow_status")
     if new_status:
@@ -91,8 +133,123 @@ async def update_workflow(
         "workflow_updated",
         f"Workflow updated: status={resource.workflow_status}, assignee={resource.assignee or 'unassigned'}",
     )
+
+    after = _snapshot(resource)
+    # A no-op patch is not something to offer an undo for — it would take back
+    # a change nobody made, and shadow the real one before it.
+    if after != before:
+        session.add(
+            WorkflowTransition(
+                resource_type=resource_type,
+                resource_id=resource_id,
+                before_state=before,
+                after_state=after,
+                actor=actor,
+            )
+        )
+
     await session.commit()
     return workflow_dict(resource)
+
+
+async def undo_workflow(
+    session: AsyncSession,
+    *,
+    resource_type: str,
+    resource_id: int,
+    actor: str = "dashboard",
+) -> dict[str, Any]:
+    """Take back the most recent workflow change, if nothing has happened since.
+
+    The guard is the whole point. Acknowledge and Resolve are one tap away on a
+    Feishu card, so they get mis-tapped; but by the time you notice, somebody
+    else may have picked the alert up. Restoring blindly would silently discard
+    their decision, which is a worse failure than the misclick. So the undo
+    applies only while the resource still matches exactly what the change left
+    behind, and otherwise refuses by name.
+    """
+    resource = await get_resource(session, resource_type, resource_id)
+    if resource is None:
+        return {"changed": False, "reason": "resource_not_found"}
+
+    transition = (
+        await session.execute(
+            select(WorkflowTransition)
+            .where(
+                WorkflowTransition.resource_type == resource_type,
+                WorkflowTransition.resource_id == resource_id,
+                WorkflowTransition.status == "applied",
+            )
+            .order_by(WorkflowTransition.id.desc())
+            .limit(1)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if transition is None:
+        return {"changed": False, "reason": "nothing_to_undo"}
+
+    current = _snapshot(resource)
+    if current != dict(transition.after_state):
+        return {
+            "changed": False,
+            "reason": "changed_since",
+            "current": workflow_dict(resource),
+        }
+
+    _restore(resource, dict(transition.before_state))
+    transition.status = "undone"
+    transition.undone_at = utcnow()
+
+    label = str(getattr(resource, "title", None) or getattr(resource, "request_id", None) or resource_id)
+    add_audit(
+        session,
+        resource_type,
+        resource_id,
+        label[:200],
+        "workflow_undone",
+        f"Workflow undone: back to status={resource.workflow_status}, assignee={resource.assignee or 'unassigned'}",
+        actor=actor,
+    )
+    await session.commit()
+    return {"changed": True, "workflow": workflow_dict(resource)}
+
+
+async def latest_undoable(
+    session: AsyncSession,
+    *,
+    resource_type: str,
+    resource_id: int,
+) -> dict[str, Any] | None:
+    """What an undo would take back right now, or None if it would refuse.
+
+    The dashboard asks this to decide whether to offer the control at all —
+    an undo button that fails when pressed is worse than no button.
+    """
+    resource = await get_resource(session, resource_type, resource_id)
+    if resource is None:
+        return None
+    transition = (
+        await session.execute(
+            select(WorkflowTransition)
+            .where(
+                WorkflowTransition.resource_type == resource_type,
+                WorkflowTransition.resource_id == resource_id,
+                WorkflowTransition.status == "applied",
+            )
+            .order_by(WorkflowTransition.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if transition is None or _snapshot(resource) != dict(transition.after_state):
+        return None
+    before = dict(transition.before_state)
+    return {
+        "transition_id": transition.id,
+        "from_status": before.get("workflow_status"),
+        "to_status": dict(transition.after_state).get("workflow_status"),
+        "actor": transition.actor,
+        "created_at": utc_isoformat(transition.created_at),
+    }
 
 
 async def add_note(
