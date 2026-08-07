@@ -2,7 +2,6 @@ from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.openapi.docs import get_redoc_html
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -157,16 +156,36 @@ async def swagger_ui() -> HTMLResponse:
     return HTMLResponse(_SWAGGER_HTML.format(title=app.title))
 
 
+# Hand-rolled for the same reason as /docs, plus one of ReDoc's own: it builds
+# a search index in a Web Worker created from a blob: URL, and this CSP has no
+# worker-src so it falls through to `default-src 'self'` — blob is not self, the
+# Worker constructor throws, and ReDoc renders "Something went wrong" instead of
+# the page.
+#
+# disable-search rather than `worker-src 'self' blob:`, because that directive
+# would relax the policy for the WHOLE application — the dashboard included — to
+# buy a search box on a documentation page. Swagger UI at /docs has its own
+# filter and needs no worker, so search is available there.
+_REDOC_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title} - ReDoc</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+</head>
+<body style="margin:0">
+<redoc spec-url="/openapi.json" disable-search></redoc>
+<script src="/static/vendor/redoc.standalone.js"></script>
+</body>
+</html>
+"""
+
+
 @app.get("/redoc", include_in_schema=False)
 async def redoc_ui() -> HTMLResponse:
-    """ReDoc from our own origin."""
-    return get_redoc_html(
-        openapi_url=app.openapi_url or "/openapi.json",
-        title=f"{app.title} - ReDoc",
-        redoc_js_url="/static/vendor/redoc.standalone.js",
-        redoc_favicon_url="/static/favicon.svg",
-        with_google_fonts=False,
-    )
+    """ReDoc from our own origin, with no inline script and no Worker."""
+    return HTMLResponse(_REDOC_HTML.format(title=app.title))
 
 
 app.add_middleware(SecurityHeadersMiddleware)
