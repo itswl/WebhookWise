@@ -126,6 +126,14 @@
 
             // ── Common ──
             'common.all': '全部',
+
+            'common.ok': '确定',
+
+            'common.confirm': '确认',
+
+            'common.inputTitle': '输入',
+
+            'common.confirmTitle': '确认',
             'common.high': '高',
             'common.medium': '中',
             'common.low': '低',

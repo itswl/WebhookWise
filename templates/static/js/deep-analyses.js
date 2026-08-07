@@ -601,61 +601,61 @@ var DeepAnalysesModule = (function() {
     }
 
     async function forwardResult(analysisId) {
-        var url = prompt(t('deep.forward.prompt'), '');
+        var url = await wwPrompt(t('deep.forward.prompt'), '');
 
         if (url === null) return; // User clicked Cancel
 
         url = url.trim();
         if (!url) {
-            alert('' + t('deep.forward.urlEmpty'));
+            showToast('' + t('deep.forward.urlEmpty'), 'info');
             return;
         }
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
-            alert('' + t('deep.forward.urlInvalid'));
+            showToast('' + t('deep.forward.urlInvalid'), 'info');
             return;
         }
 
         try {
             var result = await API.forwardDeepAnalysis(analysisId, url);
             if (result.success) {
-                alert('' + (result.message || t('deep.forward.pushed')));
+                showToast('' + (result.message || t('deep.forward.pushed')), 'info');
             } else {
-                alert('' + t('deep.forward.failed') + ': ' + (result.message || t('common.unknownError')));
+                showToast('' + t('deep.forward.failed') + ': ' + (result.message || t('common.unknownError')), 'error');
             }
         } catch (e) {
-            alert('' + t('common.requestFailed') + ': ' + e.message);
+            showToast('' + t('common.requestFailed') + ': ' + e.message, 'error');
         }
     }
 
     async function reanalyzeFromDeepAnalysis(webhookEventId) {
-        if (!confirm(t('deep.reanalyze.confirm'))) return;
+        if (!(await wwConfirm(t('deep.reanalyze.confirm')))) return;
 
         try {
             var result = await API.deepAnalyze(webhookEventId, '', 'auto');
             if (result.success) {
-                alert('' + t('deep.reanalyze.started'));
+                showToast('' + t('deep.reanalyze.started'), 'info');
                 load();
             } else {
-                alert('' + t('deep.reanalyze.failed') + ': ' + (result.message || result.error || t('common.unknownError')));
+                showToast('' + t('deep.reanalyze.failed') + ': ' + (result.message || result.error || t('common.unknownError')), 'error');
             }
         } catch (e) {
-            alert('' + t('common.requestFailed') + ': ' + e.message);
+            showToast('' + t('common.requestFailed') + ': ' + e.message, 'error');
         }
     }
 
     async function retryAnalysis(analysisId) {
-        if (!confirm(t('deep.retry.confirm'))) return;
+        if (!(await wwConfirm(t('deep.retry.confirm')))) return;
 
         try {
             var result = await API.retryDeepAnalysis(analysisId);
             if (result.success) {
-                alert('' + (result.message || t('deep.retry.triggered')));
+                showToast('' + (result.message || t('deep.retry.triggered')), 'info');
                 load();
             } else {
-                alert('' + t('deep.retry.failed') + ': ' + (result.error || result.message || t('common.unknownError')));
+                showToast('' + t('deep.retry.failed') + ': ' + (result.error || result.message || t('common.unknownError')), 'error');
             }
         } catch (e) {
-            alert('' + t('common.requestFailed') + ': ' + e.message);
+            showToast('' + t('common.requestFailed') + ': ' + e.message, 'error');
         }
     }
 

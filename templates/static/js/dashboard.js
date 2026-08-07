@@ -970,7 +970,7 @@ async function saveAuthKeys() {
         }
     } catch (error) {
         console.error('Failed to save credentials in the browser', error);
-        alert(error.message || t('auth.saveFailed'));
+        showToast(error.message || t('auth.saveFailed'), 'error');
         return;
     }
 

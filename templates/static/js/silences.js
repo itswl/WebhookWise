@@ -433,7 +433,7 @@ async function saveSilence() {
         silenceData.match_event_type || silenceData.match_project ||
         silenceData.match_region || silenceData.match_environment || silenceData.match_payload;
     if (!hasCriterion) {
-        alert(t('silences.alert.criterionRequired'));
+        showToast(t('silences.alert.criterionRequired'), 'info');
         return;
     }
 
@@ -446,10 +446,10 @@ async function saveSilence() {
         });
         if (blockedRules.length > 0) {
             var names = blockedRules.map(function (r) { return r.name; }).join(', ');
-            if (!confirm(
+            if (!(await wwConfirm(
                 t('silences.confirm.conflict', { n: blockedRules.length }) + '\n\n' + names +
                 '\n\n' + t('silences.confirm.conflictDetail')
-            )) { return; }
+            ))) { return; }
         }
     }
 
@@ -467,15 +467,15 @@ async function saveSilence() {
         }
 
         if (result.success) {
-            alert(silenceId ? '' + t('silences.alert.updateSuccess') : '' + t('silences.alert.createSuccess'));
+            showToast(silenceId ? '' + t('silences.alert.updateSuccess') : '' + t('silences.alert.createSuccess'), 'info');
             closeSilenceForm();
             loadSilences();
         } else {
-            alert('' + t('silences.alert.saveFailed') + ': ' + (result.error || t('common.unknownError')));
+            showToast('' + t('silences.alert.saveFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to save silence:', error);
-        alert('' + t('silences.alert.saveFailed') + ': ' + error.message);
+        showToast('' + t('silences.alert.saveFailed') + ': ' + error.message, 'error');
     }
 }
 
@@ -493,7 +493,7 @@ function drillSilenceToTrace(silenceId) {
 }
 
 async function liftSilence(id) {
-    if (!confirm(t('silences.confirm.lift'))) {
+    if (!(await wwConfirm(t('silences.confirm.lift')))) {
         return;
     }
     try {
@@ -501,11 +501,11 @@ async function liftSilence(id) {
         if (result.success) {
             loadSilences();
         } else {
-            alert('' + t('silences.alert.operationFailed') + ': ' + (result.error || t('common.unknownError')));
+            showToast('' + t('silences.alert.operationFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to lift silence:', error);
-        alert('' + t('silences.alert.operationFailed') + ': ' + error.message);
+        showToast('' + t('silences.alert.operationFailed') + ': ' + error.message, 'error');
     }
 }
 
@@ -514,20 +514,20 @@ async function liftSilence(id) {
  * @param {number} id - silence ID
  */
 async function deleteSilence(id) {
-    if (!confirm(t('silences.confirm.delete'))) {
+    if (!(await wwConfirm(t('silences.confirm.delete')))) {
         return;
     }
     try {
         const result = await API.deleteSilence(id);
         if (result.success) {
-            alert('' + t('silences.alert.deleteSuccess'));
+            showToast('' + t('silences.alert.deleteSuccess'), 'info');
             loadSilences();
         } else {
-            alert('' + t('silences.alert.deleteFailed') + ': ' + (result.error || t('common.unknownError')));
+            showToast('' + t('silences.alert.deleteFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to delete silence:', error);
-        alert('' + t('silences.alert.deleteFailed') + ': ' + error.message);
+        showToast('' + t('silences.alert.deleteFailed') + ': ' + error.message, 'error');
     }
 }
 
@@ -559,7 +559,7 @@ async function backtestSilenceRule() {
         silenceData.match_event_type || silenceData.match_project ||
         silenceData.match_region || silenceData.match_environment || silenceData.match_payload;
     if (!hasCriterion) {
-        alert(t('silences.alert.criterionRequired'));
+        showToast(t('silences.alert.criterionRequired'), 'info');
         return;
     }
 
@@ -856,7 +856,7 @@ async function saveMaintenanceWindow() {
     const windowId = document.getElementById('mwFormId').value;
     const name = document.getElementById('mwFormName').value.trim();
     if (!name) {
-        alert(t('mw.alert.nameRequired'));
+        showToast(t('mw.alert.nameRequired'), 'info');
         return;
     }
 
@@ -865,21 +865,21 @@ async function saveMaintenanceWindow() {
         if (cb.checked) days.push(Number(cb.value));
     });
     if (!days.length) {
-        alert(t('mw.alert.daysRequired'));
+        showToast(t('mw.alert.daysRequired'), 'info');
         return;
     }
 
     const startTime = document.getElementById('mwFormStartTime').value;
     const timeParts = /^(\d{1,2}):(\d{2})$/.exec(startTime || '');
     if (!timeParts) {
-        alert(t('mw.alert.startRequired'));
+        showToast(t('mw.alert.startRequired'), 'info');
         return;
     }
     const startMinute = Number(timeParts[1]) * 60 + Number(timeParts[2]);
 
     const durationMinutes = Number(document.getElementById('mwFormDurationMinutes').value);
     if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
-        alert(t('mw.alert.durationInvalid'));
+        showToast(t('mw.alert.durationInvalid'), 'info');
         return;
     }
 
@@ -910,17 +910,17 @@ async function saveMaintenanceWindow() {
         windowData.match_event_type || windowData.match_project ||
         windowData.match_region || windowData.match_environment || windowData.match_payload;
     if (!hasCriterion) {
-        alert(t('silences.alert.criterionRequired'));
+        showToast(t('silences.alert.criterionRequired'), 'info');
         return;
     }
 
     try {
         if (windowId) {
             await API.updateMaintenanceWindow(windowId, windowData);
-            alert('' + t('mw.alert.updateSuccess'));
+            showToast('' + t('mw.alert.updateSuccess'), 'info');
         } else {
             await API.createMaintenanceWindow(windowData);
-            alert('' + t('mw.alert.createSuccess'));
+            showToast('' + t('mw.alert.createSuccess'), 'info');
         }
         closeMaintenanceWindowForm();
         // Saving sweeps occurrences server-side (may materialize or lift a
@@ -928,7 +928,7 @@ async function saveMaintenanceWindow() {
         loadSilences();
     } catch (error) {
         console.error('Failed to save maintenance window:', error);
-        alert('' + t('silences.alert.saveFailed') + ': ' + (error.message || String(error)));
+        showToast('' + t('silences.alert.saveFailed') + ': ' + (error.message || String(error)), 'error');
     }
 }
 
@@ -937,18 +937,18 @@ async function saveMaintenanceWindow() {
  * @param {number} id - window ID
  */
 async function deleteMaintenanceWindow(id) {
-    if (!confirm(t('mw.confirm.delete'))) {
+    if (!(await wwConfirm(t('mw.confirm.delete')))) {
         return;
     }
     try {
         await API.deleteMaintenanceWindow(id);
-        alert('' + t('mw.alert.deleteSuccess'));
+        showToast('' + t('mw.alert.deleteSuccess'), 'info');
         // Deleting sweeps occurrences server-side (lifts any live "[mw:"
         // silence), so refresh the whole view.
         loadSilences();
     } catch (error) {
         console.error('Failed to delete maintenance window:', error);
-        alert('' + t('silences.alert.deleteFailed') + ': ' + (error.message || String(error)));
+        showToast('' + t('silences.alert.deleteFailed') + ': ' + (error.message || String(error)), 'error');
     }
 }
 

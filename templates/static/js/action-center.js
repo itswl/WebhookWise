@@ -152,7 +152,7 @@ const ActionCenterModule = (function () {
             }
             await load();
         } catch (error) {
-            alert('Action failed: ' + (error.message || String(error)));
+            showToast('Action failed: ' + (error.message || String(error)), 'error');
             button.disabled = false;
         }
     }

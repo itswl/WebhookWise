@@ -69,6 +69,40 @@ class NoiseReductionAction(Base):
     __table_args__ = (Index("ix_noise_reduction_actions_status_created", "status", "created_at"),)
 
 
+class ImportanceOverride(Base):
+    """An operator's importance correction, applied to this condition from now on.
+
+    This is what closes the loop. Before it, correcting an alert changed that
+    one row and nothing else: the same condition fired an hour later and the
+    model called it `low` again, because nothing anywhere read the correction.
+
+    Keyed on alert_hash — the identity a condition keeps across occurrences —
+    so one correction covers every future firing of the same thing and nothing
+    else. Deliberately NOT few-shot in the prompt: with a handful of samples
+    that teaches nothing, and with many it would quietly move judgements on
+    alerts nobody corrected, in a way no one could trace back.
+
+    hit_count is not decoration. It answers the only question that matters
+    about an override — is it still earning its place, or is it a rule somebody
+    set once and forgot.
+    """
+
+    __tablename__ = "importance_overrides"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alert_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    importance: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Carried for the management list: an alert_hash alone is unreadable.
+    source: Mapped[str | None] = mapped_column(String(100))
+    alert_name: Mapped[str | None] = mapped_column(String(200))
+    origin_event_id: Mapped[int | None] = mapped_column(Integer)
+    actor: Mapped[str] = mapped_column(String(100), default="dashboard", nullable=False)
+    hit_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_applied_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow(), nullable=False)
+
+
 class WorkflowTransition(Base):
     """One reversible operator workflow change, kept so it can be taken back.
 

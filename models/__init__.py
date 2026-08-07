@@ -18,6 +18,7 @@ from models.intelligence import (
 from models.kb_document import KBDocument
 from models.operations import (
     AnalysisFeedback,
+    ImportanceOverride,
     NoiseReductionAction,
     OperationalNote,
     RuntimeSetting,
@@ -38,6 +39,7 @@ __all__ = [
     "DeepAnalysis",
     "ForwardOutbox",
     "ForwardRule",
+    "ImportanceOverride",
     "Incident",
     "IncidentIntelligenceFeedback",
     "IncidentMember",

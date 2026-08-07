@@ -314,6 +314,17 @@ def _note_dict(note: OperationalNote) -> dict[str, Any]:
     }
 
 
+def _alert_label(resource: Any) -> str | None:
+    """A readable name for the override list; an alert_hash alone is opaque."""
+    identity = (getattr(resource, "parsed_data", None) or {}).get("_alert_identity")
+    if isinstance(identity, dict) and identity.get("name"):
+        return str(identity["name"])[:200]
+    analysis = getattr(resource, "ai_analysis", None) or {}
+    if isinstance(analysis, dict) and analysis.get("summary"):
+        return str(analysis["summary"])[:200]
+    return None
+
+
 async def add_feedback(
     session: AsyncSession,
     *,
@@ -344,6 +355,20 @@ async def add_feedback(
             resource.top_importance = corrected_importance
         else:
             resource.importance = corrected_importance
+            # Close the loop: remember the correction against the CONDITION, so
+            # the next firing of the same thing inherits it instead of being
+            # judged from scratch and called `low` again.
+            from services.analysis.importance_overrides import remember_override
+
+            await remember_override(
+                session,
+                alert_hash=str(getattr(resource, "alert_hash", "") or ""),
+                importance=corrected_importance,
+                source=str(getattr(resource, "source", "") or "") or None,
+                alert_name=_alert_label(resource),
+                origin_event_id=int(resource.id),
+                actor=actor,
+            )
     await session.flush()
     add_audit(
         session,

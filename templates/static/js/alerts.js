@@ -125,8 +125,8 @@ const AlertsModule = {
                 // Resolve is terminal and closes the alert out of the queue, so it
                 // asks first. Acknowledge stays one click: it is cheap to take back
                 // and asking on every claim would train people to click through.
-                'resolve': () => {
-                    if (!confirm(t('alerts.workflow.confirmResolve'))) return;
+                'resolve': async () => {
+                    if (!(await wwConfirm(t('alerts.workflow.confirmResolve')))) return;
                     return this.updateWorkflow(id, { workflow_status: 'resolved' });
                 },
                 'assign': () => this.assignWorkflow(id),
@@ -302,7 +302,7 @@ const AlertsModule = {
             this.filterAlerts(false);
         } catch (error) {
             console.error('Load more failed:', error);
-            alert(t('alerts.error.loadMoreFailed') + ': ' + error.message);
+            showToast(t('alerts.error.loadMoreFailed') + ': ' + error.message, 'error');
         } finally {
             const btn = document.getElementById('loadMoreBtn');
             if (btn) {
@@ -998,7 +998,7 @@ const AlertsModule = {
      */
     async replayDeadLetter(id) {
 
-        if (!confirm(t('alerts.confirm.replayDeadLetter'))) {
+        if (!(await wwConfirm(t('alerts.confirm.replayDeadLetter')))) {
             return;
         }
 
@@ -1053,9 +1053,9 @@ const AlertsModule = {
                 'Rules matched: ' + (d.matched_rule_count || 0) + ' of ' + (d.rules_evaluated || 0),
                 d.matched_rules && d.matched_rules.length ? 'Matching: ' + d.matched_rules.join(', ') : ''
             ].filter(Boolean);
-            alert(lines.join('\n'));
+            showToast(lines.join('\n'), 'info');
         } catch (e) {
-            alert(t('common.requestFailed') + ': ' + (e && e.message || e));
+            showToast(t('common.requestFailed') + ': ' + (e && e.message || e), 'error');
         }
     },
 
@@ -1064,7 +1064,7 @@ const AlertsModule = {
      */
     async reanalyzeAlert(id) {
 
-        if (!confirm(t('alerts.confirm.reanalyze'))) {
+        if (!(await wwConfirm(t('alerts.confirm.reanalyze')))) {
             return;
         }
 
@@ -1073,14 +1073,14 @@ const AlertsModule = {
 
 
             if (result.success) {
-                alert('' + t('alerts.msg.reanalyzeSuccess'));
+                showToast('' + t('alerts.msg.reanalyzeSuccess'), 'info');
                 this.loadAlerts();
             } else {
-                alert('' + t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
+                showToast('' + t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')), 'error');
             }
         } catch (error) {
             console.error('Reanalysis error:', error);
-            alert('' + t('alerts.msg.requestFailed') + ': ' + error.message);
+            showToast('' + t('alerts.msg.requestFailed') + ': ' + error.message, 'error');
         }
     },
 
@@ -1116,7 +1116,7 @@ const AlertsModule = {
      */
     async confirmForward() {
         const url = document.getElementById('forwardUrl').value;
-        if (!url) return alert(t('alerts.msg.enterForwardUrl'));
+        if (!url) return showToast(t('alerts.msg.enterForwardUrl'), 'info');
         const id = this.currentForwardId;
         const button = document.getElementById('confirmForwardBtn');
 
@@ -1125,13 +1125,13 @@ const AlertsModule = {
                 const result = await API.forward(id, url);
 
                 if (result.success) {
-                    alert('' + t('alerts.msg.forwardSuccess'));
+                    showToast('' + t('alerts.msg.forwardSuccess'), 'info');
                     this.closeForwardModal();
                 } else {
-                    alert('' + t('alerts.msg.forwardFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
+                    showToast('' + t('alerts.msg.forwardFailed') + ': ' + (result.error || t('alerts.msg.unknownError')), 'error');
                 }
             } catch (error) {
-                alert('' + t('alerts.msg.requestFailed') + ': ' + error.message);
+                showToast('' + t('alerts.msg.requestFailed') + ': ' + error.message, 'error');
             }
         });
     },
@@ -1390,7 +1390,7 @@ const AlertsModule = {
      * Deep-analyze an alert
      */
     async deepAnalyzeAlert(id) {
-        const question = prompt(t('alerts.deep.questionPrompt'), '');
+        const question = await wwPrompt(t('alerts.deep.questionPrompt'), '');
         if (question === null) return;  // User cancelled
 
         try {
@@ -1427,13 +1427,13 @@ const AlertsModule = {
                     this.loadDeepAnalyses(id);
                 } else {
                     // If the alert item is not on the current page, show a simple notice
-                    alert('' + t('alerts.deep.completeNotice'));
+                    showToast('' + t('alerts.deep.completeNotice'), 'info');
                 }
             } else {
-                alert(t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')));
+                showToast(t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')), 'error');
             }
         } catch (error) {
-            alert(t('alerts.msg.requestFailed') + ': ' + error.message);
+            showToast(t('alerts.msg.requestFailed') + ': ' + error.message, 'error');
         }
     },
 
@@ -1591,7 +1591,7 @@ const AlertsModule = {
                 );
             }
         } catch (error) {
-            alert('Workflow update failed: ' + (error.message || String(error)));
+            showToast('Workflow update failed: ' + (error.message || String(error)), 'error');
         }
     },
 
@@ -1621,11 +1621,11 @@ const AlertsModule = {
 
     async assignWorkflow(id) {
         const target = this.alerts.find(function (item) { return String(item.id) === String(id); }) || {};
-        const assignee = prompt('Assignee (leave empty to unassign)', target.assignee || '');
+        const assignee = await wwPrompt('Assignee (leave empty to unassign)', target.assignee || '');
         if (assignee === null) return;
-        const team = prompt('Team (leave empty to clear)', target.team || '');
+        const team = await wwPrompt('Team (leave empty to clear)', target.team || '');
         if (team === null) return;
-        const sla = prompt('SLA in minutes (leave empty to keep current SLA)', '');
+        const sla = await wwPrompt('SLA in minutes (leave empty to keep current SLA)', '');
         if (sla === null) return;
         const patch = { assignee: assignee, team: team };
         if (sla.trim()) patch.sla_minutes = Number(sla);
@@ -1640,14 +1640,14 @@ const AlertsModule = {
             const history = (payload.data || []).map(function (note) {
                 return '[' + note.actor + '] ' + note.body;
             }).join('\n');
-            const body = prompt((history ? 'Existing notes:\n' + history + '\n\n' : '') + 'Add a note (Cancel to close)', '');
+            const body = await wwPrompt((history ? 'Existing notes:\n' + history + '\n\n' : '') + 'Add a note (Cancel to close)', '');
             if (!body || !body.trim()) return;
             const createResponse = await API.authenticatedFetch('/v1/webhooks/' + id + '/notes', {
                 method: 'POST', body: JSON.stringify({ body: body.trim(), actor: 'dashboard' })
             });
             if (!createResponse.ok) throw new Error('HTTP ' + createResponse.status);
         } catch (error) {
-            alert('Notes failed: ' + (error.message || String(error)));
+            showToast('Notes failed: ' + (error.message || String(error)), 'error');
         }
     },
 
@@ -1659,7 +1659,7 @@ const AlertsModule = {
     async overrideImportance(id) {
         const target = this.alerts.find(function (item) { return String(item.id) === String(id); }) || {};
         const current = target.importance || '';
-        const value = prompt(t('alerts.action.overrideImportancePrompt'), current);
+        const value = await wwPrompt(t('alerts.action.overrideImportancePrompt'), current);
         if (value === null) return;
         const next = String(value).trim().toLowerCase();
         if (!next) return;

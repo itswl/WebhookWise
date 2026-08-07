@@ -389,8 +389,8 @@ var DecisionTraceModule = (function () {
         return header + targets.map(renderDeliveryTarget).join('<div style="height:1px;background:var(--border);margin:0 1.25rem;"></div>');
     }
 
-    function retryDelivery(outboxId) {
-        if (!confirm(t('dt.delivery.retryConfirm', { n: outboxId }))) return;
+    async function retryDelivery(outboxId) {
+        if (!(await wwConfirm(t('dt.delivery.retryConfirm', { n: outboxId })))) return;
         API.retryOutbox(outboxId).then(function (r) {
             if (r && r.success) {
                 if (typeof showToast === 'function') showToast(t('dt.delivery.retryOk'), 'success');
