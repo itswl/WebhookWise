@@ -932,6 +932,14 @@
             // ── Rule Audit tab ──
             'routing.view.audit': '审计',
             'audit.title': '规则审计',
+
+            'audit.window.180d': '近 180 天',
+
+            'audit.window.90d': '近 90 天',
+
+            'audit.window.30d': '近 30 天',
+
+            'audit.window.7d': '近 7 天',
             'audit.subtitle': '发现僵尸规则（已静默）、纯噪音规则（从未转发）和抖动规则（在阈值附近振荡）。基于已有数据只读聚合。',
             'audit.flag.zombie': '僵尸',
             'audit.flag.pureNoise': '纯噪音',
@@ -953,6 +961,16 @@
             // ── Incidents tab ──
             'nav.tab.incidents': '事件',
             'incidents.title': '事件',
+
+            'incidents.filter.search': '搜索事件…',
+
+            'incidents.filter.closed': '已关闭',
+
+            'incidents.filter.quiet': '已静默',
+
+            'incidents.filter.active': '活跃',
+
+            'incidents.filter.all': '全部',
             'incidents.subtitle': '将相关告警自动归组为运维事件。',
             'incidents.empty.title': '暂无事件',
             'incidents.empty.text': '当前筛选条件下没有匹配的事件。',

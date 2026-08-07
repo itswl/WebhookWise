@@ -921,12 +921,28 @@ input[type="search"]::-webkit-search-decoration {
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 textarea,
 select {
-  background: var(--bg-base);
+  background-color: var(--bg-base);
   color: var(--text-main);
   border-color: var(--border);
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
+}
+
+/* Turning appearance off deletes the native arrow, so EVERY select needs the
+   drawn one and the room to put it — not just the two that carry a class.
+   Scoping the arrow to .form-input/.filter-input left the others with no
+   arrow at all and text running to the edge. */
+select {
+  /* Left/right padding lives here now. Seven selects carried their own inline
+     padding, which beat the stylesheet and squeezed the drawn arrow into the
+     text — the inline styles are gone rather than fought with !important. */
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+                    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(50% + 2px), calc(100% - 10px) calc(50% + 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
 }
 
 input::placeholder,
@@ -955,4 +971,13 @@ select:-webkit-autofill {
   -webkit-text-fill-color: var(--text-main);
   -webkit-box-shadow: 0 0 0 1000px var(--bg-base) inset;
   caret-color: var(--text-main);
+}
+
+
+/* The popup list is drawn by the OS, which picks its own colours unless the
+   select declares them. Left alone it opens as a light grey sheet over a dark
+   page — the one part of a themed control the page does not own. */
+select option {
+  background: var(--bg-surface);
+  color: var(--text-main);
 }

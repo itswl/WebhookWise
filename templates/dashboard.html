@@ -242,12 +242,12 @@
                         <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="incidents.subtitle">Related alerts auto-grouped into operational incidents. Active incidents are still receiving new alerts; quiet incidents are ready for review.</p>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <input type="text" id="incidentSearchInput" placeholder="Search incidents..." style="width:180px; padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);" data-i18n-placeholder="incidents.searchPlaceholder">
-                        <select id="incidentStatusFilter" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
-                            <option value="">All</option>
-                            <option value="active"><svg class="icon" aria-hidden="true"><use href="#i-flame"/></svg> Active</option>
-                            <option value="quiet"><svg class="icon" aria-hidden="true"><use href="#i-volume-x"/></svg> Quiet</option>
-                            <option value="closed"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Closed</option>
+                        <input type="text" id="incidentSearchInput" data-i18n-placeholder="incidents.filter.search" placeholder="Search incidents..." style="width:180px; padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);" data-i18n-placeholder="incidents.searchPlaceholder">
+                        <select id="incidentStatusFilter" style="border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
+                            <option value="" data-i18n="incidents.filter.all">All</option>
+                            <option value="active" data-i18n="incidents.filter.active">Active</option>
+                            <option value="quiet" data-i18n="incidents.filter.quiet">Quiet</option>
+                            <option value="closed" data-i18n="incidents.filter.closed">Closed</option>
                         </select>
                         <button data-sb="sb1" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                     </div>
@@ -264,13 +264,13 @@
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <div class="section-title" data-i18n="deep.title">Deep Analysis Records</div>
                     <div style="display: flex; gap: 10px; align-items: center;">
-                        <select id="daStatusFilter" class="form-input" style="width: auto; padding: 6px 12px;">
+                        <select id="daStatusFilter" class="form-input" style="width: auto;">
                             <option value="" data-i18n="deep.status.all">All statuses</option>
                             <option value="pending" data-i18n="deep.status.pending">Analyzing</option>
                             <option value="completed" data-i18n="deep.status.completed">Completed</option>
                             <option value="failed" data-i18n="deep.status.failed">Failed</option>
                         </select>
-                        <select id="daEngineFilter" class="form-input" style="width: auto; padding: 6px 12px;">
+                        <select id="daEngineFilter" class="form-input" style="width: auto;">
                             <option value="" data-i18n="deep.engine.all">All engines</option>
                             <option value="openclaw" data-i18n="deep.engine.openclaw">OpenClaw</option>
                         </select>
@@ -332,14 +332,14 @@
                     <!-- AI-vs-rules disagreement drill-down behind the override rate above. Filled by decision-trace.js. -->
                     <div id="decisionTraceDisagreements"></div>
                     <div class="dt-list-filters" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 12px;">
-                        <select id="dtResultFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
+                        <select id="dtResultFilter" class="filter-input" style="width: auto;">
                             <option value="" data-i18n="dt.filter.allOutcomes">All outcomes</option>
                             <!-- Options are text-only UI: markup inside <option> is dead HTML. -->
                             <option value="forwarded" data-i18n="dt.filter.optForwarded">Forwarded</option>
                             <option value="skipped" data-i18n="dt.filter.optSkipped">Skipped</option>
                             <option value="failed" data-i18n="dt.filter.optFailed">Delivery failed</option>
                         </select>
-                        <select id="dtSourceFilter" class="filter-input" style="width: auto; padding: 6px 12px;">
+                        <select id="dtSourceFilter" class="filter-input" style="width: auto;">
                             <option value="" data-i18n="dt.filter.allSources">All sources</option>
                         </select>
                     </div>
@@ -517,11 +517,11 @@
                             <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="audit.subtitle">Surface zombie rules (gone quiet), pure-noise rules (never forwarded), and flapping rules (oscillating near threshold). Read-only over existing data.</p>
                         </div>
                         <div style="display:flex; gap:8px; align-items:center;">
-                            <select id="auditWindowDays" style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
-                                <option value="7">7 days</option>
-                                <option value="30" selected>30 days</option>
-                                <option value="90">90 days</option>
-                                <option value="180">180 days</option>
+                            <select id="auditWindowDays" style="border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
+                                <option value="7" data-i18n="audit.window.7d">7 days</option>
+                                <option value="30" selected data-i18n="audit.window.30d">30 days</option>
+                                <option value="90" data-i18n="audit.window.90d">90 days</option>
+                                <option value="180" data-i18n="audit.window.180d">180 days</option>
                             </select>
                             <button data-sb="sb13" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                             <button data-sb="sb14" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg> <span data-i18n="routing.view.rules">Forward Rules</span></button>
@@ -548,7 +548,7 @@
                         <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="noise.subtitle">Measure alert noise, review safe recommendations, and apply reversible optimizations.</p>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <select id="noiseWindowDays" class="form-input" style="width:auto; padding:6px 12px;">
+                        <select id="noiseWindowDays" class="form-input" style="width:auto;">
                             <option value="7" data-i18n="noise.window.7d">7 days</option>
                             <option value="30" data-i18n="noise.window.30d">30 days</option>
                             <option value="90" data-i18n="noise.window.90d">90 days</option>
