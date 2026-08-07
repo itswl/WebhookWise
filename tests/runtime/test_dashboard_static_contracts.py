@@ -1107,6 +1107,21 @@ def test_colour_stays_in_points_not_surfaces() -> None:
         ".badge-success {\n  background: transparent;",
     ), "cold badge treatment missing"
 
+    # Toggle controls too. The rule was written for badges and accents, so a
+    # toolbar button that fills itself blue when active slipped straight past
+    # it — an operator had to notice and say the box was too loud. A toggled
+    # control states itself with its glyph, the way a badge does.
+    for selector in (".btn.is-active", ".btn-icon.is-active"):
+        block = _re.search(_re.escape(selector) + r"\s*\{([^}]*)\}", css)
+        if not block:
+            continue
+        declarations = _re.sub(r"/\*.*?\*/", "", block.group(1), flags=_re.S)
+        for banned in ("background", "border-color", "box-shadow"):
+            assert banned not in declarations, (
+                f"{selector} paints a surface ({banned}); colour belongs in the glyph "
+                f"— see design-language.md #3"
+            )
+
 
 def _js_string_contexts(text: str) -> dict[int, str]:
     """Innermost string context per character, comment-aware.
