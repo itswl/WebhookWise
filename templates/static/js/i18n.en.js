@@ -58,7 +58,6 @@
             'action.summary.warning': 'Warning',
             'action.summary.deadLetters': 'Dead Letters',
             'action.summary.sla': 'SLA Breaches',
-            'action.summary.aiAgreement': 'AI Agreement (30d)',
             'action.openDetails': 'Open details',
             'integration.title': 'Integration catalog',
             'integration.subtitle': 'Choose a supported channel, test it, and create a forwarding rule in one guided flow.',
@@ -355,6 +354,16 @@
             'alerts.fwd.sent': 'Delivered',
             'alerts.fwd.failed': 'Forward failed',
             'alerts.action.reanalyze': 'Reanalyze',
+
+            'alerts.action.overrideImportanceFail': 'Could not change the level',
+
+            'alerts.action.overrideImportanceOk': 'Level changed',
+
+            'alerts.action.overrideImportanceBad': 'Importance must be high, medium or low.',
+
+            'alerts.action.overrideImportancePrompt': 'New importance for this alert (high / medium / low):',
+
+            'alerts.action.overrideImportance': 'Change level',
             'alerts.action.deepAnalyze': 'Deep Analysis',
             'alerts.action.forward': 'Forward',
             'alerts.action.quickSilence': 'Silence 1h',
@@ -366,8 +375,6 @@
             'alerts.action.resolve': 'Resolve',
             'alerts.action.assign': 'Assign / SLA',
             'alerts.action.notes': 'Notes',
-            'alerts.action.feedbackCorrect': 'Analysis correct',
-            'alerts.action.feedbackIncorrect': 'Needs correction',
             'alerts.action.more': 'More actions',
             'alerts.workflow.open': 'Open',
 

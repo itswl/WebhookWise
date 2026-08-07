@@ -58,7 +58,6 @@
             'action.summary.warning': '警告',
             'action.summary.deadLetters': '死信',
             'action.summary.sla': 'SLA 超时',
-            'action.summary.aiAgreement': 'AI 判断一致率（30 天）',
             'action.openDetails': '查看详情',
             'integration.title': '集成目录',
             'integration.subtitle': '选择渠道、测试连通性，并通过引导流程创建转发规则。',
@@ -354,6 +353,16 @@
             'alerts.fwd.sent': '已投递',
             'alerts.fwd.failed': '转发失败',
             'alerts.action.reanalyze': '重新分析',
+
+            'alerts.action.overrideImportanceFail': '改判失败',
+
+            'alerts.action.overrideImportanceOk': '等级已改判',
+
+            'alerts.action.overrideImportanceBad': '重要性只能是 high、medium 或 low。',
+
+            'alerts.action.overrideImportancePrompt': '这条告警的新重要性（high / medium / low）：',
+
+            'alerts.action.overrideImportance': '改判等级',
             'alerts.action.deepAnalyze': '深度分析',
             'alerts.action.forward': '转发',
             'alerts.action.quickSilence': '静默 1h',
@@ -365,8 +374,6 @@
             'alerts.action.resolve': '标记解决',
             'alerts.action.assign': '负责人 / SLA',
             'alerts.action.notes': '备注',
-            'alerts.action.feedbackCorrect': '分析正确',
-            'alerts.action.feedbackIncorrect': '需要修正',
             'alerts.action.more': '更多操作',
             'alerts.workflow.open': '待处理',
 

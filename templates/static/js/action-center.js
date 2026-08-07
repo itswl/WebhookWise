@@ -70,8 +70,7 @@ const ActionCenterModule = (function () {
             statCard(t('action.summary.critical'), summary.critical, summary.critical > 0 ? 'var(--danger)' : '') +
             statCard(t('action.summary.warning'), summary.warning, summary.warning > 0 ? 'var(--warning)' : '') +
             statCard(t('action.summary.deadLetters'), summary.dead_letters, summary.dead_letters > 0 ? 'var(--primary)' : '', 'alerts') +
-            statCard(t('action.summary.sla'), summary.sla_breaches, summary.sla_breaches > 0 ? 'var(--danger)' : '', 'work-queue') +
-            statCard(t('action.summary.aiAgreement'), summary.feedback_agreement_pct == null ? '–' : summary.feedback_agreement_pct + '%', '', 'trace');
+            statCard(t('action.summary.sla'), summary.sla_breaches, summary.sla_breaches > 0 ? 'var(--danger)' : '', 'work-queue');
 
         const items = Array.isArray(data.items) ? data.items : [];
         if (!items.length) {

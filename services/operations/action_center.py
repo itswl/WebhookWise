@@ -478,10 +478,12 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
             "stuck_events": stuck_count,
             "delayed_deliveries": stale_outbox_count,
             "sla_breaches": len(overdue_incidents) + len(overdue_events),
+            # Deliberately no agreement percentage. It was computed from
+            # self-selected samples — only the people who felt like clicking,
+            # only on the alerts they felt like clicking about — and a number
+            # like that reads as a quality metric while measuring nothing. The
+            # count stays: how many corrections were made IS a real fact.
             "feedback_total_30d": feedback_total,
-            "feedback_agreement_pct": (
-                round(100.0 * feedback_breakdown.get("correct", 0) / feedback_total, 1) if feedback_total else None
-            ),
         },
         "items": items[:30],
         "generated_at": utc_isoformat(now),
