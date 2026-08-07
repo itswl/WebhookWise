@@ -12,6 +12,16 @@
     DICT.en = {
             // ── Navbar ──
             'nav.title': 'Webhook Monitor',
+
+            'nav.notifyOffShort': 'Off',
+
+            'nav.notifyOnShort': 'On',
+
+            'nav.autoRefreshStart': 'Start auto-refresh',
+
+            'nav.autoRefreshPause': 'Pause auto-refresh',
+
+            'nav.autoRefreshOff': 'Paused',
             'kb.title': 'Knowledge drafts',
             'kb.subtitle': 'Resolved-incident summaries awaiting review before they feed the AI knowledge base (RAG).',
             'kb.empty.title': 'No drafts to review',
@@ -175,6 +185,10 @@
             'overview.queue.stream': 'Stream',
             'overview.queue.backlogged': 'Queue is nearing the trim boundary — consumers are falling behind.',
             'alerts.stats.title': 'Live Statistics',
+
+            'alerts.workflow.choose': 'Set this alert to',
+
+            'alerts.workflow.clickToChange': 'Click to change status',
             'alerts.stats.loaded': 'Alerts Loaded',
             'alerts.stats.lastUpdated': 'Last updated:',
             'alerts.stats.high': 'High Priority',

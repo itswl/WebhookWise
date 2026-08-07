@@ -12,6 +12,16 @@
     DICT.zh = {
             // ── Navbar ──
             'nav.title': 'Webhook 监控',
+
+            'nav.notifyOffShort': '已关',
+
+            'nav.notifyOnShort': '已开',
+
+            'nav.autoRefreshStart': '开始自动刷新',
+
+            'nav.autoRefreshPause': '暂停自动刷新',
+
+            'nav.autoRefreshOff': '已暂停',
             'kb.title': '知识库草稿',
             'kb.subtitle': '已解决事件的摘要，进入 AI 知识库（RAG）前先在此审核。',
             'kb.empty.title': '暂无待审核草稿',
@@ -175,6 +185,10 @@
             'overview.queue.stream': '数据流',
             'overview.queue.backlogged': '队列接近裁剪上限——消费端正在落后。',
             'alerts.stats.title': '实时统计',
+
+            'alerts.workflow.choose': '把这条告警设为',
+
+            'alerts.workflow.clickToChange': '点击修改状态',
             'alerts.stats.loaded': '已加载告警',
             'alerts.stats.lastUpdated': '最后更新：',
             'alerts.stats.high': '高优先级',
