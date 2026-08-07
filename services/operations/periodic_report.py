@@ -340,7 +340,6 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
     ).all()
     feedback_breakdown = {str(verdict): int(count) for verdict, count in feedback_rows}
     feedback_total = sum(feedback_breakdown.values())
-    feedback_correct = feedback_breakdown.get("correct", 0)
 
     # Deep-analysis success is deliberately based on terminal records only.
     # Pending work is surfaced separately and cannot dilute or inflate the
@@ -494,7 +493,6 @@ async def collect_report_stats(session: AsyncSession, window_days: int) -> dict[
         "sla_breaches": sla_breaches,
         "action_center_total": int(action_center["summary"]["total"]),
         "feedback_total": feedback_total,
-        "feedback_agreement_pct": round(100.0 * feedback_correct / feedback_total, 1) if feedback_total else None,
         "deep_analysis_success": deep_analysis_success,
         "confirmed_change_association": confirmed_change_association,
         "runbook_adoption": runbook_adoption,
@@ -561,8 +559,9 @@ def _build_summary(stats: dict[str, Any]) -> str:
         )
     if stats.get("feedback_total"):
         lines.append(
-            f"Human feedback: {stats['feedback_total']} review(s), "
-            f"{stats.get('feedback_agreement_pct')}% agreed with the analysis."
+            # No agreement percentage: the samples are self-selected, so the
+            # ratio measures who felt like clicking, not analysis quality.
+            f"Human corrections: {stats['feedback_total']} in this period."
         )
     unhealthy_rules = stats.get("unhealthy_rules") or []
     if unhealthy_rules:

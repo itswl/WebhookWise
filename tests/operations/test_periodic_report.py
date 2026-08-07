@@ -144,7 +144,11 @@ async def test_report_includes_previous_window_and_operator_health(session: Asyn
     assert stats["delivery_success_rate"] == 100.0
     assert stats["ai_degraded"] == 1
     assert stats["sla_breaches"] == 1
-    assert stats["feedback_agreement_pct"] == 100.0
+    # No agreement percentage on purpose: it was computed from self-selected
+    # samples, so it measured who felt like clicking rather than analysis
+    # quality. How many corrections were made is a real fact, and stays.
+    assert stats["feedback_total"] == 1
+    assert "feedback_agreement_pct" not in stats
 
 
 @pytest.mark.asyncio

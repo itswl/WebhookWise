@@ -131,8 +131,7 @@ const AlertsModule = {
                 },
                 'assign': () => this.assignWorkflow(id),
                 'notes': () => this.manageNotes(id),
-                'feedback-correct': () => this.sendFeedback(id, 'correct'),
-                'feedback-incorrect': () => this.sendFeedback(id, 'incorrect')
+                'override-importance': () => this.overrideImportance(id)
             };
             const handler = handlers[action];
             if (handler) {
@@ -539,8 +538,7 @@ const AlertsModule = {
             secondaryActions.push('<button type="button" class="btn btn-sm" data-action="replay-dry" data-id="' + webhookId + '" title="' + escapeHtml(t('alerts.action.replayDryTitle')) + '">' + wwIcon('refresh') + ' ' + escapeHtml(t('alerts.action.replayDry')) + '</button>');
             secondaryActions.push('<button type="button" class="btn btn-sm" data-action="assign" data-id="' + webhookId + '">' + wwIcon('user') + ' ' + escapeHtml(t('alerts.action.assign')) + '</button>');
             secondaryActions.push('<button type="button" class="btn btn-sm" data-action="notes" data-id="' + webhookId + '">' + wwIcon('pencil') + ' ' + escapeHtml(t('alerts.action.notes')) + '</button>');
-            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="feedback-correct" data-id="' + webhookId + '">' + wwIcon('thumbs-up') + ' ' + escapeHtml(t('alerts.action.feedbackCorrect')) + '</button>');
-            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="feedback-incorrect" data-id="' + webhookId + '">' + wwIcon('thumbs-down') + ' ' + escapeHtml(t('alerts.action.feedbackIncorrect')) + '</button>');
+            secondaryActions.push('<button type="button" class="btn btn-sm" data-action="override-importance" data-id="' + webhookId + '">' + wwIcon('sliders') + ' ' + escapeHtml(t('alerts.action.overrideImportance')) + '</button>');
             if (webhook.processing_status === 'dead_letter') {
                 secondaryActions.push('<button type="button" class="btn btn-sm btn-danger" data-action="replay-dl" data-id="' + webhookId + '">' + wwIcon('refresh') + ' ' + escapeHtml(t('alerts.action.replayDeadLetter')) + '</button>');
             }
@@ -1653,21 +1651,40 @@ const AlertsModule = {
         }
     },
 
-    async sendFeedback(id, verdict) {
-        let comment = '';
-        if (verdict !== 'correct') {
-            const value = prompt('What should be corrected?', '');
-            if (value === null) return;
-            comment = value;
+    // Replaces the old correct/incorrect feedback pair. "Correct" only ever
+    // incremented an agreement percentage computed from self-selected samples,
+    // and "incorrect" sent a free-text comment nothing ever read — it did not
+    // even send the corrected importance the backend has always supported. One
+    // action that changes something beats two that imply they teach the model.
+    async overrideImportance(id) {
+        const target = this.alerts.find(function (item) { return String(item.id) === String(id); }) || {};
+        const current = target.importance || '';
+        const value = prompt(t('alerts.action.overrideImportancePrompt'), current);
+        if (value === null) return;
+        const next = String(value).trim().toLowerCase();
+        if (!next) return;
+        if (['high', 'medium', 'low'].indexOf(next) === -1) {
+            if (typeof showToast === 'function') showToast(t('alerts.action.overrideImportanceBad'), 'warning');
+            return;
         }
+        if (next === String(current).toLowerCase()) return;
         try {
             const response = await API.authenticatedFetch('/v1/webhooks/' + id + '/feedback', {
-                method: 'POST', body: JSON.stringify({ verdict: verdict, comment: comment || null, actor: 'dashboard' })
+                method: 'POST',
+                body: JSON.stringify({
+                    verdict: 'incorrect',
+                    corrected_importance: next,
+                    actor: 'dashboard'
+                })
             });
             if (!response.ok) throw new Error('HTTP ' + response.status);
-            alert('Feedback recorded');
+            if (target) target.importance = next;
+            this.filterAlerts(false);
+            if (typeof showToast === 'function') showToast(t('alerts.action.overrideImportanceOk'), 'success');
         } catch (error) {
-            alert('Feedback failed: ' + (error.message || String(error)));
+            if (typeof showToast === 'function') {
+                showToast(t('alerts.action.overrideImportanceFail') + ': ' + (error.message || String(error)), 'error');
+            }
         }
     }
 };
