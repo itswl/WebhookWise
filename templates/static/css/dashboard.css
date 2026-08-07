@@ -260,10 +260,29 @@ body {
   border-radius: 50%;
   background: var(--success);
   box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.14);
-  animation: pulse 2s infinite;
   margin: 0 0.35rem;
   flex: 0 0 auto;
   cursor: default;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Healthy is STILL. This dot pulsed forever, so the one moving thing in the
+   toolbar was the thing with nothing to report; motion now means something
+   needs looking at. */
+.nav-status-dot.is-degraded {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.18);
+  animation: pulse 2s infinite;
+}
+.nav-status-dot.is-offline {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+  animation: pulse 1s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-status-dot.is-degraded,
+  .nav-status-dot.is-offline { animation: none; }
 }
 
 @keyframes pulse {

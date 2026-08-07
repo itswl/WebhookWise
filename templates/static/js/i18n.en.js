@@ -126,6 +126,10 @@
             'noise.applyFailed': 'Failed to apply optimization: {error}',
             'noise.undoFailed': 'Failed to undo optimization: {error}',
             'nav.status.running': 'Service running',
+
+            'nav.status.offline': 'Cannot reach the service',
+
+            'nav.status.degraded': 'Service degraded — the last request failed',
             'nav.autoRefresh': 'Auto-refresh',
             'nav.autoRefreshOn': 'Refreshing...',
             'nav.refresh': 'Refresh',

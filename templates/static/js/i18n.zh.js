@@ -126,6 +126,10 @@
             'noise.applyFailed': '应用优化失败：{error}',
             'noise.undoFailed': '撤销优化失败：{error}',
             'nav.status.running': '服务运行中',
+
+            'nav.status.offline': '无法连接服务',
+
+            'nav.status.degraded': '服务异常——最近一次请求失败',
             'nav.autoRefresh': '自动刷新',
             'nav.autoRefreshOn': '刷新中…',
             'nav.refresh': '刷新',
