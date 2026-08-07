@@ -370,6 +370,16 @@
             'alerts.action.feedbackIncorrect': 'Needs correction',
             'alerts.action.more': 'More actions',
             'alerts.workflow.open': 'Open',
+
+            'alerts.workflow.undoFailed': 'Could not undo',
+
+            'alerts.workflow.undone': 'Change undone',
+
+            'alerts.workflow.undo': 'Undo',
+
+            'alerts.workflow.changedTo': 'Marked {status}',
+
+            'alerts.workflow.confirmResolve': 'Mark this alert resolved? It leaves the open queue.',
             'alerts.workflow.acknowledged': 'Acknowledged',
             'alerts.workflow.in_progress': 'In progress',
             'alerts.workflow.resolved': 'Resolved',

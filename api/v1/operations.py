@@ -30,9 +30,11 @@ from services.operations.workflow import (
     add_feedback,
     add_note,
     feedback_summary,
+    latest_undoable,
     list_notes,
     merge_incidents,
     split_incident,
+    undo_workflow,
     update_workflow,
 )
 
@@ -71,6 +73,62 @@ async def update_workflow_endpoint(
     except _OPERATION_ERRORS as error:
         logger.error("Failed to update workflow kind=%s id=%s: %s", kind, resource_id, error, exc_info=True)
         return internal_error_response()
+
+
+@operations_router.post(
+    "/{kind}/{resource_id}/workflow/undo",
+    dependencies=[Depends(verify_admin_write)],
+)
+async def undo_workflow_endpoint(
+    kind: str,
+    resource_id: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Take back the last workflow change — Acknowledge and Resolve are one tap
+    away on a card, and a mis-tap should not need a database to fix."""
+    if kind not in {"webhooks", "incidents"}:
+        return fail_response("Unsupported workflow resource", 404)
+    try:
+        result = await undo_workflow(
+            session,
+            resource_type=_resource_type(kind),
+            resource_id=resource_id,
+        )
+    except _OPERATION_ERRORS as error:
+        logger.error("Failed to undo workflow kind=%s id=%s: %s", kind, resource_id, error, exc_info=True)
+        return internal_error_response()
+
+    if result.get("changed"):
+        return ok_response(data=result.get("workflow"), message="Workflow change undone", http_status=200)
+
+    reason = str(result.get("reason") or "")
+    if reason == "resource_not_found":
+        return fail_response("Workflow resource not found", 404)
+    if reason == "nothing_to_undo":
+        return fail_response("There is no workflow change to undo", 409)
+    if reason == "changed_since":
+        # 409, not 500: the state moved on, which is a legitimate answer and
+        # one the operator needs to see rather than a generic failure.
+        return fail_response("The status changed after that action, so it can no longer be undone", 409)
+    return fail_response("Workflow undo refused", 409)
+
+
+@operations_router.get("/{kind}/{resource_id}/workflow/undo")
+async def workflow_undo_available_endpoint(
+    kind: str,
+    resource_id: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """What an undo would take back, or null. The dashboard asks before drawing
+    the control: an undo button that fails when pressed is worse than none."""
+    if kind not in {"webhooks", "incidents"}:
+        return fail_response("Unsupported workflow resource", 404)
+    try:
+        data = await latest_undoable(session, resource_type=_resource_type(kind), resource_id=resource_id)
+    except _OPERATION_ERRORS as error:
+        logger.error("Failed to read workflow undo kind=%s id=%s: %s", kind, resource_id, error, exc_info=True)
+        return internal_error_response()
+    return ok_response(data=data, message="Workflow undo availability", http_status=200)
 
 
 @operations_router.get("/{kind}/{resource_id}/notes")

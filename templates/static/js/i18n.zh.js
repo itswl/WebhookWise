@@ -369,6 +369,16 @@
             'alerts.action.feedbackIncorrect': '需要修正',
             'alerts.action.more': '更多操作',
             'alerts.workflow.open': '待处理',
+
+            'alerts.workflow.undoFailed': '无法撤销',
+
+            'alerts.workflow.undone': '已撤销',
+
+            'alerts.workflow.undo': '撤销',
+
+            'alerts.workflow.changedTo': '已标记为{status}',
+
+            'alerts.workflow.confirmResolve': '标记这条告警为已解决？它会离开待处理队列。',
             'alerts.workflow.acknowledged': '已接手',
             'alerts.workflow.in_progress': '处理中',
             'alerts.workflow.resolved': '已解决',

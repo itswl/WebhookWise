@@ -334,6 +334,69 @@ function showToast(message, type = 'info') {
 }
 
 /**
+ * A toast that offers to take the last action back.
+ *
+ * Acknowledge and Resolve are a single click, and the click is easy to make by
+ * accident — most easily of all from a phone. Offering the reversal at the
+ * moment of the mistake is the only time the operator is still thinking about
+ * it; finding the alert again ten minutes later to set the status by hand is
+ * not the same affordance.
+ *
+ * Dwells longer than an ordinary toast (12s) because it is not a status
+ * message, it is a decision. The handler is attached with addEventListener,
+ * never an inline attribute: script-src-attr is 'none'.
+ */
+function showUndoToast(message, onUndo, undoLabel) {
+    showToast(message, 'success');
+    const container = document.getElementById('toastContainer');
+    if (!container || typeof onUndo !== 'function') return;
+    const toast = container.lastElementChild;
+    if (!toast) return;
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = undoLabel || 'Undo';
+    button.style.cssText = `
+        margin-left: auto;
+        background: transparent;
+        border: 1px solid currentColor;
+        color: inherit;
+        font: inherit;
+        font-size: 0.8rem;
+        padding: 0.15rem 0.6rem;
+        border-radius: var(--radius-sm, 6px);
+        cursor: pointer;
+        flex-shrink: 0;
+    `;
+    let done = false;
+    button.addEventListener('click', async () => {
+        if (done) return;
+        done = true;
+        button.disabled = true;
+        button.style.opacity = '0.6';
+        try {
+            await onUndo();
+        } finally {
+            toast.remove();
+        }
+    });
+    toast.appendChild(button);
+
+    // Outlive the 4.5s auto-remove that showToast scheduled: a reversal the
+    // operator never got the chance to click is not an offer.
+    const keepUntil = Date.now() + 12000;
+    const guard = setInterval(() => {
+        if (!toast.isConnected || Date.now() > keepUntil) {
+            clearInterval(guard);
+            if (toast.isConnected) toast.remove();
+            return;
+        }
+        toast.style.animation = '';
+        toast.style.opacity = '1';
+    }, 250);
+}
+
+/**
  * Inline icon from the sprite in dashboard.html.
  *
  * Returns trusted markup — never pass the result through escapeHtml. Icons are

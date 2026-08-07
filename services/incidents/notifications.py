@@ -42,6 +42,17 @@ def _incident_card(
                         "tag": "button",
                         "text": {"tag": "plain_text", "content": "Acknowledge"},
                         "type": "primary",
+                        # A card is read on a phone, where these two buttons sit
+                        # a thumb-width apart. Resolve has always confirmed;
+                        # Acknowledge did not, so the miss-tap landed on the
+                        # claim and quietly made someone the owner.
+                        "confirm": {
+                            "title": {"tag": "plain_text", "content": "Acknowledge incident?"},
+                            "text": {
+                                "tag": "plain_text",
+                                "content": "This assigns it to you. You can undo it from WebhookWise.",
+                            },
+                        },
                         "value": build_incident_action_value("acknowledge", int(incident.id)),
                     },
                     {
