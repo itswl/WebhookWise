@@ -4263,9 +4263,11 @@ body.sidebar-collapsed .sidebar-collapse .sidebar-icon { transform: rotate(180de
    the class changed nothing you could see and the only signal of state was a
    tooltip you had to hover for. */
 .btn.is-active {
-  background: var(--primary-bg);
+  /* Colour lives in points, not surfaces (design-language.md #3). The first
+     version gave this a background, a border AND a text colour at once, which
+     in a row of quiet icon buttons reads as a shout. The glyph alone carries
+     the state — one point of colour, the same way status badges do it. */
   color: var(--primary);
-  border-color: var(--primary);
 }
 .btn.is-active .icon { color: var(--primary); }
 
