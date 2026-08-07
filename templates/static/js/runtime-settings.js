@@ -250,7 +250,7 @@ const RuntimeSettingsModule = (function () {
             editingValue = null;
             rowError = null;
             applyUpdated(result);
-            alert('' + t('rs.alert.saved'));
+            showToast('' + t('rs.alert.saved'), 'info');
         } catch (error) {
             // Keep the row in edit mode with the typed value; the backend's
             // validation message is shown verbatim under the input.
@@ -269,7 +269,7 @@ const RuntimeSettingsModule = (function () {
             editingValue = null;
             rowError = null;
             applyUpdated(result);
-            alert('' + t('rs.alert.cleared'));
+            showToast('' + t('rs.alert.cleared'), 'info');
         } catch (error) {
             rowError = { key: key, message: error.message || String(error) };
             render();

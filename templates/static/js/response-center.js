@@ -487,7 +487,7 @@ const ResponseCenterModule = (function () {
                 await loadKnowledgeGaps();
             } catch (error) {
                 saveBtn.disabled = false;
-                alert(t('knowledgeGaps.form.publishFail') + ': ' + (error.message || String(error)));
+                showToast(t('knowledgeGaps.form.publishFail') + ': ' + (error.message || String(error)), 'error');
             }
         });
     }

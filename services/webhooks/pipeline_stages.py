@@ -96,10 +96,22 @@ async def _run_fresh_analysis(
             reset_chain=dedup_result.reset_chain,
         )
 
-        return await analyze_webhook_with_ai(
+        analysis = await analyze_webhook_with_ai(
             ctx.req_ctx.webhook_full_data,
             http_client=dependencies.http_client,
         )
+        # The loop closes here: a correction an operator made on this same
+        # condition outranks a fresh judgement of it. Applied after analysis
+        # rather than fed into the prompt, so the decision is traceable to a
+        # person and scoped to the one condition they decided about.
+        from db.session import session_scope
+        from services.analysis.importance_overrides import apply_override
+
+        async with session_scope() as override_session:
+            return cast(
+                AnalysisResult,
+                await apply_override(override_session, alert_hash=ctx.alert_hash, analysis=dict(analysis)),
+            )
 
 
 async def _resolve_silence_skip(ctx: WebhookProcessContext) -> object | None:

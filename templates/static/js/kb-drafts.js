@@ -130,7 +130,7 @@ const KbDraftsModule = (function () {
                 await renderDetail(sourceRef, panel);
             } catch (error) {
                 saveBtn.disabled = false;
-                alert(t('kb.editFail') + ': ' + (error.message || String(error)));
+                showToast(t('kb.editFail') + ': ' + (error.message || String(error)), 'error');
             }
         });
     }
@@ -145,7 +145,7 @@ const KbDraftsModule = (function () {
             await load();  // optimistic refresh: the published draft drops off the list
         } catch (error) {
             if (button) button.disabled = false;
-            alert(t('kb.publishFail') + ': ' + (error.message || String(error)));
+            showToast(t('kb.publishFail') + ': ' + (error.message || String(error)), 'error');
         }
     }
 
@@ -159,7 +159,7 @@ const KbDraftsModule = (function () {
             await load();
         } catch (error) {
             if (button) button.disabled = false;
-            alert(t('kb.discardFail') + ': ' + (error.message || String(error)));
+            showToast(t('kb.discardFail') + ': ' + (error.message || String(error)), 'error');
         }
     }
 

@@ -126,6 +126,14 @@
 
             // ── Common ──
             'common.all': 'All',
+
+            'common.ok': 'OK',
+
+            'common.confirm': 'Confirm',
+
+            'common.inputTitle': 'Input',
+
+            'common.confirmTitle': 'Confirm',
             'common.high': 'High',
             'common.medium': 'Medium',
             'common.low': 'Low',

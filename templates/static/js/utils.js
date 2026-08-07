@@ -114,7 +114,7 @@ function copyToClipboard(btn) {
         }, 2000);
     }).catch(err => {
         console.error('Copy failed:', err);
-        alert(t('common.copyFailed'));
+        showToast(t('common.copyFailed'), 'error');
     });
 }
 
@@ -331,6 +331,123 @@ function showToast(message, type = 'info') {
             toast.remove();
         }, 300);
     }, 4500);
+}
+
+/**
+ * Promise-based replacements for the browser's confirm() and prompt().
+ *
+ * The native ones are unstyled, unthemeable and place the app's name above
+ * your text — they look like a browser error in the middle of a dark
+ * dashboard. They also block the event loop, which is why they were easy to
+ * reach for and why they cannot be made to match anything.
+ *
+ * These reuse the .modal component the dashboard already ships, so ESC to
+ * close and the Tab focus trap in dashboard.js apply for free rather than
+ * being reimplemented (and forgotten) here.
+ */
+function _wwDialog({ title, message, defaultValue, withInput, confirmLabel, cancelLabel, danger }) {
+    return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+
+        const content = document.createElement('div');
+        content.className = 'modal-content';
+        content.style.maxWidth = '460px';
+
+        const header = document.createElement('div');
+        header.className = 'modal-header';
+        const heading = document.createElement('div');
+        heading.className = 'modal-title';
+        heading.textContent = title || '';
+        header.appendChild(heading);
+
+        const body = document.createElement('div');
+        body.className = 'modal-body';
+        if (message) {
+            const text = document.createElement('div');
+            text.style.cssText = 'line-height:1.6; white-space:pre-wrap; word-break:break-word;';
+            text.textContent = message;
+            body.appendChild(text);
+        }
+
+        let input = null;
+        if (withInput) {
+            input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-input';
+            input.value = defaultValue == null ? '' : String(defaultValue);
+            input.style.cssText = 'width:100%; margin-top:0.85rem;';
+            body.appendChild(input);
+        }
+
+        const footer = document.createElement('div');
+        footer.className = 'modal-footer';
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'btn btn-sm';
+        cancel.textContent = cancelLabel || 'Cancel';
+        const ok = document.createElement('button');
+        ok.type = 'button';
+        ok.className = 'btn btn-sm ' + (danger ? 'btn-danger' : 'btn-primary');
+        ok.textContent = confirmLabel || 'OK';
+        footer.append(cancel, ok);
+
+        content.append(header, body, footer);
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+
+        let settled = false;
+        const finish = (value) => {
+            if (settled) return;
+            settled = true;
+            modal.remove();
+            document.removeEventListener('keydown', onKey, true);
+            resolve(value);
+        };
+        // Cancel, not confirm, on every non-answer: dismissing a dialog you did
+        // not read must never be the same as agreeing to it.
+        const onKey = (event) => {
+            if (event.key === 'Escape') { event.stopPropagation(); finish(withInput ? null : false); }
+            if (event.key === 'Enter' && withInput) { event.preventDefault(); finish(input.value); }
+        };
+        document.addEventListener('keydown', onKey, true);
+        cancel.addEventListener('click', () => finish(withInput ? null : false));
+        ok.addEventListener('click', () => finish(withInput ? input.value : true));
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) finish(withInput ? null : false);
+        });
+
+        (input || ok).focus();
+        if (input) input.select();
+    });
+}
+
+/** Styled confirm(). Resolves true/false — never throws, never blocks. */
+function wwConfirm(message, options) {
+    const opts = options || {};
+    return _wwDialog({
+        title: opts.title || (typeof t === 'function' ? t('common.confirmTitle') : 'Confirm'),
+        message: message,
+        withInput: false,
+        confirmLabel: opts.confirmLabel || (typeof t === 'function' ? t('common.confirm') : 'Confirm'),
+        cancelLabel: opts.cancelLabel || (typeof t === 'function' ? t('common.cancel') : 'Cancel'),
+        danger: !!opts.danger
+    });
+}
+
+/** Styled prompt(). Resolves the string, or null when dismissed. */
+function wwPrompt(message, defaultValue, options) {
+    const opts = options || {};
+    return _wwDialog({
+        title: opts.title || (typeof t === 'function' ? t('common.inputTitle') : 'Input'),
+        message: message,
+        defaultValue: defaultValue,
+        withInput: true,
+        confirmLabel: opts.confirmLabel || (typeof t === 'function' ? t('common.ok') : 'OK'),
+        cancelLabel: opts.cancelLabel || (typeof t === 'function' ? t('common.cancel') : 'Cancel')
+    });
 }
 
 /**

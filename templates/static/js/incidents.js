@@ -1205,7 +1205,7 @@ const IncidentsModule = (function () {
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             load();  // Refresh the list
         } catch (e) {
-            alert(t('incidents.action.reopenFailed') + ': ' + (e && e.message || e));
+            showToast(t('incidents.action.reopenFailed') + ': ' + (e && e.message || e), 'error');
         }
     }
 
@@ -1219,7 +1219,7 @@ const IncidentsModule = (function () {
             if (!skipReload) await load();
             return true;
         } catch (e) {
-            alert('Workflow update failed: ' + (e.message || e));
+            showToast('Workflow update failed: ' + (e.message || e), 'error');
             throw e;
         }
     }
@@ -1231,11 +1231,11 @@ const IncidentsModule = (function () {
         if (assignee) {
             body = { assignee: assignee };
         } else {
-            assignee = prompt('Assignee (leave empty to unassign)', data.assignee || '');
+            assignee = await wwPrompt('Assignee (leave empty to unassign)', data.assignee || '');
             if (assignee === null) return false;
-            var team = prompt('Team (leave empty to clear)', data.team || '');
+            var team = await wwPrompt('Team (leave empty to clear)', data.team || '');
             if (team === null) return false;
-            var sla = prompt('SLA in minutes (leave empty to keep current SLA)', '');
+            var sla = await wwPrompt('SLA in minutes (leave empty to keep current SLA)', '');
             if (sla === null) return false;
             body = { assignee: assignee, team: team };
             if (sla.trim()) body.sla_minutes = Number(sla);
@@ -1247,7 +1247,7 @@ const IncidentsModule = (function () {
             if (!skipReload) await load();
             return true;
         } catch (e) {
-            alert('Assignment failed: ' + (e.message || e));
+            showToast('Assignment failed: ' + (e.message || e), 'error');
             throw e;
         }
     }
@@ -1586,12 +1586,12 @@ const IncidentsModule = (function () {
             var detail = document.getElementById('incident-detail-' + id);
             if (detail) detail.innerHTML = renderDetail(data);
         } catch (e) {
-            alert(t('incidents.recurrence.reviewFailed') + ': ' + (e.message || e));
+            showToast(t('incidents.recurrence.reviewFailed') + ': ' + (e.message || e), 'error');
         }
     }
 
     async function addNote(id) {
-        var body = prompt('Operator note', '');
+        var body = await wwPrompt('Operator note', '');
         if (!body || !body.trim()) return;
         try {
             var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/notes', {
@@ -1602,19 +1602,19 @@ const IncidentsModule = (function () {
             var detail = document.getElementById('incident-detail-' + id);
             if (detail) detail.style.display = 'none';
             await toggle(id);
-        } catch (e) { alert('Adding note failed: ' + (e.message || e)); }
+        } catch (e) { showToast('Adding note failed: ' + (e.message || e), 'error'); }
     }
 
     async function feedback(id, verdict) {
-        var comment = verdict === 'correct' ? '' : prompt('What should be corrected?', '');
+        var comment = verdict === 'correct' ? '' : await wwPrompt('What should be corrected?', '');
         if (comment === null) return;
         try {
             var resp = await API.authenticatedFetch('/v1/incidents/' + id + '/feedback', {
                 method: 'POST', body: JSON.stringify({ verdict: verdict, comment: comment || null, actor: 'dashboard' })
             });
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            alert('Feedback recorded');
-        } catch (e) { alert('Feedback failed: ' + (e.message || e)); }
+            showToast('Feedback recorded', 'info');
+        } catch (e) { showToast('Feedback failed: ' + (e.message || e), 'error'); }
     }
 
     async function intelligenceFeedback(id, recommendationType, encodedCandidateRef, verdict) {
@@ -1631,7 +1631,7 @@ const IncidentsModule = (function () {
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             await loadIntelligence(id);
         } catch (e) {
-            alert(t('incidents.intelligence.feedbackFailed') + ': ' + (e.message || e));
+            showToast(t('incidents.intelligence.feedbackFailed') + ': ' + (e.message || e), 'error');
         }
     }
 
@@ -1646,7 +1646,7 @@ const IncidentsModule = (function () {
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             await loadIntelligence(id);
         } catch (e) {
-            alert(t('incidents.runbook.startFailed') + ': ' + (e.message || e));
+            showToast(t('incidents.runbook.startFailed') + ': ' + (e.message || e), 'error');
         }
     }
 
@@ -1662,7 +1662,7 @@ const IncidentsModule = (function () {
             return true;
         } catch (e) {
             if (!skipReload) {
-                alert(t('incidents.runbook.updateFailed') + ': ' + (e.message || e));
+                showToast(t('incidents.runbook.updateFailed') + ': ' + (e.message || e), 'error');
             }
             throw e;
         }
@@ -1725,7 +1725,7 @@ const IncidentsModule = (function () {
     }
 
     async function merge(id) {
-        var value = prompt('Incident IDs to merge into #' + id + ' (comma separated)', '');
+        var value = await wwPrompt('Incident IDs to merge into #' + id + ' (comma separated)', '');
         if (!value) return;
         var ids = value.split(',').map(function (item) { return Number(item.trim()); }).filter(Number.isInteger);
         try {
@@ -1734,7 +1734,7 @@ const IncidentsModule = (function () {
             });
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             await load();
-        } catch (e) { alert('Merge failed: ' + (e.message || e)); }
+        } catch (e) { showToast('Merge failed: ' + (e.message || e), 'error'); }
     }
 
     async function exportPostmortem(id) {
@@ -1753,12 +1753,12 @@ const IncidentsModule = (function () {
             // Delay revocation so the click-initiated download keeps its blob.
             setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
         } catch (e) {
-            alert(t('incidents.action.postmortemFailed') + ': ' + (e && e.message || e));
+            showToast(t('incidents.action.postmortemFailed') + ': ' + (e && e.message || e), 'error');
         }
     }
 
     async function split(id) {
-        var value = prompt('Alert IDs to split into a new incident (comma separated)', '');
+        var value = await wwPrompt('Alert IDs to split into a new incident (comma separated)', '');
         if (!value) return;
         var ids = value.split(',').map(function (item) { return Number(item.trim()); }).filter(Number.isInteger);
         try {
@@ -1767,7 +1767,7 @@ const IncidentsModule = (function () {
             });
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             await load();
-        } catch (e) { alert('Split failed: ' + (e.message || e)); }
+        } catch (e) { showToast('Split failed: ' + (e.message || e), 'error'); }
     }
 
     async function focusLoadedIncident(id) {
@@ -1794,7 +1794,7 @@ const IncidentsModule = (function () {
                 render();
                 row = _rows[0];
             } catch (e) {
-                alert(t('common.loadFailed') + ': ' + (e.message || e));
+                showToast(t('common.loadFailed') + ': ' + (e.message || e), 'error');
                 return;
             }
         }

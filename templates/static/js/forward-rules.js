@@ -305,7 +305,7 @@ function showRuleForm(ruleId) {
         const rule = forwardRules.find(r => r.id === ruleId);
         if (rule) {
             if (rule.target_url_sensitive === false) {
-                alert(t('rules.alert.editNeedsWriteKey'));
+                showToast(t('rules.alert.editNeedsWriteKey'), 'info');
                 if (typeof openAuthModal === 'function') {
                     openAuthModal();
                 }
@@ -397,12 +397,12 @@ async function saveRule() {
 
     // Validate required fields
     if (!name) {
-        alert(t('rules.alert.nameRequired'));
+        showToast(t('rules.alert.nameRequired'), 'info');
         return;
     }
 
     if (targetType !== 'openclaw' && !targetUrl) {
-        alert(t('rules.alert.targetUrlRequired'));
+        showToast(t('rules.alert.targetUrlRequired'), 'info');
         return;
     }
 
@@ -446,15 +446,15 @@ async function saveRule() {
         }
 
         if (result.success) {
-            alert(ruleId ? '' + t('rules.alert.updateSuccess') : '' + t('rules.alert.createSuccess'));
+            showToast(ruleId ? '' + t('rules.alert.updateSuccess') : '' + t('rules.alert.createSuccess'), 'info');
             closeRuleForm();
             loadForwardRules();
         } else {
-            alert('' + t('rules.alert.saveFailed') + ': ' + (result.error || t('common.unknownError')));
+            showToast('' + t('rules.alert.saveFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to save rule:', error);
-        alert('' + t('rules.alert.saveFailed') + ': ' + error.message);
+        showToast('' + t('rules.alert.saveFailed') + ': ' + error.message, 'error');
     }
 }
 
@@ -476,12 +476,12 @@ async function toggleRule(id, enabled) {
             // Re-render
             renderForwardRules(forwardRules);
         } else {
-            alert('' + t('rules.alert.operationFailed') + ': ' + (result.error || t('common.unknownError')));
+            showToast('' + t('rules.alert.operationFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
             loadForwardRules(); // Reload to restore state
         }
     } catch (error) {
         console.error('Failed to toggle rule state:', error);
-        alert('' + t('rules.alert.operationFailed') + ': ' + error.message);
+        showToast('' + t('rules.alert.operationFailed') + ': ' + error.message, 'error');
         loadForwardRules();
     }
 }
@@ -494,7 +494,7 @@ async function deleteRule(id) {
     const rule = forwardRules.find(r => r.id === id);
     const ruleName = rule ? rule.name : t('rules.thisRule');
 
-    if (!confirm(t('rules.confirm.delete', { name: ruleName }))) {
+    if (!(await wwConfirm(t('rules.confirm.delete', { name: ruleName })))) {
         return;
     }
 
@@ -502,14 +502,14 @@ async function deleteRule(id) {
         const result = await API.deleteForwardRule(id);
 
         if (result.success) {
-            alert('' + t('rules.alert.deleteSuccess'));
+            showToast('' + t('rules.alert.deleteSuccess'), 'info');
             loadForwardRules();
         } else {
-            alert('' + t('rules.alert.deleteFailed') + ': ' + (result.error || t('common.unknownError')));
+            showToast('' + t('rules.alert.deleteFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to delete rule:', error);
-        alert('' + t('rules.alert.deleteFailed') + ': ' + error.message);
+        showToast('' + t('rules.alert.deleteFailed') + ': ' + error.message, 'error');
     }
 }
 
@@ -521,7 +521,7 @@ async function testRule(id) {
     const rule = forwardRules.find(r => r.id === id);
     const ruleName = rule ? rule.name : t('rules.thisRule');
 
-    if (!confirm(t('rules.confirm.test', { name: ruleName }))) {
+    if (!(await wwConfirm(t('rules.confirm.test', { name: ruleName })))) {
         return;
     }
 
@@ -529,13 +529,13 @@ async function testRule(id) {
         const result = await API.testForwardRule(id);
 
         if (result.success) {
-            alert('' + t('rules.alert.testSuccess') + '\n\n' + (result.message || t('rules.alert.testMessageSent')));
+            showToast('' + t('rules.alert.testSuccess') + '\n\n' + (result.message || t('rules.alert.testMessageSent')), 'info');
         } else {
-            alert('' + t('rules.alert.testFailed') + ': ' + (result.error || t('common.unknownError')));
+            showToast('' + t('rules.alert.testFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to test rule:', error);
-        alert('' + t('rules.alert.testFailed') + ': ' + error.message);
+        showToast('' + t('rules.alert.testFailed') + ': ' + error.message, 'error');
     }
 }
 
