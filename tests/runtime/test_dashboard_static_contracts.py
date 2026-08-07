@@ -1118,8 +1118,7 @@ def test_colour_stays_in_points_not_surfaces() -> None:
         declarations = _re.sub(r"/\*.*?\*/", "", block.group(1), flags=_re.S)
         for banned in ("background", "border-color", "box-shadow"):
             assert banned not in declarations, (
-                f"{selector} paints a surface ({banned}); colour belongs in the glyph "
-                f"— see design-language.md #3"
+                f"{selector} paints a surface ({banned}); colour belongs in the glyph — see design-language.md #3"
             )
 
 
