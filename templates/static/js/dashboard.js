@@ -823,6 +823,31 @@ function toggleAutoRefresh() {
     updateAutoRefreshLabel();
 }
 
+/* ── Service status dot ──────────────────────────────────────────────────
+   It used to be a hardcoded green dot pulsing forever. It said "running"
+   while the backend was down, because nothing ever wrote to it — a light that
+   is always on carries no information, and it was the only thing in the
+   toolbar that moved, so it spent all day pulling at the corner of your eye.
+
+   Now it reports what the last request actually found, and it only animates
+   when something is wrong. Motion means "look at me"; a healthy system has
+   nothing to say. */
+var _serviceStatus = 'ok';
+
+function setServiceStatus(state) {
+    if (state === _serviceStatus) return;
+    _serviceStatus = state;
+    const dot = document.querySelector('.nav-status-dot');
+    if (!dot) return;
+    dot.classList.remove('is-degraded', 'is-offline');
+    if (state !== 'ok') dot.classList.add(state === 'offline' ? 'is-offline' : 'is-degraded');
+    const key = state === 'offline' ? 'nav.status.offline'
+        : state === 'degraded' ? 'nav.status.degraded'
+        : 'nav.status.running';
+    dot.setAttribute('title', t(key));
+    dot.setAttribute('aria-label', t(key));
+}
+
 /* ── Desktop notifications ───────────────────────────────────────────────
    A monitoring dashboard that only speaks while you are looking at it is
    half a tool. Opt-in (the browser asks once, via the bell in the nav),

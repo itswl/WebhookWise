@@ -131,7 +131,20 @@ const API = {
         }
 
         const { authMode: _ignoredAuthMode, ...fetchOptions } = options;
-        const response = await fetch(url, { ...fetchOptions, headers });
+        let response;
+        try {
+            response = await fetch(url, { ...fetchOptions, headers });
+        } catch (error) {
+            // Transport failure: the backend is unreachable, which is exactly
+            // what the status dot exists to say.
+            if (typeof setServiceStatus === 'function') setServiceStatus('offline');
+            throw error;
+        }
+        if (typeof setServiceStatus === 'function') {
+            // 5xx means the service answered and is unwell; 4xx is us asking
+            // wrongly and says nothing about its health.
+            setServiceStatus(response.status >= 500 ? 'degraded' : 'ok');
+        }
 
         if (await this.shouldPromptForAuth(response, authMode)) {
             // Before prompting, check once more whether another concurrent request already handled it
