@@ -26,7 +26,13 @@ services:
       - "4317:4317"
       - "4318:4318"
       - "12345:12345"
-      - "${FARO_RECEIVER_PORT:-12347}:12347"
+    # A ceiling the process can actually hit, so memory_limiter's soft limit
+    # means something relative to a real bound. It had none: the limiter was
+    # refusing batches at 192MiB while the container was free to take the
+    # host's 11.6GiB. Steady state after the config fix is ~66MiB, so 1.5GiB
+    # is room to absorb a burst and still stop a runaway.
+    mem_limit: 1536m
+    mem_reservation: 256m
     depends_on:
       prometheus:
         condition: service_started

@@ -554,61 +554,53 @@ groups:
           summary: Alloy configuration failed to load.
           runbook: Inspect Alloy logs and validate deploy/observability/alloy/config.alloy.
 
-  # ── hookrelay: the estate's single alert front door ──────────────────────
-  # Consumers of hookrelay_* metrics live here. Note the routing subtlety in
-  # alertmanager.yml: HookrelayDown must NOT be delivered through hookrelay.
-  - name: hookrelay-alerts
-    interval: 30s
+  # ── the telemetry pipeline itself ────────────────────────────────────────
+  # Added after Alloy spent four days refusing every batch it was asked to
+  # collect. Its memory_limiter soft limit sat below the process's own steady
+  # state, so it answered 503 to everything; the app logged ~7,800 export
+  # failures a day, Loki stayed completely empty, and every dashboard and alert
+  # built on logs was reading nothing. Nothing noticed, because the thing that
+  # notices is the thing that was broken.
+  #
+  # These watch the collector from OUTSIDE it, via Prometheus's own scrape of
+  # Alloy — the one path that does not depend on the pipeline being healthy.
+  - name: telemetry-pipeline
+    interval: 60s
     rules:
-      - alert: HookrelayDown
-        expr: up{job="hookrelay"} == 0
-        for: 2m
-        labels:
-          severity: critical
-          service: hookrelay
-          # Routed to a receiver that bypasses the relay — an alert about the
-          # front door cannot travel through the front door.
-          bypass_relay: "true"
-        annotations:
-          summary: hookrelay is not scrapeable — every inbound alert path is down.
-          runbook: ssh the host, `docker compose -f deploy/docker-compose.prod.yml logs hookrelay`. Rollback path is the Caddyfile backup.
-
-      - alert: HookrelayDeadLetters
-        expr: hookrelay_outbox{status="dead"} > 0
-        for: 5m
-        labels:
-          severity: warning
-          service: hookrelay
-        annotations:
-          summary: hookrelay has dead-lettered deliveries ({{ $value }}).
-          runbook: Open the relay page, read last_error on the dead chips, fix the channel, then use the retry button.
-
-      - alert: HookrelayOutboxBacklog
-        expr: hookrelay_outbox{status="queued"} > 50
+      - alert: TelemetryCollectorRefusingData
+        expr: increase(otelcol_receiver_refused_metric_points_total[10m]) > 0
+          or increase(otelcol_receiver_refused_log_records_total[10m]) > 0
         for: 10m
         labels:
           severity: warning
-          service: hookrelay
+          service: observability
         annotations:
-          summary: hookrelay outbox backlog is {{ $value }} and not draining.
-          runbook: Check hookrelay_breaker_open and hookrelay_deliveries_total{result="deferred"} — a rate limit or an open breaker is holding the queue.
+          summary: Alloy is refusing telemetry ({{ $value }} points in 10m) — data is being dropped.
+          runbook: >
+            Almost always memory_limiter. Check `docker logs` for "above soft limit";
+            the soft limit is limit-spike_limit in deploy/observability/alloy/config.alloy
+            and must sit above Alloy's steady RSS, not inside it.
 
-      - alert: HookrelayChannelBreakerOpen
-        expr: hookrelay_breaker_open == 1
-        for: 5m
+      - alert: TelemetryLogsNotReachingLoki
+        expr: increase(otelcol_exporter_loki_entries_total[30m]) == 0
+        for: 30m
         labels:
           severity: warning
-          service: hookrelay
+          service: observability
         annotations:
-          summary: hookrelay channel {{ $labels.channel }} breaker is open — the peer keeps refusing.
-          runbook: The channel URL or token is likely dead. Deliveries defer (not fail) while it is open.
+          summary: No log lines have reached Loki in 30 minutes.
+          runbook: >
+            Loki being empty looks identical to a quiet system, which is how this
+            went unnoticed for days. If the collector is healthy, the SENDERS may
+            have given up — the app's OTLP log exporter stops permanently after
+            "max retries or shutdown" and only comes back on restart.
 
-      - alert: HookrelayStormFuseHard
-        expr: increase(hookrelay_fuse_total{stage="hard"}[10m]) > 0
-        for: 0m
+      - alert: TelemetryLokiWritesFailing
+        expr: increase(otelcol_exporter_loki_entries_failed[10m]) > 0
+        for: 10m
         labels:
           severity: warning
-          service: hookrelay
+          service: observability
         annotations:
-          summary: hookrelay rejected traffic at the hard fuse stage on door {{ $labels.source }}.
-          runbook: An upstream is flooding at 10x its door threshold. Rejected requests are NOT stored; find the sender.
+          summary: Alloy accepted logs it could not write to Loki ({{ $value }} in 10m).
+          runbook: Check Loki's own health and disk; Alloy is receiving fine, the write leg is not.

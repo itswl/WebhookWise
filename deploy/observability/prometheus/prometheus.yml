@@ -18,15 +18,6 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # The alert estate's front door. Its /metrics is read-token guarded like
-  # /status (those numbers describe the alert flow), so the token rides in a
-  # header — set HOOKRELAY_READ_TOKEN in the observability stack's env.
-  - job_name: hookrelay
-    static_configs:
-      - targets: ["hookrelay:8100"]
-    # Prometheus does NOT expand environment variables in its config, so the
-    # credential comes from a FILE (gitignored, written per host) and rides in
-    # the standard Authorization: Bearer form the relay also accepts.
-    authorization:
-      type: Bearer
-      credentials_file: /etc/prometheus/hookrelay.token
+  # The hookrelay scrape job was removed on 2026-08-07 when the relay was taken
+  # out of the alert path and stopped. Restore it, and the hookrelay-alerts group
+  # in alerts.yml, from git history if the relay goes back in front.
