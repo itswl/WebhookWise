@@ -31,34 +31,18 @@ otelcol.receiver.otlp "default" {
 	}
 }
 
-faro.receiver "dashboard" {
-	extra_log_labels = {
-		app = "webhookwise-dashboard",
-	}
 
-	server {
-		listen_address           = "0.0.0.0"
-		listen_port              = 12347
-		cors_allowed_origins     = ["http://localhost:8000", "http://127.0.0.1:8000"]
-		max_allowed_payload_size = "5MiB"
-
-		rate_limiting {
-			enabled    = true
-			rate       = 50
-			burst_size = 100
-		}
-	}
-
-	output {
-		logs   = [loki.process.faro.receiver]
-		traces = [otelcol.processor.memory_limiter.default.input]
-	}
-}
-
+// The soft limit is `limit - spike_limit`. At 256/64 that was 192MiB, and
+// Alloy's steady state on this host is 192-245MiB — so it sat permanently
+// above its own ceiling, refused every batch with 503 and the application
+// logged ~7,800 export failures a day while the host had 11GiB free. Metrics
+// and logs have therefore been incomplete since the limits were written, and
+// nothing said so except a line in the app's logs that read like a network
+// blip.
 otelcol.processor.memory_limiter "default" {
 	check_interval = "2s"
-	limit          = "256MiB"
-	spike_limit    = "64MiB"
+	limit          = "1GiB"
+	spike_limit    = "256MiB"
 
 	output {
 		metrics = [otelcol.processor.transform.metric_labels.input]
@@ -144,20 +128,3 @@ loki.write "local" {
 	}
 }
 
-loki.process "faro" {
-	stage.json {
-		expressions = {
-			kind = "kind",
-			app  = "app",
-		}
-	}
-
-	stage.labels {
-		values = {
-			kind = "kind",
-			app  = "app",
-		}
-	}
-
-	forward_to = [loki.write.local.receiver]
-}
