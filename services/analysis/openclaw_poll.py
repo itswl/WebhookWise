@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from contracts.webhook_payload import JsonObject
 from core import json
 from core.datetime_utils import parse_utc_datetime, utcnow
-from core.http_client import get_http_client
+from core.http_client import get_deep_analysis_client
 from core.json import extract_balanced_json_text
 from core.logger import get_logger
 from core.observability.metrics import DEEP_ANALYSIS_TOTAL
@@ -133,7 +133,12 @@ async def poll_openclaw_result_via_http(
     return await poll_openclaw_final(
         session_key,
         policy=policy,
-        http_client=http_client or get_http_client(),
+        # Same gateway as the submit leg, so the same client: the URL is
+        # OPENCLAW_HTTP_API_URL, operator configuration pointing at a sidecar on
+        # the container network. Under the shared (DNS-hardened) client every
+        # poll died with "target host resolves to a non-public IP", so a run
+        # that finished fine was collected as a transient failure forever.
+        http_client=http_client or get_deep_analysis_client(),
         trace_id=get_current_trace_id(),
         retry_count=retry_count,
     )

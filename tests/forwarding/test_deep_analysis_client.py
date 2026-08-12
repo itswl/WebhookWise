@@ -43,6 +43,26 @@ async def test_openclaw_dependencies_use_the_exempt_client() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_poller_uses_the_exempt_client_too() -> None:
+    """Submitting and collecting are two legs of one hop, and fixing only the
+    first is worse than fixing neither: the gateway accepted the work, ran it,
+    and produced a report, while every poll for the result was rejected by our
+    own anti-SSRF guard and recorded as a transient error. The analysis stayed
+    `pending` forever with a finished report sitting on the other side.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from core.http_client import get_deep_analysis_client
+    from services.analysis import openclaw_poll
+
+    with patch.object(openclaw_poll, "poll_openclaw_final", new=AsyncMock(return_value={})) as final:
+        await openclaw_poll.poll_openclaw_result_via_http("hook:deep-analysis:test")
+
+    assert final.await_args is not None
+    assert final.await_args.kwargs["http_client"] is get_deep_analysis_client()
+
+
+@pytest.mark.asyncio
 async def test_a_private_gateway_url_is_actually_reachable(monkeypatch: pytest.MonkeyPatch) -> None:
     """The regression this fixes, end to end: a request to a private host must
     leave the process instead of raising UnsafeTargetUrlError."""

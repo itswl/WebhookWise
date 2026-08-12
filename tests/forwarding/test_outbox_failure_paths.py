@@ -605,7 +605,7 @@ class TestOpenClawPoller:
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT_SECONDS", 7)
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_CONNECT_TIMEOUT_SECONDS", 3)
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(openclaw, "get_http_client", lambda: _Client())
+        monkeypatch.setattr(openclaw, "get_deep_analysis_client", lambda: _Client())
 
         result = await openclaw.poll_openclaw_result_via_http("session-1", retry_count=1)
 
@@ -623,7 +623,7 @@ class TestOpenClawPoller:
                 raise OSError("All connection attempts failed")
 
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(openclaw, "get_http_client", lambda: _Client())
+        monkeypatch.setattr(openclaw, "get_deep_analysis_client", lambda: _Client())
 
         result = await openclaw.poll_openclaw_result_via_http("session-1", retry_count=1)
 
@@ -645,7 +645,7 @@ class TestOpenClawPoller:
 
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT_SECONDS", 7)
-        monkeypatch.setattr(openclaw, "get_http_client", lambda: _Client())
+        monkeypatch.setattr(openclaw, "get_deep_analysis_client", lambda: _Client())
 
         result = await openclaw.poll_openclaw_result_via_http("session-1", retry_count=1)
 
@@ -669,7 +669,7 @@ class TestOpenClawPoller:
                 return _Response()
 
         monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(openclaw, "get_http_client", lambda: _Client())
+        monkeypatch.setattr(openclaw, "get_deep_analysis_client", lambda: _Client())
 
         result = await openclaw.poll_openclaw_result_via_http("session-1", retry_count=1)
 
