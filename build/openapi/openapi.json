@@ -1062,6 +1062,49 @@
         ]
       }
     },
+    "/v1/deep-analysis-gateways/{gateway_name}/test": {
+      "post": {
+        "summary": "Test Deep Analysis Gateway Endpoint",
+        "description": "Check one gateway is reachable and its token works.\n\nAdmin-write because it makes an outbound request on the operator's behalf.\nCosts nothing and starts no investigation — see probe_gateway.",
+        "operationId": "test_deep_analysis_gateway_endpoint_v1_deep_analysis_gateways__gateway_name__test_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "gateway_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Gateway Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/forward-rules/sensitive": {
       "get": {
         "summary": "Get Sensitive Forward Rules Endpoint",

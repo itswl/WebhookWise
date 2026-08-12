@@ -117,7 +117,7 @@ async def request_gateway_analysis(
     sleep: Callable[[float], Awaitable[None]] | None = None,
 ) -> ForwardResult:
     policy = policy or DeepAnalysisTriggerPolicy.from_config()
-    dependencies = dependencies or build_deep_analysis_forward_dependencies()
+    dependencies = dependencies or build_deep_analysis_forward_dependencies(policy.gateway_name)
     if http_client is not None:
         dependencies = DeepAnalysisForwardDependencies(
             http_client=http_client, circuit_breaker=dependencies.circuit_breaker
@@ -304,7 +304,7 @@ async def forward_to_deep_analysis(
         FORWARD_DELIVERY_TOTAL.labels("deep_analysis", status).inc()
         FORWARD_DELIVERY_DURATION_SECONDS.labels("deep_analysis", status).observe(time.perf_counter() - started)
         return {"status": "error", "reason": str(error), "retryable": False, "error_code": "unknown_gateway"}
-    dependencies = dependencies or build_deep_analysis_forward_dependencies()
+    dependencies = dependencies or build_deep_analysis_forward_dependencies(policy.gateway_name)
     if http_client is not None:
         dependencies = DeepAnalysisForwardDependencies(
             http_client=http_client, circuit_breaker=dependencies.circuit_breaker

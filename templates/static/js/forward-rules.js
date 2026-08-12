@@ -446,6 +446,29 @@ async function populateGatewaySelect(selected) {
 }
 
 /**
+ * Probe the selected gateway: reachable, and does the token work.
+ *
+ * Answers at configuration time what would otherwise only surface when alerts
+ * started failing. Costs nothing — it asks for a session that cannot exist
+ * rather than starting an investigation.
+ */
+async function testRuleGateway() {
+    const select = document.getElementById('ruleFormGateway');
+    const hint = document.getElementById('ruleFormGatewayHint');
+    if (!select || !hint) return;
+    const name = select.value.trim() || 'default';
+    hint.innerHTML = '<span class="ww-dot ww-dot-muted"></span> ' + t('rule.gateway.testing');
+    try {
+        const probe = (await API.testDeepAnalysisGateway(name)).data || {};
+        const dot = probe.ok ? 'ww-dot-success' : 'ww-dot-danger';
+        hint.innerHTML = '<span class="ww-dot ' + dot + '"></span> ' + escapeHtml(String(probe.detail || probe.state || ''));
+    } catch (e) {
+        hint.innerHTML = '<span class="ww-dot ww-dot-danger"></span> '
+            + escapeHtml(t('rule.gateway.testFailed') + ': ' + (e.message || String(e)));
+    }
+}
+
+/**
  * Handle target-type changes
  */
 function onTargetTypeChange() {

@@ -700,6 +700,21 @@ const API = {
     },
 
     /**
+     * Probe one gateway: reachable, and does the token work.
+     * Starts no investigation, so it is free to click.
+     * @param {string} name - Gateway name
+     * @returns {Promise<object>} Probe result
+     */
+    async testDeepAnalysisGateway(name) {
+        const response = await this.authenticatedFetch(
+            '/v1/deep-analysis-gateways/' + encodeURIComponent(name) + '/test',
+            { method: 'POST', authMode: 'write' }
+        );
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
      * Create a forwarding rule
      * @param {object} ruleData - Rule data
      * @returns {Promise<object>} Creation result

@@ -53,7 +53,34 @@ _FORWARD_BREAKER_SPEC = CircuitBreakerSpec(
 
 
 feishu_cb = _FEISHU_BREAKER_SPEC.lazy()
-deep_analysis_cb = _DEEP_ANALYSIS_BREAKER_SPEC.lazy()
+
+# One breaker PER GATEWAY, not one for "deep analysis".
+#
+# With a single shared breaker, a gateway that goes down trips it and then every
+# OTHER gateway's deliveries are rejected too — they degrade to local AI because
+# a different operator's service is unhealthy. Named gateways made that a real
+# outage path rather than a theoretical one.
+#
+# Names come from configuration, so cardinality is bounded by the operator, not
+# by traffic; the cap is belt-and-braces and mirrors the per-host map below.
+_MAX_GATEWAY_BREAKERS = 64
+_gateway_breakers: OrderedDict[str, LazyCircuitBreaker] = OrderedDict()
+_gateway_breakers_lock = Lock()
+
+
+def get_deep_analysis_breaker(gateway_name: str) -> LazyCircuitBreaker:
+    key = (gateway_name or "").strip().lower() or "default"
+    with _gateway_breakers_lock:
+        breaker = _gateway_breakers.get(key)
+        if breaker is None:
+            breaker = _DEEP_ANALYSIS_BREAKER_SPEC.lazy()
+            _gateway_breakers[key] = breaker
+            if len(_gateway_breakers) > _MAX_GATEWAY_BREAKERS:
+                _gateway_breakers.popitem(last=False)
+        else:
+            _gateway_breakers.move_to_end(key)
+        return breaker
+
 
 # Bounded LRU of per-host breakers. The map is keyed on the forward target's
 # hostname, which can be attacker-influenced (rule targets) or high-cardinality,
@@ -106,7 +133,10 @@ def build_remote_forward_dependencies(target_url: str = "") -> RemoteForwardDepe
     )
 
 
-def build_deep_analysis_forward_dependencies() -> DeepAnalysisForwardDependencies:
+def build_deep_analysis_forward_dependencies(gateway_name: str = "") -> DeepAnalysisForwardDependencies:
     from core.http_client import get_deep_analysis_client
 
-    return DeepAnalysisForwardDependencies(http_client=get_deep_analysis_client(), circuit_breaker=deep_analysis_cb)
+    return DeepAnalysisForwardDependencies(
+        http_client=get_deep_analysis_client(),
+        circuit_breaker=get_deep_analysis_breaker(gateway_name),
+    )

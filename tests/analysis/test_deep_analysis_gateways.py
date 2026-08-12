@@ -20,7 +20,6 @@ from core.app_context import get_config_manager
 from services.analysis.deep_analysis_gateways import (
     DEFAULT_GATEWAY_NAME,
     UnknownGatewayError,
-    gateway_names,
     gateway_registry,
     resolve_gateway,
 )
@@ -86,11 +85,12 @@ def test_each_gateway_keeps_its_own_token_and_dialect() -> None:
     assert second.gateway_url == "http://hookprobe-2:8088"
 
 
-def test_names_are_case_insensitive_and_default_is_offered_first() -> None:
+def test_names_are_case_insensitive() -> None:
+    """Rules store a lower-cased name, so lookups must not care what was typed."""
     _configure({"name": "Hermes-EU", "url": "https://hermes.internal"})
 
     assert resolve_gateway("HERMES-eu").name == "hermes-eu"
-    assert gateway_names() == [DEFAULT_GATEWAY_NAME, "hermes-eu"]
+    assert set(gateway_registry()) == {DEFAULT_GATEWAY_NAME, "hermes-eu"}
 
 
 def test_a_broken_gateway_list_does_not_take_the_default_offline() -> None:
@@ -100,7 +100,7 @@ def test_a_broken_gateway_list_does_not_take_the_default_offline() -> None:
     get_config_manager().deep_analysis.DEEP_ANALYSIS_GATEWAYS = "{not json"
 
     assert resolve_gateway("").gateway_url == "http://hookprobe:8088"
-    assert gateway_names() == [DEFAULT_GATEWAY_NAME]
+    assert set(gateway_registry()) == {DEFAULT_GATEWAY_NAME}
 
 
 def test_default_cannot_be_shadowed_by_an_entry() -> None:
@@ -195,3 +195,97 @@ async def test_a_run_whose_gateway_vanished_fails_terminally() -> None:
     assert result["action"] == "update"
     assert result["status"] == "failed"
     assert "deleted-gateway" in str(result["analysis_result"]["root_cause"])
+
+
+@pytest.mark.asyncio
+async def test_the_probe_distinguishes_the_three_ways_a_gateway_breaks() -> None:
+    """Configuration breaks in exactly three ways and the probe must tell them
+    apart, or it just says "broken" and the operator still has to guess:
+
+      * wrong address  -> unreachable
+      * wrong token    -> auth
+      * both fine      -> ok
+
+    Verified live against hookprobe before this was written: a made-up session
+    answers 404 with a good token and 401 with a bad one.
+    """
+    import httpx
+
+    from core import http_client
+    from services.analysis.deep_analysis_gateways import probe_gateway
+
+    instance = resolve_gateway("")
+
+    cases = {404: "ok", 200: "ok", 401: "auth", 403: "auth", 503: "error"}
+    for status, expected in cases.items():
+
+        def handler(request: httpx.Request, code: int = status) -> httpx.Response:
+            return httpx.Response(code, json={"detail": "x"})
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        original = http_client.get_deep_analysis_client
+        http_client.get_deep_analysis_client = lambda bound=client: bound  # type: ignore[assignment]
+        try:
+            result = await probe_gateway(instance)
+        finally:
+            http_client.get_deep_analysis_client = original  # type: ignore[assignment]
+            await client.aclose()
+        assert result["state"] == expected, f"HTTP {status} should read as {expected}"
+        assert result["ok"] is (expected == "ok")
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_gateway_reads_as_unreachable_not_a_crash() -> None:
+    """A wrong hostname is the most likely mistake, so it must come back as a
+    diagnosis rather than propagate as an exception into the API handler."""
+    import httpx
+
+    from core import http_client
+    from services.analysis.deep_analysis_gateways import probe_gateway
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("Temporary failure in name resolution")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    original = http_client.get_deep_analysis_client
+    http_client.get_deep_analysis_client = lambda: client  # type: ignore[assignment]
+    try:
+        result = await probe_gateway(resolve_gateway(""))
+    finally:
+        http_client.get_deep_analysis_client = original  # type: ignore[assignment]
+        await client.aclose()
+
+    assert result["ok"] is False
+    assert result["state"] == "unreachable"
+    assert "resolution" in result["detail"]
+
+
+@pytest.mark.asyncio
+async def test_an_unconfigured_gateway_says_so_without_a_request() -> None:
+    """No address means there is nothing to probe; saying "unreachable" would
+    blame the network for an empty setting."""
+    from core.app_context import get_config_manager
+    from services.analysis.deep_analysis_gateways import probe_gateway
+
+    cfg = get_config_manager().deep_analysis
+    cfg.DEEP_ANALYSIS_GATEWAY_URL = ""
+    cfg.DEEP_ANALYSIS_HTTP_API_URL = ""
+
+    result = await probe_gateway(resolve_gateway(""))
+
+    assert result["state"] == "unconfigured"
+
+
+def test_each_gateway_gets_its_own_circuit_breaker() -> None:
+    """One shared breaker was an outage path: a gateway going down tripped it and
+    every OTHER gateway's deliveries were then rejected too, degrading alerts to
+    local AI because someone else's service was unhealthy."""
+    from services.forwarding.circuit_breakers import get_deep_analysis_breaker
+
+    default_breaker = get_deep_analysis_breaker("")
+    assert get_deep_analysis_breaker("default") is default_breaker
+    assert get_deep_analysis_breaker("DEFAULT") is default_breaker
+
+    other = get_deep_analysis_breaker("probe-b")
+    assert other is not default_breaker
+    assert get_deep_analysis_breaker("probe-b") is other

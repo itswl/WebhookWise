@@ -173,6 +173,34 @@ async def get_deep_analysis_gateways_endpoint() -> JSONDict:
     }
 
 
+@forwarding_router.post(
+    "/deep-analysis-gateways/{gateway_name}/test",
+    response_model=None,
+    dependencies=[Depends(verify_admin_write)],
+)
+async def test_deep_analysis_gateway_endpoint(gateway_name: str) -> JSONDict | JSONResponse:
+    """Check one gateway is reachable and its token works.
+
+    Admin-write because it makes an outbound request on the operator's behalf.
+    Costs nothing and starts no investigation — see probe_gateway.
+    """
+    from services.analysis.deep_analysis_gateways import probe_gateway, resolve_gateway
+
+    try:
+        instance = resolve_gateway(gateway_name)
+    except UnknownGatewayError as e:
+        return JSONResponse(status_code=404, content={"success": False, "error": str(e)})
+
+    result = await probe_gateway(instance)
+    logger.info(
+        "[ForwardAPI] Gateway probe name=%s state=%s ok=%s",
+        instance.name,
+        result.get("state"),
+        result.get("ok"),
+    )
+    return {"success": True, "data": {"name": instance.name, "platform": instance.platform, **result}}
+
+
 def _deep_analysis_destination(gateway_name: str = "") -> JSONDict:
     """Where a deep-analysis rule actually sends, since its target_url is empty.
 

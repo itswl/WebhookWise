@@ -977,7 +977,14 @@
                      gateway this rule reaches. Options come from the server. -->
                 <div class="form-group" id="ruleFormGatewayGroup" style="display: none;">
                     <label class="form-label" data-i18n="rule.gatewayLabel">Deep-analysis gateway</label>
-                    <select class="form-input" id="ruleFormGateway"></select>
+                    <div style="display: flex; gap: var(--sp-2); align-items: center;">
+                        <select class="form-input" id="ruleFormGateway" style="flex: 1;"></select>
+                        <button type="button" class="btn btn-sm" data-act="testRuleGateway"
+                                data-i18n-title="rule.gateway.testHint">
+                            <svg class="ww-icon" aria-hidden="true"><use href="#i-activity"></use></svg>
+                            <span data-i18n="rule.gateway.test">Test</span>
+                        </button>
+                    </div>
                     <div class="ww-meta" id="ruleFormGatewayHint" style="margin-top: var(--sp-2);"></div>
                 </div>
                 <div class="form-checkbox">

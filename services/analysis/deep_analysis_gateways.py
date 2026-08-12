@@ -124,12 +124,6 @@ def gateway_registry() -> dict[str, GatewayInstance]:
     return registry
 
 
-def gateway_names() -> list[str]:
-    """Selectable names, default first — the order the rule form should offer."""
-    names = sorted(n for n in gateway_registry() if n != DEFAULT_GATEWAY_NAME)
-    return [DEFAULT_GATEWAY_NAME, *names]
-
-
 def resolve_gateway(name: str | None) -> GatewayInstance:
     """Resolve a rule's gateway name. Empty means the default.
 
@@ -146,3 +140,43 @@ def resolve_gateway(name: str | None) -> GatewayInstance:
             f"deep-analysis gateway {key!r} is not configured (known: {', '.join(sorted(registry))})"
         )
     return instance
+
+
+async def probe_gateway(instance: GatewayInstance, *, timeout_seconds: float = 8.0) -> dict[str, Any]:
+    """Check a gateway is reachable and the token works, WITHOUT starting a run.
+
+    Asks for a session that cannot exist. The three answers are exactly the three
+    ways this configuration breaks, and they are distinguishable:
+
+      404 (or 2xx)  -> reachable, token accepted           -> ok
+      401 / 403     -> reachable, token rejected           -> auth
+      connect error -> address wrong or service down       -> unreachable
+
+    Deliberately not POST /hooks/agent: probing by starting a real investigation
+    would cost money per click and put junk reports in the ledger. Deliberately
+    not /healthz either — that answers "is something alive at this URL", not "will
+    MY credential work against the contract I depend on".
+    """
+    import httpx
+
+    if not instance.gateway_url and not instance.http_api_url:
+        return {"ok": False, "state": "unconfigured", "detail": "no gateway address configured"}
+
+    base = (instance.http_api_url or instance.gateway_url).rstrip("/")
+    url = f"{base}/sessions/ww-connectivity-probe/final"
+    headers = {"Authorization": f"Bearer {instance.token}"} if instance.token else {}
+
+    from core.http_client import get_deep_analysis_client
+
+    try:
+        response = await get_deep_analysis_client().get(url, headers=headers, timeout=timeout_seconds)
+    except httpx.HTTPError as error:
+        return {"ok": False, "state": "unreachable", "detail": f"{type(error).__name__}: {error}"}
+
+    if response.status_code in (401, 403):
+        return {"ok": False, "state": "auth", "detail": f"the gateway rejected the token ({response.status_code})"}
+    if response.status_code >= 500:
+        return {"ok": False, "state": "error", "detail": f"the gateway returned {response.status_code}"}
+    # 404 is the expected healthy answer: it means the contract is there and the
+    # credential was accepted, and only the made-up session is missing.
+    return {"ok": True, "state": "ok", "detail": f"reachable, token accepted (HTTP {response.status_code})"}
