@@ -95,3 +95,20 @@ async def test_the_gateway_platform_follows_configuration(session: AsyncSession)
         config.deep_analysis.DEEP_ANALYSIS_PLATFORM = platform
         rules = (await api.get_forward_rules_endpoint(session=session))["data"]
         assert rules[0]["deep_analysis_target"]["platform"] == platform
+
+
+def test_the_gateway_address_marks_credentials_only_when_present() -> None:
+    """mask_url always prints `***@`, which on a card reading "this is where it
+    goes" leaves the operator unable to tell whether the configured gateway
+    embeds a token. Here the marker means something."""
+    from api.v1.forwarding import _display_gateway_url
+
+    # The normal case: a sidecar on the container network, nothing to hide.
+    assert _display_gateway_url("http://hookprobe:8088") == "http://hookprobe:8088"
+    # A token in userinfo is redacted, and its presence is visible.
+    assert _display_gateway_url("https://tok:secret@gw.example.com/hooks") == "https://***@gw.example.com/hooks/..."
+    # A token in the path or query does not survive either.
+    assert _display_gateway_url("https://gw.example.com/hooks/s3cr3t?key=abc") == "https://gw.example.com/hooks/..."
+    # Unset stays empty rather than becoming a fake "***".
+    assert _display_gateway_url("") == ""
+    assert _display_gateway_url("not a url") == "***"

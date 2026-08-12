@@ -105,6 +105,34 @@ async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_sess
     return {"success": True, "data": await _rules_with_roi(session, rules, mask_target_url=True)}
 
 
+def _display_gateway_url(url: str) -> str:
+    """Show a gateway address an operator can recognise, without leaking a token.
+
+    Not mask_url(): that always emits `scheme://***@host`, which is right for
+    logs (one shape, never reveals whether credentials exist) and wrong here —
+    a phantom `***@` on a URL that has none leaves the reader unable to tell
+    whether the configured gateway embeds a token. So the marker appears only
+    when there really is userinfo. Query and deep path are dropped either way,
+    since that is where a token hides when it is not in userinfo.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError:
+        return "***"
+    if not parsed.hostname:
+        return "***" if url.strip() else ""
+    port = f":{parsed.port}" if parsed.port else ""
+    credentials = "***@" if (parsed.username or parsed.password) else ""
+    path = parsed.path or ""
+    safe_path = ""
+    if path and path != "/":
+        parts = [p for p in path.split("/") if p]
+        safe_path = f"/{parts[0]}/..." if parts else ""
+    return f"{parsed.scheme}://{credentials}{parsed.hostname}{port}{safe_path}"
+
+
 def _deep_analysis_destination() -> JSONDict:
     """Where a deep-analysis rule actually sends, since its target_url is empty.
 
@@ -119,7 +147,7 @@ def _deep_analysis_destination() -> JSONDict:
     config = get_config_manager()
     return {
         "platform": configured_deep_analysis_platform(),
-        "gateway_url": mask_url(str(config.deep_analysis.DEEP_ANALYSIS_GATEWAY_URL or "")),
+        "gateway_url": _display_gateway_url(str(config.deep_analysis.DEEP_ANALYSIS_GATEWAY_URL or "")),
         "enabled": bool(config.deep_analysis.DEEP_ANALYSIS_ENABLED),
     }
 
