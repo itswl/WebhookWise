@@ -4737,6 +4737,12 @@ components:
           type: string
           title: Last Delivery Error
           default: ''
+        deep_analysis_target:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Deep Analysis Target
       type: object
       required:
       - id

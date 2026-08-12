@@ -89,6 +89,24 @@ function renderRuleCard(rule) {
     const environmentText = escapeHtml(rule.match_environment || t('common.all'));
     const targetTypeText = escapeHtml(formatTargetType(rule.target_type));
 
+    // A deep-analysis rule carries no address of its own: the gateway is server
+    // configuration, so one setting repoints every such rule. The card used to
+    // read "deep analysis (deep analysis)" over an empty address — true, and
+    // useless. Name the gateway that actually answers, and say where it is.
+    const deepTarget = rule.deep_analysis_target;
+    const suppressTargetName = !!deepTarget && rule.target_name === formatTargetType(rule.target_type);
+    const deepTargetSuffix = deepTarget && deepTarget.platform
+        ? ` <span style="color: var(--primary); font-weight: 600;">${escapeHtml(String(deepTarget.platform))}</span>`
+        : '';
+    let targetAddressText = escapeHtml(rule.target_url || '-');
+    if (deepTarget) {
+        const where = deepTarget.gateway_url
+            ? escapeHtml(String(deepTarget.gateway_url))
+            : t('rules.deepTarget.unset');
+        const off = deepTarget.enabled ? '' : ` — ${t('rules.deepTarget.disabled')}`;
+        targetAddressText = `${where}<span style="color: var(--text-muted);"> (${t('rules.deepTarget.fromConfig')}${off})</span>`;
+    }
+
     const isEnabled = rule.enabled;
     const deliveryStatus = String(rule.delivery_status || 'unknown');
     const deliveryFailures = Number(rule.delivery_failure_count_24h || 0);
@@ -205,11 +223,11 @@ function renderRuleCard(rule) {
                 <div class="rule-target" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--bg-subtle); padding: 1.25rem; border-radius: 8px; border: 1px dashed var(--border);">
                     <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;"><span style="color: var(--success);">${wwIcon('send')}</span> ${t('rules.card.action')}</div>
                     <div style="margin-bottom: 0.75rem;">
-                        <strong>${t('rules.card.pushTo')}:</strong> ${targetTypeText}
-                        ${rule.target_name ? `(${escapeHtml(rule.target_name)})` : ''}
+                        <strong>${t('rules.card.pushTo')}:</strong> ${targetTypeText}${deepTargetSuffix}
+                        ${suppressTargetName ? '' : (rule.target_name ? `(${escapeHtml(rule.target_name)})` : '')}
                     </div>
                     <div style="word-break: break-all; color: var(--text-main); font-family: var(--font-mono); font-size: 0.85rem; background: var(--bg-surface); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border); box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
-                        ${escapeHtml(rule.target_url || '-')}
+                        ${targetAddressText}
                     </div>
                     ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: var(--warning); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">' + wwIcon('zap') + ' ' + t('rules.card.stopOnMatch') + '</div>' : ''}
                     ${deliveryDetail}

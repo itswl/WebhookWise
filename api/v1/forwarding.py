@@ -105,11 +105,32 @@ async def get_forward_rules_endpoint(session: AsyncSession = Depends(get_db_sess
     return {"success": True, "data": await _rules_with_roi(session, rules, mask_target_url=True)}
 
 
+def _deep_analysis_destination() -> JSONDict:
+    """Where a deep-analysis rule actually sends, since its target_url is empty.
+
+    A deep-analysis rule carries no address on purpose — the gateway is process
+    configuration, so one env var repoints every such rule at once. The cost is
+    that the rule card could only say "deep analysis", twice, and never which
+    gateway. This puts the answer on the rule.
+    """
+    from core.app_context import get_config_manager
+    from services.analysis.deep_analysis_platforms import configured_deep_analysis_platform
+
+    config = get_config_manager()
+    return {
+        "platform": configured_deep_analysis_platform(),
+        "gateway_url": mask_url(str(config.deep_analysis.DEEP_ANALYSIS_GATEWAY_URL or "")),
+        "enabled": bool(config.deep_analysis.DEEP_ANALYSIS_ENABLED),
+    }
+
+
 async def _rules_with_roi(session: AsyncSession, rules: list[Any], *, mask_target_url: bool) -> list[JSONDict]:
     """Annotate each rule with its hit count (ROI): how many alerts it matched,
     and when it last did. A zero count on an enabled rule is a zombie rule."""
     hits = await get_forward_rule_hit_counts(session, rule_names=[r.name for r in rules])
     delivery_health = await get_forward_rule_delivery_health(session, [int(r.id) for r in rules])
+    # Read once: the gateway is global config, not per-rule.
+    destination = _deep_analysis_destination() if any(r.target_type == "deep_analysis" for r in rules) else None
     data: list[JSONDict] = []
     for rule in rules:
         item = forward_rule_to_dict(rule, mask_target_url=mask_target_url)
@@ -117,6 +138,8 @@ async def _rules_with_roi(session: AsyncSession, rules: list[Any], *, mask_targe
         item["hit_count"] = stat["count"] if stat else 0
         item["last_matched_at"] = stat["last_matched_at"] if stat else None
         item.update(delivery_health.get(int(rule.id), {}))
+        if destination is not None and rule.target_type == "deep_analysis":
+            item["deep_analysis_target"] = destination
         data.append(item)
     return data
 

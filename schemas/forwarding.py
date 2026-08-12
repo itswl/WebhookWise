@@ -167,6 +167,11 @@ class ForwardRuleSchema(BaseModel):
     delivery_failure_count_24h: int = 0
     last_delivery_at: datetime | str | None = None
     last_delivery_error: str = ""
+    # Where a deep-analysis rule actually sends. Such a rule has no target_url
+    # of its own — the gateway is process configuration — so without this the
+    # card can only say "deep analysis" and never which gateway answered.
+    # Annotated by the list endpoint; absent for every other target type.
+    deep_analysis_target: dict[str, Any] | None = None
 
 
 class ForwardRuleListResponse(APIResponse[list[ForwardRuleSchema]]):
