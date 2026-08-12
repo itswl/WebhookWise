@@ -17,9 +17,9 @@ matching a channel:
   * deep_analyses.openclaw_session_key -> gateway_session_key
   * the _openclaw_run_id / _openclaw_session_key / _openclaw_text keys inside
     every stored analysis JSON (deep_analyses.analysis_result,
-    forward_outbox.analysis_result, webhook_events.ai_analysis)
+    forward_outboxes.analysis_result, webhook_events.ai_analysis)
   * target_type / channel_name value 'openclaw' -> 'deep_analysis'
-    (forward_rules, forward_outbox)
+    (forward_rules, forward_outboxes)
 
 deep_analyses.engine is deliberately NOT rewritten. It records which platform
 answered at the time, and 'openclaw' is what the configuration said then — that
@@ -44,7 +44,7 @@ depends_on: str | Sequence[str] | None = None
 # table -> JSONB column holding an analysis result
 _JSON_COLUMNS: tuple[tuple[str, str], ...] = (
     ("deep_analyses", "analysis_result"),
-    ("forward_outbox", "analysis_result"),
+    ("forward_outboxes", "analysis_result"),
     ("webhook_events", "ai_analysis"),
 )
 
@@ -84,13 +84,13 @@ def upgrade() -> None:
     # A rule whose target_type no longer matches any channel silently stops
     # delivering, so this value has to move with the code that reads it.
     op.execute("UPDATE forward_rules SET target_type = 'deep_analysis' WHERE target_type = 'openclaw'")
-    op.execute("UPDATE forward_outbox SET target_type = 'deep_analysis' WHERE target_type = 'openclaw'")
-    op.execute("UPDATE forward_outbox SET channel_name = 'deep_analysis' WHERE channel_name = 'openclaw'")
+    op.execute("UPDATE forward_outboxes SET target_type = 'deep_analysis' WHERE target_type = 'openclaw'")
+    op.execute("UPDATE forward_outboxes SET channel_name = 'deep_analysis' WHERE channel_name = 'openclaw'")
 
 
 def downgrade() -> None:
-    op.execute("UPDATE forward_outbox SET channel_name = 'openclaw' WHERE channel_name = 'deep_analysis'")
-    op.execute("UPDATE forward_outbox SET target_type = 'openclaw' WHERE target_type = 'deep_analysis'")
+    op.execute("UPDATE forward_outboxes SET channel_name = 'openclaw' WHERE channel_name = 'deep_analysis'")
+    op.execute("UPDATE forward_outboxes SET target_type = 'openclaw' WHERE target_type = 'deep_analysis'")
     op.execute("UPDATE forward_rules SET target_type = 'openclaw' WHERE target_type = 'deep_analysis'")
 
     _rename_json_keys(tuple((new, old) for old, new in _JSON_KEYS))

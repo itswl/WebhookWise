@@ -1,5 +1,7 @@
 """Deployment migration gate contracts."""
 
+import importlib.util
+
 from scripts.healthcheck import _expected_migration_heads, _migration_heads_match
 
 
@@ -30,3 +32,27 @@ def test_revision_ids_fit_alembic_version_column() -> None:
         if match and len(match.group(1)) > 32:
             too_long.append(f"{path.name}: {match.group(1)}")
     assert too_long == [], f"revision ids longer than 32 chars: {too_long}"
+
+
+def test_migration_json_targets_name_tables_that_actually_exist() -> None:
+    """A migration naming a table that does not exist fails mid-revision, after
+    the earlier statements in it have already run.
+
+    0029 named `forward_outbox`; the table is `forward_outboxes`. It surfaced
+    only because the revision was rehearsed against a clone of production first.
+    The assertion is cheap, so it stops being luck.
+    """
+    import models  # noqa: F401 - registers every table on Base.metadata
+    from db.session import Base
+    from tests.helpers.paths import PROJECT_ROOT
+
+    path = PROJECT_ROOT / "alembic/versions/0029_neutral_deep_analysis.py"
+    spec = importlib.util.spec_from_file_location("_migration_0029", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    real_tables = set(Base.metadata.tables)
+    for table, column in module._JSON_COLUMNS:
+        assert table in real_tables, f"migration 0029 targets unknown table {table!r}"
+        assert column in Base.metadata.tables[table].columns, f"{table} has no column {column!r}"
