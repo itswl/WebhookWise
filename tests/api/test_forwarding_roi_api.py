@@ -112,3 +112,43 @@ def test_the_gateway_address_marks_credentials_only_when_present() -> None:
     # Unset stays empty rather than becoming a fake "***".
     assert _display_gateway_url("") == ""
     assert _display_gateway_url("not a url") == "***"
+
+
+@pytest.mark.asyncio
+async def test_a_rule_naming_an_unknown_gateway_is_rejected_with_the_known_names(session: AsyncSession) -> None:
+    """A typo would otherwise become a dead rule whose only symptom is silence.
+    The error names what IS configured, because "invalid" is not actionable."""
+    from api.v1 import forwarding as api
+    from schemas.forwarding import ForwardRuleCreateRequest
+
+    payload = ForwardRuleCreateRequest.model_validate(
+        {"name": "typo-rule", "target_type": "deep_analysis", "target_gateway": "hookprbe"}
+    )
+    response = await api.create_forward_rule_endpoint(payload=payload, session=session)
+
+    assert response.status_code == 400
+    body = response.body.decode()
+    assert "hookprbe" in body
+    assert "default" in body
+
+
+@pytest.mark.asyncio
+async def test_a_rule_may_name_a_configured_gateway(session: AsyncSession) -> None:
+    import json
+
+    from api.v1 import forwarding as api
+    from core.app_context import get_config_manager
+    from schemas.forwarding import ForwardRuleCreateRequest
+
+    cfg = get_config_manager().deep_analysis
+    cfg.DEEP_ANALYSIS_GATEWAYS = json.dumps([{"name": "probe-2", "url": "http://hookprobe-2:8088"}])
+    try:
+        payload = ForwardRuleCreateRequest.model_validate(
+            {"name": "second-probe", "target_type": "deep_analysis", "target_gateway": "PROBE-2"}
+        )
+        result = await api.create_forward_rule_endpoint(payload=payload, session=session)
+        # Normalised to lower case on the way in, so the stored value always
+        # matches what resolve_gateway() will look up later.
+        assert result["data"]["target_gateway"] == "probe-2"
+    finally:
+        cfg.DEEP_ANALYSIS_GATEWAYS = ""

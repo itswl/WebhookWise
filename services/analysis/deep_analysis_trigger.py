@@ -25,6 +25,7 @@ from services.analysis.ai_prompt import (
     load_deep_analysis_prompt_template,
 )
 from services.analysis.alert_identity_context import build_alert_identity_context
+from services.analysis.deep_analysis_gateways import UnknownGatewayError
 from services.analysis.deep_analysis_platforms import resolve_dialect
 from services.forwarding.circuit_breakers import (
     DeepAnalysisForwardDependencies,
@@ -285,13 +286,24 @@ async def forward_to_deep_analysis(
     webhook_data: WebhookData,
     analysis_result: AnalysisResult,
     *,
+    gateway_name: str = "",
     policy: DeepAnalysisTriggerPolicy | None = None,
     http_client: httpx.AsyncClient | None = None,
     dependencies: DeepAnalysisForwardDependencies | None = None,
 ) -> ForwardResult:
     started = time.perf_counter()
     status = "unknown"
-    policy = policy or DeepAnalysisTriggerPolicy.from_config()
+    try:
+        policy = policy or DeepAnalysisTriggerPolicy.from_config(gateway_name)
+    except UnknownGatewayError as error:
+        # A rule pointing at a deleted gateway must fail loudly and name the
+        # gateway. Silently using the default would send an investigation, alert
+        # payload included, to a service the rule never asked for.
+        logger.error("[Forward] %s", error)
+        status = "unknown_gateway"
+        FORWARD_DELIVERY_TOTAL.labels("deep_analysis", status).inc()
+        FORWARD_DELIVERY_DURATION_SECONDS.labels("deep_analysis", status).observe(time.perf_counter() - started)
+        return {"status": "error", "reason": str(error), "retryable": False, "error_code": "unknown_gateway"}
     dependencies = dependencies or build_deep_analysis_forward_dependencies()
     if http_client is not None:
         dependencies = DeepAnalysisForwardDependencies(

@@ -76,6 +76,9 @@ async def create_outbox_records(
             target_type=target_type,
             target_url=target_url,
             target_name=str(rule.target_name or ""),
+            # Snapshot, not a lookup: a rule edited while this row waits in the
+            # queue must not redirect a delivery that was already decided.
+            target_gateway=str(getattr(rule, "target_gateway", "") or ""),
             is_periodic_reminder=is_periodic_reminder,
             channel_name=target_type,
             event_type=event_type,

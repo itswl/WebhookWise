@@ -60,6 +60,9 @@ class DeepAnalysis(Base):
     created_at: Mapped[datetime | None] = mapped_column(DateTime, default=lambda: utcnow())
     gateway_run_id: Mapped[str | None] = mapped_column(String(64), index=True)
     gateway_session_key: Mapped[str | None] = mapped_column(String(200))
+    # Which gateway this run was submitted to. The poller MUST ask the same one:
+    # a session key from one gateway means nothing to another.
+    gateway_name: Mapped[str] = mapped_column(String(50), default="", server_default="")
     status: Mapped[str] = mapped_column(String(20), default="completed", index=True)
     poll_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     next_poll_at: Mapped[datetime | None] = mapped_column(DateTime)

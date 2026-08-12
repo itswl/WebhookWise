@@ -236,7 +236,9 @@ async def test_deliver_outbox_record_openclaw_feishu_remote_payloads(monkeypatch
     from models import ForwardOutbox
     from services.forwarding import outbox
 
-    async def gateway_forward(data: dict[str, object], analysis: dict[str, object]) -> dict[str, object]:
+    async def gateway_forward(
+        data: dict[str, object], analysis: dict[str, object], **_kwargs: object
+    ) -> dict[str, object]:
         assert data["source"] == "prometheus"
         assert analysis["importance"] == "high"
         return {"status": "pending"}

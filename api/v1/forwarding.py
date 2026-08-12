@@ -21,6 +21,7 @@ from schemas.forwarding import (
     ForwardRuleUpdateRequest,
     forward_rule_to_dict,
 )
+from services.analysis.deep_analysis_gateways import UnknownGatewayError
 from services.forwarding.rules import (
     create_forward_rule,
     delete_forward_rule,
@@ -56,6 +57,25 @@ async def _validated_target_url(target_type: str, target_url: object) -> str:
             raise UnsafeTargetUrlError("feishu_relay target must be an http(s) URL")
         return stripped
     return await validate_outbound_url(target_url)
+
+
+def _validated_gateway(target_type: str, target_gateway: object) -> str:
+    """Reject a typo at the source.
+
+    A rule naming a gateway that does not exist delivers nothing, and the only
+    symptom is silence — so refuse it on save rather than let it become a dead
+    rule that looks configured. Removal AFTER the fact is a different case and is
+    surfaced on the rule card instead; this only guards what an operator types.
+    """
+    name = str(target_gateway or "").strip().lower()
+    if target_type != "deep_analysis" or not name:
+        return ""
+    from services.analysis.deep_analysis_gateways import resolve_gateway
+
+    # Raises UnknownGatewayError, which callers surface verbatim: unlike a target
+    # URL, a gateway name is operator configuration with no secret in it, and
+    # "which names exist" is exactly what the operator needs to see.
+    return resolve_gateway(name).name
 
 
 async def _validate_enabled_delivery_target(
@@ -133,7 +153,27 @@ def _display_gateway_url(url: str) -> str:
     return f"{parsed.scheme}://{credentials}{parsed.hostname}{port}{safe_path}"
 
 
-def _deep_analysis_destination() -> JSONDict:
+@forwarding_router.get("/deep-analysis-gateways", dependencies=[Depends(verify_api_key)])
+async def get_deep_analysis_gateways_endpoint() -> JSONDict:
+    """The gateways a rule may name. Tokens are never included."""
+    from services.analysis.deep_analysis_gateways import gateway_registry
+
+    registry = gateway_registry()
+    return {
+        "success": True,
+        "data": [
+            {
+                "name": instance.name,
+                "platform": instance.platform,
+                "gateway_url": _display_gateway_url(instance.gateway_url),
+                "configured": instance.configured,
+            }
+            for instance in sorted(registry.values(), key=lambda i: (i.name != "default", i.name))
+        ],
+    }
+
+
+def _deep_analysis_destination(gateway_name: str = "") -> JSONDict:
     """Where a deep-analysis rule actually sends, since its target_url is empty.
 
     A deep-analysis rule carries no address on purpose — the gateway is process
@@ -142,13 +182,21 @@ def _deep_analysis_destination() -> JSONDict:
     gateway. This puts the answer on the rule.
     """
     from core.app_context import get_config_manager
-    from services.analysis.deep_analysis_platforms import configured_deep_analysis_platform
+    from services.analysis.deep_analysis_gateways import UnknownGatewayError, resolve_gateway
 
     config = get_config_manager()
+    enabled = bool(config.deep_analysis.DEEP_ANALYSIS_ENABLED)
+    try:
+        gateway = resolve_gateway(gateway_name)
+    except UnknownGatewayError as error:
+        # Say so on the card. A rule pointing at a deleted gateway delivers
+        # nothing, and "looks fine" is the worst way for that to present.
+        return {"name": gateway_name, "platform": "", "gateway_url": "", "enabled": enabled, "error": str(error)}
     return {
-        "platform": configured_deep_analysis_platform(),
-        "gateway_url": _display_gateway_url(str(config.deep_analysis.DEEP_ANALYSIS_GATEWAY_URL or "")),
-        "enabled": bool(config.deep_analysis.DEEP_ANALYSIS_ENABLED),
+        "name": gateway.name,
+        "platform": gateway.platform,
+        "gateway_url": _display_gateway_url(gateway.gateway_url),
+        "enabled": enabled,
     }
 
 
@@ -157,8 +205,9 @@ async def _rules_with_roi(session: AsyncSession, rules: list[Any], *, mask_targe
     and when it last did. A zero count on an enabled rule is a zombie rule."""
     hits = await get_forward_rule_hit_counts(session, rule_names=[r.name for r in rules])
     delivery_health = await get_forward_rule_delivery_health(session, [int(r.id) for r in rules])
-    # Read once: the gateway is global config, not per-rule.
-    destination = _deep_analysis_destination() if any(r.target_type == "deep_analysis" for r in rules) else None
+    # Per rule now: different rules may name different gateways. Cached by name
+    # so a page of rules sharing one gateway still resolves it once.
+    destinations: dict[str, JSONDict] = {}
     data: list[JSONDict] = []
     for rule in rules:
         item = forward_rule_to_dict(rule, mask_target_url=mask_target_url)
@@ -166,8 +215,11 @@ async def _rules_with_roi(session: AsyncSession, rules: list[Any], *, mask_targe
         item["hit_count"] = stat["count"] if stat else 0
         item["last_matched_at"] = stat["last_matched_at"] if stat else None
         item.update(delivery_health.get(int(rule.id), {}))
-        if destination is not None and rule.target_type == "deep_analysis":
-            item["deep_analysis_target"] = destination
+        if rule.target_type == "deep_analysis":
+            name = str(getattr(rule, "target_gateway", "") or "")
+            if name not in destinations:
+                destinations[name] = _deep_analysis_destination(name)
+            item["deep_analysis_target"] = destinations[name]
         data.append(item)
     return data
 
@@ -195,6 +247,12 @@ async def create_forward_rule_endpoint(
     data = payload.to_service_kwargs()
     name = data["name"]
     target_type = data["target_type"]
+
+    try:
+        data["target_gateway"] = _validated_gateway(target_type, data.get("target_gateway", ""))
+    except UnknownGatewayError as e:
+        logger.warning("[ForwardAPI] Create forward rule rejected name=%s unknown gateway: %s", name, e)
+        return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
 
     try:
         target_url = await _validated_target_url(target_type, data["target_url"])
@@ -239,6 +297,7 @@ async def create_forward_rule_endpoint(
         match_payload=data["match_payload"],
         target_url=target_url,
         target_name=data["target_name"],
+        target_gateway=data["target_gateway"],
         stop_on_match=data["stop_on_match"],
     )
     add_audit(
@@ -274,6 +333,12 @@ async def update_forward_rule_endpoint(
     if not existing:
         return JSONResponse(status_code=404, content={"success": False, "error": "Rule does not exist"})
     target_type = data.get("target_type", existing.target_type)
+    if "target_gateway" in data:
+        try:
+            data["target_gateway"] = _validated_gateway(target_type, data.get("target_gateway", ""))
+        except UnknownGatewayError as e:
+            logger.warning("[ForwardAPI] Update forward rule rejected rule_id=%s unknown gateway: %s", rule_id, e)
+            return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
     if "target_url" in data or "target_type" in data:
         try:
             data["target_url"] = await _validated_target_url(target_type, data.get("target_url", existing.target_url))

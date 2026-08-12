@@ -95,16 +95,28 @@ function renderRuleCard(rule) {
     // useless. Name the gateway that actually answers, and say where it is.
     const deepTarget = rule.deep_analysis_target;
     const suppressTargetName = !!deepTarget && rule.target_name === formatTargetType(rule.target_type);
-    const deepTargetSuffix = deepTarget && deepTarget.platform
-        ? ` <span style="color: var(--primary); font-weight: 600;">${escapeHtml(String(deepTarget.platform))}</span>`
+    // Name the gateway INSTANCE, not just the platform: with several configured,
+    // "hookprobe" no longer identifies where this rule sends.
+    const deepGatewayLabel = deepTarget
+        ? [deepTarget.name && deepTarget.name !== 'default' ? deepTarget.name : '', deepTarget.platform]
+            .filter(Boolean).join(' · ')
+        : '';
+    const deepTargetSuffix = deepGatewayLabel
+        ? ` <span style="color: var(--primary); font-weight: 600;">${escapeHtml(deepGatewayLabel)}</span>`
         : '';
     let targetAddressText = escapeHtml(rule.target_url || '-');
     if (deepTarget) {
-        const where = deepTarget.gateway_url
-            ? escapeHtml(String(deepTarget.gateway_url))
-            : t('rules.deepTarget.unset');
-        const off = deepTarget.enabled ? '' : ` — ${t('rules.deepTarget.disabled')}`;
-        targetAddressText = `${where}<span style="color: var(--text-muted);"> (${t('rules.deepTarget.fromConfig')}${off})</span>`;
+        if (deepTarget.error) {
+            // A rule naming a removed gateway delivers nothing. Say it here, in
+            // the one place someone reads to answer "where does this go".
+            targetAddressText = `<span style="color: var(--danger);">${escapeHtml(String(deepTarget.error))}</span>`;
+        } else {
+            const where = deepTarget.gateway_url
+                ? escapeHtml(String(deepTarget.gateway_url))
+                : t('rules.deepTarget.unset');
+            const off = deepTarget.enabled ? '' : ` — ${t('rules.deepTarget.disabled')}`;
+            targetAddressText = `${where}<span style="color: var(--text-muted);"> (${t('rules.deepTarget.fromConfig')}${off})</span>`;
+        }
     }
 
     const isEnabled = rule.enabled;
@@ -311,6 +323,8 @@ function showRuleForm(ruleId) {
     document.getElementById('ruleFormTargetType').value = 'feishu';
     document.getElementById('ruleFormTargetUrl').value = '';
     document.getElementById('ruleFormTargetName').value = '';
+    const gatewayGroupReset = document.getElementById('ruleFormGatewayGroup');
+    if (gatewayGroupReset) gatewayGroupReset.style.display = 'none';
     document.getElementById('ruleFormStopOnMatch').checked = false;
     document.getElementById('ruleFormEnabled').checked = true;
 
@@ -365,6 +379,7 @@ function showRuleForm(ruleId) {
             document.getElementById('ruleFormTargetType').value = rule.target_type || 'feishu';
             document.getElementById('ruleFormTargetUrl').value = rule.target_url || '';
             document.getElementById('ruleFormTargetName').value = rule.target_name || '';
+            populateGatewaySelect(rule.target_gateway || '');
             document.getElementById('ruleFormStopOnMatch').checked = rule.stop_on_match || false;
             document.getElementById('ruleFormEnabled').checked = rule.enabled !== false;
 
@@ -386,18 +401,65 @@ function closeRuleForm() {
     document.getElementById('ruleFormModal').classList.remove('active');
 }
 
+// Configured gateways, fetched once per page load. A rule picks one by name;
+// the list is server-side because the addresses and tokens are.
+let deepAnalysisGateways = null;
+
+async function loadDeepAnalysisGateways() {
+    if (deepAnalysisGateways !== null) return deepAnalysisGateways;
+    try {
+        const result = await API.getDeepAnalysisGateways();
+        deepAnalysisGateways = result.data || [];
+    } catch (e) {
+        // Never block the form: fall back to the default gateway only.
+        deepAnalysisGateways = [{ name: 'default', platform: '', gateway_url: '', configured: true }];
+    }
+    return deepAnalysisGateways;
+}
+
+async function populateGatewaySelect(selected) {
+    const select = document.getElementById('ruleFormGateway');
+    const hint = document.getElementById('ruleFormGatewayHint');
+    if (!select) return;
+    const gateways = await loadDeepAnalysisGateways();
+    const want = String(selected || '').trim().toLowerCase() || 'default';
+    select.innerHTML = gateways.map(function(g) {
+        const label = g.name === 'default'
+            ? t('rule.gateway.default', { platform: g.platform || '-' })
+            : `${g.name}${g.platform ? ' · ' + g.platform : ''}`;
+        return '<option value="' + escapeHtml(g.name === 'default' ? '' : g.name) + '"'
+            + ((g.name === want || (want === 'default' && g.name === 'default')) ? ' selected' : '')
+            + '>' + escapeHtml(label) + '</option>';
+    }).join('');
+    // A rule may still name a gateway that has since been removed from
+    // configuration. Keep it selectable and say so, rather than silently
+    // rewriting the rule to the default on the next save.
+    const known = gateways.some(g => (g.name === 'default' ? '' : g.name) === String(selected || ''));
+    if (selected && !known) {
+        select.insertAdjacentHTML('afterbegin',
+            '<option value="' + escapeHtml(selected) + '" selected>' + escapeHtml(selected) + '</option>');
+        if (hint) hint.innerHTML = '<span class="ww-dot ww-dot-danger"></span> ' + t('rule.gateway.missing');
+        return;
+    }
+    const chosen = gateways.find(g => (g.name === 'default' ? '' : g.name) === String(selected || '')) || gateways[0];
+    if (hint) hint.textContent = chosen && chosen.gateway_url ? chosen.gateway_url : t('rule.gateway.unset');
+}
+
 /**
  * Handle target-type changes
  */
 function onTargetTypeChange() {
     const targetType = document.getElementById('ruleFormTargetType').value;
     const urlGroup = document.getElementById('ruleFormTargetUrlGroup');
+    const gatewayGroup = document.getElementById('ruleFormGatewayGroup');
 
-    // The deep-analysis target has no address: the gateway is server config
-    if (targetType === 'deep_analysis') {
-        urlGroup.style.display = 'none';
-    } else {
-        urlGroup.style.display = 'block';
+    // The deep-analysis target has no address: the gateway is server config, so
+    // the rule names one instead of carrying a URL.
+    const isDeep = targetType === 'deep_analysis';
+    urlGroup.style.display = isDeep ? 'none' : 'block';
+    if (gatewayGroup) {
+        gatewayGroup.style.display = isDeep ? 'block' : 'none';
+        if (isDeep) populateGatewaySelect(document.getElementById('ruleFormGateway').value);
     }
 }
 
@@ -412,6 +474,9 @@ async function saveRule() {
     const targetType = document.getElementById('ruleFormTargetType').value;
     const targetUrl = document.getElementById('ruleFormTargetUrl').value.trim();
     const targetName = document.getElementById('ruleFormTargetName').value.trim();
+    const targetGateway = targetType === 'deep_analysis'
+        ? document.getElementById('ruleFormGateway').value.trim()
+        : '';
 
     // Validate required fields
     if (!name) {
@@ -449,6 +514,7 @@ async function saveRule() {
         match_payload: document.getElementById('ruleFormPayload').value.trim(),
         target_type: targetType,
         target_url: targetType === 'deep_analysis' ? '' : targetUrl,
+        target_gateway: targetGateway,
         target_name: targetName,
         stop_on_match: document.getElementById('ruleFormStopOnMatch').checked
     };

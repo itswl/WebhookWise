@@ -1036,6 +1036,32 @@
         ]
       }
     },
+    "/v1/deep-analysis-gateways": {
+      "get": {
+        "summary": "Get Deep Analysis Gateways Endpoint",
+        "description": "The gateways a rule may name. Tokens are never included.",
+        "operationId": "get_deep_analysis_gateways_endpoint_v1_deep_analysis_gateways_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Deep Analysis Gateways Endpoint V1 Deep Analysis Gateways Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/v1/forward-rules/sensitive": {
       "get": {
         "summary": "Get Sensitive Forward Rules Endpoint",
@@ -7266,6 +7292,12 @@
             "title": "Target Name",
             "default": ""
           },
+          "target_gateway": {
+            "type": "string",
+            "maxLength": 50,
+            "title": "Target Gateway",
+            "default": ""
+          },
           "stop_on_match": {
             "type": "boolean",
             "title": "Stop On Match",
@@ -7522,6 +7554,11 @@
               }
             ],
             "title": "Target Name"
+          },
+          "target_gateway": {
+            "type": "string",
+            "title": "Target Gateway",
+            "default": ""
           },
           "stop_on_match": {
             "type": "boolean",
@@ -7812,6 +7849,18 @@
               }
             ],
             "title": "Target Name"
+          },
+          "target_gateway": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Gateway"
           },
           "stop_on_match": {
             "anyOf": [

@@ -973,6 +973,13 @@
                     <label class="form-label" data-i18n="rule.targetUrlLabel">Target URL *</label>
                     <input type="text" class="form-input" id="ruleFormTargetUrl" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx" autocomplete="off">
                 </div>
+                <!-- Shown only for the deep-analysis target: which configured
+                     gateway this rule reaches. Options come from the server. -->
+                <div class="form-group" id="ruleFormGatewayGroup" style="display: none;">
+                    <label class="form-label" data-i18n="rule.gatewayLabel">Deep-analysis gateway</label>
+                    <select class="form-input" id="ruleFormGateway"></select>
+                    <div class="ww-meta" id="ruleFormGatewayHint" style="margin-top: var(--sp-2);"></div>
+                </div>
                 <div class="form-checkbox">
                     <input type="checkbox" id="ruleFormStopOnMatch">
                     <label for="ruleFormStopOnMatch" data-i18n="rule.stopOnMatch">Stop matching subsequent rules on hit</label>

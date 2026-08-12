@@ -134,6 +134,7 @@ async def create_forward_notification_outbox_records(
                 target_url=target_url,
                 stop_on_match=True,
                 target_name="",
+                target_gateway="",
             )
         ]
     else:
@@ -428,10 +429,21 @@ async def _claim_outbox(outbox_id: int, *, policy: ForwardDeliveryPolicy | None 
         return res.scalar_one_or_none()
 
 
-def _configured_platform() -> str:
+def _resolved_gateway(gateway_name: str) -> tuple[str, str]:
+    """(platform, gateway name) for the instance this delivery went to.
+
+    Falls back to the configured default platform under an unknown name only to
+    label the row: the delivery itself already failed loudly in that case, so
+    this is describing a record, not choosing a destination.
+    """
+    from services.analysis.deep_analysis_gateways import UnknownGatewayError, resolve_gateway
     from services.analysis.deep_analysis_platforms import configured_deep_analysis_platform
 
-    return configured_deep_analysis_platform()
+    try:
+        gateway = resolve_gateway(gateway_name)
+    except UnknownGatewayError:
+        return configured_deep_analysis_platform(), gateway_name
+    return gateway.platform, gateway.name
 
 
 async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult) -> None:
@@ -466,9 +478,13 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
         if resolve_channel(current).needs_followup_on_success(current, result):
             target_event_id = current.webhook_event_id
             initial_poll_delay = taskiq_retry_scheduler.compute_deep_analysis_poll_delay(0)
+            gateway = _resolved_gateway(str(getattr(current, "target_gateway", "") or ""))
             analysis_record = DeepAnalysis(
                 webhook_event_id=target_event_id,
-                engine=_configured_platform(),
+                # The platform that answered, and WHICH instance of it — the
+                # poller needs the instance to ask the right one back.
+                engine=gateway[0],
+                gateway_name=gateway[1],
                 gateway_run_id=gateway_run_id(result),
                 gateway_session_key=gateway_session_key(result),
                 status=DeepAnalysisStatus.PENDING,

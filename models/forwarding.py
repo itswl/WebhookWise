@@ -34,6 +34,9 @@ class ForwardRule(Base):
     target_type: Mapped[str] = mapped_column(String(20), nullable=False)
     target_url: Mapped[str] = mapped_column(String(500), default="")
     target_name: Mapped[str] = mapped_column(String(100), default="")
+    # Which deep-analysis gateway this rule reaches. Empty = the one named
+    # "default" (the flat DEEP_ANALYSIS_* settings). Ignored by other targets.
+    target_gateway: Mapped[str] = mapped_column(String(50), default="", server_default="")
 
     stop_on_match: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -68,6 +71,9 @@ class ForwardOutbox(Base):
     target_type: Mapped[str] = mapped_column(String(20), nullable=False)
     target_url: Mapped[str] = mapped_column(String(500), default="")
     target_name: Mapped[str] = mapped_column(String(100), default="")
+    # Snapshotted from the rule at enqueue time: editing a rule must not
+    # redirect a delivery that is already queued.
+    target_gateway: Mapped[str] = mapped_column(String(50), default="", server_default="")
     is_periodic_reminder: Mapped[bool] = mapped_column(Boolean, default=False)
 
     channel_name: Mapped[str] = mapped_column(String(32), default="")

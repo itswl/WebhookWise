@@ -689,6 +689,17 @@ const API = {
     },
 
     /**
+     * Get the deep-analysis gateways a rule may name.
+     * Server-side because the addresses and tokens are; tokens are never returned.
+     * @returns {Promise<object>} Gateway list
+     */
+    async getDeepAnalysisGateways() {
+        const response = await this.authenticatedFetch('/v1/deep-analysis-gateways');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /**
      * Create a forwarding rule
      * @param {object} ruleData - Rule data
      * @returns {Promise<object>} Creation result

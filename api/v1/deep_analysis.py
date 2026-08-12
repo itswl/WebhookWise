@@ -15,6 +15,7 @@ from models import DeepAnalysis, WebhookEvent
 from schemas.analysis import DeepAnalysisListResponse, deep_analysis_to_dict
 from services.analysis import deep_analysis_workflow
 from services.analysis.analysis_queries import get_deep_analyses_for_webhook, get_deep_analysis_list
+from services.analysis.deep_analysis_gateways import UnknownGatewayError
 from services.forwarding.policies import DeepAnalysisTriggerPolicy
 from services.operations import taskiq_retry_scheduler
 from services.webhooks.types import (
@@ -64,12 +65,21 @@ async def deep_analyze_webhook(
             "[DeepAnalysis] Unsupported analysis engine webhook_id=%s engine=%s", webhook_id, requested_engine
         )
         return JSONResponse(status_code=400, content={"success": False, "error": "Unsupported engine"})
-    if not DeepAnalysisTriggerPolicy.from_config().enabled:
-        logger.warning("[DeepAnalysis] Gateway not enabled webhook_id=%s", webhook_id)
-        return JSONResponse(status_code=503, content={"success": False, "error": "No engine available"})
+    requested_gateway = str(payload.get("gateway", "")).strip().lower()
+    try:
+        if not DeepAnalysisTriggerPolicy.from_config(requested_gateway).enabled:
+            logger.warning("[DeepAnalysis] Gateway not enabled webhook_id=%s", webhook_id)
+            return JSONResponse(status_code=503, content={"success": False, "error": "No engine available"})
+    except UnknownGatewayError as e:
+        # A caller-supplied name, so 400 rather than 500: it is a bad request,
+        # and naming the known gateways is more useful than "invalid".
+        logger.warning("[DeepAnalysis] Unknown gateway webhook_id=%s error=%s", webhook_id, e)
+        return JSONResponse(status_code=400, content={"success": False, "error": str(e)})
 
     try:
-        res, engine_name = await _run_deep_analysis(ctx, event.headers or {}, str(payload.get("user_question", "")))
+        res, engine_name, gateway_name = await _run_deep_analysis(
+            ctx, event.headers or {}, str(payload.get("user_question", "")), requested_gateway
+        )
     except deep_analysis_workflow.DeepAnalysisExecutionError as e:
         logger.error(
             "[DeepAnalysis] Manual analysis trigger failed webhook_id=%s error=%s", webhook_id, e, exc_info=True
@@ -79,6 +89,7 @@ async def deep_analyze_webhook(
     record = DeepAnalysis(
         webhook_event_id=webhook_id,
         engine=engine_name,
+        gateway_name=gateway_name,
         user_question=payload.get("user_question", ""),
         analysis_result=dict(res),
         status=DeepAnalysisStatus.PENDING if is_pending_result(res) else DeepAnalysisStatus.COMPLETED,

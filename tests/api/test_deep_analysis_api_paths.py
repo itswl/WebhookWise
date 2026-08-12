@@ -24,6 +24,7 @@ def _record(**overrides: object) -> SimpleNamespace:
         "created_at": datetime(2026, 5, 27, 12, 0, tzinfo=UTC),
         "gateway_run_id": "",
         "gateway_session_key": "",
+        "gateway_name": "default",
         "status": "completed",
         "poll_attempts": 0,
         "next_poll_at": None,
@@ -69,7 +70,7 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
     monkeypatch.setattr(
         deep_analysis.DeepAnalysisTriggerPolicy,
         "from_config",
-        classmethod(lambda cls: SimpleNamespace(enabled=True)),
+        classmethod(lambda cls, gateway_name="": SimpleNamespace(enabled=True)),
     )
 
     missing = await deep_analysis.deep_analyze_webhook(10, payload={}, session=Session(None))  # type: ignore[arg-type]
@@ -85,7 +86,7 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
     monkeypatch.setattr(
         deep_analysis.DeepAnalysisTriggerPolicy,
         "from_config",
-        classmethod(lambda cls: SimpleNamespace(enabled=False)),
+        classmethod(lambda cls, gateway_name="": SimpleNamespace(enabled=False)),
     )
     disabled = await deep_analysis.deep_analyze_webhook(10, payload={}, session=Session(event))  # type: ignore[arg-type]
     assert disabled.status_code == 503
@@ -93,7 +94,7 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
     monkeypatch.setattr(
         deep_analysis.DeepAnalysisTriggerPolicy,
         "from_config",
-        classmethod(lambda cls: SimpleNamespace(enabled=True)),
+        classmethod(lambda cls, gateway_name="": SimpleNamespace(enabled=True)),
     )
 
     async def fail_run(*_: object, **__: object) -> tuple[dict[str, object], str]:
@@ -110,12 +111,16 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
     scheduled: list[tuple[int, int]] = []
 
     async def pending_run(*_: object, **__: object) -> tuple[dict[str, object], str]:
-        return {
-            "status": "pending",
-            "_pending": True,
-            "_gateway_run_id": "run-1",
-            "_gateway_session_key": "s-1",
-        }, "openclaw"
+        return (
+            {
+                "status": "pending",
+                "_pending": True,
+                "_gateway_run_id": "run-1",
+                "_gateway_session_key": "s-1",
+            },
+            "openclaw",
+            "default",
+        )
 
     async def schedule_deep_analysis_poll_best_effort(analysis_id: int, delay: int) -> None:
         scheduled.append((analysis_id, delay))
@@ -151,10 +156,10 @@ async def test_gateway_deep_analysis_helper_falls_back_and_notifies(
 
     calls: list[dict[str, object]] = []
 
-    async def degraded_gateway(_webhook_data: object, _question: str) -> dict[str, object]:
+    async def degraded_gateway(_webhook_data: object, _question: str = "", **_kwargs: object) -> dict[str, object]:
         return {"status": "degraded", "_degraded": True, "_degraded_reason": "timeout"}
 
-    async def healthy_gateway(_webhook_data: object, _question: str) -> dict[str, object]:
+    async def healthy_gateway(_webhook_data: object, _question: str = "", **_kwargs: object) -> dict[str, object]:
         return {"summary": "gateway ok", "importance": "high"}
 
     async def analyze_webhook_with_ai(webhook_data: object) -> dict[str, object]:
@@ -164,7 +169,7 @@ async def test_gateway_deep_analysis_helper_falls_back_and_notifies(
     monkeypatch.setattr(trigger_service, "request_gateway_analysis", degraded_gateway)
     monkeypatch.setattr(deep_analysis_workflow, "analyze_webhook_with_ai", analyze_webhook_with_ai)
 
-    fallback_result, fallback_engine = await deep_analysis_workflow.run_deep_analysis(
+    fallback_result, fallback_engine, _fallback_gw = await deep_analysis_workflow.run_deep_analysis(
         {"source": "grafana", "parsed_data": {"alertname": "HighCPU"}},
         {"x": "1"},
         "why",
@@ -175,7 +180,7 @@ async def test_gateway_deep_analysis_helper_falls_back_and_notifies(
     assert calls
 
     monkeypatch.setattr(trigger_service, "request_gateway_analysis", healthy_gateway)
-    result, engine = await deep_analysis_workflow.run_deep_analysis(
+    result, engine, _gw = await deep_analysis_workflow.run_deep_analysis(
         {"source": "grafana", "parsed_data": {}},
         {},
         "",
@@ -285,15 +290,19 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
         return {"source": "grafana", "parsed_data": {"alertname": "HighCPU"}}
 
     async def pending_run(*_: object, **__: object) -> tuple[dict[str, object], str]:
-        return {
-            "status": "pending",
-            "_pending": True,
-            "_gateway_run_id": "run-2",
-            "_gateway_session_key": "s-2",
-        }, "openclaw"
+        return (
+            {
+                "status": "pending",
+                "_pending": True,
+                "_gateway_run_id": "run-2",
+                "_gateway_session_key": "s-2",
+            },
+            "openclaw",
+            "default",
+        )
 
     async def completed_run(*_: object, **__: object) -> tuple[dict[str, object], str]:
-        return {"summary": "done", "importance": "high"}, "openclaw"
+        return {"summary": "done", "importance": "high"}, "openclaw", "default"
 
     async def schedule_deep_analysis_poll_best_effort(analysis_id: int, delay: int) -> None:
         scheduled.append((analysis_id, delay))

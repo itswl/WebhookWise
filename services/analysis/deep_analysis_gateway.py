@@ -41,9 +41,22 @@ class DeepAnalysisPollPolicy:
     enable_degradation: bool
     notification_webhook_url: str
 
+    # The gateway this policy polls. Empty resolves to "default".
+    gateway_name: str = ""
+
     @classmethod
-    def from_config(cls) -> DeepAnalysisPollPolicy:
+    def from_config(cls, gateway_name: str | None = None) -> DeepAnalysisPollPolicy:
+        """Build the poll policy for one gateway.
+
+        The gateway name comes off the DeepAnalysis row, not the rule: a session
+        key issued by one gateway means nothing to another, so a run must be
+        collected from wherever it was submitted even if the rule has since been
+        pointed elsewhere.
+        """
+        from services.analysis.deep_analysis_gateways import resolve_gateway
+
         cfg = get_config_manager()
+        gateway = resolve_gateway(gateway_name)
         return cls(
             timeout_seconds=int(cfg.deep_analysis.DEEP_ANALYSIS_TIMEOUT_SECONDS),
             poll_timeout_seconds=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_TIMEOUT_SECONDS)),
@@ -53,18 +66,17 @@ class DeepAnalysisPollPolicy:
                 int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_MAX_DELAY_SECONDS),
             ),
             poll_backoff_multiplier=max(1.0, float(cfg.deep_analysis.DEEP_ANALYSIS_POLL_BACKOFF_MULTIPLIER)),
-            http_api_url=str(cfg.deep_analysis.DEEP_ANALYSIS_HTTP_API_URL).strip(),
-            gateway_url=str(cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_URL).strip(),
-            gateway_token=str(cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_TOKEN),
-            hooks_token=str(
-                cfg.deep_analysis.DEEP_ANALYSIS_HOOKS_TOKEN or cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_TOKEN
-            ),
+            http_api_url=gateway.http_api_url,
+            gateway_url=gateway.gateway_url,
+            gateway_token=gateway.token,
+            hooks_token=gateway.token,
             connect_timeout_seconds=max(1.0, float(cfg.deep_analysis.DEEP_ANALYSIS_CONNECT_TIMEOUT_SECONDS)),
             stability_required_hits=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_STABILITY_REQUIRED_HITS)),
             stability_ttl_seconds=max(60, int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_STABILITY_TTL_SECONDS)),
             max_consecutive_errors=int(cfg.deep_analysis.DEEP_ANALYSIS_MAX_CONSECUTIVE_ERRORS),
             enable_degradation=bool(cfg.deep_analysis.DEEP_ANALYSIS_ENABLE_DEGRADATION),
             notification_webhook_url=str(cfg.notifications.DEEP_ANALYSIS_FEISHU_WEBHOOK),
+            gateway_name=gateway.name,
         )
 
     @property
@@ -125,6 +137,8 @@ class DeepAnalysisWsPolicy:
             device_id=str(cfg.deep_analysis.DEEP_ANALYSIS_DEVICE_ID),
             device_private_key_b64=str(cfg.deep_analysis.DEEP_ANALYSIS_DEVICE_PRIVATE_KEY_PEM),
             device_token=str(cfg.deep_analysis.DEEP_ANALYSIS_DEVICE_TOKEN),
+            # The legacy WebSocket path is not gateway-aware: device auth was
+            # only ever configured for the default gateway.
             gateway_token=str(cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_TOKEN),
             nonce_timeout=float(cfg.deep_analysis.DEEP_ANALYSIS_NONCE_TIMEOUT_SECONDS),
             max_history_frames=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_WS_MAX_HISTORY_FRAMES)),

@@ -407,6 +407,12 @@ class DeepAnalysisConfig(StaticSettings):
 
     DEEP_ANALYSIS_ENABLED: bool = Field(default=False)
     DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
+    # Additional named gateways, as a JSON array. The flat settings below are
+    # the gateway called "default", because one gateway needs no name; entries
+    # here inherit any field they omit from it. A forward rule names which one
+    # it wants. See services/analysis/deep_analysis_gateways.py.
+    #   [{"name":"hermes-eu","platform":"hermes","url":"https://…","token":"…"}]
+    DEEP_ANALYSIS_GATEWAYS: str = Field(default="")
     DEEP_ANALYSIS_GATEWAY_URL: str = Field(default="http://127.0.0.1:18900")
     DEEP_ANALYSIS_GATEWAY_TOKEN: str = Field(default="")
     DEEP_ANALYSIS_HOOKS_TOKEN: str = Field(default="")

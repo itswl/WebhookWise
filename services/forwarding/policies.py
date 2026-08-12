@@ -54,18 +54,34 @@ class DeepAnalysisTriggerPolicy:
     max_retries: int = 3
     retry_sleep_seconds: float = 2.0
 
+    # Which named gateway this policy addresses; recorded on the analysis row so
+    # the poller collects from the same one.
+    gateway_name: str = ""
+
     @classmethod
-    def from_config(cls) -> "DeepAnalysisTriggerPolicy":
+    def from_config(cls, gateway_name: str | None = None) -> "DeepAnalysisTriggerPolicy":
+        """Build the policy for one gateway.
+
+        Addressing and dialect come from the named instance; timeouts and
+        degradation stay global, because they describe how patiently this
+        service waits rather than a property of the thing it waits on.
+
+        Raises UnknownGatewayError when a rule names a gateway that is not
+        configured — never falls back to the default, which would send an
+        investigation somewhere the rule did not ask for.
+        """
+        from services.analysis.deep_analysis_gateways import resolve_gateway
+
         cfg = get_config_manager()
+        gateway = resolve_gateway(gateway_name)
         return cls(
             enabled=bool(cfg.deep_analysis.DEEP_ANALYSIS_ENABLED),
             timeout_seconds=int(cfg.deep_analysis.DEEP_ANALYSIS_TIMEOUT_SECONDS),
-            platform=str(cfg.deep_analysis.DEEP_ANALYSIS_PLATFORM).lower(),
-            gateway_url=str(cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_URL),
-            hooks_token=str(
-                cfg.deep_analysis.DEEP_ANALYSIS_HOOKS_TOKEN or cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_TOKEN
-            ),
+            platform=gateway.platform,
+            gateway_url=gateway.gateway_url,
+            hooks_token=gateway.token,
             connect_timeout=max(1.0, float(cfg.deep_analysis.DEEP_ANALYSIS_CONNECT_TIMEOUT_SECONDS)),
             enable_degradation=bool(cfg.ai.ENABLE_AI_DEGRADATION),
-            http_api_url=str(cfg.deep_analysis.DEEP_ANALYSIS_HTTP_API_URL),
+            http_api_url=gateway.http_api_url,
+            gateway_name=gateway.name,
         )

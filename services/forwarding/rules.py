@@ -106,6 +106,7 @@ async def create_forward_rule(
     match_payload: str = "",
     target_url: str = "",
     target_name: str = "",
+    target_gateway: str = "",
     stop_on_match: bool = False,
 ) -> ForwardRule:
     rule = ForwardRule(
@@ -123,6 +124,7 @@ async def create_forward_rule(
         target_type=target_type,
         target_url=target_url,
         target_name=target_name,
+        target_gateway=target_gateway,
         stop_on_match=stop_on_match,
     )
     session.add(rule)
@@ -157,6 +159,7 @@ async def update_forward_rule(session: AsyncSession, rule_id: int, payload: Mapp
         "target_type",
         "target_url",
         "target_name",
+        "target_gateway",
         "stop_on_match",
     ]
     for field in fields:
@@ -194,6 +197,7 @@ def _snapshot_forward_rule(rule: ForwardRule) -> ForwardRuleSnapshot:
         target_url=rule.target_url,
         stop_on_match=rule.stop_on_match,
         target_name=rule.target_name or "",
+        target_gateway=getattr(rule, "target_gateway", "") or "",
     )
 
 

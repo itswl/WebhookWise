@@ -31,6 +31,7 @@ class ForwardRuleCreateData(TypedDict):
     match_payload: str
     target_url: str
     target_name: str
+    target_gateway: str
     stop_on_match: bool
 
 
@@ -49,6 +50,7 @@ class ForwardRuleUpdateData(TypedDict, total=False):
     target_type: ForwardTargetType
     target_url: str
     target_name: str
+    target_gateway: str
     stop_on_match: bool
 
 
@@ -67,6 +69,8 @@ class _ForwardRuleRequestBase(BaseModel):
     match_payload: str = Field(default="", max_length=512)
     target_url: str = Field(default="", max_length=500)
     target_name: str = Field(default="", max_length=100)
+    # Which named deep-analysis gateway to reach; empty = the default one.
+    target_gateway: str = Field(default="", max_length=50)
     stop_on_match: bool = False
 
 
@@ -92,6 +96,7 @@ class ForwardRuleCreateRequest(_ForwardRuleRequestBase):
             "match_payload": self.match_payload,
             "target_url": self.target_url,
             "target_name": self.target_name,
+            "target_gateway": self.target_gateway,
             "stop_on_match": self.stop_on_match,
         }
 
@@ -119,6 +124,7 @@ class ForwardRuleUpdateRequest(BaseModel):
     target_type: ForwardTargetType | None = None
     target_url: str | None = Field(default=None, max_length=500)
     target_name: str | None = Field(default=None, max_length=100)
+    target_gateway: str | None = Field(default=None, max_length=50)
     stop_on_match: bool | None = None
 
     @model_validator(mode="after")
@@ -155,6 +161,8 @@ class ForwardRuleSchema(BaseModel):
     target_url: str
     target_url_sensitive: bool = True
     target_name: str | None = None
+    # Which named deep-analysis gateway this rule reaches; empty = default.
+    target_gateway: str = ""
     stop_on_match: bool
     created_at: datetime | str | None = None
     updated_at: datetime | str | None = None

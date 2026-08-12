@@ -47,7 +47,9 @@ class _DeepAnalysisChannel:
 
         forward_data = cast(WebhookData, dict(record.forward_data or {}))
         analysis = cast(AnalysisResult, dict(record.analysis_result or {}))
-        return await deep_analysis_trigger.forward_to_deep_analysis(forward_data, analysis)
+        return await deep_analysis_trigger.forward_to_deep_analysis(
+            forward_data, analysis, gateway_name=str(getattr(record, "target_gateway", "") or "")
+        )
 
     def needs_followup_on_success(self, record: ForwardOutbox, result: ForwardResult) -> bool:
         # A pending gateway trigger spawns a DeepAnalysis poll record.

@@ -18,6 +18,7 @@ class ForwardRuleSnapshot:
     target_url: str
     stop_on_match: bool
     target_name: str = ""
+    target_gateway: str = ""
     match_project: str = ""
     match_region: str = ""
     match_environment: str = ""

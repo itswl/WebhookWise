@@ -15,10 +15,7 @@ from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from models import DeepAnalysis, WebhookEvent
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
-from services.analysis.deep_analysis_platforms import (
-    DEEP_ANALYSIS_PLATFORMS,
-    configured_deep_analysis_platform,
-)
+from services.analysis.deep_analysis_platforms import DEEP_ANALYSIS_PLATFORMS
 from services.operations import taskiq_retry_scheduler
 from services.webhooks.event_context import build_webhook_context
 from services.webhooks.types import (
@@ -88,17 +85,29 @@ def is_supported_deep_analysis_engine(requested: str) -> bool:
 
 
 async def run_deep_analysis(
-    ctx: Mapping[str, Any], headers: dict[str, Any], user_question: str
-) -> tuple[AnalysisResult | ForwardResult, str]:
+    ctx: Mapping[str, Any], headers: dict[str, Any], user_question: str, gateway_name: str = ""
+) -> tuple[AnalysisResult | ForwardResult, str, str]:
+    """Run one deep analysis. Returns (result, engine label, gateway name).
+
+    The gateway name is returned, not re-derived, because the caller stores it on
+    the row and the poller must ask that same instance back.
+    """
+    from services.analysis.deep_analysis_gateways import resolve_gateway
     from services.analysis.deep_analysis_trigger import request_gateway_analysis
+
+    gateway = resolve_gateway(gateway_name)
 
     webhook_data: WebhookData = {
         "source": str(ctx["source"]),
         "headers": headers,
         "parsed_data": dict(ctx["parsed_data"]) if isinstance(ctx.get("parsed_data"), dict) else {},
     }
+    from services.forwarding.policies import DeepAnalysisTriggerPolicy
+
     try:
-        result = await request_gateway_analysis(webhook_data, user_question)
+        result = await request_gateway_analysis(
+            webhook_data, user_question, policy=DeepAnalysisTriggerPolicy.from_config(gateway.name)
+        )
     except (OSError, RuntimeError, TimeoutError, ValueError) as e:
         raise DeepAnalysisExecutionError("Deep-analysis gateway request failed") from e
     if is_analysis_degraded(result):
@@ -106,14 +115,13 @@ async def run_deep_analysis(
             "[DeepAnalysis] Gateway degraded, falling back to local AI: %s", analysis_degraded_reason(result)
         )
         try:
-            return await analyze_webhook_with_ai(webhook_data), "local (fallback)"
+            return await analyze_webhook_with_ai(webhook_data), "local (fallback)", ""
         except (OSError, RuntimeError, TimeoutError, ValueError) as e:
             raise DeepAnalysisExecutionError("Fallback analysis failed") from e
-    # The engine recorded on the row is the platform that actually answered, read
-    # from configuration. It used to be the constant "openclaw" no matter what
-    # was deployed, which is why every card said OpenClaw after the gateway had
-    # been swapped for another one.
-    return result, configured_deep_analysis_platform()
+    # The engine recorded on the row is the platform that actually answered. It
+    # used to be the constant "openclaw" no matter what was deployed, which is
+    # why every card said OpenClaw after the gateway had been swapped.
+    return result, gateway.platform, gateway.name
 
 
 async def notify_completed_deep_analysis(session: AsyncSession, record: DeepAnalysis) -> None:
@@ -206,13 +214,19 @@ async def retry_deep_analysis_record(session: AsyncSession, analysis_id: int) ->
             raise DeepAnalysisWorkflowError("The associated webhook event does not exist", status_code=404)
 
         ctx = await build_deep_analysis_context(event)
-        new_result, engine_name = await run_deep_analysis(ctx, event.headers or {}, record.user_question or "")
+        # Retry re-submits to the SAME gateway: the operator is retrying this
+        # analysis, not moving it somewhere else. An unresolvable gateway raises
+        # here and surfaces as a failed retry naming it.
+        new_result, engine_name, gateway_name = await run_deep_analysis(
+            ctx, event.headers or {}, record.user_question or "", record.gateway_name or ""
+        )
         if is_pending_result(new_result):
             now = utcnow()
             record.status = DeepAnalysisStatus.PENDING
             record.analysis_result = {**new_result, MANUAL_RETRY_STARTED_AT_KEY: utc_isoformat(now)}
             record.gateway_run_id = gateway_run_id(new_result)
             record.gateway_session_key = gateway_session_key(new_result)
+            record.gateway_name = gateway_name
             record.duration_seconds = 0
             record.poll_attempts = 0
             record.last_polled_at = None

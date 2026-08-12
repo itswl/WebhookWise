@@ -27,6 +27,7 @@ from services.analysis.deep_analysis_gateway import (
     poll_gateway_final,
     poll_session_result,
 )
+from services.analysis.deep_analysis_gateways import UnknownGatewayError
 from services.operations.deep_analysis_notifications import (
     EVENT_IMPORTANCE_KEY,
     EVENT_IS_DUPLICATE_KEY,
@@ -425,8 +426,27 @@ async def _handle_poll_result(
 
 
 async def _poll_single_record(rec: JsonObject, *, policy: DeepAnalysisPollPolicy | None = None) -> JsonObject:
-    policy = policy or DeepAnalysisPollPolicy.from_config()
     record_id = rec["id"]
+    if policy is None:
+        # From the RECORD, not the rule: this run's session key was issued by one
+        # specific gateway and means nothing to any other, so it must be
+        # collected from wherever it was submitted — even if the rule has since
+        # been pointed elsewhere or deleted.
+        try:
+            policy = DeepAnalysisPollPolicy.from_config(str(rec.get("gateway_name") or ""))
+        except UnknownGatewayError as error:
+            # Unrecoverable rather than transient: there is nowhere left to ask.
+            # Terminal beats retrying forever against a gateway that is gone.
+            logger.error("[Poller] Cannot collect analysis id=%s: %s", record_id, error)
+            return {
+                "id": record_id,
+                "action": "update",
+                "status": DeepAnalysisStatus.FAILED,
+                "analysis_result": {
+                    "root_cause": f"The gateway this run was submitted to is no longer configured: {error}",
+                    "failure_reason": "unknown_gateway",
+                },
+            }
 
     try:
         timeout_started_at = _poll_timeout_started_at(rec)
@@ -457,6 +477,7 @@ def _record_to_poll_dict(record: Any) -> JsonObject:
         "id": record.id,
         "webhook_event_id": record.webhook_event_id,
         "engine": record.engine,
+        "gateway_name": getattr(record, "gateway_name", "") or "",
         "gateway_session_key": record.gateway_session_key,
         "gateway_run_id": record.gateway_run_id,
         "created_at": record.created_at,
