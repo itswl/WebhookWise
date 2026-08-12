@@ -962,6 +962,109 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Deep-Analysis Report (investigation result, inside alert detail)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The investigator returns a structured report — summary, root cause, impact,
+   evidence, timeline, recommendations, and what it could NOT determine. It was
+   being dumped into a <pre> as raw JSON because the renderer assumed the
+   gateway's text field held markdown. These classes exist so an operator reads
+   a report instead of a payload; the sections are the report's own shape, not
+   a new one invented here. */
+.dar-summary {
+  font-size: var(--fs-md);
+  color: var(--text-main);
+  line-height: 1.65;
+  padding-bottom: var(--sp-4);
+  margin-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.dar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-5);
+}
+
+.dar-wide { grid-column: 1 / -1; }
+
+.dar-body {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.dar-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.dar-list > li {
+  position: relative;
+  padding-left: var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.dar-list > li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+/* Evidence says what it found AND what that supports; the timeline says when.
+   That second line is the part that makes a claim checkable, so it stays on
+   screen rather than behind a tooltip. */
+.dar-sub {
+  display: block;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.dar-time {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* Priority is a state, so it carries one point of colour (the dot) on a
+   neutral surface — a filled chip would be decoration. */
+.dar-pri {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-right: var(--sp-2);
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* What the investigation could not establish is a first-class section, not an
+   omission: a report that only lists findings reads as more certain than it
+   is. Held at secondary weight so it informs without competing. */
+.dar-open > li::before { background: var(--warning); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
    Empty & Loading States
    ═══════════════════════════════════════════════════════════════════════════ */
 

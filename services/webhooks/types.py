@@ -16,6 +16,7 @@ class AnalysisMetaKey(StrEnum):
     CACHE_HIT_COUNT = "_cache_hit_count"
     PENDING = "_pending"
     EMBEDDING = "_embedding"
+    USAGE = "_usage"
 
 
 class ForwardMetaKey(StrEnum):
@@ -39,6 +40,7 @@ ANALYSIS_CACHE_HIT: Final = AnalysisMetaKey.CACHE_HIT.value
 ANALYSIS_CACHE_HIT_COUNT: Final = AnalysisMetaKey.CACHE_HIT_COUNT.value
 ANALYSIS_PENDING: Final = AnalysisMetaKey.PENDING.value
 ANALYSIS_EMBEDDING: Final = AnalysisMetaKey.EMBEDDING.value
+ANALYSIS_USAGE: Final = AnalysisMetaKey.USAGE.value
 FORWARD_PENDING: Final = ForwardMetaKey.PENDING.value
 OPENCLAW_RUN_ID: Final = ForwardMetaKey.OPENCLAW_RUN_ID.value
 OPENCLAW_SESSION_KEY: Final = ForwardMetaKey.OPENCLAW_SESSION_KEY.value
@@ -87,6 +89,7 @@ class AnalysisResult(TypedDict):
     _cache_hit_count: NotRequired[int]
     _pending: NotRequired[bool]
     _embedding: NotRequired[list[float]]
+    _usage: NotRequired[JsonObject]
     _importance_override: NotRequired[str]
     _importance_override_reason: NotRequired[str]
 
@@ -126,6 +129,29 @@ def set_analysis_route(result: AnalysisResult, route: str) -> AnalysisResult:
     if route not in ALLOWED_ANALYSIS_ROUTE_TYPES:
         raise ValueError(f"unsupported analysis route: {route}")
     result[ANALYSIS_ROUTE_TYPE] = cast(AnalysisRouteType, route)
+    return result
+
+
+def set_analysis_usage(
+    result: AnalysisResult, *, model: str, tokens_in: int, tokens_out: int, cost_usd: float
+) -> AnalysisResult:
+    """Record what this analysis actually spent, on the analysis itself.
+
+    The numbers already existed in metrics and in the AI usage table, but both
+    aggregate: neither can answer "what did THIS alert cost", which is the
+    question asked when reading one alert. Attached here it travels with the
+    analysis into persistence and onto the card.
+
+    Only set on the route that genuinely called the model. Reuse routes must
+    not inherit it — save_to_cache strips underscore-prefixed keys, so a cache
+    hit carries no usage and cannot be mistaken for a second purchase.
+    """
+    result[ANALYSIS_USAGE] = {
+        "model": model,
+        "tokens_in": int(tokens_in),
+        "tokens_out": int(tokens_out),
+        "cost_usd": round(float(cost_usd), 6),
+    }
     return result
 
 

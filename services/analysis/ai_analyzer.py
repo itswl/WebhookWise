@@ -45,6 +45,7 @@ from services.webhooks.types import (
     is_analysis_degraded,
     mark_analysis_degraded,
     set_analysis_route,
+    set_analysis_usage,
 )
 
 _IMPORTANCE_EMOJI = {"high": "🔴", "medium": "🟠", "low": "🟢"}
@@ -306,6 +307,15 @@ async def analyze_webhook_with_ai(
             tokens_in=t_in,
             tokens_out=t_out,
             policy=provider_policy,
+        )
+        # Set after save_to_cache: the cached copy must describe the analysis,
+        # not the purchase, so a later reuse cannot look like a second call.
+        set_analysis_usage(
+            analysis_result,
+            model=provider_policy.model,
+            tokens_in=t_in,
+            tokens_out=t_out,
+            cost_usd=provider_policy.cost_for_tokens(t_in, t_out),
         )
         set_analysis_route(analysis_result, "ai")
         return analysis_result

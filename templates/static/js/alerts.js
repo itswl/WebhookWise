@@ -677,6 +677,140 @@ const AlertsModule = {
     /**
      * Render AI analysis results
      */
+    /**
+     * Render one investigation report from the deep-analysis gateway.
+     *
+     * The gateway hands back `_openclaw_text`, the investigator's own reply.
+     * It used to be printed verbatim on the assumption that it was markdown —
+     * but the investigator answers in JSON, so the entire report landed on
+     * screen as one wall of escaped braces and the structured renderer below
+     * it never ran. Raw text is now the fallback for when the reply really is
+     * prose, not the default.
+     *
+     * Field shapes come from the report contract and are defensive on purpose:
+     * root_cause and impact arrive as objects today and were plain strings in
+     * older records, and both are still in the table.
+     */
+    renderDeepReport(analysis) {
+        const esc = (v) => escapeHtml(String(v === null || v === undefined ? '' : v));
+        const section = (icon, label, body, wide) =>
+            '<div class="detail-section' + (wide ? ' dar-wide' : '') + '">' +
+            '<h4 class="ww-eyebrow">' + wwIcon(icon) + ' ' + label + '</h4>' + body + '</div>';
+        const sub = (label, value) =>
+            value ? '<span class="dar-sub">' + label + ': ' + esc(value) + '</span>' : '';
+        const asList = (items, cls) => items.length
+            ? '<ul class="dar-list' + (cls ? ' ' + cls : '') + '">' + items.join('') + '</ul>'
+            : '';
+        const strings = (value) => (Array.isArray(value) ? value : [])
+            .map((item) => '<li>' + esc(typeof item === 'object' ? JSON.stringify(item) : item) + '</li>');
+
+        let html = '';
+        let sections = '';
+
+        if (analysis.summary) {
+            html += '<div class="dar-summary">' + esc(analysis.summary) + '</div>';
+        }
+
+        const rc = analysis.root_cause;
+        if (rc) {
+            const text = (typeof rc === 'object') ? (rc.description || rc.summary || '') : rc;
+            const status = (typeof rc === 'object') ? rc.status : '';
+            sections += section('search', t('alerts.deep.rootCause'),
+                '<p class="dar-body">' + esc(text) + sub(t('alerts.deep.rcStatus'), status) + '</p>');
+        }
+
+        const impact = analysis.impact || analysis.impact_scope;
+        if (impact) {
+            const text = (typeof impact === 'object') ? (impact.description || '') : impact;
+            const scope = (typeof impact === 'object') ? impact.scope : '';
+            const severity = (typeof impact === 'object') ? impact.severity : '';
+            sections += section('zap', t('alerts.deep.impactScope'),
+                '<p class="dar-body">' + esc(text) + sub(t('alerts.deep.scope'), scope) +
+                sub(t('alerts.deep.severity'), severity) + '</p>');
+        }
+
+        // Recommendations carry a priority, which is a state: one point of
+        // colour on a neutral chip, never a filled badge.
+        const recs = Array.isArray(analysis.recommendations) ? analysis.recommendations : [];
+        if (recs.length > 0) {
+            const dotFor = { P0: 'ww-dot-danger', P1: 'ww-dot-warning', P2: 'ww-dot-muted', P3: 'ww-dot-muted' };
+            const items = recs.map((rec) => {
+                if (typeof rec !== 'object' || rec === null) return '<li>' + esc(rec) + '</li>';
+                const priority = rec.priority ? String(rec.priority).toUpperCase() : '';
+                const chip = priority
+                    ? '<span class="dar-pri"><span class="ww-dot ' + (dotFor[priority] || 'ww-dot-muted') + '"></span>' +
+                      esc(priority) + '</span>'
+                    : '';
+                return '<li>' + chip + esc(rec.action || '') + sub(t('alerts.deep.reason'), rec.reason) + '</li>';
+            });
+            sections += section('wrench', t('alerts.deep.recommendations'), asList(items), true);
+        }
+
+        // Evidence states what was found AND what it supports. Dropping the
+        // second half would leave assertions an operator cannot check.
+        const evidence = Array.isArray(analysis.evidence) ? analysis.evidence : [];
+        if (evidence.length > 0) {
+            const items = evidence.map((item) => {
+                if (typeof item !== 'object' || item === null) return '<li>' + esc(item) + '</li>';
+                return '<li>' + esc(item.finding || '') +
+                    sub(t('alerts.deep.supports'), item.supports) +
+                    sub(t('alerts.deep.evSource'), item.source) + '</li>';
+            });
+            sections += section('list', t('alerts.deep.evidence'), asList(items), true);
+        }
+
+        const timeline = Array.isArray(analysis.timeline) ? analysis.timeline : [];
+        if (timeline.length > 0) {
+            const items = timeline.map((item) => {
+                if (typeof item !== 'object' || item === null) return '<li>' + esc(item) + '</li>';
+                const when = item.time ? '<span class="dar-time">' + esc(item.time) + '</span> ' : '';
+                return '<li>' + when + esc(item.event || '') + '</li>';
+            });
+            sections += section('history', t('alerts.deep.timeline'), asList(items), true);
+        }
+
+        const nextChecks = strings(analysis.next_checks);
+        if (nextChecks.length > 0) {
+            sections += section('check', t('alerts.deep.nextChecks'), asList(nextChecks));
+        }
+
+        // What the investigation could NOT establish is a section, not an
+        // omission: a report listing only findings reads more certain than it is.
+        const unknowns = strings(analysis.unknowns);
+        if (unknowns.length > 0) {
+            sections += section('alert-circle', t('alerts.deep.unknowns'), asList(unknowns, 'dar-open'));
+        }
+
+        const assumptions = strings(analysis.assumptions);
+        if (assumptions.length > 0) {
+            sections += section('lightbulb', t('alerts.deep.assumptions'), asList(assumptions, 'dar-open'));
+        }
+
+        if (sections) {
+            html += '<div class="dar-grid">' + sections + '</div>';
+        }
+
+        // Nothing recognised — show the payload rather than an empty card.
+        if (!html) {
+            const raw = analysis._openclaw_text || JSON.stringify(analysis, null, 2);
+            return '<pre class="ww-pre">' + esc(raw) + '</pre>';
+        }
+
+        if (analysis.confidence !== undefined && analysis.confidence !== null) {
+            html += '<div class="ww-meta" style="margin-top: var(--sp-4);">' + wwIcon('gauge') + ' ' +
+                t('alerts.deep.confidence') + ': <strong class="ww-mono">' +
+                (Number(analysis.confidence) * 100).toFixed(0) + '%</strong></div>';
+        }
+
+        // Every field, including any the renderer does not know about yet —
+        // collapsed, so a contract change is discoverable instead of invisible.
+        html += '<details style="margin-top: var(--sp-3);"><summary class="ww-eyebrow" style="cursor:pointer;">' +
+            t('alerts.deep.rawJson') + '</summary><pre class="ww-pre" style="margin-top: var(--sp-2);">' +
+            esc(JSON.stringify(analysis, null, 2)) + '</pre></details>';
+
+        return html;
+    },
+
     renderAIAnalysis(analysis) {
         if (!analysis || Object.keys(analysis).length === 0) {
             return '<div style="padding: 2rem; text-align: center; color: var(--text-muted);">' + t('alerts.ai.noData') + '</div>';
@@ -766,6 +900,18 @@ const AlertsModule = {
         }
 
         html += `<span>${wwIcon('send')} ${t('alerts.ai.routeChannel')}: <strong style="color: var(--text-main);">${escapeHtml(String(analysis._route_type || t('alerts.ai.unknown')))}</strong></span>`;
+
+        // What this analysis actually spent. Present only on the route that
+        // really called the model — a reuse route carries no usage, so absence
+        // here means "this alert cost nothing", not "we forgot to measure".
+        const usage = analysis._usage;
+        if (usage && usage.model) {
+            html += `<span>${wwIcon('sparkles')} ${t('alerts.ai.model')}: <strong style="color: var(--text-main);">${escapeHtml(String(usage.model))}</strong></span>`;
+            html += `<span>${wwIcon('layers')} ${t('alerts.ai.tokens')}: <strong class="ww-mono" style="color: var(--text-main);">${escapeHtml(String(usage.tokens_in || 0))}</strong> ${t('alerts.ai.tokensIn')} / <strong class="ww-mono" style="color: var(--text-main);">${escapeHtml(String(usage.tokens_out || 0))}</strong> ${t('alerts.ai.tokensOut')}</span>`;
+            if (usage.cost_usd !== undefined && usage.cost_usd !== null) {
+                html += `<span>${wwIcon('dollar')} ${t('alerts.ai.cost')}: <strong class="ww-mono" style="color: var(--text-main);">$${escapeHtml(Number(usage.cost_usd).toFixed(6))}</strong></span>`;
+            }
+        }
         if (analysis._cache_hit) {
             const hitCount = analysis._cache_hit_count || 1;
             html += `<span title="${t('alerts.ai.hitCount', {n: escapeHtml(String(hitCount))})}" style="color: var(--success); font-weight: 600;">${wwIcon('target')} ${t('alerts.ai.cacheHit', {n: escapeHtml(String(hitCount))})}</span>`;
@@ -1306,7 +1452,8 @@ const AlertsModule = {
             }
 
             let html = '';
-            records.forEach(function(record) {
+            // Arrow, not function(): the body calls this.renderDeepReport.
+            records.forEach((record) => {
                 const analysis = record.analysis_result || {};
                 const engineLabel = record.engine === 'openclaw' ? 'OpenClaw' : t('deep.engine.local');
                 const time = formatTimeFull(record.created_at);
@@ -1339,45 +1486,7 @@ const AlertsModule = {
                     html += '<div style="font-size:0.9em; opacity:0.85;">' + t('alerts.deep.willUpdate') + '</div>';
                     html += '</div>';
                 } else {
-                    // Normal analysis result rendering
-                    // If there is full OpenClaw text, render the markdown first
-                    if (analysis._openclaw_text) {
-                        html += '<pre class="ww-pre">' + escapeHtml(String(analysis._openclaw_text)) + '</pre>';
-                        // If there is a confidence score, display it separately
-                        if (analysis.confidence !== undefined) {
-                            const pct = (analysis.confidence * 100).toFixed(0);
-                            html += '<div style="margin-top:8px; color:var(--text-muted); font-size:0.85em;">' + t('alerts.deep.confidence') + ': ' + pct + '%</div>';
-                        }
-                    } else {
-                        // Original JSON field rendering logic
-                        if (analysis.root_cause) {
-                            html += '<div style="margin-bottom:8px;"><strong>' + wwIcon('search') + ' ' + t('alerts.deep.rootCause') + ': </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.root_cause)) + '</p></div>';
-                        }
-                        if (analysis.impact) {
-                            html += '<div style="margin-bottom:8px;"><strong>' + wwIcon('alert-triangle') + ' ' + t('alerts.deep.impactScope') + ': </strong><p style="margin:4px 0; white-space:pre-wrap;">' + escapeHtml(String(analysis.impact)) + '</p></div>';
-                        }
-                        if (analysis.recommendations && Array.isArray(analysis.recommendations)) {
-                            html += '<div style="margin-bottom:8px;"><strong>\u2705 ' + t('alerts.deep.recommendations') + ': </strong><ul style="margin:4px 0; padding-left:20px;">';
-                            analysis.recommendations.forEach(function(rec) {
-                                if (typeof rec === 'object' && rec !== null) {
-                                    var label = (rec.priority ? '<strong>' + escapeHtml(String(rec.priority)) + '</strong>: ' : '') + escapeHtml(String(rec.action || JSON.stringify(rec)));
-                                    html += '<li>' + label + '</li>';
-                                } else {
-                                    html += '<li>' + escapeHtml(String(rec)) + '</li>';
-                                }
-                            });
-                            html += '</ul></div>';
-                        }
-                        if (analysis.confidence !== undefined) {
-                            const pct = (analysis.confidence * 100).toFixed(0);
-                            html += '<div style="margin-top:8px; color:var(--text-muted); font-size:0.85em;">' + t('alerts.deep.confidence') + ': ' + pct + '%</div>';
-                        }
-
-                        // If there are no structured fields, display the raw JSON directly
-                        if (!analysis.root_cause && !analysis.impact && !analysis.recommendations) {
-                            html += '<pre class="ww-pre">' + escapeHtml(JSON.stringify(analysis, null, 2)) + '</pre>';
-                        }
-                    }
+                    html += this.renderDeepReport(analysis);
                 }
 
                 html += '</div>';
