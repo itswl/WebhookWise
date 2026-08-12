@@ -51,3 +51,35 @@ def get_http_client() -> httpx.AsyncClient:
         context.http_client = build_http_client(context.config)
         logger.info("[HTTP] Context async client initialized successfully")
     return context.http_client
+
+
+_deep_analysis_client: httpx.AsyncClient | None = None
+
+
+def get_deep_analysis_client() -> httpx.AsyncClient:
+    """Client for the deep-analysis gateway, deliberately NOT DNS-hardened.
+
+    The shared client pins DNS and rejects private/blocked addresses, which is
+    right for forward targets: those URLs arrive from rules an operator writes
+    about data a webhook sent, so the resolved address must be proven public or
+    an alert payload becomes an SSRF primitive.
+
+    The deep-analysis gateway is not that. Its URL comes from
+    OPENCLAW_GATEWAY_URL — process configuration, set by whoever deploys the
+    service, never derived from a payload — and the intended target IS private
+    infrastructure: a sidecar on the container network. Under the shared client
+    every request died with "target host resolves to a non-public IP", so the
+    whole deep-analysis leg has been failing by design rather than by accident.
+
+    Same reasoning, and same shape, as _FeishuRelayChannel's own client: a
+    trusted internal hop, chosen by an operator, does not need the guard built
+    for untrusted input.
+
+    Passing an explicit transport is what opts out — build_http_client only
+    hardens the default one.
+    """
+    global _deep_analysis_client
+    if _deep_analysis_client is None or _deep_analysis_client.is_closed:
+        _deep_analysis_client = build_http_client(transport=httpx.AsyncHTTPTransport())
+        logger.info("[HTTP] Deep-analysis client initialized (private targets allowed)")
+    return _deep_analysis_client

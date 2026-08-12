@@ -107,6 +107,6 @@ def build_remote_forward_dependencies(target_url: str = "") -> RemoteForwardDepe
 
 
 def build_openclaw_forward_dependencies() -> OpenClawForwardDependencies:
-    from core.http_client import get_http_client
+    from core.http_client import get_deep_analysis_client
 
-    return OpenClawForwardDependencies(http_client=get_http_client(), circuit_breaker=openclaw_cb)
+    return OpenClawForwardDependencies(http_client=get_deep_analysis_client(), circuit_breaker=openclaw_cb)
