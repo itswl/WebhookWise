@@ -334,7 +334,7 @@ async def test_forward_rule_hit_counts_group_by_rule_name(
         session.add_all(
             [
                 _trace(60, "forwarded", "none", matched_rules=["feishu"]),
-                _trace(61, "forwarded", "none", matched_rules=["feishu", "openclaw"]),
+                _trace(61, "forwarded", "none", matched_rules=["feishu", "deep_analysis"]),
                 _trace(62, "forwarded", "none", matched_rules=["feishu"]),
                 _trace(63, "skipped", "no_match", matched_rules=[]),  # nothing matched
                 _trace(64, "skipped", "silenced", silence_id=5),  # skipped, not forwarded
@@ -344,10 +344,10 @@ async def test_forward_rule_hit_counts_group_by_rule_name(
         hits = await get_forward_rule_hit_counts(session)
 
     assert hits["feishu"]["count"] == 3
-    assert hits["openclaw"]["count"] == 1
+    assert hits["deep_analysis"]["count"] == 1
     assert hits["feishu"]["last_matched_at"] is not None
     # Only the two rules that actually matched appear.
-    assert set(hits.keys()) == {"feishu", "openclaw"}
+    assert set(hits.keys()) == {"feishu", "deep_analysis"}
 
 
 @pytest.mark.asyncio

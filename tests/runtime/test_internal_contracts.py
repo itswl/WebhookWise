@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import ast
+import io
 import re
+import tokenize
 from pathlib import Path
 from typing import Any
 
@@ -40,21 +43,96 @@ def test_core_and_adapter_dependency_direction_is_enforced() -> None:
     assert adapter_type_imports == []
 
 
-def test_openclaw_compatibility_facade_is_not_reintroduced() -> None:
-    assert not (ROOT / "services/analysis/openclaw.py").exists()
+def _comment_and_docstring_lines(source: str) -> set[int]:
+    """Line numbers occupied by comments or docstrings.
+
+    Used to keep the vendor-name contract focused on code. Falls back to "no
+    prose lines" if the file will not parse, which makes the contract stricter
+    rather than accidentally permissive.
+    """
+    lines: set[int] = set()
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT:
+                lines.update(range(token.start[0], token.end[0] + 1))
+        tree = ast.parse(source)
+    except (SyntaxError, tokenize.TokenError, IndentationError):
+        return lines
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        body = getattr(node, "body", [])
+        if not body:
+            continue
+        first = body[0]
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+            lines.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+    return lines
+
+
+def test_no_compatibility_facade_for_the_deep_analysis_modules() -> None:
+    """The old `services/analysis/openclaw.py` umbrella was deleted once and must
+    not grow back under either name — a facade re-exporting the three real
+    modules is how the import graph became a cycle the first time.
+
+    `services/analysis/deep_analysis.py` is the same shape with the new name, so
+    it is banned too; the modules to import are deep_analysis_trigger,
+    deep_analysis_gateway and deep_analysis_poll.
+    """
+    for banned in ("services/analysis/openclaw.py", "services/analysis/deep_analysis.py"):
+        assert not (ROOT / banned).exists(), f"{banned} is a compatibility facade, not a module"
 
     offenders: list[str] = []
     for base in ("api", "services", "scripts"):
         for path in (ROOT / base).rglob("*.py"):
             text = path.read_text(encoding="utf-8")
-            if (
-                "from services.analysis.openclaw import" in text
-                or "import services.analysis.openclaw" in text
-                or "services.analysis.openclaw." in text
+            if re.search(r"\bfrom services\.analysis\.(openclaw|deep_analysis) import\b", text) or re.search(
+                r"\bimport services\.analysis\.(openclaw|deep_analysis)\b", text
             ):
                 offenders.append(str(path.relative_to(ROOT)))
 
     assert offenders == []
+
+
+def test_the_deep_analysis_layer_carries_no_vendor_name() -> None:
+    """The layer is neutral; product names are values of DEEP_ANALYSIS_PLATFORM.
+
+    This is the contract the rename bought. Without it the name creeps back one
+    log line and one config key at a time, which is exactly how it spread the
+    first time: a second dialect (hermes) and a third gateway (hookprobe) were
+    added while every symbol, column and card still said OpenClaw.
+
+    Vendor names are allowed only where they ARE the value: the dialect table,
+    the configured default platform, and prose. Comments and docstrings are
+    therefore excluded — explaining why the name used to be everywhere is how
+    the reason survives, and banning the word from prose would delete the
+    history that keeps it from coming back.
+    """
+    allowed_files = {
+        "services/analysis/deep_analysis_platforms.py",  # the dialect table itself
+    }
+    # The one place a product name is legitimately a configured default.
+    allowed_lines = {'DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")'}
+
+    offenders: dict[str, list[str]] = {}
+    for base in ("api", "services", "core", "models", "schemas", "contracts", "db"):
+        for path in (ROOT / base).rglob("*.py"):
+            rel = str(path.relative_to(ROOT))
+            if rel in allowed_files:
+                continue
+            source = path.read_text(encoding="utf-8")
+            prose = _comment_and_docstring_lines(source)
+            hits = [
+                line.strip()
+                for number, line in enumerate(source.splitlines(), 1)
+                if re.search(r"openclaw|hermes|hookprobe", line, re.IGNORECASE)
+                and number not in prose
+                and line.strip() not in allowed_lines
+            ]
+            if hits:
+                offenders[rel] = hits[:3]
+
+    assert offenders == {}, f"a gateway product name leaked back into the layer: {offenders}"
 
 
 def test_internal_protocol_keys_are_declared_in_one_place() -> None:
@@ -67,12 +145,12 @@ def test_internal_protocol_keys_are_declared_in_one_place() -> None:
         webhook_types.ANALYSIS_PENDING,
         webhook_types.ANALYSIS_EMBEDDING,
         webhook_types.FORWARD_PENDING,
-        webhook_types.OPENCLAW_RUN_ID,
-        webhook_types.OPENCLAW_SESSION_KEY,
+        webhook_types.GATEWAY_RUN_ID,
+        webhook_types.GATEWAY_SESSION_KEY,
         webhook_types.FORWARD_DEGRADED,
         webhook_types.FORWARD_DEGRADED_REASON,
-        webhook_types.OPENCLAW_TEXT,
-        webhook_types.OPENCLAW_NEED_SUCCESS_NOTIFY,
+        webhook_types.GATEWAY_TEXT,
+        webhook_types.GATEWAY_NEED_SUCCESS_NOTIFY,
         webhook_types.MANUAL_RETRY_STARTED_AT,
         webhook_payload.WEBHOOK_ADAPTER,
     }

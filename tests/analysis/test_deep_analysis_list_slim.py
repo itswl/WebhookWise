@@ -21,7 +21,7 @@ def test_summary_dict_is_lightweight_and_has_preview() -> None:
         analysis_result={
             "summary": "disk full on prod-01",
             "root_cause": "x" * 5000,
-            "_openclaw_text": "y" * 30000,  # large raw blob that must NOT be shipped
+            "_gateway_text": "y" * 30000,  # large raw blob that must NOT be shipped
         },
     )
     data = deep_analysis_to_summary_dict(record)

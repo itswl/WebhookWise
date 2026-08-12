@@ -33,13 +33,13 @@ _CATALOG: tuple[dict[str, Any], ...] = (
         "recommended_for": ["automation", "custom_integrations"],
     },
     {
-        "id": "openclaw",
-        "name": "OpenClaw analysis",
-        "description": "Route selected alerts into the configured OpenClaw deep-analysis channel.",
+        "id": "deep_analysis",
+        "name": "Deep analysis",
+        "description": "Route selected alerts into the configured deep-analysis gateway.",
         "icon": "🧠",
-        "target_type": "openclaw",
+        "target_type": "deep_analysis",
         "requires_url": False,
-        "url_hint": "Uses the server OpenClaw configuration",
+        "url_hint": "Uses the server deep-analysis configuration",
         "recommended_for": ["deep_analysis"],
     },
 )
@@ -59,17 +59,17 @@ def _template(template_id: str) -> dict[str, Any]:
 async def test_integration(payload: IntegrationTestRequest) -> dict[str, Any]:
     template = _template(payload.template_id)
     target_type = str(template["target_type"])
-    if target_type == "openclaw":
+    if target_type == "deep_analysis":
         from core.app_context import get_config_manager
 
-        enabled = bool(get_config_manager().openclaw.OPENCLAW_ENABLED)
+        enabled = bool(get_config_manager().deep_analysis.DEEP_ANALYSIS_ENABLED)
         return {
             "healthy": enabled,
             "status": "configuration_managed" if enabled else "disabled",
             "message": (
-                "OpenClaw uses the active server-side channel configuration"
+                "Deep analysis uses the active server-side channel configuration"
                 if enabled
-                else "OpenClaw is disabled in the server configuration"
+                else "Deep analysis is disabled in the server configuration"
             ),
         }
     target_url = await _validated_url(payload.target_url)
@@ -90,7 +90,7 @@ async def test_integration(payload: IntegrationTestRequest) -> dict[str, Any]:
 async def install_integration(session: AsyncSession, payload: IntegrationSetupRequest) -> dict[str, Any]:
     template = _template(payload.template_id)
     target_type = str(template["target_type"])
-    target_url = "" if target_type == "openclaw" else await _validated_url(payload.target_url)
+    target_url = "" if target_type == "deep_analysis" else await _validated_url(payload.target_url)
     if payload.enabled:
         probe = await test_integration(
             IntegrationTestRequest(template_id=payload.template_id, name=payload.name, target_url=target_url)

@@ -21,8 +21,8 @@ def test_deep_analysis_prompt_is_webhook_autonomous() -> None:
     assert "最终只能输出一个 JSON 对象" in prompt
 
 
-def test_openclaw_prompt_payload_keeps_full_payload_when_payload_is_large() -> None:
-    from services.analysis.openclaw_analysis import _build_openclaw_prompt_payload
+def test_gateway_prompt_payload_keeps_full_payload_when_payload_is_large() -> None:
+    from services.analysis.deep_analysis_trigger import _build_gateway_prompt_payload
 
     payload = {
         "alerts": [
@@ -41,7 +41,7 @@ def test_openclaw_prompt_payload_keeps_full_payload_when_payload_is_large() -> N
         "raw_debug_blob": "x" * 100_000,
     }
 
-    result = _build_openclaw_prompt_payload("prometheus", payload)
+    result = _build_gateway_prompt_payload("prometheus", payload)
 
     assert result["overview"]["labels"]["internal_label_service"] == "ai-router"
     assert result["overview"]["identity"]["service"] == "ai-router"
@@ -56,8 +56,8 @@ def test_openclaw_prompt_payload_keeps_full_payload_when_payload_is_large() -> N
 @pytest.mark.parametrize(
     ("platform", "response_payload", "expected_url"),
     [
-        ("openclaw", {"runId": "run-1"}, "http://openclaw.test/hooks/agent"),
-        ("hermes", {"delivery_id": "run-1"}, "http://openclaw.test/webhooks/agent"),
+        ("openclaw", {"runId": "run-1"}, "http://gateway.test/hooks/agent"),
+        ("hermes", {"delivery_id": "run-1"}, "http://gateway.test/webhooks/agent"),
     ],
 )
 async def test_analyze_with_openclaw_sends_utf8_json_body(
@@ -66,9 +66,9 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
     response_payload: dict[str, str],
     expected_url: str,
 ) -> None:
-    from services.analysis.openclaw_analysis import analyze_with_openclaw
-    from services.forwarding.circuit_breakers import OpenClawForwardDependencies
-    from services.forwarding.policies import OpenClawTriggerPolicy
+    from services.analysis.deep_analysis_trigger import request_gateway_analysis
+    from services.forwarding.circuit_breakers import DeepAnalysisForwardDependencies
+    from services.forwarding.policies import DeepAnalysisTriggerPolicy
 
     async def fake_load_prompt() -> str:
         return "managed deep-analysis prompt"
@@ -83,23 +83,23 @@ async def test_analyze_with_openclaw_sends_utf8_json_body(
         async def call_async(self, fn, *args, **kwargs):
             return await fn(*args, **kwargs)
 
-    monkeypatch.setattr("services.analysis.openclaw_analysis.load_deep_analysis_prompt_template", fake_load_prompt)
+    monkeypatch.setattr("services.analysis.deep_analysis_trigger.load_deep_analysis_prompt_template", fake_load_prompt)
 
-    result = await analyze_with_openclaw(
+    result = await request_gateway_analysis(
         {"source": "prometheus", "parsed_data": {"summary": "中文告警", "token": "secret-token"}},
-        policy=OpenClawTriggerPolicy(
+        policy=DeepAnalysisTriggerPolicy(
             enabled=True,
             timeout_seconds=900,
             platform=platform,
-            gateway_url="http://openclaw.test",
+            gateway_url="http://gateway.test",
             hooks_token="token",
             connect_timeout=13.0,
             enable_degradation=False,
         ),
-        dependencies=OpenClawForwardDependencies(client, Breaker()),
+        dependencies=DeepAnalysisForwardDependencies(client, Breaker()),
     )
 
-    assert result["_openclaw_run_id"] == "run-1"
+    assert result["_gateway_run_id"] == "run-1"
     post_args = client.post.await_args.args
     post_kwargs = client.post.await_args.kwargs
     body = post_kwargs["content"]

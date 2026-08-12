@@ -22,8 +22,8 @@ def _record(**overrides: object) -> SimpleNamespace:
         "analysis_result": {"summary": "old"},
         "duration_seconds": 1.2,
         "created_at": datetime(2026, 5, 27, 12, 0, tzinfo=UTC),
-        "openclaw_run_id": "",
-        "openclaw_session_key": "",
+        "gateway_run_id": "",
+        "gateway_session_key": "",
         "status": "completed",
         "poll_attempts": 0,
         "next_poll_at": None,
@@ -67,7 +67,7 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
 
     monkeypatch.setattr(deep_analysis, "_build_deep_analysis_context", build_deep_analysis_context)
     monkeypatch.setattr(
-        deep_analysis.OpenClawTriggerPolicy,
+        deep_analysis.DeepAnalysisTriggerPolicy,
         "from_config",
         classmethod(lambda cls: SimpleNamespace(enabled=True)),
     )
@@ -83,7 +83,7 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
     assert unsupported.status_code == 400
 
     monkeypatch.setattr(
-        deep_analysis.OpenClawTriggerPolicy,
+        deep_analysis.DeepAnalysisTriggerPolicy,
         "from_config",
         classmethod(lambda cls: SimpleNamespace(enabled=False)),
     )
@@ -91,7 +91,7 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
     assert disabled.status_code == 503
 
     monkeypatch.setattr(
-        deep_analysis.OpenClawTriggerPolicy,
+        deep_analysis.DeepAnalysisTriggerPolicy,
         "from_config",
         classmethod(lambda cls: SimpleNamespace(enabled=True)),
     )
@@ -101,7 +101,7 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
             "postgresql://user:pass@db.internal/webhooks"
         )
 
-    monkeypatch.setattr(deep_analysis, "_run_openclaw_deep_analysis", fail_run)
+    monkeypatch.setattr(deep_analysis, "_run_deep_analysis", fail_run)
     failed = await deep_analysis.deep_analyze_webhook(10, payload={}, session=Session(event))  # type: ignore[arg-type]
     assert failed.status_code == 500
     assert _body(failed)["error"] == INTERNAL_ERROR_MESSAGE
@@ -113,16 +113,18 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
         return {
             "status": "pending",
             "_pending": True,
-            "_openclaw_run_id": "run-1",
-            "_openclaw_session_key": "s-1",
+            "_gateway_run_id": "run-1",
+            "_gateway_session_key": "s-1",
         }, "openclaw"
 
-    async def schedule_openclaw_poll_best_effort(analysis_id: int, delay: int) -> None:
+    async def schedule_deep_analysis_poll_best_effort(analysis_id: int, delay: int) -> None:
         scheduled.append((analysis_id, delay))
 
-    monkeypatch.setattr(deep_analysis, "_run_openclaw_deep_analysis", pending_run)
+    monkeypatch.setattr(deep_analysis, "_run_deep_analysis", pending_run)
     monkeypatch.setattr(
-        deep_analysis.taskiq_retry_scheduler, "schedule_openclaw_poll_best_effort", schedule_openclaw_poll_best_effort
+        deep_analysis.taskiq_retry_scheduler,
+        "schedule_deep_analysis_poll_best_effort",
+        schedule_deep_analysis_poll_best_effort,
     )
 
     session = Session(event)
@@ -137,32 +139,32 @@ async def test_deep_analyze_webhook_validation_pending_and_error_paths(
     assert result["data"]["status"] == "pending"
     assert session.commits == 1
     assert scheduled and scheduled[0][0] == 501
-    assert deep_analysis._prepare_openclaw_poll_if_pending(_record(status="completed")) is None
+    assert deep_analysis._prepare_deep_analysis_poll_if_pending(_record(status="completed")) is None
 
 
 @pytest.mark.asyncio
-async def test_openclaw_deep_analysis_helper_falls_back_and_notifies(
+async def test_gateway_deep_analysis_helper_falls_back_and_notifies(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from services.analysis import deep_analysis_trigger as trigger_service
     from services.analysis import deep_analysis_workflow
-    from services.analysis import openclaw_analysis as openclaw_service
 
     calls: list[dict[str, object]] = []
 
-    async def degraded_openclaw(_webhook_data: object, _question: str) -> dict[str, object]:
+    async def degraded_gateway(_webhook_data: object, _question: str) -> dict[str, object]:
         return {"status": "degraded", "_degraded": True, "_degraded_reason": "timeout"}
 
-    async def healthy_openclaw(_webhook_data: object, _question: str) -> dict[str, object]:
-        return {"summary": "openclaw ok", "importance": "high"}
+    async def healthy_gateway(_webhook_data: object, _question: str) -> dict[str, object]:
+        return {"summary": "gateway ok", "importance": "high"}
 
     async def analyze_webhook_with_ai(webhook_data: object) -> dict[str, object]:
         calls.append({"fallback": webhook_data})
         return {"summary": "local fallback", "importance": "medium"}
 
-    monkeypatch.setattr(openclaw_service, "analyze_with_openclaw", degraded_openclaw)
+    monkeypatch.setattr(trigger_service, "request_gateway_analysis", degraded_gateway)
     monkeypatch.setattr(deep_analysis_workflow, "analyze_webhook_with_ai", analyze_webhook_with_ai)
 
-    fallback_result, fallback_engine = await deep_analysis_workflow.run_openclaw_deep_analysis(
+    fallback_result, fallback_engine = await deep_analysis_workflow.run_deep_analysis(
         {"source": "grafana", "parsed_data": {"alertname": "HighCPU"}},
         {"x": "1"},
         "why",
@@ -172,14 +174,14 @@ async def test_openclaw_deep_analysis_helper_falls_back_and_notifies(
     assert fallback_result == {"summary": "local fallback", "importance": "medium"}
     assert calls
 
-    monkeypatch.setattr(openclaw_service, "analyze_with_openclaw", healthy_openclaw)
-    result, engine = await deep_analysis_workflow.run_openclaw_deep_analysis(
+    monkeypatch.setattr(trigger_service, "request_gateway_analysis", healthy_gateway)
+    result, engine = await deep_analysis_workflow.run_deep_analysis(
         {"source": "grafana", "parsed_data": {}},
         {},
         "",
     )
     assert engine == "openclaw"
-    assert result == {"summary": "openclaw ok", "importance": "high"}
+    assert result == {"summary": "gateway ok", "importance": "high"}
 
     notifications: list[dict[str, object]] = []
 
@@ -286,27 +288,29 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
         return {
             "status": "pending",
             "_pending": True,
-            "_openclaw_run_id": "run-2",
-            "_openclaw_session_key": "s-2",
+            "_gateway_run_id": "run-2",
+            "_gateway_session_key": "s-2",
         }, "openclaw"
 
     async def completed_run(*_: object, **__: object) -> tuple[dict[str, object], str]:
         return {"summary": "done", "importance": "high"}, "openclaw"
 
-    async def schedule_openclaw_poll_best_effort(analysis_id: int, delay: int) -> None:
+    async def schedule_deep_analysis_poll_best_effort(analysis_id: int, delay: int) -> None:
         scheduled.append((analysis_id, delay))
 
-    async def clear_openclaw_poll_state(analysis_id: int) -> None:
+    async def clear_deep_analysis_poll_state(analysis_id: int) -> None:
         cleared.append(analysis_id)
 
     monkeypatch.setattr(
         "services.analysis.deep_analysis_workflow.build_deep_analysis_context", build_deep_analysis_context
     )
     monkeypatch.setattr(
-        "services.analysis.deep_analysis_workflow.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort",
-        schedule_openclaw_poll_best_effort,
+        "services.analysis.deep_analysis_workflow.taskiq_retry_scheduler.schedule_deep_analysis_poll_best_effort",
+        schedule_deep_analysis_poll_best_effort,
     )
-    monkeypatch.setattr("services.analysis.openclaw_poll.clear_openclaw_poll_state", clear_openclaw_poll_state)
+    monkeypatch.setattr(
+        "services.analysis.deep_analysis_poll.clear_deep_analysis_poll_state", clear_deep_analysis_poll_state
+    )
 
     missing = await deep_analysis.retry_deep_analysis(1, session=Session(None))  # type: ignore[arg-type]
     assert missing.status_code == 404
@@ -319,22 +323,22 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
 
     no_event = await deep_analysis.retry_deep_analysis(
         1,
-        session=Session(_record(openclaw_session_key=""), linked_event=None),  # type: ignore[arg-type]
+        session=Session(_record(gateway_session_key=""), linked_event=None),  # type: ignore[arg-type]
     )
     assert no_event.status_code == 404
 
-    monkeypatch.setattr("services.analysis.deep_analysis_workflow.run_openclaw_deep_analysis", pending_run)
-    pending_record = _record(id=3, status=DeepAnalysisStatus.FAILED, openclaw_session_key="")
+    monkeypatch.setattr("services.analysis.deep_analysis_workflow.run_deep_analysis", pending_run)
+    pending_record = _record(id=3, status=DeepAnalysisStatus.FAILED, gateway_session_key="")
     pending_response = await deep_analysis.retry_deep_analysis(
         3,
         session=Session(pending_record),  # type: ignore[arg-type]
     )
     assert pending_response["success"] is True
     assert pending_record.status == DeepAnalysisStatus.PENDING
-    assert pending_record.openclaw_run_id == "run-2"
+    assert pending_record.gateway_run_id == "run-2"
     assert scheduled[-1][0] == 3
 
-    monkeypatch.setattr("services.analysis.deep_analysis_workflow.run_openclaw_deep_analysis", completed_run)
+    monkeypatch.setattr("services.analysis.deep_analysis_workflow.run_deep_analysis", completed_run)
 
     async def skip_notification(*_args: object, **_kwargs: object) -> None:
         return None
@@ -342,7 +346,7 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(
         "services.analysis.deep_analysis_workflow.notify_completed_deep_analysis_best_effort", skip_notification
     )
-    completed_record = _record(id=4, status=DeepAnalysisStatus.FAILED, openclaw_session_key="")
+    completed_record = _record(id=4, status=DeepAnalysisStatus.FAILED, gateway_session_key="")
     completed_response = await deep_analysis.retry_deep_analysis(
         4,
         session=Session(completed_record),  # type: ignore[arg-type]
@@ -351,7 +355,7 @@ async def test_retry_deep_analysis_branches(monkeypatch: pytest.MonkeyPatch) -> 
     assert completed_record.status == DeepAnalysisStatus.COMPLETED
     assert completed_record.analysis_result == {"summary": "done", "importance": "high"}
 
-    session_key_record = _record(id=5, status=DeepAnalysisStatus.TIMEOUT, openclaw_session_key="s-old")
+    session_key_record = _record(id=5, status=DeepAnalysisStatus.TIMEOUT, gateway_session_key="s-old")
     background_response = await deep_analysis.retry_deep_analysis(
         5,
         session=Session(session_key_record),  # type: ignore[arg-type]

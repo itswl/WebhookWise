@@ -127,7 +127,7 @@ the existing pipeline.
 ## Pull Request Expectations
 
 - `bash scripts/gate.sh` is green.
-- Changes to core delivery channels — Feishu, OpenClaw, forwarding,
+- Changes to core delivery channels — Feishu, deep analysis, forwarding,
   persistence, dashboard static contracts — come with targeted tests.
 - User-facing changes add a line under `Unreleased` in
   [CHANGELOG.md](CHANGELOG.md).

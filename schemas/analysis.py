@@ -64,8 +64,8 @@ class DeepAnalysisRecord(BaseModel):
     normalized_report: dict[str, Any] = Field(default_factory=dict)
     duration_seconds: float | None = None
     created_at: datetime | str | None = None
-    openclaw_run_id: str | None = None
-    openclaw_session_key: str | None = None
+    gateway_run_id: str | None = None
+    gateway_session_key: str | None = None
     status: str | None = None
     poll_attempts: int | None = None
     next_poll_at: datetime | str | None = None
@@ -79,7 +79,7 @@ class DeepAnalysisSummary(BaseModel):
 
     The list view only needs to render metadata plus a one-line preview; it does
     not need the full normalized_report, much less the raw analysis_result (which
-    contains the large _openclaw_text blob). The full content is fetched on demand
+    contains the large _gateway_text blob). The full content is fetched on demand
     via the detail endpoint when expanded.
     """
 
@@ -92,7 +92,7 @@ class DeepAnalysisSummary(BaseModel):
     summary_preview: str = ""
     duration_seconds: float | None = None
     created_at: datetime | str | None = None
-    openclaw_run_id: str | None = None
+    gateway_run_id: str | None = None
     status: str | None = None
     poll_attempts: int | None = None
     last_polled_at: datetime | str | None = None

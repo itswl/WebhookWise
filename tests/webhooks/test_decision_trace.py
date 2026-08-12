@@ -154,7 +154,7 @@ def test_steps_periodic_reminder_flag() -> None:
 
 
 def test_build_row_flattens_outcome_and_indexed_fields() -> None:
-    decision = ForwardDecision(True, None, False, matched_rules=[_rule("feishu"), _rule("openclaw")])
+    decision = ForwardDecision(True, None, False, matched_rules=[_rule("feishu"), _rule("deep_analysis")])
     trace = build_decision_trace(
         webhook_event_id=123,
         source="grafana",
@@ -170,7 +170,7 @@ def test_build_row_flattens_outcome_and_indexed_fields() -> None:
     assert trace.source == "grafana"
     assert trace.importance == "p0"  # normalized
     assert trace.is_periodic_reminder is False
-    assert trace.matched_rules == ["feishu", "openclaw"]
+    assert trace.matched_rules == ["feishu", "deep_analysis"]
     assert trace.steps is not None
 
 

@@ -15,7 +15,7 @@ product learning loop, and observability topology, see
 | `api/` | HTTP routes, request/response binding, auth dependency wiring | Business workflows, database transaction orchestration, external delivery logic |
 | `services/webhooks/` | Webhook ingest and processing orchestration, pipeline stages, source onboarding, alert-quality read models, webhook queries and commands | Incident policy, provider-specific HTTP clients unrelated to webhook processing |
 | `services/incidents/` | Incident grouping, intelligence, response queue, resolution evidence, recurrence review, runbook progress, postmortems, and service profiles | Ingress authentication, notification transport clients, generic scheduler lifecycle |
-| `services/analysis/` | AI/rule/OpenClaw analysis policies, prompt loading, cache and usage tracking | FastAPI route handling, notification channel formatting |
+| `services/analysis/` | AI/rule/gateway analysis policies, prompt loading, cache and usage tracking | FastAPI route handling, notification channel formatting |
 | `services/forwarding/` | Forwarding rules, transactional outbox, delivery retry, remote target dispatch | Source webhook normalization |
 | `services/notifications/` | Notification channel abstractions, target detection, message formatting | Pipeline orchestration or persistence decisions |
 | `services/kb/` | Knowledge ingestion, embedding, retrieval, publication boundaries, and incident sedimentation | Automatically publishing unreviewed incident knowledge |
@@ -161,8 +161,8 @@ Prompt text is a product asset. The current control plane is:
 - `AI_SYSTEM_PROMPT`: system prompt loaded at startup.
 - `AI_USER_PROMPT`: inline override for the user prompt.
 - `AI_USER_PROMPT_FILE`: file-backed prompt template.
-- `DEEP_ANALYSIS_PROMPT`: inline override for the OpenClaw deep-analysis prompt.
-- `DEEP_ANALYSIS_PROMPT_FILE`: file-backed OpenClaw deep-analysis prompt template.
+- `DEEP_ANALYSIS_PROMPT`: inline override for the deep-analysis prompt.
+- `DEEP_ANALYSIS_PROMPT_FILE`: file-backed deep-analysis prompt template.
 - `INCIDENT_SUMMARY_PROMPT`: inline override for the incident summary prompt.
 - `INCIDENT_SUMMARY_PROMPT_FILE`: file-backed incident summary prompt template.
 - `GET /v1/prompt?kind=user|deep_analysis|incident_summary`: inspect the active prompt and source.

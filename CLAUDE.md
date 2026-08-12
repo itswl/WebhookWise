@@ -47,7 +47,7 @@ same change (and vice versa).
   Translating any of these silently breaks classification/parsing.
 - Prefer explicit policy/config objects over module import side effects.
 - Keep metrics labels stable and machine-readable; do not derive metric dimensions by parsing log text or localized strings.
-- Add targeted tests for core delivery channels, especially Feishu, OpenClaw, forwarding, persistence, and dashboard static contracts.
+- Add targeted tests for core delivery channels, especially Feishu, deep analysis, forwarding, persistence, and dashboard static contracts.
 - Do not introduce new observability instruments unless a dashboard, alert, SLO, or automated decision consumes them.
 - Dashboard UI work follows `docs/design-language.md` (dark-first tokens,
   colour-in-points, the icon sprite, the type scale). The contract tests in

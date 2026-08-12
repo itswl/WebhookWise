@@ -236,7 +236,7 @@ async def test_deliver_outbox_record_openclaw_feishu_remote_payloads(monkeypatch
     from models import ForwardOutbox
     from services.forwarding import outbox
 
-    async def openclaw_forward(data: dict[str, object], analysis: dict[str, object]) -> dict[str, object]:
+    async def gateway_forward(data: dict[str, object], analysis: dict[str, object]) -> dict[str, object]:
         assert data["source"] == "prometheus"
         assert analysis["importance"] == "high"
         return {"status": "pending"}
@@ -260,15 +260,15 @@ async def test_deliver_outbox_record_openclaw_feishu_remote_payloads(monkeypatch
         assert kwargs["target_type_label"] == "webhook"
         return {"status": "success", "channel": "remote"}
 
-    monkeypatch.setattr("services.analysis.openclaw_analysis.forward_to_openclaw", openclaw_forward)
+    monkeypatch.setattr("services.analysis.deep_analysis_trigger.forward_to_deep_analysis", gateway_forward)
     monkeypatch.setattr("services.notifications.feishu.is_feishu_url", lambda url: "feishu" in url)
     monkeypatch.setattr("services.notifications.feishu.build_feishu_card", lambda *_args, **_kwargs: {"card": True})
     monkeypatch.setattr("services.notifications.feishu.send_to_feishu", send_feishu)
     monkeypatch.setattr("services.forwarding.remote.post_json_to_remote", post_remote)
 
-    openclaw_record = ForwardOutbox(
-        target_type="openclaw",
-        channel_name="openclaw",
+    deep_analysis_record = ForwardOutbox(
+        target_type="deep_analysis",
+        channel_name="deep_analysis",
         forward_data={"source": "prometheus", "parsed_data": {"RuleName": "HighCPU"}},
         analysis_result={"importance": "high"},
     )
@@ -291,7 +291,7 @@ async def test_deliver_outbox_record_openclaw_feishu_remote_payloads(monkeypatch
     )
     empty_record = ForwardOutbox(target_type="webhook", channel_name="webhook", target_url="https://empty.test/hook")
 
-    assert (await outbox.deliver_outbox_record(openclaw_record))["status"] == "pending"
+    assert (await outbox.deliver_outbox_record(deep_analysis_record))["status"] == "pending"
     assert (await outbox.deliver_outbox_record(feishu_record))["channel"] == "feishu"
     assert (await outbox.deliver_outbox_record(remote_record))["channel"] == "remote"
     assert (await outbox.deliver_outbox_record(empty_record))["channel"] == "remote"

@@ -136,9 +136,9 @@ async def deep_health_check(request: Request) -> JSONResponse:
             },
             "adapters": adapter_status,
             "ai": {"enabled": bool(config.ai.ENABLE_AI_ANALYSIS), "configured": ai_configured},
-            "openclaw": {
-                "enabled": bool(config.openclaw.OPENCLAW_ENABLED),
-                "configured": bool(config.openclaw.OPENCLAW_GATEWAY_TOKEN),
+            "deep_analysis": {
+                "enabled": bool(config.deep_analysis.DEEP_ANALYSIS_ENABLED),
+                "configured": bool(config.deep_analysis.DEEP_ANALYSIS_GATEWAY_TOKEN),
             },
         },
     )

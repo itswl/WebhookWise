@@ -40,10 +40,10 @@ _FEISHU_BREAKER_SPEC = CircuitBreakerSpec(
     failure_threshold_attr="CIRCUIT_BREAKER_FEISHU_THRESHOLD",
     recovery_timeout_attr="CIRCUIT_BREAKER_FEISHU_TIMEOUT_SECONDS",
 )
-_OPENCLAW_BREAKER_SPEC = CircuitBreakerSpec(
-    name="openclaw",
-    failure_threshold_attr="CIRCUIT_BREAKER_OPENCLAW_THRESHOLD",
-    recovery_timeout_attr="CIRCUIT_BREAKER_OPENCLAW_TIMEOUT_SECONDS",
+_DEEP_ANALYSIS_BREAKER_SPEC = CircuitBreakerSpec(
+    name="deep_analysis",
+    failure_threshold_attr="CIRCUIT_BREAKER_DEEP_ANALYSIS_THRESHOLD",
+    recovery_timeout_attr="CIRCUIT_BREAKER_DEEP_ANALYSIS_TIMEOUT_SECONDS",
 )
 _FORWARD_BREAKER_SPEC = CircuitBreakerSpec(
     name="forward",
@@ -53,7 +53,7 @@ _FORWARD_BREAKER_SPEC = CircuitBreakerSpec(
 
 
 feishu_cb = _FEISHU_BREAKER_SPEC.lazy()
-openclaw_cb = _OPENCLAW_BREAKER_SPEC.lazy()
+deep_analysis_cb = _DEEP_ANALYSIS_BREAKER_SPEC.lazy()
 
 # Bounded LRU of per-host breakers. The map is keyed on the forward target's
 # hostname, which can be attacker-influenced (rule targets) or high-cardinality,
@@ -88,7 +88,7 @@ class RemoteForwardDependencies:
 
 
 @dataclass(frozen=True, slots=True)
-class OpenClawForwardDependencies:
+class DeepAnalysisForwardDependencies:
     http_client: Any
     circuit_breaker: Any
 
@@ -106,7 +106,7 @@ def build_remote_forward_dependencies(target_url: str = "") -> RemoteForwardDepe
     )
 
 
-def build_openclaw_forward_dependencies() -> OpenClawForwardDependencies:
+def build_deep_analysis_forward_dependencies() -> DeepAnalysisForwardDependencies:
     from core.http_client import get_deep_analysis_client
 
-    return OpenClawForwardDependencies(http_client=get_deep_analysis_client(), circuit_breaker=openclaw_cb)
+    return DeepAnalysisForwardDependencies(http_client=get_deep_analysis_client(), circuit_breaker=deep_analysis_cb)

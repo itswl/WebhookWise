@@ -164,7 +164,7 @@ enqueue, no AI call, no persistence).
 ## Notes
 
 - Deep analysis is **sparse by design**: a `DeepAnalysis` record is created only
-  when an alert forwards to an OpenClaw-target rule (typically high-importance).
+  when an alert forwards to a deep-analysis-target rule (typically high-importance).
   Most alerts therefore have only the lightweight `summary` (visible in
   `list_recent_alerts` and via `get_ai_analysis`'s `lightweight` fallback), which
   is expected — not a gap.

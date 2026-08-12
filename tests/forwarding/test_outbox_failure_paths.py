@@ -333,7 +333,7 @@ class TestFinalizeOutboxSuccess:
         async def _noop(*_: object) -> None:
             pass
 
-        monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", _noop)
+        monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_deep_analysis_poll_best_effort", _noop)
 
         outbox_id = await _insert_outbox(session_factory, next_attempt_at=utcnow() - timedelta(seconds=1))
         record = await _claim_outbox(outbox_id)
@@ -357,7 +357,7 @@ class TestFinalizeOutboxSuccess:
         async def _noop(*_: object) -> None:
             pass
 
-        monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", _noop)
+        monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_deep_analysis_poll_best_effort", _noop)
 
         async with session_factory.begin() as session:
             original = WebhookEvent(
@@ -409,18 +409,18 @@ class TestFinalizeOutboxSuccess:
         async def _noop(*_: object) -> None:
             pass
 
-        monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", _noop)
+        monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_deep_analysis_poll_best_effort", _noop)
 
         outbox_id = await _insert_outbox(
             session_factory,
             webhook_event_id=37769,
             original_event_id=37291,
-            target_type="openclaw",
+            target_type="deep_analysis",
             next_attempt_at=utcnow() - timedelta(seconds=1),
         )
         record = await _claim_outbox(outbox_id)
         assert record is not None
-        result = {"_pending": True, "_openclaw_run_id": "run-1", "_openclaw_session_key": "key-1"}
+        result = {"_pending": True, "_gateway_run_id": "run-1", "_gateway_session_key": "key-1"}
         await _finalize_outbox_success(record, result)
 
         async with session_factory() as session:
@@ -428,7 +428,7 @@ class TestFinalizeOutboxSuccess:
         assert deep is not None
         assert deep.webhook_event_id == 37769
         assert deep.status == DeepAnalysisStatus.PENDING
-        assert deep.openclaw_run_id == "run-1"
+        assert deep.gateway_run_id == "run-1"
 
 
 async def test_list_outbox_records_includes_original_event_id(
@@ -571,7 +571,7 @@ class TestRunForwardOutboxScan:
 # ── OpenClaw poll claim / stability ───────────────────────────────────
 
 
-class TestOpenClawPoller:
+class TestDeepAnalysisPoller:
     @pytest.fixture(autouse=True)
     def _bind_config(self, temp_config) -> None:
         self.config = temp_config
@@ -580,7 +580,7 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw_poll as openclaw
+        from services.analysis import deep_analysis_poll as gateway
 
         seen_timeouts: list[tuple[float, float]] = []
 
@@ -602,12 +602,12 @@ class TestOpenClawPoller:
                 assert kwargs["headers"]["Connection"] == "close"
                 return _Response()
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT_SECONDS", 7)
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_CONNECT_TIMEOUT_SECONDS", 3)
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(openclaw, "get_deep_analysis_client", lambda: _Client())
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_POLL_TIMEOUT_SECONDS", 7)
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_CONNECT_TIMEOUT_SECONDS", 3)
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_HTTP_API_URL", "http://gateway.test")
+        monkeypatch.setattr(gateway, "get_deep_analysis_client", lambda: _Client())
 
-        result = await openclaw.poll_openclaw_result_via_http("session-1", retry_count=1)
+        result = await gateway.poll_gateway_result_via_http("session-1", retry_count=1)
 
         assert result["status"] == "pending"
         assert seen_timeouts == [(3.0, 7.0)]
@@ -616,16 +616,16 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw_poll as openclaw
+        from services.analysis import deep_analysis_poll as gateway
 
         class _Client:
             async def get(self, *_: object, **__: object) -> object:
                 raise OSError("All connection attempts failed")
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(openclaw, "get_deep_analysis_client", lambda: _Client())
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_HTTP_API_URL", "http://gateway.test")
+        monkeypatch.setattr(gateway, "get_deep_analysis_client", lambda: _Client())
 
-        result = await openclaw.poll_openclaw_result_via_http("session-1", retry_count=1)
+        result = await gateway.poll_gateway_result_via_http("session-1", retry_count=1)
 
         assert result["status"] == "error"
         assert result["retryable"] is True
@@ -637,17 +637,17 @@ class TestOpenClawPoller:
     ) -> None:
         import httpx
 
-        from services.analysis import openclaw_poll as openclaw
+        from services.analysis import deep_analysis_poll as gateway
 
         class _Client:
             async def get(self, *_: object, **__: object) -> object:
                 raise httpx.ReadTimeout("")
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT_SECONDS", 7)
-        monkeypatch.setattr(openclaw, "get_deep_analysis_client", lambda: _Client())
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_HTTP_API_URL", "http://gateway.test")
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_POLL_TIMEOUT_SECONDS", 7)
+        monkeypatch.setattr(gateway, "get_deep_analysis_client", lambda: _Client())
 
-        result = await openclaw.poll_openclaw_result_via_http("session-1", retry_count=1)
+        result = await gateway.poll_gateway_result_via_http("session-1", retry_count=1)
 
         assert result["status"] == "pending"
         assert "ReadTimeout" in str(result["error"])
@@ -656,7 +656,7 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw_poll as openclaw
+        from services.analysis import deep_analysis_poll as gateway
 
         class _Response:
             status_code = 200
@@ -668,19 +668,19 @@ class TestOpenClawPoller:
             async def get(self, *_: object, **__: object) -> _Response:
                 return _Response()
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(openclaw, "get_deep_analysis_client", lambda: _Client())
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_HTTP_API_URL", "http://gateway.test")
+        monkeypatch.setattr(gateway, "get_deep_analysis_client", lambda: _Client())
 
-        result = await openclaw.poll_openclaw_result_via_http("session-1", retry_count=1)
+        result = await gateway.poll_gateway_result_via_http("session-1", retry_count=1)
 
         assert result["status"] == "error"
         assert result.get("retryable") is not True
         assert result["error"] == "Invalid JSON response"
 
     def test_poll_claim_lease_scales_with_http_poll_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from services.analysis.openclaw_poll import _poll_claim_lease_seconds
+        from services.analysis.deep_analysis_poll import _poll_claim_lease_seconds
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_POLL_TIMEOUT_SECONDS", 120)
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_POLL_TIMEOUT_SECONDS", 120)
 
         assert _poll_claim_lease_seconds() == 390
 
@@ -689,15 +689,15 @@ class TestOpenClawPoller:
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         from models import DeepAnalysis
-        from services.analysis.openclaw_poll import _claim_openclaw_poll
+        from services.analysis.deep_analysis_poll import _claim_deep_analysis_poll
 
         async with session_factory.begin() as session:
             record = DeepAnalysis(
                 webhook_event_id=1,
-                engine="openclaw",
+                engine="gateway",
                 status=DeepAnalysisStatus.PENDING,
-                openclaw_session_key="session-1",
-                openclaw_run_id="run-1",
+                gateway_session_key="session-1",
+                gateway_run_id="run-1",
                 next_poll_at=utcnow() - timedelta(seconds=1),
                 poll_attempts=0,
             )
@@ -705,12 +705,12 @@ class TestOpenClawPoller:
             await session.flush()
             analysis_id = record.id
 
-        claimed, early_delay = await _claim_openclaw_poll(analysis_id)
+        claimed, early_delay = await _claim_deep_analysis_poll(analysis_id)
         assert claimed is not None
         assert early_delay is None
         assert claimed["poll_attempts"] == 1
 
-        claimed_again, second_delay = await _claim_openclaw_poll(analysis_id)
+        claimed_again, second_delay = await _claim_deep_analysis_poll(analysis_id)
         assert claimed_again is None
         assert second_delay is not None
         assert second_delay > 0
@@ -725,23 +725,23 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw_poll as openclaw
+        from services.analysis import deep_analysis_poll as gateway
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_STABILITY_REQUIRED_HITS", 1)
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_HTTP_API_URL", "http://gateway.test")
 
         async def _completed(*_: object, **__: object) -> dict[str, object]:
             return {"status": "completed", "text": "root cause ready", "msg_count": 2}
 
-        monkeypatch.setattr(openclaw, "poll_openclaw_result_via_http", _completed)
+        monkeypatch.setattr(gateway, "poll_gateway_result_via_http", _completed)
 
-        result = await openclaw._poll_single_record(
+        result = await gateway._poll_single_record(
             {
                 "id": 1,
                 "webhook_event_id": 1,
-                "engine": "openclaw",
-                "openclaw_session_key": "session-1",
-                "openclaw_run_id": "run-1",
+                "engine": "gateway",
+                "gateway_session_key": "session-1",
+                "gateway_run_id": "run-1",
                 "created_at": utcnow(),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": None,
@@ -758,10 +758,10 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw_poll as openclaw
+        from services.analysis import deep_analysis_poll as gateway
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 2)
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_STABILITY_REQUIRED_HITS", 2)
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_HTTP_API_URL", "http://gateway.test")
 
         async def _completed(*_: object, **__: object) -> dict[str, object]:
             return {"status": "completed", "text": "explicit final", "msg_count": 2, "is_final": True}
@@ -769,16 +769,16 @@ class TestOpenClawPoller:
         async def _stability_should_not_be_written(*_: object, **__: object) -> None:
             raise AssertionError("explicit HTTP final should not need a stability snapshot")
 
-        monkeypatch.setattr(openclaw, "poll_openclaw_result_via_http", _completed)
-        monkeypatch.setattr(openclaw, "_set_poll_stability", _stability_should_not_be_written)
+        monkeypatch.setattr(gateway, "poll_gateway_result_via_http", _completed)
+        monkeypatch.setattr(gateway, "_set_poll_stability", _stability_should_not_be_written)
 
-        result = await openclaw._poll_single_record(
+        result = await gateway._poll_single_record(
             {
                 "id": 1,
                 "webhook_event_id": 1,
-                "engine": "openclaw",
-                "openclaw_session_key": "session-1",
-                "openclaw_run_id": "run-1",
+                "engine": "gateway",
+                "gateway_session_key": "session-1",
+                "gateway_run_id": "run-1",
                 "created_at": utcnow(),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": None,
@@ -794,28 +794,28 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw_poll as openclaw
+        from services.analysis import deep_analysis_poll as gateway
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_TIMEOUT_SECONDS", 900)
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_STABILITY_REQUIRED_HITS", 1)
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_HTTP_API_URL", "http://gateway.test")
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_TIMEOUT_SECONDS", 900)
 
         async def _completed(*_: object, **__: object) -> dict[str, object]:
             return {"status": "completed", "text": "manual retry ready", "msg_count": 2}
 
-        monkeypatch.setattr(openclaw, "poll_openclaw_result_via_http", _completed)
+        monkeypatch.setattr(gateway, "poll_gateway_result_via_http", _completed)
 
-        result = await openclaw._poll_single_record(
+        result = await gateway._poll_single_record(
             {
                 "id": 1,
                 "webhook_event_id": 1,
-                "engine": "openclaw",
-                "openclaw_session_key": "session-1",
-                "openclaw_run_id": "run-1",
+                "engine": "gateway",
+                "gateway_session_key": "session-1",
+                "gateway_run_id": "run-1",
                 "created_at": utcnow() - timedelta(hours=2),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": {
-                    openclaw.MANUAL_RETRY_STARTED_AT_KEY: utcnow().isoformat(),
+                    gateway.MANUAL_RETRY_STARTED_AT_KEY: utcnow().isoformat(),
                 },
                 "duration_seconds": 0,
             }
@@ -829,27 +829,27 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw_poll as openclaw
+        from services.analysis import deep_analysis_poll as gateway
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw-gateway.test")
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_HTTP_API_URL", "http://gateway.test")
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_GATEWAY_URL", "http://deep-analysis-gateway.test")
 
         async def _http_error(*_: object, **__: object) -> dict[str, object]:
             return {"status": "error", "error": "All connection attempts failed", "retryable": True}
 
         async def _gateway_should_not_be_called(*_: object, **__: object) -> dict[str, object]:
-            raise AssertionError("configured OPENCLAW_HTTP_API_URL must be the only poll transport")
+            raise AssertionError("configured DEEP_ANALYSIS_HTTP_API_URL must be the only poll transport")
 
-        monkeypatch.setattr(openclaw, "poll_openclaw_result_via_http", _http_error)
-        monkeypatch.setattr(openclaw, "poll_session_result", _gateway_should_not_be_called)
+        monkeypatch.setattr(gateway, "poll_gateway_result_via_http", _http_error)
+        monkeypatch.setattr(gateway, "poll_session_result", _gateway_should_not_be_called)
 
-        result = await openclaw._poll_single_record(
+        result = await gateway._poll_single_record(
             {
                 "id": 1,
                 "webhook_event_id": 1,
-                "engine": "openclaw",
-                "openclaw_session_key": "session-1",
-                "openclaw_run_id": "run-1",
+                "engine": "gateway",
+                "gateway_session_key": "session-1",
+                "gateway_run_id": "run-1",
                 "created_at": utcnow(),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": None,
@@ -863,28 +863,28 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw_poll as openclaw
+        from services.analysis import deep_analysis_poll as gateway
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 1)
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "")
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_GATEWAY_URL", "http://openclaw-gateway.test")
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_STABILITY_REQUIRED_HITS", 1)
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_HTTP_API_URL", "")
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_GATEWAY_URL", "http://deep-analysis-gateway.test")
 
         async def _http_should_not_be_called(*_: object, **__: object) -> dict[str, object]:
-            raise AssertionError("HTTP poll should be skipped when OPENCLAW_HTTP_API_URL is empty")
+            raise AssertionError("HTTP poll should be skipped when DEEP_ANALYSIS_HTTP_API_URL is empty")
 
         async def _gateway_completed(*_: object, **__: object) -> dict[str, object]:
             return {"status": "completed", "text": "gateway result", "msg_count": 2}
 
-        monkeypatch.setattr(openclaw, "poll_openclaw_result_via_http", _http_should_not_be_called)
-        monkeypatch.setattr(openclaw, "poll_session_result", _gateway_completed)
+        monkeypatch.setattr(gateway, "poll_gateway_result_via_http", _http_should_not_be_called)
+        monkeypatch.setattr(gateway, "poll_session_result", _gateway_completed)
 
-        result = await openclaw._poll_single_record(
+        result = await gateway._poll_single_record(
             {
                 "id": 1,
                 "webhook_event_id": 1,
-                "engine": "openclaw",
-                "openclaw_session_key": "session-1",
-                "openclaw_run_id": "run-1",
+                "engine": "gateway",
+                "gateway_session_key": "session-1",
+                "gateway_run_id": "run-1",
                 "created_at": utcnow(),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": None,
@@ -900,12 +900,12 @@ class TestOpenClawPoller:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from services.analysis import openclaw_poll as openclaw
+        from services.analysis import deep_analysis_poll as gateway
 
         stability_state: dict[str, object] = {
             "msg_count": 2,
             "text_len": 4,
-            "text_hash": openclaw._text_hash("aaaa"),
+            "text_hash": gateway._text_hash("aaaa"),
             "hit_count": 1,
         }
         saved_states: list[dict[str, object]] = []
@@ -923,20 +923,20 @@ class TestOpenClawPoller:
         async def _clear(_: int) -> None:
             cleared["value"] = True
 
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_STABILITY_REQUIRED_HITS", 2)
-        monkeypatch.setattr(self.config.openclaw, "OPENCLAW_HTTP_API_URL", "http://openclaw.test")
-        monkeypatch.setattr(openclaw, "poll_openclaw_result_via_http", _completed)
-        monkeypatch.setattr(openclaw, "_get_poll_stability", _get_stability)
-        monkeypatch.setattr(openclaw, "_set_poll_stability", _set_stability)
-        monkeypatch.setattr(openclaw, "_clear_poll_stability", _clear)
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_STABILITY_REQUIRED_HITS", 2)
+        monkeypatch.setattr(self.config.deep_analysis, "DEEP_ANALYSIS_HTTP_API_URL", "http://gateway.test")
+        monkeypatch.setattr(gateway, "poll_gateway_result_via_http", _completed)
+        monkeypatch.setattr(gateway, "_get_poll_stability", _get_stability)
+        monkeypatch.setattr(gateway, "_set_poll_stability", _set_stability)
+        monkeypatch.setattr(gateway, "_clear_poll_stability", _clear)
 
-        result = await openclaw._poll_single_record(
+        result = await gateway._poll_single_record(
             {
                 "id": 1,
                 "webhook_event_id": 1,
-                "engine": "openclaw",
-                "openclaw_session_key": "session-1",
-                "openclaw_run_id": "run-1",
+                "engine": "gateway",
+                "gateway_session_key": "session-1",
+                "gateway_run_id": "run-1",
                 "created_at": utcnow(),
                 "status": DeepAnalysisStatus.PENDING,
                 "analysis_result": None,
@@ -945,5 +945,5 @@ class TestOpenClawPoller:
         )
 
         assert result["action"] == "skip"
-        assert saved_states[0]["text_hash"] == openclaw._text_hash("bbbb")
+        assert saved_states[0]["text_hash"] == gateway._text_hash("bbbb")
         assert cleared["value"] is False

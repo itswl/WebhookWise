@@ -474,22 +474,22 @@ async def process_forward_outbox_task(outbox_id: int) -> None:
     await run_forward_outbox_task(outbox_id)
 
 
-@broker.task(task_name="openclaw_poll_task")
-async def poll_openclaw_analysis_task(analysis_id: int) -> None:
-    """Poll one pending OpenClaw deep-analysis record."""
-    from services.analysis.openclaw_poll import poll_deep_analysis_once
+@broker.task(task_name="deep_analysis_poll_task")
+async def poll_deep_analysis_task(analysis_id: int) -> None:
+    """Poll one pending deep-analysis record."""
+    from services.analysis.deep_analysis_poll import poll_deep_analysis_once
 
     await poll_deep_analysis_once(analysis_id)
 
 
 @broker.task(
-    task_name="scheduled_openclaw_poll_scan",
-    schedule=[{"interval": _background_scan_interval_seconds(), "schedule_id": "openclaw_poll_scan_interval"}],
+    task_name="scheduled_deep_analysis_poll_scan",
+    schedule=[{"interval": _background_scan_interval_seconds(), "schedule_id": "deep_analysis_poll_scan_interval"}],
 )
-async def scheduled_openclaw_poll_scan() -> None:
-    from services.analysis.openclaw_poll import run_openclaw_poll_scan
+async def scheduled_deep_analysis_poll_scan() -> None:
+    from services.analysis.deep_analysis_poll import run_deep_analysis_poll_scan
 
-    await _run_scheduled("openclaw_poll_scan", _background_scan_interval_seconds(), run_openclaw_poll_scan())
+    await _run_scheduled("deep_analysis_poll_scan", _background_scan_interval_seconds(), run_deep_analysis_poll_scan())
 
 
 @broker.task(

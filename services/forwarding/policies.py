@@ -42,7 +42,7 @@ class ForwardDeliveryPolicy:
 
 
 @dataclass(frozen=True, slots=True)
-class OpenClawTriggerPolicy:
+class DeepAnalysisTriggerPolicy:
     enabled: bool
     timeout_seconds: int
     platform: str
@@ -55,15 +55,17 @@ class OpenClawTriggerPolicy:
     retry_sleep_seconds: float = 2.0
 
     @classmethod
-    def from_config(cls) -> "OpenClawTriggerPolicy":
+    def from_config(cls) -> "DeepAnalysisTriggerPolicy":
         cfg = get_config_manager()
         return cls(
-            enabled=bool(cfg.openclaw.OPENCLAW_ENABLED),
-            timeout_seconds=int(cfg.openclaw.OPENCLAW_TIMEOUT_SECONDS),
-            platform=str(cfg.ai.DEEP_ANALYSIS_PLATFORM).lower(),
-            gateway_url=str(cfg.openclaw.OPENCLAW_GATEWAY_URL),
-            hooks_token=str(cfg.openclaw.OPENCLAW_HOOKS_TOKEN or cfg.openclaw.OPENCLAW_GATEWAY_TOKEN),
-            connect_timeout=max(1.0, float(cfg.openclaw.OPENCLAW_CONNECT_TIMEOUT_SECONDS)),
+            enabled=bool(cfg.deep_analysis.DEEP_ANALYSIS_ENABLED),
+            timeout_seconds=int(cfg.deep_analysis.DEEP_ANALYSIS_TIMEOUT_SECONDS),
+            platform=str(cfg.deep_analysis.DEEP_ANALYSIS_PLATFORM).lower(),
+            gateway_url=str(cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_URL),
+            hooks_token=str(
+                cfg.deep_analysis.DEEP_ANALYSIS_HOOKS_TOKEN or cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_TOKEN
+            ),
+            connect_timeout=max(1.0, float(cfg.deep_analysis.DEEP_ANALYSIS_CONNECT_TIMEOUT_SECONDS)),
             enable_degradation=bool(cfg.ai.ENABLE_AI_DEGRADATION),
-            http_api_url=str(cfg.openclaw.OPENCLAW_HTTP_API_URL),
+            http_api_url=str(cfg.deep_analysis.DEEP_ANALYSIS_HTTP_API_URL),
         )

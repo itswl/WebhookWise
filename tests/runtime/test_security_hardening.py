@@ -521,7 +521,7 @@ def test_dashboard_deep_analysis_fields_are_escaped() -> None:
     alerts_js = (PROJECT_ROOT / "templates/static/js/alerts.js").read_text()
 
     assert "record.user_question;" not in alerts_js
-    assert "' + record.openclaw_run_id + '" not in alerts_js
+    assert "' + record.gateway_run_id + '" not in alerts_js
     assert "' + analysis.runId + '" not in alerts_js
     assert "Run ID: ${runId}" not in alerts_js
 

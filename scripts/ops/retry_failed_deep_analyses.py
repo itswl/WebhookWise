@@ -36,7 +36,7 @@ from core.logger import get_logger
 from db.engine import init_engine
 from db.session import session_scope
 from models import DeepAnalysis
-from services.analysis.openclaw_poll import poll_openclaw_result_via_http
+from services.analysis.deep_analysis_poll import poll_gateway_result_via_http
 
 logger = get_logger("scripts.retry_failed_deep_analyses")
 
@@ -54,7 +54,7 @@ async def find_failed_records(webhook_id=None, limit=None):
 
         result = await session.execute(stmt)
         records = result.scalars().all()
-        return [(r.id, r.webhook_event_id, r.openclaw_session_key, r.status) for r in records]
+        return [(r.id, r.webhook_event_id, r.gateway_session_key, r.status) for r in records]
 
 
 async def retry_record(record_id: int) -> tuple[bool, str]:
@@ -67,14 +67,14 @@ async def retry_record(record_id: int) -> tuple[bool, str]:
         if record.status not in ("failed", "completed"):
             return False, f"Status is not failed/completed: {record.status}"
 
-        if not record.openclaw_session_key:
+        if not record.gateway_session_key:
             return False, "Missing session key"
 
         config = get_settings()
-        if not config.openclaw.OPENCLAW_HTTP_API_URL:
-            return False, "OPENCLAW_HTTP_API_URL not configured, cannot retry"
+        if not config.deep_analysis.DEEP_ANALYSIS_HTTP_API_URL:
+            return False, "DEEP_ANALYSIS_HTTP_API_URL not configured, cannot retry"
 
-        result = await poll_openclaw_result_via_http(record.openclaw_session_key, retry_count=3)
+        result = await poll_gateway_result_via_http(record.gateway_session_key, retry_count=3)
 
         if result.get("status") == "error":
             return False, f"API error: {result.get('error')}"
@@ -132,8 +132,8 @@ async def main():
         return
 
     config = get_config_manager()
-    if not config.openclaw.OPENCLAW_HTTP_API_URL:
-        print("\nError: OPENCLAW_HTTP_API_URL not configured, cannot retry")
+    if not config.deep_analysis.DEEP_ANALYSIS_HTTP_API_URL:
+        print("\nError: DEEP_ANALYSIS_HTTP_API_URL not configured, cannot retry")
         sys.exit(1)
 
     print(f"\nStarting retry of {len(records)} records...\n")

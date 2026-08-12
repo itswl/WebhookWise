@@ -14,7 +14,7 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 
 - The API quickly returns `200 OK` once the request is enqueued, while time-consuming processing moves into TaskIQ/Redis Stream. Enqueueing is the durability boundary; see [Delivery Semantics](#delivery-semantics).
 - The Worker pipeline handles normalization, persistence, deduplication, AI/rule analysis, noise reduction, and forwarding decisions.
-- The Forward Outbox decouples business state from external HTTP/Feishu/OpenClaw side effects.
+- The Forward Outbox decouples business state from external HTTP/Feishu/deep-analysis side effects.
 - OTel-first observability ties together metrics, traces, logs, events, signals, and profiles.
 
 **Works well with:** WebhookWise sits upstream of executor platforms — it decides which alerts deserve attention and hands them off with context, so a downstream auto-investigation platform such as Ongrid can act on what gets through.
@@ -43,9 +43,9 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 | Asynchronous Webhook receiving | The API only handles authentication, rate limiting, enqueueing, and basic persistence, releasing the upstream request quickly. |
 | Multi-source normalization | Adapters normalize payloads from different ecosystems into a unified internal structure. |
 | AI + rule dual analysis | Structured LLM analysis is preferred; it automatically falls back to rule-based analysis when the external service has problems. |
-| OpenClaw deep analysis | Optionally integrate OpenClaw and poll for analysis results via TaskIQ delayed tasks. |
+| Deep analysis | Optionally hand an alert to an external investigator gateway (OpenClaw / hookprobe / Hermes dialects) and poll for the report via TaskIQ delayed tasks. |
 | Deduplication and noise reduction | Identifies duplicate and derived alerts based on alert hash, time window, similarity, and optional semantic signals. |
-| Rule-based forwarding | Supports generic Webhook, Feishu card, DingTalk/WeCom bot (URL auto-detected), and OpenClaw targets. |
+| Rule-based forwarding | Supports generic Webhook, Feishu card, DingTalk/WeCom bot (URL auto-detected), and deep-analysis targets. |
 | Silencing and maintenance windows | One-off silences (with backtest + suppression debt report) plus recurring maintenance windows materialized into expiring silences by the scheduler. |
 | Escalation-lite | Optional auto-SLA per importance arms the SLA-breach escalation card (@all / dedicated webhook) for unacknowledged incidents; status-flapping identities are detected and can be muted while they oscillate. |
 | Learn loop | Resolved incidents sediment into KB drafts; published KB entries are attached to outgoing Feishu alert cards and one-click incident postmortem drafts (Markdown) close the review loop. |
@@ -68,7 +68,7 @@ flowchart LR
     process["Normalize -> identify -> deduplicate<br/>analyze -> reduce noise"]
     db["PostgreSQL<br/>events, incidents, knowledge"]
     outbox["Transactional outbox"]
-    targets["Webhook / Feishu / DingTalk<br/>WeCom / OpenClaw"]
+    targets["Webhook / Feishu / DingTalk<br/>WeCom / Deep analysis"]
     response["Response center<br/>investigation and resolution"]
     learning["Recurrence, postmortem,<br/>KB drafts, calibration"]
 
@@ -256,7 +256,7 @@ Application images must use a release tag or digest; avoid using `latest`. For m
 ├── schemas/              # Pydantic API schema
 ├── scripts/              # Operations, export, and observability query scripts
 ├── services/
-│   ├── analysis/         # AI/rule/OpenClaw analysis, caching, and usage
+│   ├── analysis/         # AI/rule/gateway analysis, caching, and usage
 │   ├── forwarding/       # Forwarding rules, Outbox, remote delivery, and retries
 │   ├── incidents/        # Grouping, response, intelligence, recurrence, runbooks, and postmortems
 │   ├── kb/               # Knowledge ingestion, retrieval, and incident sedimentation
@@ -267,7 +267,7 @@ Application images must use a release tag or digest; avoid using `latest`. For m
 ├── templates/            # Dashboard HTML and static assets
 └── tests/
     ├── adapters/         # External payload adapter tests
-    ├── analysis/         # AI, OpenClaw, noise reduction, and analysis strategy tests
+    ├── analysis/         # AI, deep analysis, noise reduction, and analysis strategy tests
     ├── api/              # FastAPI routes and API contract tests
     ├── forwarding/       # Forwarding rules, Outbox, retries, and URL safety tests
     ├── integration/      # In-process business path integration tests

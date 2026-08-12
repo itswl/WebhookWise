@@ -267,8 +267,6 @@ class AIConfig(StaticSettings):
     AI_COST_PER_1K_INPUT_TOKENS: float = Field(default=0.003, ge=0.0)
     AI_COST_PER_1K_OUTPUT_TOKENS: float = Field(default=0.015, ge=0.0)
 
-    DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
-
 
 class KBConfig(StaticSettings):
     """RAG knowledge base: inject relevant internal docs into AI analysis.
@@ -398,30 +396,37 @@ class NotificationConfig(StaticSettings):
     SLA_BREACH_FEISHU_WEBHOOK: str = Field(default="")
 
 
-class OpenClawConfig(StaticSettings):
-    """OpenClaw deep-analysis engine."""
+class DeepAnalysisConfig(StaticSettings):
+    """The deep-analysis gateway: an external investigator, reached over HTTP.
 
-    OPENCLAW_ENABLED: bool = Field(default=False)
-    OPENCLAW_GATEWAY_URL: str = Field(default="http://127.0.0.1:18900")
-    OPENCLAW_GATEWAY_TOKEN: str = Field(default="")
-    OPENCLAW_HOOKS_TOKEN: str = Field(default="")
-    OPENCLAW_HTTP_API_URL: str = Field(default="http://127.0.0.1:8085")
-    OPENCLAW_TIMEOUT_SECONDS: int = Field(default=900, gt=0)
-    OPENCLAW_STABILITY_REQUIRED_HITS: int = Field(default=2, gt=0)
-    OPENCLAW_POLL_INITIAL_DELAY_SECONDS: int = Field(default=10, gt=0)
-    OPENCLAW_POLL_MAX_DELAY_SECONDS: int = Field(default=120, gt=0)
-    OPENCLAW_POLL_BACKOFF_MULTIPLIER: float = Field(default=2.0, ge=1.0)
-    OPENCLAW_MAX_CONSECUTIVE_ERRORS: int = Field(default=8, gt=0)
-    OPENCLAW_ENABLE_DEGRADATION: bool = Field(default=False)
-    OPENCLAW_CONNECT_TIMEOUT_SECONDS: int = Field(default=20, gt=0)
-    OPENCLAW_NONCE_TIMEOUT_SECONDS: float = Field(default=5.0, gt=0.0)
-    OPENCLAW_POLL_TIMEOUT_SECONDS: int = Field(default=180, gt=0)
-    OPENCLAW_POLL_STABILITY_TTL_SECONDS: int = Field(default=3600, gt=0)
-    OPENCLAW_WS_MAX_HISTORY_FRAMES: int = Field(default=50, gt=0)
-    OPENCLAW_WS_MAX_MESSAGE_BYTES: int = Field(default=2_097_152, gt=0)
-    OPENCLAW_DEVICE_ID: str = Field(default="")
-    OPENCLAW_DEVICE_PRIVATE_KEY_PEM: str = Field(default="")
-    OPENCLAW_DEVICE_TOKEN: str = Field(default="")
+    Neutral by design. DEEP_ANALYSIS_PLATFORM names which product answers at
+    DEEP_ANALYSIS_GATEWAY_URL (openclaw / hookprobe / hermes — see
+    services/analysis/deep_analysis_platforms.py); everything else here
+    describes the hop, not the vendor.
+    """
+
+    DEEP_ANALYSIS_ENABLED: bool = Field(default=False)
+    DEEP_ANALYSIS_PLATFORM: str = Field(default="openclaw")
+    DEEP_ANALYSIS_GATEWAY_URL: str = Field(default="http://127.0.0.1:18900")
+    DEEP_ANALYSIS_GATEWAY_TOKEN: str = Field(default="")
+    DEEP_ANALYSIS_HOOKS_TOKEN: str = Field(default="")
+    DEEP_ANALYSIS_HTTP_API_URL: str = Field(default="http://127.0.0.1:8085")
+    DEEP_ANALYSIS_TIMEOUT_SECONDS: int = Field(default=900, gt=0)
+    DEEP_ANALYSIS_STABILITY_REQUIRED_HITS: int = Field(default=2, gt=0)
+    DEEP_ANALYSIS_POLL_INITIAL_DELAY_SECONDS: int = Field(default=10, gt=0)
+    DEEP_ANALYSIS_POLL_MAX_DELAY_SECONDS: int = Field(default=120, gt=0)
+    DEEP_ANALYSIS_POLL_BACKOFF_MULTIPLIER: float = Field(default=2.0, ge=1.0)
+    DEEP_ANALYSIS_MAX_CONSECUTIVE_ERRORS: int = Field(default=8, gt=0)
+    DEEP_ANALYSIS_ENABLE_DEGRADATION: bool = Field(default=False)
+    DEEP_ANALYSIS_CONNECT_TIMEOUT_SECONDS: int = Field(default=20, gt=0)
+    DEEP_ANALYSIS_NONCE_TIMEOUT_SECONDS: float = Field(default=5.0, gt=0.0)
+    DEEP_ANALYSIS_POLL_TIMEOUT_SECONDS: int = Field(default=180, gt=0)
+    DEEP_ANALYSIS_POLL_STABILITY_TTL_SECONDS: int = Field(default=3600, gt=0)
+    DEEP_ANALYSIS_WS_MAX_HISTORY_FRAMES: int = Field(default=50, gt=0)
+    DEEP_ANALYSIS_WS_MAX_MESSAGE_BYTES: int = Field(default=2_097_152, gt=0)
+    DEEP_ANALYSIS_DEVICE_ID: str = Field(default="")
+    DEEP_ANALYSIS_DEVICE_PRIVATE_KEY_PEM: str = Field(default="")
+    DEEP_ANALYSIS_DEVICE_TOKEN: str = Field(default="")
 
 
 class CircuitBreakerConfig(StaticSettings):
@@ -429,8 +434,8 @@ class CircuitBreakerConfig(StaticSettings):
 
     CIRCUIT_BREAKER_FEISHU_THRESHOLD: int = Field(default=5, gt=0)
     CIRCUIT_BREAKER_FEISHU_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0)
-    CIRCUIT_BREAKER_OPENCLAW_THRESHOLD: int = Field(default=5, gt=0)
-    CIRCUIT_BREAKER_OPENCLAW_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0)
+    CIRCUIT_BREAKER_DEEP_ANALYSIS_THRESHOLD: int = Field(default=5, gt=0)
+    CIRCUIT_BREAKER_DEEP_ANALYSIS_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0)
     CIRCUIT_BREAKER_FORWARD_THRESHOLD: int = Field(default=5, gt=0)
     CIRCUIT_BREAKER_FORWARD_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0)
     # LLM (main AI analysis) breaker: when the provider is broadly failing, open
@@ -503,7 +508,7 @@ class AppConfig(StaticSettings):
     ai: AIConfig = Field(default_factory=AIConfig)
     kb: KBConfig = Field(default_factory=KBConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
-    openclaw: OpenClawConfig = Field(default_factory=OpenClawConfig)
+    deep_analysis: DeepAnalysisConfig = Field(default_factory=DeepAnalysisConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     retry: RetryConfig = Field(default_factory=RetryConfig)
     maintenance: MaintenanceConfig = Field(default_factory=MaintenanceConfig)
@@ -520,10 +525,15 @@ class AppConfig(StaticSettings):
             raise ValueError("FORWARD_RETRY_INITIAL_DELAY_SECONDS must not exceed FORWARD_RETRY_MAX_DELAY_SECONDS")
         if self.tasks.FORWARD_OUTBOX_STALE_SECONDS <= self.retry.FORWARD_TIMEOUT_SECONDS:
             raise ValueError("FORWARD_OUTBOX_STALE_SECONDS must exceed FORWARD_TIMEOUT_SECONDS")
-        if self.openclaw.OPENCLAW_POLL_INITIAL_DELAY_SECONDS > self.openclaw.OPENCLAW_POLL_MAX_DELAY_SECONDS:
-            raise ValueError("OPENCLAW_POLL_INITIAL_DELAY_SECONDS must not exceed OPENCLAW_POLL_MAX_DELAY_SECONDS")
-        if self.openclaw.OPENCLAW_CONNECT_TIMEOUT_SECONDS > self.openclaw.OPENCLAW_TIMEOUT_SECONDS:
-            raise ValueError("OPENCLAW_CONNECT_TIMEOUT_SECONDS must not exceed OPENCLAW_TIMEOUT_SECONDS")
+        if (
+            self.deep_analysis.DEEP_ANALYSIS_POLL_INITIAL_DELAY_SECONDS
+            > self.deep_analysis.DEEP_ANALYSIS_POLL_MAX_DELAY_SECONDS
+        ):
+            raise ValueError(
+                "DEEP_ANALYSIS_POLL_INITIAL_DELAY_SECONDS must not exceed DEEP_ANALYSIS_POLL_MAX_DELAY_SECONDS"
+            )
+        if self.deep_analysis.DEEP_ANALYSIS_CONNECT_TIMEOUT_SECONDS > self.deep_analysis.DEEP_ANALYSIS_TIMEOUT_SECONDS:
+            raise ValueError("DEEP_ANALYSIS_CONNECT_TIMEOUT_SECONDS must not exceed DEEP_ANALYSIS_TIMEOUT_SECONDS")
         if self.kb.KB_TOP_K > self.kb.KB_MAX_CANDIDATES:
             raise ValueError("KB_TOP_K must not exceed KB_MAX_CANDIDATES")
         return self

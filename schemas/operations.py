@@ -127,7 +127,7 @@ class NoiseActionUndoRequest(BaseModel):
     actor: str = Field(default="operator", min_length=1, max_length=100)
 
 
-IntegrationTemplate = Literal["feishu", "generic_webhook", "openclaw"]
+IntegrationTemplate = Literal["feishu", "generic_webhook", "deep_analysis"]
 
 
 class IntegrationTestRequest(BaseModel):

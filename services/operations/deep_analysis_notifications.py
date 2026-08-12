@@ -10,7 +10,7 @@ from services.forwarding.outbox import forward_notification
 from services.notifications.feishu import build_deep_analysis_card
 
 if TYPE_CHECKING:
-    from services.analysis.openclaw_client import OpenClawPollPolicy
+    from services.analysis.deep_analysis_gateway import DeepAnalysisPollPolicy
 
 logger = get_logger("deep_analysis_notifications")
 
@@ -52,12 +52,12 @@ async def send_deep_analysis_success_notification(
     record_dict: JsonObject,
     source: str = "",
     *,
-    policy: "OpenClawPollPolicy | None" = None,
+    policy: "DeepAnalysisPollPolicy | None" = None,
 ) -> None:
     """Send a configured notification for completed deep analysis."""
-    from services.analysis.openclaw_client import OpenClawPollPolicy
+    from services.analysis.deep_analysis_gateway import DeepAnalysisPollPolicy
 
-    policy = policy or OpenClawPollPolicy.from_config()
+    policy = policy or DeepAnalysisPollPolicy.from_config()
     webhook_url = policy.notification_webhook_url
     if not webhook_url:
         return
@@ -115,12 +115,12 @@ async def send_deep_analysis_failure_notification(
     record_dict: JsonObject,
     reason: str = "",
     *,
-    policy: "OpenClawPollPolicy | None" = None,
+    policy: "DeepAnalysisPollPolicy | None" = None,
 ) -> None:
     """Send a configured notification for failed deep analysis."""
-    from services.analysis.openclaw_client import OpenClawPollPolicy
+    from services.analysis.deep_analysis_gateway import DeepAnalysisPollPolicy
 
-    policy = policy or OpenClawPollPolicy.from_config()
+    policy = policy or DeepAnalysisPollPolicy.from_config()
     webhook_url = policy.notification_webhook_url
     if not webhook_url:
         return

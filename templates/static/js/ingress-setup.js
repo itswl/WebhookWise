@@ -274,7 +274,7 @@ const IngressSetupModule = (function () {
             escapeHtml(t('ingress.forward.channel')) +
             '</span><select class="form-input" id="ingressForwardTemplate">' +
             '<option value="feishu">Feishu</option><option value="generic_webhook">Webhook</option>' +
-            '<option value="openclaw">OpenClaw</option></select></label>' +
+            '<option value="deep_analysis">' + t('rules.targetType.deep_analysis') + '</option></select></label>' +
             '<label class="form-group"><span class="form-label">' +
             escapeHtml(t('ingress.forward.url')) +
             '</span><input class="form-input" id="ingressForwardUrl" type="url" ' +
@@ -442,7 +442,7 @@ const IngressSetupModule = (function () {
     async function testForward(button) {
         const template = document.getElementById('ingressForwardTemplate')?.value || 'generic_webhook';
         const url = String(document.getElementById('ingressForwardUrl')?.value || '').trim();
-        if (template !== 'openclaw' && !url) {
+        if (template !== 'deep_analysis' && !url) {
             setStatus(t('ingress.forward.urlRequired'), 'error');
             return;
         }

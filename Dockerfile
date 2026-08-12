@@ -96,6 +96,6 @@ ENTRYPOINT ["./entrypoint.sh"]
 #     higher throughput.
 #   - If you only need a single worker and no process management, use directly:
 #     CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000"]
-# timeout 120s: OpenClaw analysis now uses async polling, so the handler no
+# timeout 120s: deep analysis now uses async polling, so the handler no
 # longer blocks for long periods.
 CMD ["gunicorn", "-c", "gunicorn_config.py", "api.app:app"]

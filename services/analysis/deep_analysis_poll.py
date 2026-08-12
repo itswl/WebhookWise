@@ -1,4 +1,4 @@
-"""OpenClaw polling state machine and persistence."""
+"""Deep-analysis gateway polling state machine and persistence."""
 
 from __future__ import annotations
 
@@ -19,12 +19,12 @@ from core.logger import get_logger
 from core.observability.metrics import DEEP_ANALYSIS_TOTAL
 from core.observability.tracing import get_current_trace_id
 from core.redis_client import redis_delete, redis_get_json_dict, redis_setex_json
-from core.redis_health import openclaw_poller_stability
+from core.redis_health import deep_analysis_poller_stability
 from db.session import session_scope
 from models import DeepAnalysis, WebhookEvent
-from services.analysis.openclaw_client import (
-    OpenClawPollPolicy,
-    poll_openclaw_final,
+from services.analysis.deep_analysis_gateway import (
+    DeepAnalysisPollPolicy,
+    poll_gateway_final,
     poll_session_result,
 )
 from services.operations.deep_analysis_notifications import (
@@ -35,18 +35,18 @@ from services.operations.deep_analysis_notifications import (
     send_deep_analysis_success_notification,
 )
 from services.operations.taskiq_retry_scheduler import (
-    compute_openclaw_poll_delay,
-    schedule_openclaw_poll,
+    compute_deep_analysis_poll_delay,
+    schedule_deep_analysis_poll,
 )
 from services.webhooks.types import (
+    GATEWAY_NEED_SUCCESS_NOTIFY,
+    GATEWAY_RUN_ID,
+    GATEWAY_TEXT,
     MANUAL_RETRY_STARTED_AT,
-    OPENCLAW_NEED_SUCCESS_NOTIFY,
-    OPENCLAW_RUN_ID,
-    OPENCLAW_TEXT,
     DeepAnalysisStatus,
 )
 
-logger = get_logger("openclaw.poll")
+logger = get_logger("deep_analysis.poll")
 MANUAL_RETRY_STARTED_AT_KEY = MANUAL_RETRY_STARTED_AT
 
 
@@ -62,13 +62,13 @@ def _seconds_until(target: datetime) -> int:
 
 
 def _clamp_poll_delay_to_timeout(
-    delay_seconds: int, created_at: datetime | None, *, policy: OpenClawPollPolicy | None = None
+    delay_seconds: int, created_at: datetime | None, *, policy: DeepAnalysisPollPolicy | None = None
 ) -> int:
-    return (policy or OpenClawPollPolicy.from_config()).clamp_delay_to_timeout(delay_seconds, created_at)
+    return (policy or DeepAnalysisPollPolicy.from_config()).clamp_delay_to_timeout(delay_seconds, created_at)
 
 
-def _poll_claim_lease_seconds(policy: OpenClawPollPolicy | None = None) -> int:
-    return (policy or OpenClawPollPolicy.from_config()).poll_claim_lease_seconds
+def _poll_claim_lease_seconds(policy: DeepAnalysisPollPolicy | None = None) -> int:
+    return (policy or DeepAnalysisPollPolicy.from_config()).poll_claim_lease_seconds
 
 
 def _text_hash(text: str) -> str:
@@ -107,34 +107,34 @@ def _is_transient_poll_error(error: object) -> bool:
 
 
 async def _get_poll_stability(record_id: int) -> JsonObject | None:
-    return await redis_get_json_dict(openclaw_poller_stability(record_id))
+    return await redis_get_json_dict(deep_analysis_poller_stability(record_id))
 
 
-async def _set_poll_stability(record_id: int, data: JsonObject, *, policy: OpenClawPollPolicy) -> None:
-    await redis_setex_json(openclaw_poller_stability(record_id), policy.stability_ttl_seconds, data)
+async def _set_poll_stability(record_id: int, data: JsonObject, *, policy: DeepAnalysisPollPolicy) -> None:
+    await redis_setex_json(deep_analysis_poller_stability(record_id), policy.stability_ttl_seconds, data)
 
 
 async def _clear_poll_stability(record_id: int) -> None:
-    await redis_delete(openclaw_poller_stability(record_id))
+    await redis_delete(deep_analysis_poller_stability(record_id))
 
 
-async def clear_openclaw_poll_state(record_id: int) -> None:
+async def clear_deep_analysis_poll_state(record_id: int) -> None:
     await _clear_poll_stability(record_id)
 
 
-async def poll_openclaw_result_via_http(
+async def poll_gateway_result_via_http(
     session_key: str,
     retry_count: int = 3,
     *,
-    policy: OpenClawPollPolicy | None = None,
+    policy: DeepAnalysisPollPolicy | None = None,
     http_client: Any | None = None,
 ) -> JsonObject:
-    policy = policy or OpenClawPollPolicy.from_config()
-    return await poll_openclaw_final(
+    policy = policy or DeepAnalysisPollPolicy.from_config()
+    return await poll_gateway_final(
         session_key,
         policy=policy,
         # Same gateway as the submit leg, so the same client: the URL is
-        # OPENCLAW_HTTP_API_URL, operator configuration pointing at a sidecar on
+        # DEEP_ANALYSIS_HTTP_API_URL, operator configuration pointing at a sidecar on
         # the container network. Under the shared (DNS-hardened) client every
         # poll died with "target host resolves to a non-public IP", so a run
         # that finished fine was collected as a transient failure forever.
@@ -161,7 +161,7 @@ async def _failure_update_with_notification(
     update: JsonObject,
     reason: str,
     *,
-    policy: OpenClawPollPolicy,
+    policy: DeepAnalysisPollPolicy,
 ) -> JsonObject:
     record_id = rec["id"]
     await _clear_poll_stability(record_id)
@@ -174,7 +174,7 @@ async def _handle_poll_timeout(
     rec: JsonObject,
     timeout_started_at: datetime | None,
     *,
-    policy: OpenClawPollPolicy,
+    policy: DeepAnalysisPollPolicy,
 ) -> JsonObject | None:
     if timeout_started_at is None:
         return None
@@ -186,10 +186,10 @@ async def _handle_poll_timeout(
     logger.info(
         "[Poller] Analysis timed out: id=%s elapsed=%.0fs timeout=%ss", record_id, elapsed_total, timeout_seconds
     )
-    DEEP_ANALYSIS_TOTAL.labels(status="timeout", engine=rec.get("engine", "openclaw")).inc()
+    DEEP_ANALYSIS_TOTAL.labels(status="timeout", engine=str(rec.get("engine") or "unknown")).inc()
     update: JsonObject = {
         "status": DeepAnalysisStatus.FAILED,
-        "analysis_result": {"root_cause": "OpenClaw analysis timed out"},
+        "analysis_result": {"root_cause": "Deep analysis timed out"},
     }
     return await _failure_update_with_notification(rec, update, "Timeout failure", policy=policy)
 
@@ -198,43 +198,43 @@ async def _handle_missing_session_key(
     rec: JsonObject,
     timeout_started_at: datetime | None,
     *,
-    policy: OpenClawPollPolicy,
+    policy: DeepAnalysisPollPolicy,
 ) -> JsonObject | None:
-    if rec["openclaw_session_key"]:
+    if rec["gateway_session_key"]:
         return None
 
     record_id = rec["id"]
     elapsed = _elapsed_since(timeout_started_at, default=float(policy.timeout_seconds))
-    if elapsed < compute_openclaw_poll_delay(0, policy=policy):
+    if elapsed < compute_deep_analysis_poll_delay(0, policy=policy):
         return _poll_skip(record_id)
     logger.warning("[Poller] Missing session_key, marking as failed: id=%s elapsed=%.0fs", record_id, elapsed)
-    DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=rec.get("engine", "openclaw")).inc()
+    DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=str(rec.get("engine") or "unknown")).inc()
     update: JsonObject = {
         "status": DeepAnalysisStatus.FAILED,
         "analysis_result": {
-            "root_cause": "Could not obtain an analysis session; OpenClaw trigger failed",
+            "root_cause": "Could not obtain an analysis session; gateway trigger failed",
             "error": "missing_session_key",
             "failure_reason": "Could not obtain the analysis session key",
         },
     }
     return await _failure_update_with_notification(
-        rec, update, "No session_key - OpenClaw trigger failed", policy=policy
+        rec, update, "No session_key - gateway trigger failed", policy=policy
     )
 
 
-async def _fetch_poll_result(rec: JsonObject, *, policy: OpenClawPollPolicy) -> JsonObject:
+async def _fetch_poll_result(rec: JsonObject, *, policy: DeepAnalysisPollPolicy) -> JsonObject:
     if policy.has_http_api:
-        return await poll_openclaw_result_via_http(rec["openclaw_session_key"], policy=policy)
+        return await poll_gateway_result_via_http(rec["gateway_session_key"], policy=policy)
     return await poll_session_result(
         gateway_url=policy.gateway_url,
         gateway_token=policy.gateway_token,
-        session_key=rec["openclaw_session_key"],
+        session_key=rec["gateway_session_key"],
         timeout=policy.poll_timeout_seconds,
     )
 
 
-def _parse_openclaw_payload(text: str) -> dict[str, Any] | None:
-    """Best-effort structured parse of OpenClaw text.
+def _parse_gateway_payload(text: str) -> dict[str, Any] | None:
+    """Best-effort structured parse of the gateway's reply text.
 
     Uses the same robust pipeline as the report normalizer so that a leading
     "thinking" prose preamble, trailing text, markdown fences, escaped JSON and
@@ -244,9 +244,9 @@ def _parse_openclaw_payload(text: str) -> dict[str, Any] | None:
     """
     # Imported lazily to avoid a heavy import (json_repair) on module load and
     # to keep the contracts -> analysis dependency one-directional at runtime.
-    from contracts.deep_analysis_report import parse_openclaw_report_payload
+    from contracts.deep_analysis_report import parse_gateway_report_payload
 
-    parsed = parse_openclaw_report_payload(text)
+    parsed = parse_gateway_report_payload(text)
     if isinstance(parsed, dict):
         return parsed
 
@@ -261,29 +261,29 @@ def _parse_openclaw_payload(text: str) -> dict[str, Any] | None:
     return None
 
 
-def build_analysis_result_from_openclaw_text(text: str, run_id: str = "") -> JsonObject:
-    parsed_result = _parse_openclaw_payload(text)
+def build_analysis_result_from_gateway_text(text: str, run_id: str = "") -> JsonObject:
+    parsed_result = _parse_gateway_payload(text)
     if parsed_result is not None:
-        parsed_result[OPENCLAW_RUN_ID] = run_id
-        parsed_result[OPENCLAW_TEXT] = text
+        parsed_result[GATEWAY_RUN_ID] = run_id
+        parsed_result[GATEWAY_TEXT] = text
         return dict(parsed_result)
     # Nothing parsed as structured JSON. This is now reached only for genuinely
     # unstructured text (plain prose / degraded fallback), NOT for the
     # "thinking prefix + (possibly truncated) JSON" blobs that previously
-    # collapsed here — those are recovered by _parse_openclaw_payload above.
+    # collapsed here — those are recovered by _parse_gateway_payload above.
     # For real prose the text itself is the best available signal, so surface it
     # as root_cause for display.
-    return {"root_cause": text, OPENCLAW_TEXT: text}
+    return {"root_cause": text, GATEWAY_TEXT: text}
 
 
 def _completed_update(rec: JsonObject, text: str, timeout_started_at: datetime | None) -> JsonObject:
     record_id = rec["id"]
-    analysis_result = build_analysis_result_from_openclaw_text(text, str(rec["openclaw_run_id"] or ""))
+    analysis_result = build_analysis_result_from_gateway_text(text, str(rec["gateway_run_id"] or ""))
     duration = _elapsed_since(timeout_started_at)
-    DEEP_ANALYSIS_TOTAL.labels(status="completed", engine=rec.get("engine", "openclaw")).inc()
+    DEEP_ANALYSIS_TOTAL.labels(status="completed", engine=str(rec.get("engine") or "unknown")).inc()
     return _poll_update(
         record_id,
-        **{OPENCLAW_NEED_SUCCESS_NOTIFY: True},
+        **{GATEWAY_NEED_SUCCESS_NOTIFY: True},
         status=DeepAnalysisStatus.COMPLETED,
         analysis_result=analysis_result,
         duration_seconds=duration,
@@ -308,7 +308,7 @@ async def _handle_completed_poll_result(
     result: JsonObject,
     timeout_started_at: datetime | None,
     *,
-    policy: OpenClawPollPolicy,
+    policy: DeepAnalysisPollPolicy,
 ) -> JsonObject:
     record_id = rec["id"]
     text = str(result.get("text", ""))
@@ -358,7 +358,7 @@ async def _handle_error_poll_result(
     rec: JsonObject,
     result: JsonObject,
     *,
-    policy: OpenClawPollPolicy,
+    policy: DeepAnalysisPollPolicy,
 ) -> JsonObject:
     record_id = rec["id"]
     prev_snapshot = await _get_poll_stability(record_id)
@@ -373,29 +373,29 @@ async def _handle_error_poll_result(
                 error_count,
             )
             await _clear_poll_stability(record_id)
-            DEEP_ANALYSIS_TOTAL.labels(status="degraded", engine=rec.get("engine", "openclaw")).inc()
+            DEEP_ANALYSIS_TOTAL.labels(status="degraded", engine=str(rec.get("engine") or "unknown")).inc()
             return _poll_update(
                 record_id,
                 # A degraded completion is still a completion the operator is
                 # waiting on — without this flag the record turns COMPLETED but
                 # the success card is silently never sent.
-                **{OPENCLAW_NEED_SUCCESS_NOTIFY: True},
+                **{GATEWAY_NEED_SUCCESS_NOTIFY: True},
                 status=DeepAnalysisStatus.COMPLETED,
-                analysis_result=build_analysis_result_from_openclaw_text(text, str(rec["openclaw_run_id"] or "")),
+                analysis_result=build_analysis_result_from_gateway_text(text, str(rec["gateway_run_id"] or "")),
             )
         await _set_poll_stability(record_id, {**prev_snapshot, "error_count": error_count}, policy=policy)
         return _poll_skip(record_id)
 
-    error_msg = str(result.get("error", "OpenClaw returned an error"))
+    error_msg = str(result.get("error", "The gateway returned an error"))
     if bool(result.get("retryable")) or _is_transient_poll_error(error_msg):
         logger.warning(
-            "[Poller] OpenClaw polling hit a transient error, keeping pending to retry next round: id=%s error=%s",
+            "[Poller] Polling hit a transient error, keeping pending to retry next round: id=%s error=%s",
             record_id,
             error_msg,
         )
         return _poll_skip(record_id)
 
-    DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=rec.get("engine", "openclaw")).inc()
+    DEEP_ANALYSIS_TOTAL.labels(status="failed", engine=str(rec.get("engine") or "unknown")).inc()
     update: JsonObject = {
         "status": DeepAnalysisStatus.FAILED,
         "analysis_result": {"root_cause": error_msg, "error": error_msg, "failure_reason": error_msg},
@@ -408,7 +408,7 @@ async def _handle_poll_result(
     result: JsonObject,
     timeout_started_at: datetime | None,
     *,
-    policy: OpenClawPollPolicy,
+    policy: DeepAnalysisPollPolicy,
 ) -> JsonObject:
     status = result.get("status")
     if status == "completed":
@@ -424,8 +424,8 @@ async def _handle_poll_result(
     return _poll_skip(rec["id"])
 
 
-async def _poll_single_record(rec: JsonObject, *, policy: OpenClawPollPolicy | None = None) -> JsonObject:
-    policy = policy or OpenClawPollPolicy.from_config()
+async def _poll_single_record(rec: JsonObject, *, policy: DeepAnalysisPollPolicy | None = None) -> JsonObject:
+    policy = policy or DeepAnalysisPollPolicy.from_config()
     record_id = rec["id"]
 
     try:
@@ -457,8 +457,8 @@ def _record_to_poll_dict(record: Any) -> JsonObject:
         "id": record.id,
         "webhook_event_id": record.webhook_event_id,
         "engine": record.engine,
-        "openclaw_session_key": record.openclaw_session_key,
-        "openclaw_run_id": record.openclaw_run_id,
+        "gateway_session_key": record.gateway_session_key,
+        "gateway_run_id": record.gateway_run_id,
         "created_at": record.created_at,
         "status": record.status,
         "analysis_result": record.analysis_result,
@@ -468,10 +468,10 @@ def _record_to_poll_dict(record: Any) -> JsonObject:
     }
 
 
-async def _claim_openclaw_poll(
-    analysis_id: int, *, policy: OpenClawPollPolicy | None = None
+async def _claim_deep_analysis_poll(
+    analysis_id: int, *, policy: DeepAnalysisPollPolicy | None = None
 ) -> tuple[JsonObject | None, int | None]:
-    policy = policy or OpenClawPollPolicy.from_config()
+    policy = policy or DeepAnalysisPollPolicy.from_config()
     now = utcnow()
     lease_until = now + timedelta(seconds=_poll_claim_lease_seconds(policy))
     async with session_scope() as session:
@@ -498,22 +498,22 @@ async def _claim_openclaw_poll(
     return None, None
 
 
-async def _schedule_openclaw_poll_task(analysis_id: int, delay_seconds: int) -> None:
+async def _schedule_deep_analysis_poll_task(analysis_id: int, delay_seconds: int) -> None:
     try:
-        await schedule_openclaw_poll(analysis_id, delay_seconds)
+        await schedule_deep_analysis_poll(analysis_id, delay_seconds)
     except (OSError, RuntimeError, TimeoutError) as e:
-        logger.warning("[Poller] Failed to schedule next OpenClaw poll analysis_id=%s error=%s", analysis_id, e)
+        logger.warning("[Poller] Failed to schedule next poll analysis_id=%s error=%s", analysis_id, e)
 
 
-async def _schedule_next_openclaw_poll(
+async def _schedule_next_deep_analysis_poll(
     analysis_id: int,
     poll_attempts: int,
     created_at: datetime | None,
     *,
-    policy: OpenClawPollPolicy | None = None,
+    policy: DeepAnalysisPollPolicy | None = None,
 ) -> None:
     delay = _clamp_poll_delay_to_timeout(
-        compute_openclaw_poll_delay(poll_attempts, policy=policy), created_at, policy=policy
+        compute_deep_analysis_poll_delay(poll_attempts, policy=policy), created_at, policy=policy
     )
     next_poll_at = utcnow() + timedelta(seconds=delay)
     async with session_scope() as session:
@@ -521,28 +521,28 @@ async def _schedule_next_openclaw_poll(
         if not record or record.status != DeepAnalysisStatus.PENDING:
             return
         record.next_poll_at = next_poll_at
-    await _schedule_openclaw_poll_task(analysis_id, delay)
-    logger.info("[Poller] Scheduled next OpenClaw poll analysis_id=%s delay=%ss", analysis_id, delay)
+    await _schedule_deep_analysis_poll_task(analysis_id, delay)
+    logger.info("[Poller] Scheduled next poll analysis_id=%s delay=%ss", analysis_id, delay)
 
 
-async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolicy | None = None) -> None:
+async def poll_deep_analysis_once(analysis_id: int, *, policy: DeepAnalysisPollPolicy | None = None) -> None:
     try:
-        policy = policy or OpenClawPollPolicy.from_config()
-        record_dict, early_reschedule_delay = await _claim_openclaw_poll(analysis_id, policy=policy)
+        policy = policy or DeepAnalysisPollPolicy.from_config()
+        record_dict, early_reschedule_delay = await _claim_deep_analysis_poll(analysis_id, policy=policy)
         if early_reschedule_delay is not None:
             logger.debug(
-                "[Poller] OpenClaw poll task triggered early, rescheduling: id=%s delay=%ss",
+                "[Poller] Poll task triggered early, rescheduling: id=%s delay=%ss",
                 analysis_id,
                 early_reschedule_delay,
             )
-            await _schedule_openclaw_poll_task(analysis_id, early_reschedule_delay)
+            await _schedule_deep_analysis_poll_task(analysis_id, early_reschedule_delay)
             return
         if record_dict is None:
             logger.debug("[Poller] No claimable pending analysis: id=%s", analysis_id)
             return
 
         logger.info(
-            "[Poller] Polling OpenClaw analysis: id=%s webhook_id=%s attempt=%s",
+            "[Poller] Polling deep analysis: id=%s webhook_id=%s attempt=%s",
             analysis_id,
             record_dict.get("webhook_event_id"),
             record_dict.get("poll_attempts"),
@@ -551,7 +551,7 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
         poll_result = await _poll_single_record(record_dict, policy=policy)
 
         if poll_result.get("action") != "update":
-            await _schedule_next_openclaw_poll(
+            await _schedule_next_deep_analysis_poll(
                 analysis_id,
                 int(record_dict.get("poll_attempts") or 0),
                 _poll_timeout_started_at(record_dict),
@@ -578,7 +578,7 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
             record.next_poll_at = None
             await session.flush()
 
-            if poll_result.get(OPENCLAW_NEED_SUCCESS_NOTIFY):
+            if poll_result.get(GATEWAY_NEED_SUCCESS_NOTIFY):
                 # Collect notification data inside the session (detached plain
                 # dicts), but send it AFTER the transaction commits so a slow
                 # notification cannot hold the DB transaction open.
@@ -604,7 +604,7 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: OpenClawPollPolic
         logger.error("[Poller] Polling task error analysis_id=%s error=%s", analysis_id, e, exc_info=True)
 
 
-async def run_openclaw_poll_scan(limit: int = 100) -> int:
+async def run_deep_analysis_poll_scan(limit: int = 100) -> int:
     now = utcnow()
     async with session_scope() as session:
         stmt = (
@@ -617,9 +617,9 @@ async def run_openclaw_poll_scan(limit: int = 100) -> int:
         ids = list((await session.execute(stmt)).scalars().all())
 
     for analysis_id in ids:
-        await _schedule_openclaw_poll_task(analysis_id, 0)
+        await _schedule_deep_analysis_poll_task(analysis_id, 0)
     if ids:
-        logger.info("[Poller] Scan-scheduled pending OpenClaw analyses count=%s ids=%s", len(ids), ids)
+        logger.info("[Poller] Scan-scheduled pending analyses count=%s ids=%s", len(ids), ids)
     else:
-        logger.debug("[Poller] Scan found no OpenClaw analyses to schedule")
+        logger.debug("[Poller] Scan found no analyses to schedule")
     return len(ids)

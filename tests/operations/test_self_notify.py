@@ -107,11 +107,11 @@ async def test_generic_kind_posts_structured_json(
     monkeypatch.setattr(temp_config.notifications, "SELF_NOTIFY_WEBHOOK_URL", "https://fallback.example/hook")
     monkeypatch.setattr(temp_config.notifications, "SELF_NOTIFY_KIND", "generic")
 
-    assert await self_notify.notify_delivery_exhausted(target_type="openclaw", error="x", outbox_id=3)
+    assert await self_notify.notify_delivery_exhausted(target_type="deep_analysis", error="x", outbox_id=3)
     _, payload = fake_http.posts[0]
     assert payload["source"] == "webhookwise"
     assert payload["type"] == "delivery_exhausted"
-    assert payload["target_type"] == "openclaw"
+    assert payload["target_type"] == "deep_analysis"
 
 
 @pytest.mark.asyncio

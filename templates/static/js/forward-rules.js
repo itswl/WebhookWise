@@ -259,7 +259,7 @@ function formatDuplicateStatus(status) {
 function formatTargetType(type) {
     const map = {
         'feishu': t('rules.targetType.feishu'),
-        'openclaw': t('rules.targetType.openclaw'),
+        'deep_analysis': t('rules.targetType.deep_analysis'),
         'webhook': t('rules.targetType.webhook')
     };
     return map[type] || type || t('rules.targetType.unknown');
@@ -375,8 +375,8 @@ function onTargetTypeChange() {
     const targetType = document.getElementById('ruleFormTargetType').value;
     const urlGroup = document.getElementById('ruleFormTargetUrlGroup');
 
-    // The OpenClaw type does not require an address
-    if (targetType === 'openclaw') {
+    // The deep-analysis target has no address: the gateway is server config
+    if (targetType === 'deep_analysis') {
         urlGroup.style.display = 'none';
     } else {
         urlGroup.style.display = 'block';
@@ -401,7 +401,7 @@ async function saveRule() {
         return;
     }
 
-    if (targetType !== 'openclaw' && !targetUrl) {
+    if (targetType !== 'deep_analysis' && !targetUrl) {
         showToast(t('rules.alert.targetUrlRequired'), 'info');
         return;
     }
@@ -430,7 +430,7 @@ async function saveRule() {
         match_environment: document.getElementById('ruleFormEnvironment').value.trim(),
         match_payload: document.getElementById('ruleFormPayload').value.trim(),
         target_type: targetType,
-        target_url: targetType === 'openclaw' ? '' : targetUrl,
+        target_url: targetType === 'deep_analysis' ? '' : targetUrl,
         target_name: targetName,
         stop_on_match: document.getElementById('ruleFormStopOnMatch').checked
     };

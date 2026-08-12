@@ -41,7 +41,7 @@ _FORWARDING_RUNTIME_ERRORS = (OSError, RuntimeError, SQLAlchemyError, TimeoutErr
 
 
 async def _validated_target_url(target_type: str, target_url: object) -> str:
-    if target_type == "openclaw":
+    if target_type == "deep_analysis":
         return str(target_url or "").strip()
     if not isinstance(target_url, str) or not target_url.strip():
         raise UnsafeTargetUrlError("Target URL cannot be empty")
@@ -69,7 +69,7 @@ async def _validate_enabled_delivery_target(
     # feishu_relay: the door answers 404/405 to probes (it only accepts POSTs
     # with a valid HMAC), so a liveness probe here would reject every valid
     # relay flip. The delivery ledger surfaces a dead relay within a minute.
-    if not enabled or target_type in ("openclaw", "feishu_relay"):
+    if not enabled or target_type in ("deep_analysis", "feishu_relay"):
         return True
 
     from services.forwarding.remote import send_forward_rule_test

@@ -65,7 +65,7 @@ def get_deep_analysis_client() -> httpx.AsyncClient:
     an alert payload becomes an SSRF primitive.
 
     The deep-analysis gateway is not that. Its URL comes from
-    OPENCLAW_GATEWAY_URL — process configuration, set by whoever deploys the
+    DEEP_ANALYSIS_GATEWAY_URL — process configuration, set by whoever deploys the
     service, never derived from a payload — and the intended target IS private
     infrastructure: a sidecar on the container network. Under the shared client
     every request died with "target host resolves to a non-public IP", so the

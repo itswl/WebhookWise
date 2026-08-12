@@ -20,7 +20,7 @@ WebhookWise 是一个面向生产运维的智能 Webhook 接收、分析与转�
 
 - API 在请求入队后立即返回 `200 OK`,耗时处理移入 TaskIQ / Redis Stream;入队是持久性边界,见[交付语义](#交付语义)。
 - Worker 流水线负责归一化、持久化、去重、AI/规则分析、降噪与转发决策。
-- 转发 Outbox 将业务状态与外部 HTTP/飞书/OpenClaw 副作用解耦。
+- 转发 Outbox 将业务状态与外部 HTTP/飞书/深度分析副作用解耦。
 - OTel 优先的可观测性贯通指标、追踪、日志、事件、信号与性能剖析。
 
 WebhookWise 位于执行类平台的上游:它决定哪些告警值得关注并附带上下文交接,下游的自动排查平台(例如 Ongrid)可以接手处理放行的告警。
@@ -32,9 +32,9 @@ WebhookWise 位于执行类平台的上游:它决定哪些告警值得关注并�
 | 异步 Webhook 接收 | API 只做鉴权、限流、入队与基础持久化,快速释放上游请求。 |
 | 多源归一化 | 适配器把不同生态的载荷归一为统一内部结构。 |
 | AI + 规则双路分析 | 优先结构化 LLM 分析,外部服务异常时自动回退规则分析。 |
-| OpenClaw 深度分析 | 可选接入 OpenClaw,经 TaskIQ 延迟任务轮询分析结果。 |
+| 深度分析 | 可选接入外部调查网关(OpenClaw / hookprobe / Hermes 方言),经 TaskIQ 延迟任务轮询报告。 |
 | 去重与降噪 | 基于告警哈希、时间窗、相似度及可选语义信号识别重复与衍生告警。 |
-| 规则化转发 | 支持通用 Webhook、飞书卡片、钉钉/企业微信机器人(URL 自动识别)与 OpenClaw 目标。 |
+| 规则化转发 | 支持通用 Webhook、飞书卡片、钉钉/企业微信机器人(URL 自动识别)与深度分析目标。 |
 | 静默与维护窗口 | 一次性静默(含回测与压制债务报告),周期维护窗口由调度器物化为到期静默。 |
 | 轻量升级(Escalation-lite) | 按重要度可选自动 SLA,未确认事件触发 SLA 违约升级卡片(@所有人 / 专用 Webhook);振荡身份可在震荡期间静音。 |
 | 学习闭环 | 已解决事件沉淀为知识库草稿;已发布条目附加到外发飞书告警卡片,一键事件复盘草稿(Markdown)闭合回顾环。 |
@@ -57,7 +57,7 @@ flowchart LR
     process["Normalize -> identify -> deduplicate<br/>analyze -> reduce noise"]
     db["PostgreSQL<br/>events, incidents, knowledge"]
     outbox["Transactional outbox"]
-    targets["Webhook / Feishu / DingTalk<br/>WeCom / OpenClaw"]
+    targets["Webhook / Feishu / DingTalk<br/>WeCom / 深度分析"]
     response["Response center<br/>investigation and resolution"]
     learning["Recurrence, postmortem,<br/>KB drafts, calibration"]
 

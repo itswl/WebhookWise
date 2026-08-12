@@ -44,7 +44,7 @@ async def create_outbox_records(
     for rule in matched_rules:
         target_type = str(rule.target_type or "webhook")
         target_url = str(rule.target_url or "")
-        if target_type != "openclaw" and not target_url:
+        if target_type != "deep_analysis" and not target_url:
             logger.warning("[%s] Rule '%s' has empty target_url, skipping", log_tag, rule.name or rule.id)
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "skipped_empty_target").inc()
             continue

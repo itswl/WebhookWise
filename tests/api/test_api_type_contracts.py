@@ -376,8 +376,8 @@ async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatc
         analysis_result={"root_cause": "old timeout"},
         status=DeepAnalysisStatus.TIMEOUT,
         created_at=old_created_at,
-        openclaw_run_id="run-1",
-        openclaw_session_key="session-1",
+        gateway_run_id="run-1",
+        gateway_session_key="session-1",
         poll_attempts=4,
         last_polled_at=old_created_at,
         next_poll_at=old_created_at,
@@ -397,9 +397,11 @@ async def test_retry_deep_analysis_schedules_background_poll(session, monkeypatc
     async def fail_if_called(*_: object, **__: object) -> tuple[dict[str, object], str]:
         raise AssertionError("retry with an existing session_key should not block on remote analysis")
 
-    monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", fake_schedule)
-    monkeypatch.setattr("services.analysis.openclaw_poll.clear_openclaw_poll_state", fake_clear)
-    monkeypatch.setattr(deep_analysis, "_run_openclaw_deep_analysis", fail_if_called)
+    monkeypatch.setattr(
+        "services.operations.taskiq_retry_scheduler.schedule_deep_analysis_poll_best_effort", fake_schedule
+    )
+    monkeypatch.setattr("services.analysis.deep_analysis_poll.clear_deep_analysis_poll_state", fake_clear)
+    monkeypatch.setattr(deep_analysis, "_run_deep_analysis", fail_if_called)
 
     started = utcnow()
     resp = await deep_analysis.retry_deep_analysis(record.id, session=session)

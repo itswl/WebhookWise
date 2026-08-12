@@ -10,7 +10,7 @@ from core.logger import get_logger
 from core.taskiq_broker import dynamic_schedule_source
 
 if TYPE_CHECKING:
-    from services.analysis.openclaw_client import OpenClawPollPolicy
+    from services.analysis.deep_analysis_gateway import DeepAnalysisPollPolicy
 
 logger = get_logger("taskiq_scheduler")
 _SCHEDULING_ERRORS = (OSError, RuntimeError, TimeoutError, ValueError)
@@ -29,11 +29,11 @@ def compute_backoff_delay(
     return max(0, int(min(delay, max_delay)))
 
 
-def compute_openclaw_poll_delay(poll_attempts: int, *, policy: OpenClawPollPolicy | None = None) -> int:
-    """Return the next OpenClaw poll delay using bounded exponential backoff."""
-    from services.analysis.openclaw_client import OpenClawPollPolicy
+def compute_deep_analysis_poll_delay(poll_attempts: int, *, policy: DeepAnalysisPollPolicy | None = None) -> int:
+    """Return the next poll delay using bounded exponential backoff."""
+    from services.analysis.deep_analysis_gateway import DeepAnalysisPollPolicy
 
-    return (policy or OpenClawPollPolicy.from_config()).delay_for_attempt(poll_attempts)
+    return (policy or DeepAnalysisPollPolicy.from_config()).delay_for_attempt(poll_attempts)
 
 
 async def _schedule_by_time(schedule_id: str, delay_seconds: int, task: Any, **kwargs: Any) -> None:
@@ -103,18 +103,18 @@ async def schedule_forward_outbox(outbox_id: int, delay_seconds: int) -> None:
     )
 
 
-async def schedule_openclaw_poll(analysis_id: int, delay_seconds: int) -> None:
-    from services.operations.tasks import poll_openclaw_analysis_task
+async def schedule_deep_analysis_poll(analysis_id: int, delay_seconds: int) -> None:
+    from services.operations.tasks import poll_deep_analysis_task
 
     await _schedule_by_time(
-        f"openclaw-poll:{analysis_id}", delay_seconds, poll_openclaw_analysis_task, analysis_id=analysis_id
+        f"deep-analysis-poll:{analysis_id}", delay_seconds, poll_deep_analysis_task, analysis_id=analysis_id
     )
 
 
-async def schedule_openclaw_poll_best_effort(analysis_id: int, delay_seconds: int | None = None) -> None:
+async def schedule_deep_analysis_poll_best_effort(analysis_id: int, delay_seconds: int | None = None) -> None:
     try:
         if delay_seconds is None:
-            delay_seconds = compute_openclaw_poll_delay(0)
-        await schedule_openclaw_poll(analysis_id, delay_seconds)
+            delay_seconds = compute_deep_analysis_poll_delay(0)
+        await schedule_deep_analysis_poll(analysis_id, delay_seconds)
     except _SCHEDULING_ERRORS as e:
-        logger.warning("[OpenClaw] Failed to schedule poll analysis_id=%s error=%s", analysis_id, e)
+        logger.warning("[DeepAnalysis] Failed to schedule poll analysis_id=%s error=%s", analysis_id, e)

@@ -680,7 +680,7 @@ const AlertsModule = {
     /**
      * Render one investigation report from the deep-analysis gateway.
      *
-     * The gateway hands back `_openclaw_text`, the investigator's own reply.
+     * The gateway hands back `_gateway_text`, the investigator's own reply.
      * It used to be printed verbatim on the assumption that it was markdown —
      * but the investigator answers in JSON, so the entire report landed on
      * screen as one wall of escaped braces and the structured renderer below
@@ -792,7 +792,7 @@ const AlertsModule = {
 
         // Nothing recognised — show the payload rather than an empty card.
         if (!html) {
-            const raw = analysis._openclaw_text || JSON.stringify(analysis, null, 2);
+            const raw = analysis._gateway_text || JSON.stringify(analysis, null, 2);
             return '<pre class="ww-pre">' + esc(raw) + '</pre>';
         }
 
@@ -1455,7 +1455,12 @@ const AlertsModule = {
             // Arrow, not function(): the body calls this.renderDeepReport.
             records.forEach((record) => {
                 const analysis = record.analysis_result || {};
-                const engineLabel = record.engine === 'openclaw' ? 'OpenClaw' : t('deep.engine.local');
+                // The engine is whatever platform answered; show its own name rather than
+                // assuming one product. t() falls back to the raw slug for a
+                // gateway newer than the dictionary, which beats mislabelling it.
+                const engineLabel = record.engine
+                    ? t('deep.engine.' + record.engine, {}, record.engine)
+                    : t('deep.engine.local');
                 const time = formatTimeFull(record.created_at);
                 const duration = record.duration_seconds ? record.duration_seconds.toFixed(1) + 's' : '-';
 
@@ -1474,14 +1479,14 @@ const AlertsModule = {
                     html += '</div>';
                 }
 
-                // Check whether the status is pending (OpenClaw asynchronously waiting for results)
+                // Check whether the status is pending (the gateway answers asynchronously)
                 if (record.status === 'pending') {
                     // Analyzing-state card
                     html += '<div style="text-align:center; padding:20px; background:var(--info-bg); border:1px solid var(--info-bg); border-radius:8px; color:var(--info);">';
                     html += '<div style="font-size:2em; margin-bottom:12px;"></div>';
-                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">' + t('alerts.deep.openclawAnalyzing') + '</div>';
-                    if (record.openclaw_run_id) {
-                        html += '<div style="font-size:0.8em; opacity:0.7; margin-bottom:12px;">' + t('alerts.deep.runId') + ': ' + escapeHtml(String(record.openclaw_run_id)) + '</div>';
+                    html += '<div style="font-size:1.1em; font-weight:600; margin-bottom:8px;">' + t('alerts.deep.gatewayAnalyzing') + '</div>';
+                    if (record.gateway_run_id) {
+                        html += '<div style="font-size:0.8em; opacity:0.7; margin-bottom:12px;">' + t('alerts.deep.runId') + ': ' + escapeHtml(String(record.gateway_run_id)) + '</div>';
                     }
                     html += '<div style="font-size:0.9em; opacity:0.85;">' + t('alerts.deep.willUpdate') + '</div>';
                     html += '</div>';
@@ -1511,14 +1516,14 @@ const AlertsModule = {
         if (question === null) return;  // User cancelled
 
         try {
-            const result = await API.deepAnalyze(id, question, 'openclaw');
+            const result = await API.deepAnalyze(id, question, 'auto');
             if (result.success && result.data) {
                 const record = result.data;
                 const analysisResult = record.analysis_result || {};
 
-                // Check whether the status is pending (OpenClaw asynchronously waiting for results)
+                // Check whether the status is pending (the gateway answers asynchronously)
                 if (record.status === 'pending' || analysisResult._pending) {
-                    this.showTriggeredNotification(analysisResult._openclaw_run_id || record.openclaw_run_id);
+                    this.showTriggeredNotification(analysisResult._gateway_run_id || record.gateway_run_id);
                 }
 
                 // Analysis complete, switch to the deep analysis tab and refresh data
@@ -1555,7 +1560,7 @@ const AlertsModule = {
     },
 
     /**
-     * Show a friendly notification that OpenClaw analysis has been triggered
+     * Show a friendly notification that deep analysis has been triggered
      */
     showTriggeredNotification(runId) {
         // Create the overlay notification

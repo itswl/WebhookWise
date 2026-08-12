@@ -77,7 +77,7 @@ def sanitize_for_ai(
     1. Recursively remove the keys listed in AI_PAYLOAD_STRIP_KEYS
     2. If the serialized size exceeds AI_PAYLOAD_MAX_BYTES, truncate large-value fields
 
-    OpenClaw deep analysis can disable strip/truncate, keeping only sensitive-field redaction.
+    Deep analysis can disable strip/truncate, keeping only sensitive-field redaction.
     """
     if not parsed_data:
         return parsed_data

@@ -64,7 +64,7 @@ services:
       net.core.somaxconn: 4096
       # Allow sockets in TIME_WAIT state to be reused, speeding up port recycling
       net.ipv4.tcp_tw_reuse: 1
-      # Widen the local port range to support more outbound connections (forwarding / OpenClaw / Feishu)
+      # Widen the local port range to support more outbound connections (forwarding / deep analysis / Feishu)
       net.ipv4.ip_local_port_range: "1024 65535"
       # SYN half-open queue limit, prevents packet loss during a SYN flood
       net.ipv4.tcp_max_syn_backlog: 8192

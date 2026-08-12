@@ -336,7 +336,7 @@
     "/v1/deep-analyses/{analysis_id}/retry": {
       "post": {
         "summary": "Retry Deep Analysis",
-        "description": "Re-fetch or re-trigger the OpenClaw deep analysis result.",
+        "description": "Re-fetch or re-trigger the deep-analysis result.",
         "operationId": "retry_deep_analysis_v1_deep_analyses__analysis_id__retry_post",
         "security": [
           {
@@ -7045,7 +7045,7 @@
             ],
             "title": "Created At"
           },
-          "openclaw_run_id": {
+          "gateway_run_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -7054,7 +7054,7 @@
                 "type": "null"
               }
             ],
-            "title": "Openclaw Run Id"
+            "title": "Gateway Run Id"
           },
           "status": {
             "anyOf": [
@@ -7116,7 +7116,7 @@
           "webhook_event_id"
         ],
         "title": "DeepAnalysisSummary",
-        "description": "Deep analysis list item (lightweight).\n\nThe list view only needs to render metadata plus a one-line preview; it does\nnot need the full normalized_report, much less the raw analysis_result (which\ncontains the large _openclaw_text blob). The full content is fetched on demand\nvia the detail endpoint when expanded."
+        "description": "Deep analysis list item (lightweight).\n\nThe list view only needs to render metadata plus a one-line preview; it does\nnot need the full normalized_report, much less the raw analysis_result (which\ncontains the large _gateway_text blob). The full content is fetched on demand\nvia the detail endpoint when expanded."
       },
       "FeedbackCreateRequest": {
         "properties": {
@@ -7282,7 +7282,7 @@
             "enum": [
               "feishu",
               "feishu_relay",
-              "openclaw",
+              "deep_analysis",
               "webhook"
             ],
             "title": "Target Type"
@@ -7767,7 +7767,7 @@
                 "enum": [
                   "feishu",
                   "feishu_relay",
-                  "openclaw",
+                  "deep_analysis",
                   "webhook"
                 ]
               },
@@ -8099,7 +8099,7 @@
             "enum": [
               "feishu",
               "generic_webhook",
-              "openclaw"
+              "deep_analysis"
             ],
             "title": "Template Id"
           },
@@ -8173,7 +8173,7 @@
             "enum": [
               "feishu",
               "generic_webhook",
-              "openclaw"
+              "deep_analysis"
             ],
             "title": "Template Id"
           },

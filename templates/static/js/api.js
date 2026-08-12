@@ -629,7 +629,7 @@ const API = {
      * Run a deep analysis
      * @param {number} id - Alert ID
      * @param {string} question - Analysis question
-     * @param {string} engine - Analysis engine ('openclaw'/'auto')
+     * @param {string} engine - Analysis engine ('auto', or a platform name)
      * @returns {Promise<object>} Analysis result
      */
     async deepAnalyze(id, question, engine = 'auto') {

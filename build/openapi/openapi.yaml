@@ -215,7 +215,7 @@ paths:
   /v1/deep-analyses/{analysis_id}/retry:
     post:
       summary: Retry Deep Analysis
-      description: Re-fetch or re-trigger the OpenClaw deep analysis result.
+      description: Re-fetch or re-trigger the deep-analysis result.
       operationId: retry_deep_analysis_v1_deep_analyses__analysis_id__retry_post
       security:
       - HTTPBearer: []
@@ -4390,11 +4390,11 @@ components:
           - type: string
           - type: 'null'
           title: Created At
-        openclaw_run_id:
+        gateway_run_id:
           anyOf:
           - type: string
           - type: 'null'
-          title: Openclaw Run Id
+          title: Gateway Run Id
         status:
           anyOf:
           - type: string
@@ -4433,7 +4433,7 @@ components:
 
         not need the full normalized_report, much less the raw analysis_result (which
 
-        contains the large _openclaw_text blob). The full content is fetched on demand
+        contains the large _gateway_text blob). The full content is fetched on demand
 
         via the detail endpoint when expanded.'
     FeedbackCreateRequest:
@@ -4560,7 +4560,7 @@ components:
           enum:
           - feishu
           - feishu_relay
-          - openclaw
+          - deep_analysis
           - webhook
           title: Target Type
       additionalProperties: false
@@ -4826,7 +4826,7 @@ components:
             enum:
             - feishu
             - feishu_relay
-            - openclaw
+            - deep_analysis
             - webhook
           - type: 'null'
           title: Target Type
@@ -5028,7 +5028,7 @@ components:
           enum:
           - feishu
           - generic_webhook
-          - openclaw
+          - deep_analysis
           title: Template Id
         name:
           type: string
@@ -5088,7 +5088,7 @@ components:
           enum:
           - feishu
           - generic_webhook
-          - openclaw
+          - deep_analysis
           title: Template Id
         name:
           type: string

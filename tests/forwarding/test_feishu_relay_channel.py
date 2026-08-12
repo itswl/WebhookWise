@@ -75,7 +75,7 @@ def relay_env(monkeypatch: pytest.MonkeyPatch, temp_config: Any) -> None:
 def test_registry_resolves_relay_records() -> None:
     assert resolve_channel(_record()).name == "feishu_relay"
     # And never steals records belonging to other channels.
-    assert resolve_channel(_record(target_type="openclaw", channel_name="openclaw")).name == "openclaw"
+    assert resolve_channel(_record(target_type="deep_analysis", channel_name="deep_analysis")).name == "deep_analysis"
 
 
 @pytest.mark.asyncio

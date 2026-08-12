@@ -12,17 +12,17 @@ def test_compute_backoff_delay_is_bounded() -> None:
 
 
 def test_compute_openclaw_poll_delay_is_exponential_and_bounded(monkeypatch: pytest.MonkeyPatch, temp_config) -> None:
-    from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
+    from services.operations.taskiq_retry_scheduler import compute_deep_analysis_poll_delay
 
-    monkeypatch.setattr(temp_config.openclaw, "OPENCLAW_POLL_INITIAL_DELAY_SECONDS", 10)
-    monkeypatch.setattr(temp_config.openclaw, "OPENCLAW_POLL_BACKOFF_MULTIPLIER", 3.0)
-    monkeypatch.setattr(temp_config.openclaw, "OPENCLAW_POLL_MAX_DELAY_SECONDS", 300)
+    monkeypatch.setattr(temp_config.deep_analysis, "DEEP_ANALYSIS_POLL_INITIAL_DELAY_SECONDS", 10)
+    monkeypatch.setattr(temp_config.deep_analysis, "DEEP_ANALYSIS_POLL_BACKOFF_MULTIPLIER", 3.0)
+    monkeypatch.setattr(temp_config.deep_analysis, "DEEP_ANALYSIS_POLL_MAX_DELAY_SECONDS", 300)
 
-    assert compute_openclaw_poll_delay(0) == 10
-    assert compute_openclaw_poll_delay(1) == 30
-    assert compute_openclaw_poll_delay(2) == 90
-    assert compute_openclaw_poll_delay(99) == 300
-    assert compute_openclaw_poll_delay(100_000) == 300
+    assert compute_deep_analysis_poll_delay(0) == 10
+    assert compute_deep_analysis_poll_delay(1) == 30
+    assert compute_deep_analysis_poll_delay(2) == 90
+    assert compute_deep_analysis_poll_delay(99) == 300
+    assert compute_deep_analysis_poll_delay(100_000) == 300
 
 
 @pytest.mark.asyncio
@@ -98,11 +98,11 @@ async def test_schedule_openclaw_poll_uses_taskiq_dynamic_schedule(monkeypatch: 
             return FakeKicker()
 
     monkeypatch.setattr(scheduler, "dynamic_schedule_source", source)
-    monkeypatch.setattr(tasks, "poll_openclaw_analysis_task", FakeTask())
+    monkeypatch.setattr(tasks, "poll_deep_analysis_task", FakeTask())
 
-    await scheduler.schedule_openclaw_poll(789, 30)
+    await scheduler.schedule_deep_analysis_poll(789, 30)
 
-    source.delete_schedule.assert_awaited_once_with("openclaw-poll:789")
-    assert captured["schedule_id"] == "openclaw-poll:789"
+    source.delete_schedule.assert_awaited_once_with("deep-analysis-poll:789")
+    assert captured["schedule_id"] == "deep-analysis-poll:789"
     assert captured["schedule_source"] is source
     assert captured["kwargs"] == {"analysis_id": 789}

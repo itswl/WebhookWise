@@ -91,11 +91,20 @@
     // never a flash of raw keys.
     var ready = ensureDict(currentLang);
 
-    function t(key, params) {
+    /**
+     * Translate `key`.
+     *
+     * `missing` is the text to use when neither dictionary has the key. Without
+     * it an unknown key renders as itself, which is how a raw `deep.engine.*`
+     * string reaches the screen — pass a human value for keys built at runtime
+     * from data (a platform name, a source slug) rather than written by hand.
+     */
+    function t(key, params, missing) {
         var table = DICT[currentLang] || DICT[DEFAULT_LANG] || {};
         var fallback = DICT[DEFAULT_LANG] || {};
+        var absent = (missing != null) ? missing : key;
         var value = (table[key] != null) ? table[key]
-            : (fallback[key] != null ? fallback[key] : key);
+            : (fallback[key] != null ? fallback[key] : absent);
         if (params) {
             value = value.replace(/\{(\w+)\}/g, function (m, name) {
                 return params[name] != null ? params[name] : m;

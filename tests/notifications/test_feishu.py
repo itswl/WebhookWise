@@ -63,7 +63,7 @@ def test_build_feishu_card_formats_identity_and_periodic_reminder() -> None:
 
 def test_build_deep_analysis_card_extracts_openclaw_json_text() -> None:
     from services.notifications.feishu import build_deep_analysis_card
-    from services.webhooks.types import OPENCLAW_TEXT
+    from services.webhooks.types import GATEWAY_TEXT
 
     openclaw_text = """```json
 {
@@ -76,7 +76,7 @@ def test_build_deep_analysis_card_extracts_openclaw_json_text() -> None:
 ```"""
 
     card = build_deep_analysis_card(
-        {"analysis_result": {OPENCLAW_TEXT: openclaw_text}, "engine": "openclaw", "duration_seconds": 12.3},
+        {"analysis_result": {GATEWAY_TEXT: openclaw_text}, "engine": "openclaw", "duration_seconds": 12.3},
         source="prometheus",
         webhook_event_id=46708,
     )

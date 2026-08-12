@@ -21,7 +21,7 @@ from core.collections_utils import scalar_text_or_empty
 from core.json import JSONDecodeError, dumps, extract_balanced_json_text, loads
 
 DEEP_ANALYSIS_REPORT_SCHEMA = "deep_analysis_report.v1"
-OPENCLAW_TEXT_KEY = "_openclaw_text"
+GATEWAY_TEXT_KEY = "_gateway_text"
 
 ReportSectionKind = Literal["text", "list", "identity"]
 
@@ -39,7 +39,7 @@ _WRAPPER_REPORT_KEYS = (
     "text",
     "details",
     "detail",
-    OPENCLAW_TEXT_KEY,
+    GATEWAY_TEXT_KEY,
 )
 _STRING_REPORT_KEYS = (
     "summary",
@@ -250,8 +250,8 @@ def normalize_deep_analysis_report(value: Any) -> DeepAnalysisReport:
     )
 
 
-def parse_openclaw_report_payload(text: Any) -> dict[str, Any] | None:
-    """Recover the structured JSON report mapping from raw OpenClaw text.
+def parse_gateway_report_payload(text: Any) -> dict[str, Any] | None:
+    """Recover the structured JSON report mapping from raw gateway text.
 
     Applies the same robust parsing the normalizer uses (thinking-prefix prose,
     trailing text, markdown fences, escaped JSON and truncated JSON are all
@@ -483,7 +483,7 @@ def _first_raw_text(value: Any, *, depth: int = 0) -> str:
         # stripped text), so it is dropped rather than recomputed.
         return _strip_markdown_json_fence(value)
     if isinstance(value, Mapping):
-        for key in (OPENCLAW_TEXT_KEY, "raw_text", "content", "text", "message", "root_cause", "summary"):
+        for key in (GATEWAY_TEXT_KEY, "raw_text", "content", "text", "message", "root_cause", "summary"):
             text = _first_raw_text(_pick(value, key), depth=depth + 1)
             if text:
                 return text

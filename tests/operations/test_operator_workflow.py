@@ -110,19 +110,19 @@ async def test_integration_catalog_installs_openclaw_as_a_forward_rule(session: 
     from schemas.operations import IntegrationSetupRequest
     from services.operations.integration_catalog import install_integration, integration_catalog
 
-    assert {item["id"] for item in integration_catalog()} == {"feishu", "generic_webhook", "openclaw"}
-    get_config_manager().openclaw.OPENCLAW_ENABLED = True
+    assert {item["id"] for item in integration_catalog()} == {"feishu", "generic_webhook", "deep_analysis"}
+    get_config_manager().deep_analysis.DEEP_ANALYSIS_ENABLED = True
     result = await install_integration(
         session,
         IntegrationSetupRequest(
-            template_id="openclaw",
+            template_id="deep_analysis",
             name="High priority deep analysis",
             importance="high",
         ),
     )
     rule = await session.get(ForwardRule, result["rule_id"])
     assert rule is not None
-    assert rule.target_type == "openclaw"
+    assert rule.target_type == "deep_analysis"
     assert rule.match_importance == "high"
 
 

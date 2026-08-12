@@ -21,14 +21,14 @@ class AnalysisMetaKey(StrEnum):
 
 class ForwardMetaKey(StrEnum):
     PENDING = "_pending"
-    OPENCLAW_RUN_ID = "_openclaw_run_id"
-    OPENCLAW_SESSION_KEY = "_openclaw_session_key"
+    GATEWAY_RUN_ID = "_gateway_run_id"
+    GATEWAY_SESSION_KEY = "_gateway_session_key"
     DEGRADED = "_degraded"
     DEGRADED_REASON = "_degraded_reason"
 
 
-class OpenClawMetaKey(StrEnum):
-    TEXT = "_openclaw_text"
+class GatewayMetaKey(StrEnum):
+    TEXT = "_gateway_text"
     NEED_SUCCESS_NOTIFY = "_need_success_notify"
     MANUAL_RETRY_STARTED_AT = "_manual_retry_started_at"
 
@@ -42,13 +42,13 @@ ANALYSIS_PENDING: Final = AnalysisMetaKey.PENDING.value
 ANALYSIS_EMBEDDING: Final = AnalysisMetaKey.EMBEDDING.value
 ANALYSIS_USAGE: Final = AnalysisMetaKey.USAGE.value
 FORWARD_PENDING: Final = ForwardMetaKey.PENDING.value
-OPENCLAW_RUN_ID: Final = ForwardMetaKey.OPENCLAW_RUN_ID.value
-OPENCLAW_SESSION_KEY: Final = ForwardMetaKey.OPENCLAW_SESSION_KEY.value
+GATEWAY_RUN_ID: Final = ForwardMetaKey.GATEWAY_RUN_ID.value
+GATEWAY_SESSION_KEY: Final = ForwardMetaKey.GATEWAY_SESSION_KEY.value
 FORWARD_DEGRADED: Final = ForwardMetaKey.DEGRADED.value
 FORWARD_DEGRADED_REASON: Final = ForwardMetaKey.DEGRADED_REASON.value
-OPENCLAW_TEXT: Final = OpenClawMetaKey.TEXT.value
-OPENCLAW_NEED_SUCCESS_NOTIFY: Final = OpenClawMetaKey.NEED_SUCCESS_NOTIFY.value
-MANUAL_RETRY_STARTED_AT: Final = OpenClawMetaKey.MANUAL_RETRY_STARTED_AT.value
+GATEWAY_TEXT: Final = GatewayMetaKey.TEXT.value
+GATEWAY_NEED_SUCCESS_NOTIFY: Final = GatewayMetaKey.NEED_SUCCESS_NOTIFY.value
+MANUAL_RETRY_STARTED_AT: Final = GatewayMetaKey.MANUAL_RETRY_STARTED_AT.value
 
 # "rule" = degraded to rules (AI unavailable/failed). "rule_routed" = tiered
 # routing intentionally skipped the LLM for a low-value alert (not a degradation).
@@ -107,8 +107,8 @@ class ForwardResult(TypedDict):
     outbox_id: NotRequired[int]
     outbox_ids: NotRequired[list[int]]
     _pending: NotRequired[bool]
-    _openclaw_run_id: NotRequired[str]
-    _openclaw_session_key: NotRequired[str]
+    _gateway_run_id: NotRequired[str]
+    _gateway_session_key: NotRequired[str]
     _degraded: NotRequired[bool]
     _degraded_reason: NotRequired[str]
 
@@ -180,20 +180,20 @@ def is_pending_result(result: Mapping[str, Any] | None) -> bool:
     return bool(result and result.get(FORWARD_PENDING))
 
 
-def openclaw_run_id(result: Mapping[str, Any] | None) -> str:
-    return str((result or {}).get(OPENCLAW_RUN_ID, ""))
+def gateway_run_id(result: Mapping[str, Any] | None) -> str:
+    return str((result or {}).get(GATEWAY_RUN_ID, ""))
 
 
-def openclaw_session_key(result: Mapping[str, Any] | None) -> str:
-    return str((result or {}).get(OPENCLAW_SESSION_KEY, ""))
+def gateway_session_key(result: Mapping[str, Any] | None) -> str:
+    return str((result or {}).get(GATEWAY_SESSION_KEY, ""))
 
 
 def pending_forward_result(run_id: str, session_key: str) -> ForwardResult:
     return {
         "status": "pending",
         FORWARD_PENDING: True,
-        OPENCLAW_RUN_ID: run_id,
-        OPENCLAW_SESSION_KEY: session_key,
+        GATEWAY_RUN_ID: run_id,
+        GATEWAY_SESSION_KEY: session_key,
     }
 
 

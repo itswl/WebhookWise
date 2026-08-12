@@ -497,7 +497,7 @@ groups:
           service: webhookwise-api
         annotations:
           summary: AI request P95 latency is above 30 seconds.
-          runbook: Check model/provider, prompt size, OpenClaw status, and fallback-to-rules behavior.
+          runbook: Check model/provider, prompt size, deep-analysis gateway status, and fallback-to-rules behavior.
 
       - alert: WebhookWiseForwardOutboxBacklogOld
         expr: (max(forward_outbox_oldest_age_seconds{forward_target_type="all",forward_status="active"}) or vector(0)) > 600
@@ -517,7 +517,7 @@ groups:
           service: webhookwise-worker
         annotations:
           summary: A WebhookWise circuit breaker is open.
-          runbook: Check circuit breaker metrics, forwarding/OpenClaw/Feishu logs, and downstream dependency health.
+          runbook: Check circuit breaker metrics, forwarding/deep-analysis/Feishu logs, and downstream dependency health.
 
       - alert: WebhookWiseCollectorExporterQueueHigh
         expr: |

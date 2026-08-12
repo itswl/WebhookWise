@@ -63,7 +63,7 @@ async def test_ai_cache_hit_marks_result_and_save_strips_internal_keys(
             "summary": "fresh",
             "importance": "low",
             "_cache_hit": True,
-            "_openclaw_session_key": "internal",
+            "_gateway_session_key": "internal",
         },
         ttl_seconds=90,
     )
@@ -372,7 +372,7 @@ async def test_forwarding_target_url_validation_branches(
 
     monkeypatch.setattr(forwarding, "validate_outbound_url", validate_outbound_url)
 
-    assert await forwarding._validated_target_url("openclaw", " session-1 ") == "session-1"
+    assert await forwarding._validated_target_url("deep_analysis", " session-1 ") == "session-1"
     assert await forwarding._validated_target_url("webhook", "https://example.com/hook") == (
         "https://validated.example/hook"
     )

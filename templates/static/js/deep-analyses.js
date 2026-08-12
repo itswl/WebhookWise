@@ -319,6 +319,7 @@ var DeepAnalysesModule = (function() {
 
         const engineMap = {
             'openclaw': { label: t('deep.engine.openclaw'), class: 'badge-high', icon: '', bg: 'var(--info-bg)', color: 'var(--primary)' },
+            'hookprobe': { label: t('deep.engine.hookprobe'), class: 'badge-high', icon: '', bg: 'var(--info-bg)', color: 'var(--primary)' },
             'hermes': { label: t('deep.engine.hermes'), class: 'badge-medium', icon: '', bg: 'var(--primary-bg)', color: 'var(--primary)' },
             'local': { label: t('deep.engine.local'), class: 'badge-low', icon: '', bg: 'var(--bg-subtle)', color: 'var(--text-muted)' },
             'auto': { label: t('deep.engine.auto'), class: 'badge-outline', icon: '', bg: 'var(--warning-bg)', color: 'var(--warning)' }
@@ -363,7 +364,7 @@ var DeepAnalysesModule = (function() {
                 html += '<div class="da-preview da-preview-empty">' + escapeHtml(t('deep.report.unavailable')) + '</div>';
             }
         } else if (record.status === 'pending') {
-            const runIdText = record.openclaw_run_id ? `(${escapeHtml(t('deep.runId'))}: <span style="font-family: monospace;">${escapeHtml(record.openclaw_run_id.substring(0,8))}</span>)` : '';
+            const runIdText = record.gateway_run_id ? `(${escapeHtml(t('deep.runId'))}: <span style="font-family: monospace;">${escapeHtml(record.gateway_run_id.substring(0,8))}</span>)` : '';
             var pollInfo = [];
             if (record.poll_attempts != null) pollInfo.push(t('deep.polledTimes', { n: record.poll_attempts }));
             if (record.last_polled_at) pollInfo.push(t('deep.lastPolled', { time: new Date(record.last_polled_at).toLocaleTimeString('zh-CN') }));
@@ -388,7 +389,7 @@ var DeepAnalysesModule = (function() {
 
     function buildDetailsHtml(record) {
         var report = normalizedReport(record);
-        const engineLabel = record.engine === 'openclaw' ? t('deep.engine.openclaw') : (record.engine === 'hermes' ? t('deep.engine.hermes') : t('deep.engine.local'));
+        const engineLabel = record.engine ? t('deep.engine.' + record.engine, {}, record.engine) : t('deep.engine.local');
 
         let detailsHtml = '';
 
@@ -406,7 +407,7 @@ var DeepAnalysesModule = (function() {
                 <div style="text-align: center; padding: 3rem 1rem;">
                     <div class="spinner" style="width: 32px; height: 32px; margin: 0 auto 1rem auto; border-left-color: var(--primary);"></div>
                     <div style="color: var(--text-main); font-weight: 500; font-size: 1.1rem; margin-bottom: 0.5rem;">${escapeHtml(t('deep.runningAnalysis', { engine: engineLabel }))}</div>
-                    ${record.openclaw_run_id ? `<div style="color: var(--text-muted); font-family: monospace; font-size: 0.85rem; background: var(--bg-subtle); display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${escapeHtml(t('deep.runId'))}: ${escapeHtml(record.openclaw_run_id)}</div>` : ''}
+                    ${record.gateway_run_id ? `<div style="color: var(--text-muted); font-family: monospace; font-size: 0.85rem; background: var(--bg-subtle); display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; margin-top: 0.5rem;">${escapeHtml(t('deep.runId'))}: ${escapeHtml(record.gateway_run_id)}</div>` : ''}
                 </div>
             `;
         } else if (record.status === 'failed') {

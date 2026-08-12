@@ -1,4 +1,4 @@
-"""OpenClaw HTTP and WebSocket clients."""
+"""Deep-analysis gateway HTTP and WebSocket clients."""
 
 from __future__ import annotations
 
@@ -20,11 +20,11 @@ from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
 from core.logger import get_logger
 
-logger = get_logger("openclaw.client")
+logger = get_logger("deep_analysis.gateway")
 
 
 @dataclass(frozen=True, slots=True)
-class OpenClawPollPolicy:
+class DeepAnalysisPollPolicy:
     timeout_seconds: int
     poll_timeout_seconds: int
     poll_initial_delay_seconds: int
@@ -42,26 +42,28 @@ class OpenClawPollPolicy:
     notification_webhook_url: str
 
     @classmethod
-    def from_config(cls) -> OpenClawPollPolicy:
+    def from_config(cls) -> DeepAnalysisPollPolicy:
         cfg = get_config_manager()
         return cls(
-            timeout_seconds=int(cfg.openclaw.OPENCLAW_TIMEOUT_SECONDS),
-            poll_timeout_seconds=max(1, int(cfg.openclaw.OPENCLAW_POLL_TIMEOUT_SECONDS)),
-            poll_initial_delay_seconds=max(1, int(cfg.openclaw.OPENCLAW_POLL_INITIAL_DELAY_SECONDS)),
+            timeout_seconds=int(cfg.deep_analysis.DEEP_ANALYSIS_TIMEOUT_SECONDS),
+            poll_timeout_seconds=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_TIMEOUT_SECONDS)),
+            poll_initial_delay_seconds=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_INITIAL_DELAY_SECONDS)),
             poll_max_delay_seconds=max(
-                max(1, int(cfg.openclaw.OPENCLAW_POLL_INITIAL_DELAY_SECONDS)),
-                int(cfg.openclaw.OPENCLAW_POLL_MAX_DELAY_SECONDS),
+                max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_INITIAL_DELAY_SECONDS)),
+                int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_MAX_DELAY_SECONDS),
             ),
-            poll_backoff_multiplier=max(1.0, float(cfg.openclaw.OPENCLAW_POLL_BACKOFF_MULTIPLIER)),
-            http_api_url=str(cfg.openclaw.OPENCLAW_HTTP_API_URL).strip(),
-            gateway_url=str(cfg.openclaw.OPENCLAW_GATEWAY_URL).strip(),
-            gateway_token=str(cfg.openclaw.OPENCLAW_GATEWAY_TOKEN),
-            hooks_token=str(cfg.openclaw.OPENCLAW_HOOKS_TOKEN or cfg.openclaw.OPENCLAW_GATEWAY_TOKEN),
-            connect_timeout_seconds=max(1.0, float(cfg.openclaw.OPENCLAW_CONNECT_TIMEOUT_SECONDS)),
-            stability_required_hits=max(1, int(cfg.openclaw.OPENCLAW_STABILITY_REQUIRED_HITS)),
-            stability_ttl_seconds=max(60, int(cfg.openclaw.OPENCLAW_POLL_STABILITY_TTL_SECONDS)),
-            max_consecutive_errors=int(cfg.openclaw.OPENCLAW_MAX_CONSECUTIVE_ERRORS),
-            enable_degradation=bool(cfg.openclaw.OPENCLAW_ENABLE_DEGRADATION),
+            poll_backoff_multiplier=max(1.0, float(cfg.deep_analysis.DEEP_ANALYSIS_POLL_BACKOFF_MULTIPLIER)),
+            http_api_url=str(cfg.deep_analysis.DEEP_ANALYSIS_HTTP_API_URL).strip(),
+            gateway_url=str(cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_URL).strip(),
+            gateway_token=str(cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_TOKEN),
+            hooks_token=str(
+                cfg.deep_analysis.DEEP_ANALYSIS_HOOKS_TOKEN or cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_TOKEN
+            ),
+            connect_timeout_seconds=max(1.0, float(cfg.deep_analysis.DEEP_ANALYSIS_CONNECT_TIMEOUT_SECONDS)),
+            stability_required_hits=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_STABILITY_REQUIRED_HITS)),
+            stability_ttl_seconds=max(60, int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_STABILITY_TTL_SECONDS)),
+            max_consecutive_errors=int(cfg.deep_analysis.DEEP_ANALYSIS_MAX_CONSECUTIVE_ERRORS),
+            enable_degradation=bool(cfg.deep_analysis.DEEP_ANALYSIS_ENABLE_DEGRADATION),
             notification_webhook_url=str(cfg.notifications.DEEP_ANALYSIS_FEISHU_WEBHOOK),
         )
 
@@ -107,7 +109,7 @@ class OpenClawPollPolicy:
 
 
 @dataclass(frozen=True, slots=True)
-class OpenClawWsPolicy:
+class DeepAnalysisWsPolicy:
     device_id: str
     device_private_key_b64: str
     device_token: str
@@ -117,16 +119,16 @@ class OpenClawWsPolicy:
     max_message_bytes: int = 2_097_152
 
     @classmethod
-    def from_config(cls) -> OpenClawWsPolicy:
+    def from_config(cls) -> DeepAnalysisWsPolicy:
         cfg = get_config_manager()
         return cls(
-            device_id=str(cfg.openclaw.OPENCLAW_DEVICE_ID),
-            device_private_key_b64=str(cfg.openclaw.OPENCLAW_DEVICE_PRIVATE_KEY_PEM),
-            device_token=str(cfg.openclaw.OPENCLAW_DEVICE_TOKEN),
-            gateway_token=str(cfg.openclaw.OPENCLAW_GATEWAY_TOKEN),
-            nonce_timeout=float(cfg.openclaw.OPENCLAW_NONCE_TIMEOUT_SECONDS),
-            max_history_frames=max(1, int(cfg.openclaw.OPENCLAW_WS_MAX_HISTORY_FRAMES)),
-            max_message_bytes=max(1, int(cfg.openclaw.OPENCLAW_WS_MAX_MESSAGE_BYTES)),
+            device_id=str(cfg.deep_analysis.DEEP_ANALYSIS_DEVICE_ID),
+            device_private_key_b64=str(cfg.deep_analysis.DEEP_ANALYSIS_DEVICE_PRIVATE_KEY_PEM),
+            device_token=str(cfg.deep_analysis.DEEP_ANALYSIS_DEVICE_TOKEN),
+            gateway_token=str(cfg.deep_analysis.DEEP_ANALYSIS_GATEWAY_TOKEN),
+            nonce_timeout=float(cfg.deep_analysis.DEEP_ANALYSIS_NONCE_TIMEOUT_SECONDS),
+            max_history_frames=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_WS_MAX_HISTORY_FRAMES)),
+            max_message_bytes=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_WS_MAX_MESSAGE_BYTES)),
         )
 
 
@@ -142,10 +144,10 @@ def _describe_exception(exc: Exception) -> str:
     return repr(exc)
 
 
-async def poll_openclaw_final(
+async def poll_gateway_final(
     session_key: str,
     *,
-    policy: OpenClawPollPolicy,
+    policy: DeepAnalysisPollPolicy,
     http_client: Any,
     trace_id: str | None = None,
     retry_count: int = 3,
@@ -314,9 +316,9 @@ def _build_connect_frame(token: str, device_auth: dict[str, Any] | None = None) 
 
 
 def _build_device_auth(
-    nonce: str, *, gateway_token: str = "", policy: OpenClawWsPolicy | None = None
+    nonce: str, *, gateway_token: str = "", policy: DeepAnalysisWsPolicy | None = None
 ) -> dict[str, Any] | None:
-    policy = policy or OpenClawWsPolicy.from_config()
+    policy = policy or DeepAnalysisWsPolicy.from_config()
     device_id = policy.device_id
     private_key_b64 = policy.device_private_key_b64
     device_token = policy.device_token
@@ -365,10 +367,10 @@ def _build_device_auth(
 
 
 async def _try_recv_challenge(
-    ws: Any, timeout: float | None = None, *, policy: OpenClawWsPolicy | None = None
+    ws: Any, timeout: float | None = None, *, policy: DeepAnalysisWsPolicy | None = None
 ) -> str | None:
     if timeout is None:
-        timeout = (policy or OpenClawWsPolicy.from_config()).nonce_timeout
+        timeout = (policy or DeepAnalysisWsPolicy.from_config()).nonce_timeout
     try:
         raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
         frame = _loads_dict(raw)
@@ -387,10 +389,10 @@ async def _try_recv_challenge(
 
 
 async def _handshake(
-    ws: Any, gateway_token: str, timeout: float, *, policy: OpenClawWsPolicy | None = None
+    ws: Any, gateway_token: str, timeout: float, *, policy: DeepAnalysisWsPolicy | None = None
 ) -> tuple[bool, str | None]:
     try:
-        policy = policy or OpenClawWsPolicy.from_config()
+        policy = policy or DeepAnalysisWsPolicy.from_config()
         nonce = await _try_recv_challenge(ws, policy=policy)
         device_auth = _build_device_auth(nonce, gateway_token=gateway_token, policy=policy) if nonce else None
         connect_frame = _build_connect_frame(gateway_token, device_auth=device_auth)
@@ -415,7 +417,7 @@ async def _handshake(
     except json.JSONDecodeError:
         return False, "invalid_response"
     except (EOFError, OSError, RuntimeError, websockets.WebSocketException):
-        logger.debug("OpenClaw WebSocket handshake failed", exc_info=True)
+        logger.debug("Gateway WebSocket handshake failed", exc_info=True)
         return False, "handshake_error"
 
 
@@ -457,11 +459,11 @@ async def poll_session_result(
     session_key: str,
     timeout: int = 30,
     *,
-    policy: OpenClawWsPolicy | None = None,
+    policy: DeepAnalysisWsPolicy | None = None,
 ) -> dict[str, Any]:
     ws_url = _http_to_ws_url(gateway_url)
     start = time.monotonic()
-    policy = policy or OpenClawWsPolicy.from_config()
+    policy = policy or DeepAnalysisWsPolicy.from_config()
     connect_timeout = min(5, max(1, timeout // 3))
     handshake_timeout = min(15, max(3, timeout // 2))
 

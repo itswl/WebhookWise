@@ -10,7 +10,7 @@ from core.logger import mask_url
 
 from .base import APIResponse
 
-ForwardTargetType = Literal["feishu", "feishu_relay", "openclaw", "webhook"]
+ForwardTargetType = Literal["feishu", "feishu_relay", "deep_analysis", "webhook"]
 ForwardDuplicateMode = Literal["all", "new", "duplicate"]
 FORWARD_RULE_PRIORITY_MIN = -1_000_000
 FORWARD_RULE_PRIORITY_MAX = 1_000_000

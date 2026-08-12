@@ -112,27 +112,27 @@ docker compose exec webhook-service env | sort
 
 ### 4. Deep analysis result stays in "analyzing"
 
-**Symptom:** The OpenClaw deep analysis record stays in the `pending` state and does not complete for a long time.
+**Symptom:** The deep-analysis record stays in the `pending` state and does not complete for a long time.
 
 **Troubleshooting steps:**
 
-1. Check whether `OPENCLAW_ENABLED` is `true` and whether `OPENCLAW_GATEWAY_URL` is reachable.
+1. Check whether `DEEP_ANALYSIS_ENABLED` is `true` and whether `DEEP_ANALYSIS_GATEWAY_URL` is reachable.
 
-2. Confirm whether OpenClaw already has a result by manually re-fetching:
+2. Confirm whether the gateway already has a result by manually re-fetching:
    ```bash
    curl -X POST http://localhost:8000/v1/deep-analyses/{id}/retry \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY"
    ```
 
-3. If it returns a timeout error (already exceeded `OPENCLAW_TIMEOUT_SECONDS`), the analysis timed out and you need to re-initiate it:
+3. If it returns a timeout error (already exceeded `DEEP_ANALYSIS_TIMEOUT_SECONDS`), the analysis timed out and you need to re-initiate it:
    ```bash
    curl -X POST http://localhost:8000/v1/deep-analyze/{webhook_id} \
      -H "Authorization: Bearer $ADMIN_WRITE_KEY" \
      -H "Content-Type: application/json" \
-     -d '{"engine": "openclaw"}'
+     -d '{"engine": "auto"}'
    ```
 
-4. The current manual deep-analysis entry point only accepts `auto` / `openclaw`. When OpenClaw is unavailable, the endpoint falls back to local AI per configuration or returns `No engine available`; do not pass `engine: "local"`.
+4. The manual deep-analysis entry point accepts `auto`, `gateway`, or a platform name (`openclaw` / `hookprobe` / `hermes`). When the gateway is unavailable, the endpoint falls back to local AI per configuration or returns `No engine available`; do not pass `engine: "local"`.
 
 ---
 

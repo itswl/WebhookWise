@@ -15,6 +15,10 @@ from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from models import DeepAnalysis, WebhookEvent
 from services.analysis.ai_analyzer import analyze_webhook_with_ai
+from services.analysis.deep_analysis_platforms import (
+    DEEP_ANALYSIS_PLATFORMS,
+    configured_deep_analysis_platform,
+)
 from services.operations import taskiq_retry_scheduler
 from services.webhooks.event_context import build_webhook_context
 from services.webhooks.types import (
@@ -23,10 +27,10 @@ from services.webhooks.types import (
     DeepAnalysisStatus,
     ForwardResult,
     analysis_degraded_reason,
+    gateway_run_id,
+    gateway_session_key,
     is_analysis_degraded,
     is_pending_result,
-    openclaw_run_id,
-    openclaw_session_key,
 )
 
 logger = get_logger("analysis.deep_analysis_workflow")
@@ -72,13 +76,21 @@ class DeepAnalysisForwardOutcome:
 
 
 def is_supported_deep_analysis_engine(requested: str) -> bool:
-    return requested in ("", "auto", "openclaw")
+    """Which `engine` values a caller may ask for.
+
+    "gateway" names the layer; the platform names are accepted too so an
+    operator can be explicit about which one they expect to be configured, and
+    a mismatch is then visible rather than silently honoured.
+    """
+    if requested in ("", "auto", "gateway"):
+        return True
+    return requested in DEEP_ANALYSIS_PLATFORMS
 
 
-async def run_openclaw_deep_analysis(
+async def run_deep_analysis(
     ctx: Mapping[str, Any], headers: dict[str, Any], user_question: str
 ) -> tuple[AnalysisResult | ForwardResult, str]:
-    from services.analysis.openclaw_analysis import analyze_with_openclaw
+    from services.analysis.deep_analysis_trigger import request_gateway_analysis
 
     webhook_data: WebhookData = {
         "source": str(ctx["source"]),
@@ -86,18 +98,22 @@ async def run_openclaw_deep_analysis(
         "parsed_data": dict(ctx["parsed_data"]) if isinstance(ctx.get("parsed_data"), dict) else {},
     }
     try:
-        result = await analyze_with_openclaw(webhook_data, user_question)
+        result = await request_gateway_analysis(webhook_data, user_question)
     except (OSError, RuntimeError, TimeoutError, ValueError) as e:
-        raise DeepAnalysisExecutionError("OpenClaw analysis failed") from e
+        raise DeepAnalysisExecutionError("Deep-analysis gateway request failed") from e
     if is_analysis_degraded(result):
         logger.warning(
-            "[DeepAnalysis] OpenClaw degraded, falling back to local AI: %s", analysis_degraded_reason(result)
+            "[DeepAnalysis] Gateway degraded, falling back to local AI: %s", analysis_degraded_reason(result)
         )
         try:
             return await analyze_webhook_with_ai(webhook_data), "local (fallback)"
         except (OSError, RuntimeError, TimeoutError, ValueError) as e:
             raise DeepAnalysisExecutionError("Fallback analysis failed") from e
-    return result, "openclaw"
+    # The engine recorded on the row is the platform that actually answered, read
+    # from configuration. It used to be the constant "openclaw" no matter what
+    # was deployed, which is why every card said OpenClaw after the gateway had
+    # been swapped for another one.
+    return result, configured_deep_analysis_platform()
 
 
 async def notify_completed_deep_analysis(session: AsyncSession, record: DeepAnalysis) -> None:
@@ -138,23 +154,21 @@ async def notify_completed_deep_analysis_best_effort(session: AsyncSession, reco
         )
 
 
-async def clear_openclaw_poll_state_best_effort(analysis_id: int) -> None:
-    from services.analysis.openclaw_poll import clear_openclaw_poll_state
+async def clear_deep_analysis_poll_state_best_effort(analysis_id: int) -> None:
+    from services.analysis.deep_analysis_poll import clear_deep_analysis_poll_state
 
     try:
-        await clear_openclaw_poll_state(analysis_id)
+        await clear_deep_analysis_poll_state(analysis_id)
     except _BEST_EFFORT_ERRORS as e:
-        logger.error(
-            "[DeepAnalysis] Failed to clear OpenClaw poll state analysis_id=%s error=%s", analysis_id, e, exc_info=True
-        )
+        logger.error("[DeepAnalysis] Failed to clear poll state analysis_id=%s error=%s", analysis_id, e, exc_info=True)
 
 
-def prepare_openclaw_poll_if_pending(record: DeepAnalysis) -> int | None:
+def prepare_deep_analysis_poll_if_pending(record: DeepAnalysis) -> int | None:
     if record.status != DeepAnalysisStatus.PENDING:
         return None
-    from services.operations.taskiq_retry_scheduler import compute_openclaw_poll_delay
+    from services.operations.taskiq_retry_scheduler import compute_deep_analysis_poll_delay
 
-    delay = compute_openclaw_poll_delay(record.poll_attempts or 0)
+    delay = compute_deep_analysis_poll_delay(record.poll_attempts or 0)
     record.next_poll_at = utcnow() + timedelta(seconds=delay)
     return delay
 
@@ -181,7 +195,7 @@ async def retry_deep_analysis_record(session: AsyncSession, analysis_id: int) ->
         )
         raise DeepAnalysisWorkflowError(f"Current status is not retryable: {record.status}", status_code=400)
 
-    if not record.openclaw_session_key:
+    if not record.gateway_session_key:
         event = await session.get(WebhookEvent, record.webhook_event_id)
         if not event:
             logger.warning(
@@ -192,21 +206,21 @@ async def retry_deep_analysis_record(session: AsyncSession, analysis_id: int) ->
             raise DeepAnalysisWorkflowError("The associated webhook event does not exist", status_code=404)
 
         ctx = await build_deep_analysis_context(event)
-        new_result, engine_name = await run_openclaw_deep_analysis(ctx, event.headers or {}, record.user_question or "")
+        new_result, engine_name = await run_deep_analysis(ctx, event.headers or {}, record.user_question or "")
         if is_pending_result(new_result):
             now = utcnow()
             record.status = DeepAnalysisStatus.PENDING
             record.analysis_result = {**new_result, MANUAL_RETRY_STARTED_AT_KEY: utc_isoformat(now)}
-            record.openclaw_run_id = openclaw_run_id(new_result)
-            record.openclaw_session_key = openclaw_session_key(new_result)
+            record.gateway_run_id = gateway_run_id(new_result)
+            record.gateway_session_key = gateway_session_key(new_result)
             record.duration_seconds = 0
             record.poll_attempts = 0
             record.last_polled_at = None
             await session.flush()
-            poll_delay = prepare_openclaw_poll_if_pending(record)
+            poll_delay = prepare_deep_analysis_poll_if_pending(record)
             await session.commit()
             if poll_delay is not None:
-                await taskiq_retry_scheduler.schedule_openclaw_poll_best_effort(record.id, poll_delay)
+                await taskiq_retry_scheduler.schedule_deep_analysis_poll_best_effort(record.id, poll_delay)
             logger.info(
                 "[DeepAnalysis] Re-initiated background analysis analysis_id=%s poll_delay=%s", record.id, poll_delay
             )
@@ -227,8 +241,8 @@ async def retry_deep_analysis_record(session: AsyncSession, analysis_id: int) ->
     reset_deep_analysis_for_background_poll(record, utcnow())
     await session.flush()
     await session.commit()
-    await clear_openclaw_poll_state_best_effort(int(record.id))
-    await taskiq_retry_scheduler.schedule_openclaw_poll_best_effort(int(record.id), 0)
+    await clear_deep_analysis_poll_state_best_effort(int(record.id))
+    await taskiq_retry_scheduler.schedule_deep_analysis_poll_best_effort(int(record.id), 0)
     logger.info(
         "[DeepAnalysis] Background fetch submitted analysis_id=%s webhook_id=%s", record.id, record.webhook_event_id
     )

@@ -5,7 +5,7 @@ import pytest
 
 
 def test_deep_analysis_client_is_not_dns_hardened() -> None:
-    """Its target is OPENCLAW_GATEWAY_URL — process configuration naming a
+    """Its target is DEEP_ANALYSIS_GATEWAY_URL — process configuration naming a
     sidecar on the container network. Under the shared hardened client every
     request died with "target host resolves to a non-public IP", so the whole
     deep-analysis leg failed by design rather than by accident."""
@@ -33,12 +33,12 @@ def test_the_shared_client_still_refuses_private_targets() -> None:
 
 
 @pytest.mark.asyncio
-async def test_openclaw_dependencies_use_the_exempt_client() -> None:
+async def test_gateway_dependencies_use_the_exempt_client() -> None:
     """Wiring, not just availability: the channel has to actually pick it up."""
     from core.http_client import get_deep_analysis_client
-    from services.forwarding.circuit_breakers import build_openclaw_forward_dependencies
+    from services.forwarding.circuit_breakers import build_deep_analysis_forward_dependencies
 
-    deps = build_openclaw_forward_dependencies()
+    deps = build_deep_analysis_forward_dependencies()
     assert deps.http_client is get_deep_analysis_client()
 
 
@@ -53,10 +53,10 @@ async def test_the_poller_uses_the_exempt_client_too() -> None:
     from unittest.mock import AsyncMock, patch
 
     from core.http_client import get_deep_analysis_client
-    from services.analysis import openclaw_poll
+    from services.analysis import deep_analysis_poll
 
-    with patch.object(openclaw_poll, "poll_openclaw_final", new=AsyncMock(return_value={})) as final:
-        await openclaw_poll.poll_openclaw_result_via_http("hook:deep-analysis:test")
+    with patch.object(deep_analysis_poll, "poll_gateway_final", new=AsyncMock(return_value={})) as final:
+        await deep_analysis_poll.poll_gateway_result_via_http("hook:deep-analysis:test")
 
     assert final.await_args is not None
     assert final.await_args.kwargs["http_client"] is get_deep_analysis_client()

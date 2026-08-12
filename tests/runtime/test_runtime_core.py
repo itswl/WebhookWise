@@ -801,7 +801,7 @@ async def test_redis_health_probe_recovery_failure_and_key_builders(monkeypatch:
     assert redis_health.rate_limit_global() == "rl:g"
     assert redis_health.ai_error_alert_lock("e") == "ai_error_alert_lock:e"
     assert redis_health.scheduled_task_lock("scan") == "scheduled-task-lock:scan"
-    assert redis_health.openclaw_poller_stability(7) == "openclaw:poller:stability:7"
+    assert redis_health.deep_analysis_poller_stability(7) == "deep_analysis:poller:stability:7"
 
 
 @pytest.mark.asyncio
@@ -841,7 +841,7 @@ async def test_retry_scheduler_schedules_tasks_and_best_effort_failures(
     monkeypatch.setattr(retry_scheduler, "dynamic_schedule_source", DynamicScheduleSource())
     monkeypatch.setattr(tasks, "process_webhook_task", Task("webhook"))
     monkeypatch.setattr(tasks, "process_forward_outbox_task", Task("forward"))
-    monkeypatch.setattr(tasks, "poll_openclaw_analysis_task", Task("poll"))
+    monkeypatch.setattr(tasks, "poll_deep_analysis_task", Task("poll"))
 
     assert retry_scheduler.compute_backoff_delay(0, initial_delay=5, max_delay=60, multiplier=2) == 5
     assert retry_scheduler.compute_backoff_delay(5, initial_delay=5, max_delay=60, multiplier=2) == 60
@@ -864,9 +864,9 @@ async def test_retry_scheduler_schedules_tasks_and_best_effort_failures(
         source_connection_id=77,
     )
     await retry_scheduler.schedule_forward_outbox(42, 3)
-    await retry_scheduler.schedule_openclaw_poll(99, 4)
+    await retry_scheduler.schedule_deep_analysis_poll(99, 4)
 
-    assert deleted == ["webhook-ingest-retry:req-1", "forward-outbox:42", "openclaw-poll:99"]
+    assert deleted == ["webhook-ingest-retry:req-1", "forward-outbox:42", "deep-analysis-poll:99"]
     assert scheduled[0][2]["traceparent"]
     assert scheduled[0][2]["source_connection_id"] == 77
     assert scheduled[1][2] == {"outbox_id": 42}
@@ -875,15 +875,15 @@ async def test_retry_scheduler_schedules_tasks_and_best_effort_failures(
     async def fail_schedule(_analysis_id: int, _delay_seconds: int) -> None:
         raise RuntimeError("schedule down")
 
-    monkeypatch.setattr(retry_scheduler, "schedule_openclaw_poll", fail_schedule)
-    await retry_scheduler.schedule_openclaw_poll_best_effort(100, 1)
+    monkeypatch.setattr(retry_scheduler, "schedule_deep_analysis_poll", fail_schedule)
+    await retry_scheduler.schedule_deep_analysis_poll_best_effort(100, 1)
 
     best_effort: list[tuple[int, int]] = []
 
     async def ok_schedule(analysis_id: int, delay_seconds: int) -> None:
         best_effort.append((analysis_id, delay_seconds))
 
-    monkeypatch.setattr(retry_scheduler, "compute_openclaw_poll_delay", lambda attempts: 6)
-    monkeypatch.setattr(retry_scheduler, "schedule_openclaw_poll", ok_schedule)
-    await retry_scheduler.schedule_openclaw_poll_best_effort(101)
+    monkeypatch.setattr(retry_scheduler, "compute_deep_analysis_poll_delay", lambda attempts: 6)
+    monkeypatch.setattr(retry_scheduler, "schedule_deep_analysis_poll", ok_schedule)
+    await retry_scheduler.schedule_deep_analysis_poll_best_effort(101)
     assert best_effort == [(101, 6)]

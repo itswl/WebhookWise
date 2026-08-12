@@ -13,7 +13,7 @@ outbox_delivery / outbox_notifications / outbox_state, which was over-fragmented
 Persistence/query helpers stay in outbox_records / outbox_queries; channel
 dispatch in channels.py. TaskIQ dispatch stays in outbox_scheduling.py, kept
 separate on purpose: the scheduled scanner (outbox_scanner.py) enqueues task IDs
-without importing this whole facade (channels -> feishu/openclaw, decisioning,
+without importing this whole facade (channels -> feishu/deep analysis, decisioning,
 rules).
 """
 
@@ -51,9 +51,9 @@ from services.webhooks.types import (
     DeepAnalysisStatus,
     ForwardOutboxStatus,
     ForwardResult,
+    gateway_run_id,
+    gateway_session_key,
     is_pending_result,
-    openclaw_run_id,
-    openclaw_session_key,
 )
 
 logger = get_logger("forward_outbox")
@@ -279,7 +279,7 @@ def _is_forward_success(result: ForwardResult) -> bool:
 
 
 async def deliver_outbox_record(record: ForwardOutbox) -> ForwardResult:
-    # Channel-specific dispatch (openclaw / feishu / generic webhook) lives in
+    # Channel-specific dispatch (deep analysis / feishu / generic webhook) lives in
     # the ForwardChannel registry; this just resolves and delegates.
     return await resolve_channel(record).deliver(record)
 
@@ -428,9 +428,15 @@ async def _claim_outbox(outbox_id: int, *, policy: ForwardDeliveryPolicy | None 
         return res.scalar_one_or_none()
 
 
+def _configured_platform() -> str:
+    from services.analysis.deep_analysis_platforms import configured_deep_analysis_platform
+
+    return configured_deep_analysis_platform()
+
+
 async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult) -> None:
     now = utcnow()
-    openclaw_analysis_id: int | None = None
+    deep_analysis_id: int | None = None
     async with session_scope() as session:
         # Atomically claim the SENT transition: only a row that is not already
         # terminal flips to SENT, and exactly one finalizer wins. A stale-scan
@@ -453,25 +459,25 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
         current.response_data = dict(result)
 
         # Ask the channel whether a successful delivery needs a post-commit
-        # follow-up record (OpenClaw spawns a DeepAnalysis poll). The state
-        # machine owns the session/transaction, so the openclaw-specific row is
+        # follow-up record (the gateway spawns a DeepAnalysis poll). The state
+        # machine owns the session/transaction, so the gateway-specific row is
         # built here, but the decision is delegated to the channel strategy
         # instead of a hardcoded target_type check.
         if resolve_channel(current).needs_followup_on_success(current, result):
             target_event_id = current.webhook_event_id
-            initial_poll_delay = taskiq_retry_scheduler.compute_openclaw_poll_delay(0)
+            initial_poll_delay = taskiq_retry_scheduler.compute_deep_analysis_poll_delay(0)
             analysis_record = DeepAnalysis(
                 webhook_event_id=target_event_id,
-                engine="openclaw",
-                openclaw_run_id=openclaw_run_id(result),
-                openclaw_session_key=openclaw_session_key(result),
+                engine=_configured_platform(),
+                gateway_run_id=gateway_run_id(result),
+                gateway_session_key=gateway_session_key(result),
                 status=DeepAnalysisStatus.PENDING,
                 poll_attempts=0,
                 next_poll_at=now + timedelta(seconds=initial_poll_delay),
             )
             session.add(analysis_record)
             await session.flush()
-            openclaw_analysis_id = analysis_record.id
+            deep_analysis_id = analysis_record.id
 
         notified_event_ids = _related_webhook_event_ids(current)
         if notified_event_ids:
@@ -487,8 +493,8 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
             current.webhook_event_id,
             current.target_type,
         )
-    if openclaw_analysis_id is not None:
-        await taskiq_retry_scheduler.schedule_openclaw_poll_best_effort(openclaw_analysis_id)
+    if deep_analysis_id is not None:
+        await taskiq_retry_scheduler.schedule_deep_analysis_poll_best_effort(deep_analysis_id)
 
 
 async def _finalize_outbox_failure(

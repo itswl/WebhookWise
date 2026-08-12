@@ -60,8 +60,8 @@ class WebhookData(TypedDict, total=False):
     duration_seconds: float
     created_at: Any
     webhook_event_id: int
-    openclaw_session_key: str
-    openclaw_run_id: str
+    gateway_session_key: str
+    gateway_run_id: str
     engine: str
     poll_attempts: int
     next_poll_at: Any
@@ -91,8 +91,8 @@ _STRING_WEBHOOK_FIELDS: Final = frozenset(
         "msg_type",
         "action",
         "status",
-        "openclaw_session_key",
-        "openclaw_run_id",
+        "gateway_session_key",
+        "gateway_run_id",
         "engine",
         "first_trigger_time",
         "trigger_condition",

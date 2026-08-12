@@ -68,7 +68,7 @@ def test_deep_analysis_card_formats_openclaw_json_fence() -> None:
 }
 ```"""
     card = build_deep_analysis_card(
-        {"analysis_result": {"root_cause": openclaw_text, "_openclaw_text": openclaw_text}, "engine": "openclaw"},
+        {"analysis_result": {"root_cause": openclaw_text, "_gateway_text": openclaw_text}, "engine": "openclaw"},
         source="prometheus",
         webhook_event_id=46708,
     )

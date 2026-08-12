@@ -280,7 +280,7 @@ async def test_outbox_create_schedule_forward_list_and_mask_paths(
             [
                 _rule(id=1, target_url=""),
                 _rule(id=2, target_url="https://target.test/a/" + "x" * 80),
-                _rule(id=3, target_type="openclaw", target_url=""),
+                _rule(id=3, target_type="deep_analysis", target_url=""),
             ],
             webhook_id=1,
             orig_id=None,
@@ -393,7 +393,7 @@ async def test_outbox_delivery_finalize_failure_and_requeue_paths(
 
     scheduled_many: list[list[int]] = []
     scheduled_retry: list[tuple[int, int]] = []
-    scheduled_openclaw: list[int] = []
+    scheduled_deep_analysis: list[int] = []
 
     async def schedule_many(outbox_ids: list[int]) -> None:
         scheduled_many.append(outbox_ids)
@@ -402,7 +402,7 @@ async def test_outbox_delivery_finalize_failure_and_requeue_paths(
         scheduled_retry.append((outbox_id, delay_seconds))
 
     async def schedule_poll(analysis_id: int) -> None:
-        scheduled_openclaw.append(analysis_id)
+        scheduled_deep_analysis.append(analysis_id)
 
     async def exhausted_notification(**_kwargs: object) -> dict[str, object]:
         return {"status": "queued"}
@@ -410,7 +410,9 @@ async def test_outbox_delivery_finalize_failure_and_requeue_paths(
     monkeypatch.setattr(outbox, "schedule_forward_outbox_many", schedule_many)
     monkeypatch.setattr("services.forwarding.outbox_scheduling.schedule_forward_outbox_retry", schedule_retry)
     monkeypatch.setattr("services.forwarding.outbox.enqueue_forward_notification", exhausted_notification)
-    monkeypatch.setattr("services.operations.taskiq_retry_scheduler.schedule_openclaw_poll_best_effort", schedule_poll)
+    monkeypatch.setattr(
+        "services.operations.taskiq_retry_scheduler.schedule_deep_analysis_poll_best_effort", schedule_poll
+    )
 
     async with session_factory.begin() as session:
         event = await _insert_event(session, alert_hash="outbox")
@@ -438,12 +440,12 @@ async def test_outbox_delivery_finalize_failure_and_requeue_paths(
             created_at=utcnow(),
             next_attempt_at=utcnow(),
         )
-        openclaw_record = ForwardOutbox(
-            idempotency_key="openclaw",
+        deep_analysis_record = ForwardOutbox(
+            idempotency_key="deep_analysis",
             webhook_event_id=event.id,
-            target_type="openclaw",
+            target_type="deep_analysis",
             target_url="",
-            channel_name="openclaw",
+            channel_name="deep_analysis",
             status=ForwardOutboxStatus.PROCESSING,
             attempts=1,
             max_attempts=2,
@@ -460,11 +462,11 @@ async def test_outbox_delivery_finalize_failure_and_requeue_paths(
             attempts=1,
             max_attempts=2,
         )
-        session.add_all([retry_record, exhausted_record, openclaw_record, terminal])
+        session.add_all([retry_record, exhausted_record, deep_analysis_record, terminal])
         await session.flush()
         retry_id = retry_record.id
         exhausted_id = exhausted_record.id
-        openclaw_id = openclaw_record.id
+        deep_analysis_id = deep_analysis_record.id
         terminal_id = terminal.id
 
     await outbox._finalize_outbox_failure(retry_id, "temporary", policy=_policy())
@@ -480,12 +482,12 @@ async def test_outbox_delivery_finalize_failure_and_requeue_paths(
         assert exhausted_record.status == ForwardOutboxStatus.EXHAUSTED
 
     await outbox._finalize_outbox_success(
-        ForwardOutbox(id=openclaw_id),
+        ForwardOutbox(id=deep_analysis_id),
         {
             "status": "pending",
             "_pending": True,
-            "_openclaw_run_id": "run-1",
-            "_openclaw_session_key": "session-1",
+            "_gateway_run_id": "run-1",
+            "_gateway_session_key": "session-1",
         },
     )
 
@@ -496,13 +498,13 @@ async def test_outbox_delivery_finalize_failure_and_requeue_paths(
         assert event.forward_status == "sent"
 
     assert scheduled_retry == [(retry_id, 3)]
-    assert scheduled_openclaw == [analyses[0].id]
+    assert scheduled_deep_analysis == [analyses[0].id]
 
-    # Terminal-success guard: re-finalizing an already-SENT openclaw record is a
+    # Terminal-success guard: re-finalizing an already-SENT gateway record is a
     # no-op and must NOT insert a second DeepAnalysis row (review group A C4).
     await outbox._finalize_outbox_success(
-        ForwardOutbox(id=openclaw_id),
-        {"status": "pending", "_pending": True, "_openclaw_run_id": "run-2", "_openclaw_session_key": "session-2"},
+        ForwardOutbox(id=deep_analysis_id),
+        {"status": "pending", "_pending": True, "_gateway_run_id": "run-2", "_gateway_session_key": "session-2"},
     )
     async with session_factory() as session:
         analyses_after = (await session.execute(select(DeepAnalysis))).scalars().all()

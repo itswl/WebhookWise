@@ -12,7 +12,7 @@ A channel owns:
   its own payload at delivery time).
 - deliver(record, payload): perform the external send, returning a ForwardResult.
 - needs_deep_analysis_record / deep_analysis_fields: post-commit success hook so
-  the outbox state machine can persist follow-up rows (OpenClaw) without
+  the outbox state machine can persist follow-up rows (deep analysis) without
   knowing channel specifics.
 """
 
@@ -36,21 +36,21 @@ class ForwardChannel(Protocol):
     def needs_followup_on_success(self, record: ForwardOutbox, result: ForwardResult) -> bool: ...
 
 
-class _OpenClawChannel:
-    name = "openclaw"
+class _DeepAnalysisChannel:
+    name = "deep_analysis"
 
     def matches(self, record: ForwardOutbox) -> bool:
-        return str(record.channel_name or record.target_type or "") == "openclaw"
+        return str(record.channel_name or record.target_type or "") == "deep_analysis"
 
     async def deliver(self, record: ForwardOutbox) -> ForwardResult:
-        from services.analysis import openclaw_analysis
+        from services.analysis import deep_analysis_trigger
 
         forward_data = cast(WebhookData, dict(record.forward_data or {}))
         analysis = cast(AnalysisResult, dict(record.analysis_result or {}))
-        return await openclaw_analysis.forward_to_openclaw(forward_data, analysis)
+        return await deep_analysis_trigger.forward_to_deep_analysis(forward_data, analysis)
 
     def needs_followup_on_success(self, record: ForwardOutbox, result: ForwardResult) -> bool:
-        # A pending OpenClaw trigger spawns a DeepAnalysis poll record.
+        # A pending gateway trigger spawns a DeepAnalysis poll record.
         return is_pending_result(result)
 
 
@@ -125,7 +125,7 @@ class _FeishuChannel:
     def matches(self, record: ForwardOutbox) -> bool:
         from services.notifications import feishu
 
-        if str(record.channel_name or record.target_type or "") == "openclaw":
+        if str(record.channel_name or record.target_type or "") == "deep_analysis":
             return False
         return feishu.is_feishu_url(str(record.target_url or ""))
 
@@ -442,10 +442,10 @@ class _FeishuRelayChannel:
         return False
 
 
-# Order matters: openclaw, feishu, dingtalk, and wecom are specific (the last
+# Order matters: deep_analysis, feishu, dingtalk, and wecom are specific (the last
 # three keyed on their bot URL shapes); webhook is the fallback.
 _CHANNELS: tuple[ForwardChannel, ...] = (
-    _OpenClawChannel(),
+    _DeepAnalysisChannel(),
     _FeishuRelayChannel(),
     _FeishuAppChannel(),
     _FeishuChannel(),

@@ -179,8 +179,8 @@ def scheduled_task_lock(name: str) -> str:
     return f"scheduled-task-lock:{name}"
 
 
-def openclaw_poller_stability(record_id: int) -> str:
-    return f"openclaw:poller:stability:{record_id}"
+def deep_analysis_poller_stability(record_id: int) -> str:
+    return f"deep_analysis:poller:stability:{record_id}"
 
 
 def periodic_report_last_sent(period_key: str) -> str:

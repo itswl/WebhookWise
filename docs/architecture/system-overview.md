@@ -34,7 +34,7 @@ flowchart TB
 
     subgraph external["External decision and delivery systems"]
         ai["LLM provider"]
-        openclaw["OpenClaw deep analysis"]
+        gateway["Deep-analysis gateway"]
         targets["Webhook / Feishu / DingTalk / WeCom targets"]
     end
 
@@ -53,7 +53,7 @@ flowchart TB
     worker -->|"consume and acknowledge tasks"| redis
     worker <-->|"events, incidents, outbox, knowledge"| postgres
     worker -->|"analysis request"| ai
-    worker -->|"submit and poll"| openclaw
+    worker -->|"submit and poll"| gateway
     worker -->|"deliver persisted outbox items"| targets
 ```
 
@@ -148,7 +148,7 @@ The learning path is intentionally conservative:
 flowchart LR
     source_connections["source_connections<br/>credential digest and source health"]
     webhook_events["webhook_events<br/>normalized event and workflow state"]
-    deep_analyses["deep_analyses<br/>local or OpenClaw result"]
+    deep_analyses["deep_analyses<br/>local or gateway result"]
     forward_rules["forward_rules"]
     outboxes["forward_outboxes<br/>delivery intent and outcome"]
     incident_members["incident_members"]
@@ -196,7 +196,7 @@ flowchart LR
     scheduler --> redis --> workers
     workers --> outbox["Outbox retry and stale scan"]
     workers --> grouping["Incident grouping and summaries"]
-    workers --> deep["OpenClaw polling"]
+    workers --> deep["Deep-analysis polling"]
     workers --> knowledge["KB sedimentation"]
     workers --> windows["Maintenance-window materialization"]
     workers --> reports["Daily / weekly / monthly reports"]

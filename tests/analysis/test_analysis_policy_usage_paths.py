@@ -7,17 +7,17 @@ from typing import Any
 import pytest
 
 
-def test_openclaw_poll_policy_methods_are_bounded() -> None:
+def test_gateway_poll_policy_methods_are_bounded() -> None:
     from core.datetime_utils import utcnow
-    from services.analysis.openclaw_client import OpenClawPollPolicy, _describe_exception
+    from services.analysis.deep_analysis_gateway import DeepAnalysisPollPolicy, _describe_exception
 
-    policy = OpenClawPollPolicy(
+    policy = DeepAnalysisPollPolicy(
         timeout_seconds=120,
         poll_timeout_seconds=10,
         poll_initial_delay_seconds=2,
         poll_max_delay_seconds=20,
         poll_backoff_multiplier=2.0,
-        http_api_url="https://openclaw.example",
+        http_api_url="https://gateway.example",
         gateway_url="wss://gateway.example",
         gateway_token="gateway",
         hooks_token="hooks",
