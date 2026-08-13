@@ -120,14 +120,38 @@ if _settings.debug and not _settings.redis_url.startswith("redis"):
 else:
     logger.info("[TaskIQ] Redis Broker initialized: %s", mask_url(_settings.redis_url))
 
-dynamic_schedule_source = ListRedisScheduleSource(
-    url=_settings.schedule_redis_url,
-    prefix="taskiq:schedule",
-    buffer_size=_settings.schedule_scan_buffer_size,
-    skip_past_schedules=False,
-)
+# The prefix must not contain a colon. ListRedisScheduleSource writes minute
+# buckets as "{prefix}:time:{%Y-%m-%dT%H:%M}" but reads them back with
+# key.split(":", 2)[2], so a prefix carrying its own colon makes every bucket
+# unparseable: the sweep for past buckets silently finds nothing, and a schedule
+# is delivered only if the scheduler reads its minute bucket after the write.
+# skip_past_schedules=False is what makes a missed minute recoverable, and it
+# only works with a colon-free prefix.
+_SCHEDULE_PREFIX = "taskiq-schedule"
+
+# Schedules written before this prefix changed still sit under the old one, and
+# nothing re-reads them: outbox retries and deep-analysis polls are re-armed from
+# database state by the interval scans, but a webhook ingest retry lives only in
+# its schedule payload, so losing it drops that webhook with no dead letter.
+# Consuming the legacy prefix alongside the new one keeps a restart from
+# stranding the in-flight ones. Safe to delete one deploy after the change: the
+# longest horizon written here is WEBHOOK_RETRY_MAX_DELAY_SECONDS.
+_LEGACY_SCHEDULE_PREFIX = "taskiq:schedule"
+
+
+def _build_schedule_source(prefix: str) -> ListRedisScheduleSource:
+    return ListRedisScheduleSource(
+        url=_settings.schedule_redis_url,
+        prefix=prefix,
+        buffer_size=_settings.schedule_scan_buffer_size,
+        skip_past_schedules=False,
+    )
+
+
+dynamic_schedule_source = _build_schedule_source(_SCHEDULE_PREFIX)
+legacy_schedule_source = _build_schedule_source(_LEGACY_SCHEDULE_PREFIX)
 
 scheduler = TaskiqScheduler(
     broker=broker,
-    sources=[LabelScheduleSource(broker), dynamic_schedule_source],
+    sources=[LabelScheduleSource(broker), dynamic_schedule_source, legacy_schedule_source],
 )

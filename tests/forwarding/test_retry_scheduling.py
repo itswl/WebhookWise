@@ -106,3 +106,36 @@ async def test_schedule_openclaw_poll_uses_taskiq_dynamic_schedule(monkeypatch: 
     assert captured["schedule_id"] == "deep-analysis-poll:789"
     assert captured["schedule_source"] is source
     assert captured["kwargs"] == {"analysis_id": 789}
+
+
+def test_schedule_source_can_read_back_the_buckets_it_writes() -> None:
+    """A timed schedule must survive a missed minute.
+
+    ListRedisScheduleSource writes minute buckets as "{prefix}:time:{minute}"
+    but parses them with key.split(":", 2)[2], so a prefix containing a colon
+    makes every bucket unparseable and the sweep for past buckets — the whole
+    point of skip_past_schedules=False — silently finds nothing. A deep-analysis
+    poll scheduled 20s out was lost this way, leaving the record pending until an
+    interval scan re-armed it.
+    """
+    import datetime
+
+    from core.taskiq_broker import dynamic_schedule_source as source
+
+    minute = datetime.datetime(2026, 8, 13, 12, 14, tzinfo=datetime.UTC)
+    assert source._parse_time_key(source._get_time_key(minute)) == minute
+
+
+def test_writes_go_to_the_fixed_prefix_while_the_legacy_one_is_still_drained() -> None:
+    """A restart must not strand schedules written under the old prefix.
+
+    Outbox retries and deep-analysis polls are re-armed from database state by
+    the interval scans, but a webhook ingest retry exists only as its schedule
+    payload — losing it drops that webhook without a dead letter.
+    """
+    from core.taskiq_broker import dynamic_schedule_source, legacy_schedule_source, scheduler
+    from services.operations.taskiq_retry_scheduler import dynamic_schedule_source as write_target
+
+    assert write_target is dynamic_schedule_source
+    assert legacy_schedule_source in scheduler.sources
+    assert legacy_schedule_source is not dynamic_schedule_source
