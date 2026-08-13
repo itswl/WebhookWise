@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from core.logger import get_logger
 from core.taskiq_broker import dynamic_schedule_source
@@ -37,10 +38,29 @@ def compute_deep_analysis_poll_delay(poll_attempts: int, *, policy: DeepAnalysis
 
 
 async def _schedule_by_time(schedule_id: str, delay_seconds: int, task: Any, **kwargs: Any) -> None:
-    """Shared scheduling helper: delete existing, then schedule at future time."""
+    """Shared scheduling helper: delete existing, then schedule at a future time.
+
+    The written id must be fresh every time. The scheduler remembers, per
+    schedule id, that it has already sent a time schedule, and forgets only when
+    that id is absent from a later refresh of the source. A task that re-arms
+    itself under one stable id (a poll scheduling its next poll) puts the id back
+    within milliseconds — long before the next refresh — so the id is never
+    absent, never forgotten, and `is_time_task_now` refuses it for the life of
+    the scheduler process. That is how a deep-analysis record sat pending for ten
+    minutes with its report already waiting: only restarting the scheduler, which
+    clears the map, released it.
+
+    The consequence of fresh ids is that the delete below no longer cancels a
+    predecessor written under a different one, so a schedule that was written but
+    not yet sent can be delivered twice. Each caller already absorbs that: the
+    poll claims a lease and returns early, outbox delivery claims the record and
+    carries an idempotency key, and ingest retry is deduplicated by body digest —
+    all of which the broker's own at-least-once redelivery requires anyway.
+    """
     await dynamic_schedule_source.delete_schedule(schedule_id)
     run_at = datetime.now(UTC) + timedelta(seconds=max(0, int(delay_seconds)))
-    await task.kicker().with_schedule_id(schedule_id).schedule_by_time(dynamic_schedule_source, run_at, **kwargs)
+    fresh_id = f"{schedule_id}:{uuid4().hex[:8]}"
+    await task.kicker().with_schedule_id(fresh_id).schedule_by_time(dynamic_schedule_source, run_at, **kwargs)
 
 
 def _raw_ingest_schedule_id(

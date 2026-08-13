@@ -62,7 +62,9 @@ async def test_schedule_webhook_ingest_retry_uses_request_id_schedule(monkeypatc
     )
 
     source.delete_schedule.assert_awaited_once_with("webhook-ingest-retry:req-123")
-    assert captured["schedule_id"] == "webhook-ingest-retry:req-123"
+    # A fresh suffix per write is what keeps the scheduler from remembering the
+    # id as already-sent; the stable part still names the resource.
+    assert str(captured["schedule_id"]).startswith("webhook-ingest-retry:req-123:")
     assert captured["schedule_source"] is source
     assert captured["kwargs"] == {
         "source_name": "prometheus",
@@ -103,7 +105,7 @@ async def test_schedule_openclaw_poll_uses_taskiq_dynamic_schedule(monkeypatch: 
     await scheduler.schedule_deep_analysis_poll(789, 30)
 
     source.delete_schedule.assert_awaited_once_with("deep-analysis-poll:789")
-    assert captured["schedule_id"] == "deep-analysis-poll:789"
+    assert str(captured["schedule_id"]).startswith("deep-analysis-poll:789:")
     assert captured["schedule_source"] is source
     assert captured["kwargs"] == {"analysis_id": 789}
 
@@ -139,3 +141,41 @@ def test_writes_go_to_the_fixed_prefix_while_the_legacy_one_is_still_drained() -
     assert write_target is dynamic_schedule_source
     assert legacy_schedule_source in scheduler.sources
     assert legacy_schedule_source is not dynamic_schedule_source
+
+
+@pytest.mark.asyncio
+async def test_rescheduling_the_same_resource_never_reuses_a_schedule_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A re-armed schedule must look new to the scheduler.
+
+    taskiq marks a time schedule id as sent and forgets it only once the id is
+    missing from a refresh. A poll that re-arms itself under one stable id
+    restores the id immediately, so it is never forgotten and never sent again —
+    the record then sits pending until the scheduler process restarts.
+    """
+    import services.operations.taskiq_retry_scheduler as scheduler
+    import services.operations.tasks as tasks
+
+    seen: list[str] = []
+
+    class FakeKicker:
+        def with_schedule_id(self, schedule_id: str) -> "FakeKicker":
+            seen.append(schedule_id)
+            return self
+
+        async def schedule_by_time(self, schedule_source: object, run_at: object, **kwargs: object) -> None:
+            return None
+
+    class FakeTask:
+        def kicker(self) -> FakeKicker:
+            return FakeKicker()
+
+    monkeypatch.setattr(scheduler, "dynamic_schedule_source", AsyncMock())
+    monkeypatch.setattr(tasks, "poll_deep_analysis_task", FakeTask(), raising=False)
+    monkeypatch.setattr(tasks, "poll_openclaw_analysis_task", FakeTask(), raising=False)
+
+    await scheduler.schedule_deep_analysis_poll(7, 20)
+    await scheduler.schedule_deep_analysis_poll(7, 40)
+
+    assert len(seen) == 2
+    assert seen[0] != seen[1]
+    assert all(s.startswith("deep-analysis-poll:7:") for s in seen)
