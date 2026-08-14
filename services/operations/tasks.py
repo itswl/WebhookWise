@@ -49,6 +49,7 @@ logger = get_logger("tasks")
 
 _RELEASE_IF_OWNER_LUA = ALERT_RELEASE_LOCK_IF_OWNER
 _SCHEDULING_ERRORS = (OSError, RedisError, RuntimeError, TimeoutError)
+_INGEST_RECORD_ERRORS = (OSError, RuntimeError, SQLAlchemyError, TimeoutError, ValueError)
 _TASK_PROCESSING_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError)
 
 # TaskIQ's scheduler matches cron against UTC, ignoring the container TZ. Anchor
@@ -115,10 +116,13 @@ async def _handle_raw_webhook_failure(
     traceparent: str | None = None,
     source_connection_id: int | None = None,
 ) -> None:
+    from datetime import timedelta
+
+    from core.datetime_utils import utcnow
     from core.observability.metrics import WEBHOOK_DEAD_LETTER_TOTAL, WEBHOOK_PROCESSING_STATUS_TOTAL
     from core.retry_policies import retry_policy
     from services.operations.taskiq_retry_scheduler import compute_backoff_delay, schedule_webhook_ingest_retry
-    from services.webhooks.ingest_failure import record_raw_ingest_dead_letter
+    from services.webhooks.ingest_failure import record_raw_ingest_dead_letter, record_raw_ingest_retry
     from services.webhooks.policies import WebhookRetryPolicy
 
     policy = WebhookRetryPolicy.from_config()
@@ -132,6 +136,32 @@ async def _handle_raw_webhook_failure(
             max_delay=policy.max_delay,
             multiplier=policy.backoff_multiplier,
         )
+        # Record the pending retry BEFORE scheduling it. The schedule is a
+        # promise held elsewhere; if it is never delivered — or if the call
+        # below fails, or this worker dies right here — the row is what lets the
+        # interval scan re-arm the webhook instead of losing it silently.
+        try:
+            await record_raw_ingest_retry(
+                source=source,
+                source_connection_id=source_connection_id,
+                raw_headers=raw_headers,
+                raw_body=raw_body,
+                client_ip=client_ip,
+                request_id=request_id,
+                received_at=received_at,
+                retry_count=next_retry_count,
+                next_retry_at=utcnow() + timedelta(seconds=delay),
+                err=err,
+            )
+        except _INGEST_RECORD_ERRORS as record_err:
+            # Losing the record is not a reason to lose the retry as well.
+            logger.error(
+                "[Tasks] could not record the pending raw ingest retry request_id=%s error=%s",
+                request_id,
+                record_err,
+                exc_info=True,
+            )
+
         try:
             await schedule_webhook_ingest_retry(
                 delay_seconds=delay,
@@ -505,6 +535,17 @@ async def scheduled_metrics_refresh() -> None:
     from services.operations.metrics_poller import refresh_all_metrics
 
     await _run_scheduled("metrics_refresh", _metrics_refresh_interval_seconds(), refresh_all_metrics())
+
+
+@broker.task(
+    task_name="scheduled_raw_ingest_retry_scan",
+    schedule=[{"interval": _background_scan_interval_seconds(), "schedule_id": "raw_ingest_retry_scan_interval"}],
+)
+async def scheduled_raw_ingest_retry_scan() -> None:
+    """Re-arm raw ingests whose delayed retry never arrived."""
+    from services.webhooks.ingest_retry import run_raw_ingest_retry_scan
+
+    await _run_scheduled("raw_ingest_retry_scan", _background_scan_interval_seconds(), run_raw_ingest_retry_scan())
 
 
 @broker.task(

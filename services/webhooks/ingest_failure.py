@@ -132,3 +132,75 @@ async def _update_existing_dead_letter(
             err,
         )
         return event_id
+
+
+async def record_raw_ingest_retry(
+    *,
+    source: str,
+    source_connection_id: int | None = None,
+    raw_headers: dict[str, str],
+    raw_body: str,
+    client_ip: str,
+    request_id: str | None,
+    received_at: str | None,
+    retry_count: int,
+    next_retry_at: datetime,
+    err: Exception,
+) -> int | None:
+    """Persist a raw-ingest attempt that is waiting to be retried.
+
+    The retry itself is a delayed task, and a delayed task is a promise held
+    somewhere else: lose it — a scheduler that never delivers it, a worker that
+    dies between the failure and the scheduling call — and the webhook is gone
+    with no dead letter and no trace beyond one log line. Outbox rows and
+    deep-analysis polls survive that because their state is in the database and
+    an interval scan re-arms them from it. This is the same guarantee for
+    ingestion.
+
+    The row is the ordinary event row, keyed by request_id and left in RETRY with
+    next_retry_at set, so a later success walks into it (the save path reuses a
+    non-completed row for that request_id) and exhaustion overwrites it with the
+    dead letter. Nothing new to clean up.
+    """
+    event = WebhookEvent()
+    event.fill_fields(
+        WebhookEventInput(
+            source=source or "unknown",
+            source_connection_id=source_connection_id,
+            request_id=request_id,
+            client_ip=client_ip or "",
+            raw_payload=raw_body.encode("utf-8"),
+            headers=redact_headers(raw_headers),
+            parsed_data=_parse_raw_body(raw_body),
+            processing_status=WebhookProcessingStatus.RETRY,
+            retry_count=max(0, int(retry_count)),
+            next_retry_at=next_retry_at,
+            error_message=_safe_error_message(err),
+            timestamp=_parse_received_at(received_at) or utcnow(),
+        )
+    )
+
+    try:
+        async with session_scope() as session:
+            session.add(event)
+            await session.flush()
+            return int(event.id)
+    except IntegrityError:
+        if not request_id:
+            raise
+        async with session_scope() as session:
+            stmt = (
+                sqlalchemy.update(WebhookEvent)
+                .where(WebhookEvent.request_id == request_id)
+                .where(WebhookEvent.processing_status != WebhookProcessingStatus.COMPLETED)
+                .values(
+                    processing_status=WebhookProcessingStatus.RETRY,
+                    retry_count=max(0, int(retry_count)),
+                    next_retry_at=next_retry_at,
+                    error_message=_safe_error_message(err),
+                    updated_at=utcnow(),
+                )
+                .returning(WebhookEvent.id)
+            )
+            row = (await session.execute(stmt)).first()
+            return int(row[0]) if row else None

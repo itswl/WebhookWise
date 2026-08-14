@@ -537,3 +537,138 @@ async def test_forwarding_outbox_endpoint_sanitizes_query_errors(
     assert response.status_code == 500
     assert body["error"] == INTERNAL_ERROR_MESSAGE
     assert "postgresql://" not in response.body.decode()
+
+
+@pytest.mark.asyncio
+async def test_record_raw_ingest_retry_leaves_a_row_a_scan_can_find(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A delayed retry is a promise held elsewhere; the row is what survives it."""
+    from datetime import timedelta
+
+    from core.datetime_utils import utcnow
+    from services.webhooks import ingest_failure
+    from services.webhooks.types import WebhookProcessingStatus
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.added: list[Any] = []
+
+        def add(self, item: Any) -> None:
+            self.added.append(item)
+
+        async def execute(self, _stmt: Any) -> Any:
+            return SimpleNamespace(first=lambda: None)
+
+        async def flush(self) -> None:
+            self.added[0].id = 91
+
+    session = FakeSession()
+
+    @asynccontextmanager
+    async def session_scope() -> Any:
+        yield session
+
+    monkeypatch.setattr(ingest_failure, "session_scope", session_scope)
+    due = utcnow() + timedelta(seconds=30)
+
+    event_id = await ingest_failure.record_raw_ingest_retry(
+        source="prometheus",
+        raw_headers={"Authorization": "Bearer secret", "X-Trace": "keep"},
+        raw_body='{"alertname":"HighCPU"}',
+        client_ip="203.0.113.7",
+        request_id="req-retry",
+        received_at="2026-05-27T10:00:00+08:00",
+        retry_count=2,
+        next_retry_at=due,
+        err=RuntimeError("upstream refused"),
+    )
+
+    event = session.added[0]
+    assert event_id == 91
+    assert event.processing_status == WebhookProcessingStatus.RETRY
+    assert event.next_retry_at == due
+    assert event.retry_count == 2
+    assert event.request_id == "req-retry"
+    # The scan rebuilds the task from this row, so the body must be on it — and
+    # the credential must not, exactly as the dead-letter path redacts.
+    assert event.raw_payload == b'{"alertname":"HighCPU"}'
+    assert "secret" not in str(event.headers)
+    assert event.headers.get("X-Trace") == "keep"
+
+
+@pytest.mark.asyncio
+async def test_ingest_retry_scan_reenqueues_overdue_rows_and_leases_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The recovery path must not ride the mechanism it is recovering from."""
+    from datetime import timedelta
+
+    from core.datetime_utils import utcnow
+    from services.webhooks import ingest_retry
+
+    overdue = SimpleNamespace(
+        id=5,
+        source="prometheus",
+        source_connection_id=None,
+        headers={"X-Trace": "keep"},
+        client_ip="203.0.113.7",
+        request_id="req-overdue",
+        timestamp=utcnow() - timedelta(minutes=5),
+        retry_count=1,
+    )
+    leases: list[Any] = []
+
+    class FakeSession:
+        async def execute(self, stmt: Any) -> Any:
+            text = str(stmt)
+            if text.strip().upper().startswith("UPDATE"):
+                leases.append(stmt)
+                return SimpleNamespace()
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [overdue]))
+
+    @asynccontextmanager
+    async def session_scope() -> Any:
+        yield FakeSession()
+
+    enqueued: list[dict[str, Any]] = []
+
+    async def fake_load(event: Any) -> tuple[None, str]:
+        return None, '{"alertname":"HighCPU"}'
+
+    class FakeTask:
+        async def kiq(self, **kwargs: Any) -> None:
+            enqueued.append(kwargs)
+
+    monkeypatch.setattr(ingest_retry, "session_scope", session_scope)
+    monkeypatch.setattr(ingest_retry, "load_event_payload", fake_load)
+    import services.operations.tasks as tasks
+
+    monkeypatch.setattr(tasks, "process_webhook_task", FakeTask())
+
+    count = await ingest_retry.run_raw_ingest_retry_scan()
+
+    assert count == 1
+    assert len(leases) == 1, "the row must be leased before its task is enqueued"
+    assert enqueued[0]["request_id"] == "req-overdue"
+    assert enqueued[0]["raw_body"] == '{"alertname":"HighCPU"}'
+    assert enqueued[0]["ingest_retry_count"] == 1
+    assert enqueued[0]["source_name"] == "prometheus"
+
+
+@pytest.mark.asyncio
+async def test_ingest_retry_scan_is_quiet_when_nothing_is_due(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.webhooks import ingest_retry
+
+    class FakeSession:
+        async def execute(self, _stmt: Any) -> Any:
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=list))
+
+    @asynccontextmanager
+    async def session_scope() -> Any:
+        yield FakeSession()
+
+    monkeypatch.setattr(ingest_retry, "session_scope", session_scope)
+    assert await ingest_retry.run_raw_ingest_retry_scan() == 0

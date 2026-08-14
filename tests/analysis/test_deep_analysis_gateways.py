@@ -289,3 +289,29 @@ def test_each_gateway_gets_its_own_circuit_breaker() -> None:
     other = get_deep_analysis_breaker("probe-b")
     assert other is not default_breaker
     assert get_deep_analysis_breaker("probe-b") is other
+
+
+def test_health_reports_configured_from_the_credential_the_trigger_uses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`configured` has to mean "can authenticate", not "one setting is non-empty".
+
+    The trigger sends DEEP_ANALYSIS_HOOKS_TOKEN and only falls back to
+    DEEP_ANALYSIS_GATEWAY_TOKEN. Reading the fallback alone reported a working
+    leg as unconfigured for every deployment that set the token the modern way —
+    which is the natural configuration, so the flag was wrong more often than
+    right.
+    """
+    cfg = get_config_manager().deep_analysis
+    monkeypatch.setattr(cfg, "DEEP_ANALYSIS_GATEWAY_TOKEN", "", raising=False)
+    monkeypatch.setattr(cfg, "DEEP_ANALYSIS_HOOKS_TOKEN", "hooks-only", raising=False)
+    assert bool(resolve_gateway(None).token) is True
+
+    # The legacy setting still counts, on its own.
+    monkeypatch.setattr(cfg, "DEEP_ANALYSIS_HOOKS_TOKEN", "", raising=False)
+    monkeypatch.setattr(cfg, "DEEP_ANALYSIS_GATEWAY_TOKEN", "legacy-only", raising=False)
+    assert bool(resolve_gateway(None).token) is True
+
+    # Neither: genuinely unconfigured.
+    monkeypatch.setattr(cfg, "DEEP_ANALYSIS_GATEWAY_TOKEN", "", raising=False)
+    assert bool(resolve_gateway(None).token) is False

@@ -45,6 +45,7 @@ from services.analysis.ai_prompt import (
     load_incident_summary_prompt_template,
     reload_incident_summary_prompt_template,
 )
+from services.analysis.deep_analysis_gateways import resolve_gateway
 from services.forwarding.outbox import requeue_forward_outbox
 from services.operations.tasks import process_webhook_task
 from services.webhooks.query_service import count_dead_letters, get_dead_letter_detail, list_dead_letters
@@ -138,7 +139,12 @@ async def deep_health_check(request: Request) -> JSONResponse:
             "ai": {"enabled": bool(config.ai.ENABLE_AI_ANALYSIS), "configured": ai_configured},
             "deep_analysis": {
                 "enabled": bool(config.deep_analysis.DEEP_ANALYSIS_ENABLED),
-                "configured": bool(config.deep_analysis.DEEP_ANALYSIS_GATEWAY_TOKEN),
+                # Ask the registry, not one setting: the trigger authenticates
+                # with DEEP_ANALYSIS_HOOKS_TOKEN and only falls back to
+                # DEEP_ANALYSIS_GATEWAY_TOKEN, so reading the fallback alone
+                # reported a working leg as unconfigured for every deployment
+                # that set the token the modern way.
+                "configured": bool(resolve_gateway(None).token),
             },
         },
     )
