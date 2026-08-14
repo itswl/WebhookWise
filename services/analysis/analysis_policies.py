@@ -32,6 +32,7 @@ DEFAULT_INCIDENT_SUMMARY_PROMPT_TEMPLATE = """你是一名分析生产事件的 
 @dataclass(frozen=True, slots=True)
 class RuleAnalysisPolicy:
     high_keywords: tuple[str, ...]
+    content_high_keywords: tuple[str, ...]
     warning_keywords: tuple[str, ...]
     metric_keywords: tuple[str, ...]
     threshold_multiplier: float
@@ -43,6 +44,7 @@ class RuleAnalysisPolicy:
         cfg = get_config_manager().ai
         return cls(
             high_keywords=tuple(split_csv_lower(cfg.RULE_HIGH_KEYWORDS)),
+            content_high_keywords=tuple(split_csv_lower(cfg.RULE_CONTENT_HIGH_KEYWORDS)),
             warning_keywords=tuple(split_csv_lower(cfg.RULE_WARN_KEYWORDS)),
             metric_keywords=tuple(split_csv_lower(cfg.RULE_METRIC_KEYWORDS)),
             threshold_multiplier=float(cfg.RULE_THRESHOLD_MULTIPLIER or 4.0),

@@ -80,6 +80,8 @@ def analyze_with_rules(
         "risks": ["Analysis may be inaccurate"],
     }
 
+    from services.incidents.grouping import is_recovery_payload
+
     rule_name = str(data.get("RuleName") or data.get("alert_name") or data.get("AlertName") or "unknown")
     res["event_type"] = rule_name
 
@@ -102,6 +104,17 @@ def analyze_with_rules(
         importance = "medium"
     elif any(k in level for k in ("info", "information", "notice", "ok", "resolved", "success", "normal", "恢复")):
         importance = "low"
+
+    # A money or account-security alert does not become unimportant because the
+    # sender labelled it "info". Measured in production: 15 live payment alerts
+    # arrived as Level=info, were filed low here, and — because tiered routing
+    # acts on this verdict — never reached the model, which called every payment
+    # alert it did see "high". Recoveries are exempt: once the condition is over,
+    # how bad it was is no longer the question.
+    if importance in ("low", "medium") and not is_recovery_payload(data, None):
+        content = f"{rule_name} {data.get('title') or ''} {data.get('message') or data.get('body') or ''}".lower()
+        if any(keyword in content for keyword in policy.content_high_keywords):
+            importance = "high"
 
     cur_val = data.get("CurrentValue") or data.get("current_value") or data.get("current") or data.get("value")
     thr_val = data.get("Threshold") or data.get("threshold") or data.get("limit")

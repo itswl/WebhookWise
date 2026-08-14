@@ -242,6 +242,20 @@ class AIConfig(StaticSettings):
     AI_PAYLOAD_MAX_BYTES: int = Field(default=32768, gt=0)
     AI_PAYLOAD_STRIP_KEYS: str = Field(default="images,raw_trace,stacktrace,base64_data,screenshot,binary_data")
     RULE_HIGH_KEYWORDS: str = Field(default="error,failure,critical,alert,错误,失败,故障")
+    # Matched against the alert's CONTENT (rule name, title, body) rather than
+    # its level, and it floors the verdict at high. Money and account security
+    # do not become unimportant because the sender labelled them "info": a
+    # payment alert arriving as Level=info was filed low by the rule pass and,
+    # with tiered routing on, never reached the model at all. Behavioral
+    # patterns matched against inbound Chinese alert text — not display copy.
+    RULE_CONTENT_HIGH_KEYWORDS: str = Field(
+        default=(
+            "payment,topup,top-up,withdraw,order,balance,funds,settlement,"
+            "security,attack,breach,leak,intrusion,unauthorized,"
+            "充值,提现,支付,订单,余额,资金,结算,盈亏,"
+            "安全,攻击,泄露,入侵,越权"
+        )
+    )
     RULE_WARN_KEYWORDS: str = Field(default="warning,warn,警告")
     RULE_METRIC_KEYWORDS: str = Field(default="4xxqps,5xxqps,error,cpu,memory,disk")
     RULE_THRESHOLD_MULTIPLIER: float = Field(default=4.0, gt=0.0)

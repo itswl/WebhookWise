@@ -296,6 +296,7 @@ def test_analyze_with_rules_accepts_explicit_policy():
         "custom",
         policy=RuleAnalysisPolicy(
             high_keywords=("urgent",),
+            content_high_keywords=(),
             warning_keywords=("warn",),
             metric_keywords=("queue",),
             threshold_multiplier=3.0,
