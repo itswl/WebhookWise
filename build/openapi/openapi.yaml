@@ -212,6 +212,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/deep-analyses/{analysis_id}/stream:
+    get:
+      summary: Stream Deep Analysis
+      description: 'Relay the investigator''s own progress stream to the browser.
+
+
+        Until now a running deep analysis showed "pending, polled N times" and
+
+        nothing else: the report appeared, whole, whenever it landed. The gateway
+
+        has always known more than that — hookprobe serves the run as NDJSON, one
+
+        object per line — so this hands that through.
+
+
+        It is a window, not a source of truth. The worker''s polling loop still owns
+
+        what gets written down; if this connection drops, or nobody ever opens it,
+
+        the analysis is recorded exactly the same way. That separation is why the
+
+        gateway token stays on this side and why a stream failure answers with a
+
+        status rather than failing the analysis.'
+      operationId: stream_deep_analysis_v1_deep_analyses__analysis_id__stream_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/deep-analyses/{analysis_id}/retry:
     post:
       summary: Retry Deep Analysis

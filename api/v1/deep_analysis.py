@@ -1,12 +1,15 @@
+from collections.abc import AsyncIterator
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
 from api.v1.webhook import JSONDict
 from core.auth import verify_admin_write, verify_api_key
+from core.http_client import get_deep_analysis_client
 from core.logger import get_logger, mask_url
 from core.url_security import UnsafeTargetUrlError
 from core.webhook_security import operator_action_guard
@@ -15,7 +18,7 @@ from models import DeepAnalysis, WebhookEvent
 from schemas.analysis import DeepAnalysisListResponse, deep_analysis_to_dict
 from services.analysis import deep_analysis_workflow
 from services.analysis.analysis_queries import get_deep_analyses_for_webhook, get_deep_analysis_list
-from services.analysis.deep_analysis_gateways import UnknownGatewayError
+from services.analysis.deep_analysis_gateways import UnknownGatewayError, resolve_gateway
 from services.forwarding.policies import DeepAnalysisTriggerPolicy
 from services.operations import taskiq_retry_scheduler
 from services.webhooks.types import (
@@ -24,6 +27,10 @@ from services.webhooks.types import (
     gateway_session_key,
     is_pending_result,
 )
+
+# A watcher must not hold a connection open forever; the investigation's own
+# ceiling is longer than any browser tab should wait.
+_STREAM_TIMEOUT = 900.0
 
 logger = get_logger("api.v1.deep_analysis")
 
@@ -164,6 +171,77 @@ async def get_deep_analyses(
 ) -> JSONDict:
     records = await get_deep_analyses_for_webhook(session, webhook_id, limit=limit)
     return {"success": True, "data": [deep_analysis_to_dict(record) for record in records]}
+
+
+@deep_analysis_router.get(
+    "/deep-analyses/{analysis_id}/stream",
+    response_model=None,
+    dependencies=[Depends(verify_api_key)],
+)
+async def stream_deep_analysis(
+    analysis_id: int, session: AsyncSession = Depends(get_db_session)
+) -> StreamingResponse | JSONResponse:
+    """Relay the investigator's own progress stream to the browser.
+
+    Until now a running deep analysis showed "pending, polled N times" and
+    nothing else: the report appeared, whole, whenever it landed. The gateway
+    has always known more than that — hookprobe serves the run as NDJSON, one
+    object per line — so this hands that through.
+
+    It is a window, not a source of truth. The worker's polling loop still owns
+    what gets written down; if this connection drops, or nobody ever opens it,
+    the analysis is recorded exactly the same way. That separation is why the
+    gateway token stays on this side and why a stream failure answers with a
+    status rather than failing the analysis.
+    """
+    record = await session.get(DeepAnalysis, analysis_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="deep analysis not found")
+    session_key = (record.gateway_session_key or "").strip()
+    if not session_key:
+        return JSONResponse(
+            status_code=409, content={"success": False, "error": "this analysis has no gateway session to watch"}
+        )
+
+    try:
+        gateway = resolve_gateway(record.gateway_name or None)
+    except UnknownGatewayError as e:
+        return JSONResponse(status_code=409, content={"success": False, "error": str(e)})
+    base = (gateway.http_api_url or gateway.gateway_url or "").strip().rstrip("/")
+    if not base:
+        return JSONResponse(status_code=409, content={"success": False, "error": "gateway is not configured"})
+
+    url = f"{base}/v1/runs/{quote(session_key, safe='')}/stream"
+    headers = {"Authorization": f"Bearer {gateway.token}"} if gateway.token else {}
+
+    async def relay() -> AsyncIterator[bytes]:
+        client = get_deep_analysis_client()
+        try:
+            async with client.stream("GET", url, headers=headers, timeout=_STREAM_TIMEOUT) as upstream:
+                if upstream.status_code != 200:
+                    logger.warning(
+                        "[DeepAnalysis] stream refused analysis_id=%s gateway=%s status=%s",
+                        analysis_id,
+                        gateway.name,
+                        upstream.status_code,
+                    )
+                    yield b'{"type":"error","detail":"gateway refused the stream"}\n'
+                    return
+                async for line in upstream.aiter_lines():
+                    if line.strip():
+                        yield (line + "\n").encode("utf-8")
+        except Exception as e:  # noqa: BLE001 — a watcher losing its window is not an incident
+            logger.info("[DeepAnalysis] stream ended analysis_id=%s reason=%s", analysis_id, e.__class__.__name__)
+            yield b'{"type":"error","detail":"stream ended"}\n'
+
+    # NDJSON, not text/event-stream: every call here carries a bearer token and
+    # EventSource cannot send headers. X-Accel-Buffering keeps a proxy from
+    # holding the lines back until the run is over, which would defeat the point.
+    return StreamingResponse(
+        relay(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @deep_analysis_router.post(

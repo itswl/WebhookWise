@@ -370,6 +370,14 @@ var DeepAnalysesModule = (function() {
             if (record.last_polled_at) pollInfo.push(t('deep.lastPolled', { time: new Date(record.last_polled_at).toLocaleTimeString('zh-CN') }));
             const pollText = pollInfo.length > 0 ? `<div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 0.2rem;">${escapeHtml(pollInfo.join(' · '))}</div>` : '';
             html += `<div class="da-preview da-preview-pending">${escapeHtml(t('deep.waitingForReport', { engine: engine.label }))} ${runIdText}</div>${pollText}`;
+            // The worker's polling still decides what gets written down; this
+            // only opens a window onto the run while it happens, because
+            // "pending, polled 7 times" is the least informative thing to show
+            // during the one minute somebody is actually watching.
+            if (record.gateway_session_key) {
+                html += `<div class="da-live-bar"><button class="btn btn-sm btn-ghost" data-da-watch="${escapeHtml(String(record.id))}">${escapeHtml(t('deep.watch'))}</button></div>`;
+                html += `<pre class="da-live" id="da-live-${escapeHtml(String(record.id))}" hidden></pre>`;
+            }
         } else if (record.status === 'failed') {
             let errorMsg = record.summary_preview || report.failure_reason || report.root_cause || report.primary_text || t('common.unknownError');
             errorMsg = truncateText(errorMsg, 160);
@@ -678,3 +686,90 @@ var DeepAnalysesModule = (function() {
         toggleDebugPayload: toggleDebugPayload
     };
 })();
+
+// One open stream at a time: a list page with several pending analyses must not
+// hold several connections. NDJSON over fetch rather than EventSource, because
+// every call here carries the API key as a header and EventSource cannot send
+// headers.
+let _daWatchAbort = null;
+let _daWatchId = null;
+
+function stopDeepAnalysisWatch() {
+    if (_daWatchAbort) { _daWatchAbort.abort(); }
+    _daWatchAbort = null;
+    _daWatchId = null;
+    document.querySelectorAll('[data-da-watch]').forEach(function (b) { b.textContent = t('deep.watch'); });
+}
+
+async function watchDeepAnalysis(id) {
+    if (_daWatchId === String(id)) { stopDeepAnalysisWatch(); return; }
+    stopDeepAnalysisWatch();
+    const pane = document.getElementById('da-live-' + id);
+    if (!pane) return;
+    pane.hidden = false;
+    pane.textContent = '';
+    const controller = new AbortController();
+    _daWatchAbort = controller;
+    _daWatchId = String(id);
+    const button = document.querySelector('[data-da-watch="' + id + '"]');
+    if (button) button.textContent = t('deep.watchStop');
+
+    const append = function (line) {
+        pane.textContent += line + '\n';
+        pane.scrollTop = pane.scrollHeight;
+    };
+
+    let response;
+    try {
+        response = await API.authenticatedFetch('/v1/deep-analyses/' + encodeURIComponent(id) + '/stream', { signal: controller.signal });
+    } catch (e) { append(t('deep.watchUnavailable')); stopDeepAnalysisWatch(); return; }
+    if (!response || !response.ok || !response.body) {
+        append(t('deep.watchUnavailable'));
+        stopDeepAnalysisWatch();
+        return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = '';
+    try {
+        for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            buffered += decoder.decode(chunk.value, { stream: true });
+            const lines = buffered.split('\n');
+            buffered = lines.pop();
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                let msg;
+                try { msg = JSON.parse(line); } catch (e) { continue; }
+                if (msg.type === 'ping') continue;
+                if (msg.type === 'done' || msg.type === 'settled') { append(t('deep.watchEnded')); break; }
+                if (msg.type === 'snapshot') {
+                    (msg.events || []).forEach(function (ev) { append(_daEventLine(ev)); });
+                    continue;
+                }
+                if (msg.type === 'delta') { pane.textContent += (msg.text || ''); pane.scrollTop = pane.scrollHeight; continue; }
+                append(_daEventLine(msg));
+            }
+        }
+    } catch (e) {
+        // An aborted read is the user closing the window, not a failure.
+    }
+    stopDeepAnalysisWatch();
+}
+
+function _daEventLine(ev) {
+    if (!ev || typeof ev !== 'object') return '';
+    if (ev.type === 'tool_use') return '▸ ' + (ev.name || '?') + ' ' + (ev.detail || '');
+    if (ev.type === 'text') return (ev.text || '');
+    if (ev.type === 'error') return '! ' + (ev.detail || 'stream error');
+    return '';
+}
+
+document.addEventListener('click', function (event) {
+    const button = event.target.closest && event.target.closest('[data-da-watch]');
+    if (!button) return;
+    event.preventDefault();
+    watchDeepAnalysis(button.getAttribute('data-da-watch'));
+});
