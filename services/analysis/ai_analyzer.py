@@ -17,6 +17,7 @@ from core.observability.metrics import (
     sanitize_source,
 )
 from services.analysis import ai_llm_client as _llm_client
+from services.analysis.ai_budget import budget_exhausted
 from services.analysis.ai_cache import get_cached_analysis, save_to_cache
 from services.analysis.ai_errors import (
     extract_ai_error_message as _extract_ai_error_message,
@@ -279,6 +280,21 @@ async def analyze_webhook_with_ai(
     routed = await _maybe_route_to_rules(parsed, source, alert_hash, ai_config)
     if routed is not None:
         return routed
+
+    # The month's money is gone: degrade rather than spend past the budget.
+    # A refusal here is a degradation and says so — unlike tiered routing, which
+    # is an intentional route. Checked after the cache, because serving an
+    # answer already paid for costs nothing.
+    exhausted, spent, budget = await budget_exhausted()
+    if exhausted:
+        return await _degrade_to_rules(
+            webhook_data,
+            parsed,
+            source,
+            alert_hash,
+            f"budget_exhausted: month-to-date AI spend ${spent:.2f} reached the ${budget:.2f} budget",
+            notify=True,
+        )
 
     if not provider_policy.available:
         reason = "disabled" if not provider_policy.enabled else "no_api_key"

@@ -380,6 +380,12 @@ class NotificationConfig(StaticSettings):
     # month per crossing). 0 = disabled. Webhook falls back to the daily report
     # webhook, then the deep-analysis webhook.
     AI_COST_MONTHLY_BUDGET_USD: float = Field(default=0.0, ge=0.0)
+    # A card at 100% tells someone the money is gone; it does not stop
+    # spending it. With this on, analysis degrades to the rule route once
+    # the month's budget is reached, and says so. Off by default: an
+    # unanalysed alert is a real cost too, and which one matters is a
+    # decision for the deployment, not a default.
+    AI_COST_BUDGET_ENFORCE: bool = Field(default=False)
     AI_COST_BUDGET_ALERT_THRESHOLD: float = Field(default=0.8, gt=0.0, le=1.0)  # warn at 80% of budget
     AI_COST_BUDGET_FEISHU_WEBHOOK: str = Field(default="")
 
