@@ -2,6 +2,7 @@
 
 import asyncio
 from pathlib import Path
+from typing import Final
 
 from core.logger import get_logger
 from services.analysis.analysis_policies import PromptPolicy
@@ -12,9 +13,11 @@ _prompt_template_lock = asyncio.Lock()
 _prompt_templates: dict[str, str] = {}
 _prompt_sources: dict[str, str] = {}
 
-USER_PROMPT_KIND = "user"
-DEEP_ANALYSIS_PROMPT_KIND = "deep_analysis"
-INCIDENT_SUMMARY_PROMPT_KIND = "incident_summary"
+# Final, so these keep their literal types: callers that take a PromptKind
+# should not have to re-state the string to satisfy the checker.
+USER_PROMPT_KIND: Final = "user"
+DEEP_ANALYSIS_PROMPT_KIND: Final = "deep_analysis"
+INCIDENT_SUMMARY_PROMPT_KIND: Final = "incident_summary"
 
 
 def get_prompt_source(kind: str = USER_PROMPT_KIND) -> str:

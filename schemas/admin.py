@@ -89,6 +89,16 @@ class PromptGetResponse(BaseModel):
     kind: str = "user"
     template: str
     source: str
+    # Content fingerprint of the template as loaded. Analyses record the same
+    # value, so a stored one can be read as "still current" or "edited since".
+    version: str = ""
+
+
+class PromptVersionsResponse(BaseModel):
+    """Current fingerprint of every prompt kind, for comparing against a record."""
+
+    success: bool
+    versions: dict[str, str]
 
 
 class PromptReloadResponse(BaseModel):

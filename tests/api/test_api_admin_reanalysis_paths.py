@@ -485,3 +485,55 @@ async def test_manual_forward_webhook_handles_success_skipped_delivery_and_url_v
     assert unsafe.status_code == 400
     assert _body(unsafe)["error"] == TARGET_URL_UNAVAILABLE_MESSAGE
     assert "non-public" not in unsafe.body.decode()
+
+
+@pytest.mark.asyncio
+async def test_prompt_versions_reports_every_kind_after_loading_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recorded fingerprint is unreadable without today's to compare it to.
+
+    The templates have to be loaded before they can be fingerprinted — an
+    unread one reports "unloaded", which would make every analysis look edited.
+    """
+    from api.v1 import admin
+
+    loaded: list[str] = []
+
+    async def load_prompt_by_kind(kind: str) -> str:
+        loaded.append(kind)
+        return f"template for {kind}"
+
+    monkeypatch.setattr(admin, "_load_prompt_by_kind", load_prompt_by_kind)
+    monkeypatch.setattr(admin, "get_prompt_version", lambda kind: f"v-{kind}")
+
+    body = _body(await admin.get_prompt_versions())
+
+    assert body["success"] is True
+    assert body["versions"] == {
+        "user": "v-user",
+        "deep_analysis": "v-deep_analysis",
+        "incident_summary": "v-incident_summary",
+    }
+    assert loaded == ["user", "deep_analysis", "incident_summary"]
+
+
+@pytest.mark.asyncio
+async def test_prompt_versions_survives_one_unreadable_template(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from api.v1 import admin
+
+    async def load_prompt_by_kind(kind: str) -> str:
+        if kind == "deep_analysis":
+            raise OSError("prompt file went missing")
+        return "ok"
+
+    monkeypatch.setattr(admin, "_load_prompt_by_kind", load_prompt_by_kind)
+    monkeypatch.setattr(admin, "get_prompt_version", lambda kind: f"v-{kind}")
+
+    body = _body(await admin.get_prompt_versions())
+
+    # One broken prompt must not cost the others their answer.
+    assert body["success"] is True
+    assert set(body["versions"]) == {"user", "deep_analysis", "incident_summary"}

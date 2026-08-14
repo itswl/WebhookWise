@@ -325,7 +325,13 @@ async def test_analyze_webhook_ai_cache_hit_disabled_and_success_paths(
         alert_hash="hash-success",
     )
     assert success["_route_type"] == "ai"
-    assert saved == [{"importance": "medium", "summary": "ok"}]
+    # The cached copy describes the analysis — including which prompt produced
+    # it, so a reuse can still be explained — but never the purchase.
+    assert len(saved) == 1
+    assert saved[0]["importance"] == "medium"
+    assert saved[0]["summary"] == "ok"
+    assert saved[0]["_prompt_kind"] == "user"
+    assert "_usage" not in saved[0]
 
 
 @pytest.mark.asyncio

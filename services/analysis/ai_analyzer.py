@@ -28,7 +28,9 @@ from services.analysis.ai_errors import (
     is_ai_provider_runtime_error as _is_ai_provider_runtime_error,
 )
 from services.analysis.ai_prompt import (
+    USER_PROMPT_KIND,
     get_prompt_source,
+    get_prompt_version,
     load_deep_analysis_prompt_template,
     load_user_prompt_template,
     reload_deep_analysis_prompt_template,
@@ -44,6 +46,7 @@ from services.webhooks.types import (
     cache_hit_count,
     is_analysis_degraded,
     mark_analysis_degraded,
+    set_analysis_prompt,
     set_analysis_route,
     set_analysis_usage,
 )
@@ -305,6 +308,11 @@ async def analyze_webhook_with_ai(
             str(analysis.get("importance", "unknown")).lower().rsplit(".", 1)[-1],
         )
         analysis_result = apply_resource_importance_override(analysis.copy(), parsed)
+        set_analysis_prompt(
+            analysis_result,
+            kind=USER_PROMPT_KIND,
+            version=get_prompt_version(USER_PROMPT_KIND),
+        )
         if not is_analysis_degraded(analysis_result):
             await save_to_cache(
                 alert_hash,

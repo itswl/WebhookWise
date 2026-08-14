@@ -1,3 +1,21 @@
+// The prompt fingerprints as they stand right now, fetched once per page.
+// An analysis records the fingerprint it was produced under; that hex is the
+// same string on every analysis until somebody edits a prompt, so on its own it
+// is noise. Compared against these it answers the only question worth asking of
+// it — is this report still explained by what the prompt says today?
+let _promptVersionsNow = null;
+async function ensurePromptVersions() {
+    if (_promptVersionsNow !== null) return _promptVersionsNow;
+    try {
+        const resp = await API.authenticatedFetch('/v1/admin/prompt/versions');
+        const data = await resp.json();
+        _promptVersionsNow = (data && data.versions) || {};
+    } catch (e) {
+        _promptVersionsNow = {};  // no basis for comparison; show the kind only
+    }
+    return _promptVersionsNow;
+}
+
 /**
  * Alert List Module
  * Handles loading, filtering, pagination, display, and interaction of alerts
@@ -901,6 +919,18 @@ const AlertsModule = {
 
         html += `<span>${wwIcon('send')} ${t('alerts.ai.routeChannel')}: <strong style="color: var(--text-main);">${escapeHtml(String(analysis._route_type || t('alerts.ai.unknown')))}</strong></span>`;
 
+        // Which prompt produced this, answered as a comparison rather than a
+        // hex: the fingerprint only means something next to today's.
+        const promptVersion = analysis._prompt_version;
+        if (promptVersion) {
+            const kind = String(analysis._prompt_kind || 'user');
+            const current = _promptVersionsNow ? _promptVersionsNow[kind] : null;
+            const edited = current && current !== promptVersion;
+            const verdict = !current ? '' : ` · ${edited ? t('alerts.ai.promptEdited') : t('alerts.ai.promptCurrent')}`;
+            const tone = edited ? ' style="color: var(--warning);"' : '';
+            html += `<span title="${escapeHtml(String(promptVersion))}"${tone}>${wwIcon('pencil')} ${t('alerts.ai.prompt')}: <strong style="color: var(--text-main);">${escapeHtml(kind)}</strong>${escapeHtml(verdict)}</span>`;
+        }
+
         // What this analysis actually spent. Present only on the route that
         // really called the model — a reuse route carries no usage, so absence
         // here means "this alert cost nothing", not "we forgot to measure".
@@ -1083,6 +1113,7 @@ const AlertsModule = {
         }
 
         try {
+            await ensurePromptVersions();
             const result = await API.getWebhook(webhookId);
 
             if (result.success && result.data) {

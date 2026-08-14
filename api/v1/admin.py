@@ -30,6 +30,7 @@ from schemas.admin import (
     DeadLetterListResponse,
     PromptGetResponse,
     PromptReloadResponse,
+    PromptVersionsResponse,
     ReplayAllResponse,
     ReplayBatchRequest,
     ReplayResponse,
@@ -42,6 +43,10 @@ from services.analysis.ai_analyzer import (
     reload_user_prompt_template,
 )
 from services.analysis.ai_prompt import (
+    DEEP_ANALYSIS_PROMPT_KIND,
+    INCIDENT_SUMMARY_PROMPT_KIND,
+    USER_PROMPT_KIND,
+    get_prompt_version,
     load_incident_summary_prompt_template,
     reload_incident_summary_prompt_template,
 )
@@ -181,12 +186,39 @@ async def get_prompt(kind: str = Query("user")) -> JSONResponse:
     try:
         prompt_kind = _normalize_prompt_kind(kind)
         template = await _load_prompt_by_kind(prompt_kind)
-        return ok_response(status=200, kind=prompt_kind, template=template, source=get_prompt_source(prompt_kind))
+        return ok_response(
+            status=200,
+            kind=prompt_kind,
+            template=template,
+            source=get_prompt_source(prompt_kind),
+            version=get_prompt_version(prompt_kind),
+        )
     except ValueError as e:
         return fail_response(str(e), 400)
     except _ADMIN_RUNTIME_ERRORS as e:
         logger.error("Failed to load prompt template: %s", e, exc_info=True)
         return internal_error_response()
+
+
+@admin_router.get("/prompt/versions", response_model=PromptVersionsResponse, dependencies=[Depends(verify_api_key)])
+async def get_prompt_versions() -> JSONResponse:
+    """What every prompt says right now, as a fingerprint per kind.
+
+    An analysis records the fingerprint of the prompt that produced it. On its
+    own that hex is the same string on every analysis until somebody edits the
+    file, which is unreadable and looks like noise; next to these it answers the
+    only question worth asking — is this report still explained by what the
+    prompt says today, or was it written under different instructions.
+    """
+    versions: dict[str, str] = {}
+    kinds: tuple[PromptKind, ...] = (USER_PROMPT_KIND, DEEP_ANALYSIS_PROMPT_KIND, INCIDENT_SUMMARY_PROMPT_KIND)
+    for kind in kinds:
+        try:
+            await _load_prompt_by_kind(kind)  # a fingerprint of an unread template is "unloaded"
+        except _ADMIN_RUNTIME_ERRORS as e:
+            logger.warning("prompt %s unreadable while reporting versions: %s", kind, e)
+        versions[kind] = get_prompt_version(kind)
+    return ok_response(status=200, versions=versions)
 
 
 # ── Dead Letter ───────────────────────────────────────────────────────────────

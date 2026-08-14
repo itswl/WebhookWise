@@ -17,6 +17,8 @@ class AnalysisMetaKey(StrEnum):
     PENDING = "_pending"
     EMBEDDING = "_embedding"
     USAGE = "_usage"
+    PROMPT_KIND = "_prompt_kind"
+    PROMPT_VERSION = "_prompt_version"
 
 
 class ForwardMetaKey(StrEnum):
@@ -41,6 +43,8 @@ ANALYSIS_CACHE_HIT_COUNT: Final = AnalysisMetaKey.CACHE_HIT_COUNT.value
 ANALYSIS_PENDING: Final = AnalysisMetaKey.PENDING.value
 ANALYSIS_EMBEDDING: Final = AnalysisMetaKey.EMBEDDING.value
 ANALYSIS_USAGE: Final = AnalysisMetaKey.USAGE.value
+ANALYSIS_PROMPT_KIND: Final = AnalysisMetaKey.PROMPT_KIND.value
+ANALYSIS_PROMPT_VERSION: Final = AnalysisMetaKey.PROMPT_VERSION.value
 FORWARD_PENDING: Final = ForwardMetaKey.PENDING.value
 GATEWAY_RUN_ID: Final = ForwardMetaKey.GATEWAY_RUN_ID.value
 GATEWAY_SESSION_KEY: Final = ForwardMetaKey.GATEWAY_SESSION_KEY.value
@@ -89,6 +93,8 @@ class AnalysisResult(TypedDict):
     _cache_hit_count: NotRequired[int]
     _pending: NotRequired[bool]
     _embedding: NotRequired[list[float]]
+    _prompt_kind: NotRequired[str]
+    _prompt_version: NotRequired[str]
     _usage: NotRequired[JsonObject]
     _importance_override: NotRequired[str]
     _importance_override_reason: NotRequired[str]
@@ -129,6 +135,25 @@ def set_analysis_route(result: AnalysisResult, route: str) -> AnalysisResult:
     if route not in ALLOWED_ANALYSIS_ROUTE_TYPES:
         raise ValueError(f"unsupported analysis route: {route}")
     result[ANALYSIS_ROUTE_TYPE] = cast(AnalysisRouteType, route)
+    return result
+
+
+def set_analysis_prompt(result: AnalysisResult, *, kind: str, version: str) -> AnalysisResult:
+    """Which prompt text produced this analysis.
+
+    The fingerprint already existed — ai_cache keys on it so that editing a
+    prompt invalidates stale results — but it was computed and thrown away, so
+    nothing could say afterwards which instructions an analysis came from. That
+    is the question asked when a report reads wrong, and the prompts here are
+    unusually easy to move: three kinds, overridable by env, and reloadable at
+    runtime.
+
+    Unlike _usage this is set BEFORE the result is cached. A cached analysis is
+    still the output of the prompt that produced it, and a reuse should say so;
+    what a reuse must not claim is a second purchase.
+    """
+    result["_prompt_kind"] = kind
+    result["_prompt_version"] = version
     return result
 
 

@@ -4390,6 +4390,30 @@
         }
       }
     },
+    "/v1/prompt/versions": {
+      "get": {
+        "summary": "Get Prompt Versions",
+        "description": "What every prompt says right now, as a fingerprint per kind.\n\nAn analysis records the fingerprint of the prompt that produced it. On its\nown that hex is the same string on every analysis until somebody edits the\nfile, which is unreadable and looks like noise; next to these it answers the\nonly question worth asking — is this report still explained by what the\nprompt says today, or was it written under different instructions.",
+        "operationId": "get_prompt_versions_v1_prompt_versions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptVersionsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/v1/admin/dead-letters": {
       "get": {
         "summary": "Get Dead Letters Endpoint",
@@ -9098,6 +9122,11 @@
           "source": {
             "type": "string",
             "title": "Source"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": ""
           }
         },
         "type": "object",
@@ -9153,6 +9182,28 @@
         ],
         "title": "PromptReloadResponse",
         "description": "Reload prompt template response"
+      },
+      "PromptVersionsResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Versions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "versions"
+        ],
+        "title": "PromptVersionsResponse",
+        "description": "Current fingerprint of every prompt kind, for comparing against a record."
       },
       "ReanalysisResponse": {
         "properties": {
