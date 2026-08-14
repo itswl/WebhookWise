@@ -49,6 +49,9 @@ same change (and vice versa).
 - Keep metrics labels stable and machine-readable; do not derive metric dimensions by parsing log text or localized strings.
 - Add targeted tests for core delivery channels, especially Feishu, deep analysis, forwarding, persistence, and dashboard static contracts.
 - Do not introduce new observability instruments unless a dashboard, alert, SLO, or automated decision consumes them.
+- Decisions that outlive their diff go in `.agents/notes/` — especially the
+  rejected ones, which a commit log never keeps. `scripts/assert_agent_notes.py`
+  enforces the shape and the gate runs it; see `.agents/README.md`.
 - Dashboard UI work follows `docs/design-language.md` (dark-first tokens,
   colour-in-points, the icon sprite, the type scale). The contract tests in
   `tests/runtime/test_dashboard_static_contracts.py` enforce it; a red

@@ -43,6 +43,9 @@ shellcheck entrypoint.sh scripts/gate.sh tests/e2e/*.sh
 step "requirements locks"
 python scripts/check_requirements_locks.py
 
+step "agent notes"
+python scripts/assert_agent_notes.py
+
 step "mypy"
 mypy
 
