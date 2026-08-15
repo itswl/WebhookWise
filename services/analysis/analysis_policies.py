@@ -40,14 +40,19 @@ class RuleAnalysisPolicy:
     @classmethod
     def from_config(cls) -> "RuleAnalysisPolicy":
         from core.text import split_csv_lower
+        from services.operations import runtime_settings as rt
 
         cfg = get_config_manager().ai
         return cls(
-            high_keywords=tuple(split_csv_lower(cfg.RULE_HIGH_KEYWORDS)),
-            content_high_keywords=tuple(split_csv_lower(cfg.RULE_CONTENT_HIGH_KEYWORDS)),
-            warning_keywords=tuple(split_csv_lower(cfg.RULE_WARN_KEYWORDS)),
-            metric_keywords=tuple(split_csv_lower(cfg.RULE_METRIC_KEYWORDS)),
-            threshold_multiplier=float(cfg.RULE_THRESHOLD_MULTIPLIER or 4.0),
+            high_keywords=tuple(split_csv_lower(rt.override_or("RULE_HIGH_KEYWORDS", cfg.RULE_HIGH_KEYWORDS))),
+            content_high_keywords=tuple(
+                split_csv_lower(rt.override_or("RULE_CONTENT_HIGH_KEYWORDS", cfg.RULE_CONTENT_HIGH_KEYWORDS))
+            ),
+            warning_keywords=tuple(split_csv_lower(rt.override_or("RULE_WARN_KEYWORDS", cfg.RULE_WARN_KEYWORDS))),
+            metric_keywords=tuple(split_csv_lower(rt.override_or("RULE_METRIC_KEYWORDS", cfg.RULE_METRIC_KEYWORDS))),
+            threshold_multiplier=rt.override_or(
+                "RULE_THRESHOLD_MULTIPLIER", float(cfg.RULE_THRESHOLD_MULTIPLIER or 4.0)
+            ),
         )
 
 
@@ -80,18 +85,24 @@ class AIProviderPolicy:
 
     @classmethod
     def from_config(cls) -> "AIProviderPolicy":
+        from services.operations import runtime_settings as rt
+
         cfg = get_config_manager().ai
         timeout_seconds = max(1.0, float(cfg.AI_HTTP_TIMEOUT_SECONDS))
         return cls(
-            enabled=bool(cfg.ENABLE_AI_ANALYSIS),
+            enabled=rt.override_or("ENABLE_AI_ANALYSIS", bool(cfg.ENABLE_AI_ANALYSIS)),
             api_key=str(cfg.OPENAI_API_KEY),
             api_url=str(cfg.OPENAI_API_URL),
             model=str(cfg.OPENAI_MODEL),
             system_prompt=str(cfg.AI_SYSTEM_PROMPT),
-            temperature=float(cfg.OPENAI_TEMPERATURE),
-            input_cost_per_1k_tokens=float(cfg.AI_COST_PER_1K_INPUT_TOKENS),
-            output_cost_per_1k_tokens=float(cfg.AI_COST_PER_1K_OUTPUT_TOKENS),
-            degradation_enabled=bool(cfg.ENABLE_AI_DEGRADATION),
+            temperature=rt.override_or("OPENAI_TEMPERATURE", float(cfg.OPENAI_TEMPERATURE)),
+            input_cost_per_1k_tokens=rt.override_or(
+                "AI_COST_PER_1K_INPUT_TOKENS", float(cfg.AI_COST_PER_1K_INPUT_TOKENS)
+            ),
+            output_cost_per_1k_tokens=rt.override_or(
+                "AI_COST_PER_1K_OUTPUT_TOKENS", float(cfg.AI_COST_PER_1K_OUTPUT_TOKENS)
+            ),
+            degradation_enabled=rt.override_or("ENABLE_AI_DEGRADATION", bool(cfg.ENABLE_AI_DEGRADATION)),
             http_timeout_seconds=timeout_seconds,
             http_connect_timeout_seconds=max(1.0, min(float(cfg.AI_HTTP_CONNECT_TIMEOUT_SECONDS), timeout_seconds)),
             instructor_mode=str(cfg.AI_INSTRUCTOR_MODE or "json"),

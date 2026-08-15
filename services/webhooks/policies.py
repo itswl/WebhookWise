@@ -98,12 +98,16 @@ class PayloadPolicy:
 
     @classmethod
     def from_config(cls) -> "PayloadPolicy":
+        from services.operations import runtime_settings as rt
+
         cfg = get_config_manager()
         threshold = int(cfg.server.PAYLOAD_OFFLOAD_THRESHOLD_BYTES or 0)
         return cls(
             offload_threshold_bytes=threshold if threshold > 0 else 512 * 1024,
-            strip_keys=_parse_strip_keys(str(cfg.ai.AI_PAYLOAD_STRIP_KEYS or "")),
-            max_bytes=int(cfg.ai.AI_PAYLOAD_MAX_BYTES),
+            strip_keys=_parse_strip_keys(
+                rt.override_or("AI_PAYLOAD_STRIP_KEYS", str(cfg.ai.AI_PAYLOAD_STRIP_KEYS or ""))
+            ),
+            max_bytes=rt.override_or("AI_PAYLOAD_MAX_BYTES", int(cfg.ai.AI_PAYLOAD_MAX_BYTES)),
         )
 
 
@@ -118,10 +122,20 @@ class WebhookRetryPolicy:
 
     @classmethod
     def from_config(cls) -> "WebhookRetryPolicy":
+        from services.operations import runtime_settings as rt
+
         cfg = get_config_manager()
         return cls(
-            max_retries=max(0, int(cfg.retry.WEBHOOK_RETRY_MAX_RETRIES)),
-            initial_delay=int(cfg.retry.WEBHOOK_RETRY_INITIAL_DELAY_SECONDS),
-            max_delay=int(cfg.retry.WEBHOOK_RETRY_MAX_DELAY_SECONDS),
-            backoff_multiplier=float(cfg.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER),
+            max_retries=max(0, rt.override_or("WEBHOOK_RETRY_MAX_RETRIES", int(cfg.retry.WEBHOOK_RETRY_MAX_RETRIES))),
+            initial_delay=int(
+                rt.override_or(
+                    "WEBHOOK_RETRY_INITIAL_DELAY_SECONDS", float(cfg.retry.WEBHOOK_RETRY_INITIAL_DELAY_SECONDS)
+                )
+            ),
+            max_delay=int(
+                rt.override_or("WEBHOOK_RETRY_MAX_DELAY_SECONDS", float(cfg.retry.WEBHOOK_RETRY_MAX_DELAY_SECONDS))
+            ),
+            backoff_multiplier=rt.override_or(
+                "WEBHOOK_RETRY_BACKOFF_MULTIPLIER", float(cfg.retry.WEBHOOK_RETRY_BACKOFF_MULTIPLIER)
+            ),
         )

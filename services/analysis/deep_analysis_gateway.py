@@ -54,18 +54,41 @@ class DeepAnalysisPollPolicy:
         pointed elsewhere.
         """
         from services.analysis.deep_analysis_gateways import resolve_gateway
+        from services.operations import runtime_settings as rt
 
         cfg = get_config_manager()
         gateway = resolve_gateway(gateway_name)
-        return cls(
-            timeout_seconds=int(cfg.deep_analysis.DEEP_ANALYSIS_TIMEOUT_SECONDS),
-            poll_timeout_seconds=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_TIMEOUT_SECONDS)),
-            poll_initial_delay_seconds=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_INITIAL_DELAY_SECONDS)),
-            poll_max_delay_seconds=max(
-                max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_INITIAL_DELAY_SECONDS)),
-                int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_MAX_DELAY_SECONDS),
+        initial_delay = max(
+            1,
+            int(
+                rt.override_or(
+                    "DEEP_ANALYSIS_POLL_INITIAL_DELAY_SECONDS",
+                    float(cfg.deep_analysis.DEEP_ANALYSIS_POLL_INITIAL_DELAY_SECONDS),
+                )
             ),
-            poll_backoff_multiplier=max(1.0, float(cfg.deep_analysis.DEEP_ANALYSIS_POLL_BACKOFF_MULTIPLIER)),
+        )
+        return cls(
+            timeout_seconds=rt.override_or(
+                "DEEP_ANALYSIS_TIMEOUT_SECONDS", int(cfg.deep_analysis.DEEP_ANALYSIS_TIMEOUT_SECONDS)
+            ),
+            poll_timeout_seconds=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_TIMEOUT_SECONDS)),
+            poll_initial_delay_seconds=initial_delay,
+            poll_max_delay_seconds=max(
+                initial_delay,
+                int(
+                    rt.override_or(
+                        "DEEP_ANALYSIS_POLL_MAX_DELAY_SECONDS",
+                        float(cfg.deep_analysis.DEEP_ANALYSIS_POLL_MAX_DELAY_SECONDS),
+                    )
+                ),
+            ),
+            poll_backoff_multiplier=max(
+                1.0,
+                rt.override_or(
+                    "DEEP_ANALYSIS_POLL_BACKOFF_MULTIPLIER",
+                    float(cfg.deep_analysis.DEEP_ANALYSIS_POLL_BACKOFF_MULTIPLIER),
+                ),
+            ),
             http_api_url=gateway.http_api_url,
             gateway_url=gateway.gateway_url,
             gateway_token=gateway.token,
@@ -73,8 +96,12 @@ class DeepAnalysisPollPolicy:
             connect_timeout_seconds=max(1.0, float(cfg.deep_analysis.DEEP_ANALYSIS_CONNECT_TIMEOUT_SECONDS)),
             stability_required_hits=max(1, int(cfg.deep_analysis.DEEP_ANALYSIS_STABILITY_REQUIRED_HITS)),
             stability_ttl_seconds=max(60, int(cfg.deep_analysis.DEEP_ANALYSIS_POLL_STABILITY_TTL_SECONDS)),
-            max_consecutive_errors=int(cfg.deep_analysis.DEEP_ANALYSIS_MAX_CONSECUTIVE_ERRORS),
-            enable_degradation=bool(cfg.deep_analysis.DEEP_ANALYSIS_ENABLE_DEGRADATION),
+            max_consecutive_errors=rt.override_or(
+                "DEEP_ANALYSIS_MAX_CONSECUTIVE_ERRORS", int(cfg.deep_analysis.DEEP_ANALYSIS_MAX_CONSECUTIVE_ERRORS)
+            ),
+            enable_degradation=rt.override_or(
+                "DEEP_ANALYSIS_ENABLE_DEGRADATION", bool(cfg.deep_analysis.DEEP_ANALYSIS_ENABLE_DEGRADATION)
+            ),
             notification_webhook_url=str(cfg.notifications.DEEP_ANALYSIS_FEISHU_WEBHOOK),
             gateway_name=gateway.name,
         )

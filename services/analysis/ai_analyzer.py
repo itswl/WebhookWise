@@ -289,8 +289,10 @@ async def analyze_webhook_with_ai(
     http_client: httpx.AsyncClient | None = None,
 ) -> AnalysisResult:
     ai_config = get_config_manager().ai
-    cache_enabled = bool(ai_config.CACHE_ENABLED)
-    cache_ttl_seconds = int(ai_config.ANALYSIS_CACHE_TTL_SECONDS)
+    cache_enabled = runtime_settings.override_or("CACHE_ENABLED", bool(ai_config.CACHE_ENABLED))
+    cache_ttl_seconds = runtime_settings.override_or(
+        "ANALYSIS_CACHE_TTL_SECONDS", int(ai_config.ANALYSIS_CACHE_TTL_SECONDS)
+    )
     provider_policy = AIProviderPolicy.from_config()
     source, parsed = webhook_data.get("source", "unknown"), webhook_data.get("parsed_data", {})
     if not alert_hash:

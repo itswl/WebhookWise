@@ -19,15 +19,29 @@ class ForwardDeliveryPolicy:
 
     @classmethod
     def from_config(cls) -> "ForwardDeliveryPolicy":
+        from services.operations import runtime_settings as rt
+
         cfg = get_config_manager()
         return cls(
-            timeout_seconds=int(cfg.retry.FORWARD_TIMEOUT_SECONDS),
-            max_attempts=max(1, int(cfg.retry.FORWARD_RETRY_MAX_RETRIES) + 1),
-            retry_initial_delay=int(cfg.retry.FORWARD_RETRY_INITIAL_DELAY_SECONDS),
-            retry_max_delay=int(cfg.retry.FORWARD_RETRY_MAX_DELAY_SECONDS),
-            retry_backoff_multiplier=float(cfg.retry.FORWARD_RETRY_BACKOFF_MULTIPLIER),
+            timeout_seconds=rt.override_or("FORWARD_TIMEOUT_SECONDS", int(cfg.retry.FORWARD_TIMEOUT_SECONDS)),
+            max_attempts=max(
+                1, rt.override_or("FORWARD_RETRY_MAX_RETRIES", int(cfg.retry.FORWARD_RETRY_MAX_RETRIES)) + 1
+            ),
+            retry_initial_delay=int(
+                rt.override_or(
+                    "FORWARD_RETRY_INITIAL_DELAY_SECONDS", float(cfg.retry.FORWARD_RETRY_INITIAL_DELAY_SECONDS)
+                )
+            ),
+            retry_max_delay=int(
+                rt.override_or("FORWARD_RETRY_MAX_DELAY_SECONDS", float(cfg.retry.FORWARD_RETRY_MAX_DELAY_SECONDS))
+            ),
+            retry_backoff_multiplier=rt.override_or(
+                "FORWARD_RETRY_BACKOFF_MULTIPLIER", float(cfg.retry.FORWARD_RETRY_BACKOFF_MULTIPLIER)
+            ),
             stale_processing_threshold_seconds=int(cfg.tasks.FORWARD_OUTBOX_STALE_SECONDS),
-            max_delivery_age_seconds=max(0, int(cfg.retry.FORWARD_MAX_DELIVERY_AGE_SECONDS)),
+            max_delivery_age_seconds=max(
+                0, rt.override_or("FORWARD_MAX_DELIVERY_AGE_SECONDS", int(cfg.retry.FORWARD_MAX_DELIVERY_AGE_SECONDS))
+            ),
         )
 
     def delay_for_attempt(self, attempts: int) -> int:
@@ -71,17 +85,20 @@ class DeepAnalysisTriggerPolicy:
         investigation somewhere the rule did not ask for.
         """
         from services.analysis.deep_analysis_gateways import resolve_gateway
+        from services.operations import runtime_settings as rt
 
         cfg = get_config_manager()
         gateway = resolve_gateway(gateway_name)
         return cls(
-            enabled=bool(cfg.deep_analysis.DEEP_ANALYSIS_ENABLED),
-            timeout_seconds=int(cfg.deep_analysis.DEEP_ANALYSIS_TIMEOUT_SECONDS),
+            enabled=rt.override_or("DEEP_ANALYSIS_ENABLED", bool(cfg.deep_analysis.DEEP_ANALYSIS_ENABLED)),
+            timeout_seconds=rt.override_or(
+                "DEEP_ANALYSIS_TIMEOUT_SECONDS", int(cfg.deep_analysis.DEEP_ANALYSIS_TIMEOUT_SECONDS)
+            ),
             platform=gateway.platform,
             gateway_url=gateway.gateway_url,
             hooks_token=gateway.token,
             connect_timeout=max(1.0, float(cfg.deep_analysis.DEEP_ANALYSIS_CONNECT_TIMEOUT_SECONDS)),
-            enable_degradation=bool(cfg.ai.ENABLE_AI_DEGRADATION),
+            enable_degradation=rt.override_or("ENABLE_AI_DEGRADATION", bool(cfg.ai.ENABLE_AI_DEGRADATION)),
             http_api_url=gateway.http_api_url,
             gateway_name=gateway.name,
         )

@@ -162,6 +162,78 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
     SettingSpec(
         "AI_COST_BUDGET_ENFORCE", "ai", _cast_bool, "At 100% of the budget, degrade to rules instead of spending"
     ),
+    # Keyword rules. These decide severity before any model sees the alert, and
+    # a missing keyword class is invisible: the payment-alert downgrade lived in
+    # this configuration for weeks because nobody could see it.
+    SettingSpec("RULE_HIGH_KEYWORDS", "rules", _cast_csv_names, "Level/name keywords that mean high"),
+    SettingSpec(
+        "RULE_CONTENT_HIGH_KEYWORDS",
+        "rules",
+        _cast_csv_names,
+        "Content keywords that floor the verdict at high (money, account security)",
+    ),
+    SettingSpec("RULE_WARN_KEYWORDS", "rules", _cast_csv_names, "Keywords that mean medium"),
+    SettingSpec("RULE_METRIC_KEYWORDS", "rules", _cast_csv_names, "Keywords that mark a metric alert"),
+    SettingSpec(
+        "RULE_THRESHOLD_MULTIPLIER", "rules", _cast_float(0.1, 100.0), "How far past a threshold counts as severe"
+    ),
+    # Ingest: what counts as the same alert, and how hard to retry one.
+    SettingSpec("DEDUP_WINDOW_SECONDS", "ingest", _cast_int(0, 86400), "Repeats within this window join a thread"),
+    SettingSpec(
+        "ANALYSIS_REUSE_WINDOW_SECONDS", "ingest", _cast_int(0, 86400), "How long one analysis answers restatements"
+    ),
+    SettingSpec("WEBHOOK_RETRY_MAX_RETRIES", "ingest", _cast_int(0, 20), "Attempts before a webhook is dead-lettered"),
+    SettingSpec("WEBHOOK_RETRY_INITIAL_DELAY_SECONDS", "ingest", _cast_float(0.0, 600.0), "First retry delay"),
+    SettingSpec("WEBHOOK_RETRY_MAX_DELAY_SECONDS", "ingest", _cast_float(0.0, 3600.0), "Retry delay ceiling"),
+    SettingSpec("WEBHOOK_RETRY_BACKOFF_MULTIPLIER", "ingest", _cast_float(1.0, 10.0), "Retry backoff multiplier"),
+    SettingSpec("AI_PAYLOAD_MAX_BYTES", "ingest", _cast_int(1024, 5_000_000), "Payload bytes kept for analysis"),
+    SettingSpec("AI_PAYLOAD_STRIP_KEYS", "ingest", _cast_csv_names, "Payload keys dropped before the model sees them"),
+    # Delivery.
+    SettingSpec("FORWARD_TIMEOUT_SECONDS", "delivery", _cast_int(1, 300), "Per-delivery HTTP timeout"),
+    SettingSpec("FORWARD_RETRY_MAX_RETRIES", "delivery", _cast_int(0, 20), "Delivery attempts before dead"),
+    SettingSpec("FORWARD_RETRY_INITIAL_DELAY_SECONDS", "delivery", _cast_float(0.0, 600.0), "First retry delay"),
+    SettingSpec("FORWARD_RETRY_MAX_DELAY_SECONDS", "delivery", _cast_float(0.0, 3600.0), "Retry delay ceiling"),
+    SettingSpec("FORWARD_RETRY_BACKOFF_MULTIPLIER", "delivery", _cast_float(1.0, 10.0), "Retry backoff multiplier"),
+    SettingSpec(
+        "FORWARD_MAX_DELIVERY_AGE_SECONDS",
+        "delivery",
+        _cast_int(0, 604800),
+        "Stop delivering a queued alert older than this; 0 = never expire",
+    ),
+    # Retention: the answers to "can we keep less".
+    SettingSpec("ENABLE_DATA_CLEANUP", "retention", _cast_bool, "Run the daily purge at all"),
+    SettingSpec("DATA_RETENTION_DAYS_DEFAULT", "retention", _cast_int(1, 3650), "Default event retention (days)"),
+    SettingSpec("ARCHIVE_RETENTION_DAYS", "retention", _cast_int(0, 3650), "Archived event retention (days)"),
+    SettingSpec("AI_USAGE_RETENTION_DAYS", "retention", _cast_int(0, 3650), "AI usage log retention (days)"),
+    SettingSpec(
+        "TERMINAL_OUTBOX_RETENTION_DAYS", "retention", _cast_int(0, 3650), "Settled outbox row retention (days)"
+    ),
+    SettingSpec("INCIDENT_AUTO_CLOSE_DAYS", "retention", _cast_int(0, 3650), "Auto-close quiet incidents after"),
+    SettingSpec("MAINTENANCE_HOUR", "retention", _cast_int(0, 23), "Hour of day the purge runs (UTC)"),
+    # Deep analysis: the knobs reached for during an incident.
+    SettingSpec("DEEP_ANALYSIS_ENABLED", "deep_analysis", _cast_bool, "Trigger investigations at all"),
+    SettingSpec("DEEP_ANALYSIS_TIMEOUT_SECONDS", "deep_analysis", _cast_int(30, 3600), "How long to wait for a report"),
+    SettingSpec(
+        "DEEP_ANALYSIS_POLL_INITIAL_DELAY_SECONDS", "deep_analysis", _cast_float(0.5, 120.0), "First poll delay"
+    ),
+    SettingSpec("DEEP_ANALYSIS_POLL_MAX_DELAY_SECONDS", "deep_analysis", _cast_float(1.0, 600.0), "Poll delay ceiling"),
+    SettingSpec(
+        "DEEP_ANALYSIS_POLL_BACKOFF_MULTIPLIER", "deep_analysis", _cast_float(1.0, 10.0), "Poll backoff multiplier"
+    ),
+    SettingSpec(
+        "DEEP_ANALYSIS_MAX_CONSECUTIVE_ERRORS", "deep_analysis", _cast_int(1, 100), "Errors before a run is abandoned"
+    ),
+    SettingSpec(
+        "DEEP_ANALYSIS_ENABLE_DEGRADATION", "deep_analysis", _cast_bool, "Report a failed investigation as a result"
+    ),
+    # AI, beyond the spend policy already here.
+    SettingSpec("ENABLE_AI_ANALYSIS", "ai", _cast_bool, "Call a model at all"),
+    SettingSpec("ENABLE_AI_DEGRADATION", "ai", _cast_bool, "Fall back to rules when the model cannot answer"),
+    SettingSpec("OPENAI_TEMPERATURE", "ai", _cast_float(0.0, 2.0), "Sampling temperature"),
+    SettingSpec("CACHE_ENABLED", "ai", _cast_bool, "Reuse an identical alert's analysis"),
+    SettingSpec("ANALYSIS_CACHE_TTL_SECONDS", "ai", _cast_int(0, 604800), "How long a cached analysis answers"),
+    SettingSpec("AI_COST_PER_1K_INPUT_TOKENS", "ai", _cast_float(0.0, 1000.0), "Input price used by the cost view"),
+    SettingSpec("AI_COST_PER_1K_OUTPUT_TOKENS", "ai", _cast_float(0.0, 1000.0), "Output price used by the cost view"),
     # Escalation
     SettingSpec(
         "INCIDENT_AUTO_SLA_MINUTES",

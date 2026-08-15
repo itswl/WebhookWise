@@ -150,16 +150,32 @@ def test_ai_spend_policy_is_tunable_without_an_ssh() -> None:
     from services.operations import runtime_settings as rs
 
     ai_keys = {key for key, spec in rs.SPECS.items() if spec.domain == "ai"}
-    assert ai_keys == {
+    assert {
         "AI_EXCLUDED_RULES",
         "AI_ROUTING_ENABLED",
         "AI_ROUTING_SKIP_IMPORTANCE",
         "AI_COST_MONTHLY_BUDGET_USD",
         "AI_COST_BUDGET_ENFORCE",
-    }
+    } <= ai_keys
     # Credentials and endpoints are NOT tunable here: they describe the
     # deployment, not the policy, and a live-editable API key is a liability.
-    assert not any(key.startswith(("OPENAI_", "AI_BASE", "AI_MODEL")) for key in rs.SPECS)
+    # Named rather than prefix-matched — OPENAI_TEMPERATURE is policy and does
+    # belong, so a prefix rule would either exclude it or protect nothing.
+    forbidden = {
+        "OPENAI_API_KEY",
+        "OPENAI_API_URL",
+        "DEEP_ANALYSIS_GATEWAY_TOKEN",
+        "DEEP_ANALYSIS_HOOKS_TOKEN",
+        "DEEP_ANALYSIS_GATEWAY_URL",
+        "DEEP_ANALYSIS_HTTP_API_URL",
+        "DEEP_ANALYSIS_DEVICE_PRIVATE_KEY_PEM",
+        "DEEP_ANALYSIS_DEVICE_TOKEN",
+        "API_KEY",
+        "ADMIN_WRITE_KEY",
+        "DATABASE_URL",
+        "REDIS_URL",
+    }
+    assert forbidden.isdisjoint(rs.SPECS)
 
 
 def test_an_exclusion_list_rejects_the_shapes_that_would_silently_do_nothing() -> None:
@@ -181,3 +197,36 @@ def test_the_skip_list_only_accepts_real_importances() -> None:
     assert cast("Low, Medium") == "low,medium"
     with pytest.raises(ValueError):
         cast("low,urgent")
+
+
+def test_every_registered_key_is_actually_read_through_the_plane() -> None:
+    """Registering a key without reading it produces a switch that does nothing.
+
+    The dashboard would show it, an operator would change it, the value would be
+    stored — and the code would keep reading the environment. That is the exact
+    failure shape this session kept hitting, so it gets a test rather than a
+    convention.
+    """
+    import re
+    from pathlib import Path
+
+    from services.operations import runtime_settings as rs
+
+    root = Path(__file__).resolve().parents[2]
+    sources = []
+    for folder in ("services", "core", "api"):
+        sources.extend((root / folder).rglob("*.py"))
+    read = set()
+    # Digits included: AI_COST_PER_1K_INPUT_TOKENS was missed by [A-Z_]+ alone.
+    pattern = re.compile(r'override_or\(\s*"([A-Z0-9_]+)"')
+    for path in sources:
+        if path.name == "runtime_settings.py":
+            continue
+        read.update(pattern.findall(path.read_text(encoding="utf-8")))
+    # The helper in operations/policies.py wraps override_or under its own name.
+    wrapper = re.compile(r'_rt_override\(\s*"([A-Z0-9_]+)"')
+    for path in sources:
+        read.update(wrapper.findall(path.read_text(encoding="utf-8")))
+
+    unread = sorted(set(rs.SPECS) - read)
+    assert unread == [], f"registered but never read through the plane: {unread}"

@@ -194,11 +194,17 @@ def generate_alert_hash(
 
 
 def _dedup_window_seconds() -> int:
-    return int(get_config_manager().retry.DEDUP_WINDOW_SECONDS)
+    from services.operations import runtime_settings as rt
+
+    return rt.override_or("DEDUP_WINDOW_SECONDS", int(get_config_manager().retry.DEDUP_WINDOW_SECONDS))
 
 
 def _analysis_reuse_window_seconds() -> int:
-    return int(get_config_manager().retry.ANALYSIS_REUSE_WINDOW_SECONDS)
+    from services.operations import runtime_settings as rt
+
+    return rt.override_or(
+        "ANALYSIS_REUSE_WINDOW_SECONDS", int(get_config_manager().retry.ANALYSIS_REUSE_WINDOW_SECONDS)
+    )
 
 
 def _has_reusable_analysis(analysis: dict[str, Any] | None) -> bool:
