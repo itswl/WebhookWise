@@ -54,6 +54,7 @@
             'rs.empty.text': 'The backend has not registered any tunable settings.',
             'rs.domain.flapping': 'Flapping',
             'rs.domain.ai': 'AI & cost',
+            'rs.domain.breakers': 'Circuit breakers',
             'rs.domain.rules': 'Rule keywords',
             'rs.domain.ingest': 'Ingest & dedup',
             'rs.domain.delivery': 'Delivery & retry',

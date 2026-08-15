@@ -25,13 +25,34 @@ class LazyCircuitBreaker:
 
     # No __slots__ on purpose: tests monkeypatch `call_async` on the instance
     # (e.g. tests/analysis/test_llm_circuit_breaker.py), which __slots__ blocks.
-    def __init__(self, factory: Callable[[], CircuitBreaker]) -> None:
+    def __init__(
+        self,
+        factory: Callable[[], CircuitBreaker],
+        signature: Callable[[], object] | None = None,
+    ) -> None:
         self._factory = factory
+        self._signature = signature
+        self._built_from: object = None
         self._breaker: CircuitBreaker | None = None
 
     def _get(self) -> CircuitBreaker:
-        if self._breaker is None:
+        """The breaker for the CURRENT configuration.
+
+        A breaker built once at import cannot be retuned, which made its
+        thresholds the one group of operator knobs that could not move onto the
+        runtime settings plane: the dashboard would have accepted an edit and
+        changed nothing. So the configuration it was built from is remembered,
+        and a different answer rebuilds it.
+
+        Rebuilding resets the failure count with it. That is the right trade
+        here — an operator retuning a breaker mid-incident wants the new policy
+        applied now, not after the old window drains — but it does mean a
+        setting changed in a loop would keep the breaker permanently closed.
+        """
+        current = self._signature() if self._signature is not None else None
+        if self._breaker is None or current != self._built_from:
             self._breaker = self._factory()
+            self._built_from = current
         return self._breaker
 
     async def call_async(self, func: Callable[_P, Awaitable[_R]], *args: _P.args, **kwargs: _P.kwargs) -> _R:

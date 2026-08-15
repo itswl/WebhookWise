@@ -54,6 +54,7 @@
             'rs.empty.text': '后端尚未注册可调整的配置项。',
             'rs.domain.flapping': '抖动',
             'rs.domain.ai': 'AI 与成本',
+            'rs.domain.breakers': '熔断阈值',
             'rs.domain.rules': '规则关键词',
             'rs.domain.ingest': '入站与去重',
             'rs.domain.delivery': '投递与重试',

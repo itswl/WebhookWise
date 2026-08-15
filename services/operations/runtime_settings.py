@@ -234,6 +234,40 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
     SettingSpec("ANALYSIS_CACHE_TTL_SECONDS", "ai", _cast_int(0, 604800), "How long a cached analysis answers"),
     SettingSpec("AI_COST_PER_1K_INPUT_TOKENS", "ai", _cast_float(0.0, 1000.0), "Input price used by the cost view"),
     SettingSpec("AI_COST_PER_1K_OUTPUT_TOKENS", "ai", _cast_float(0.0, 1000.0), "Output price used by the cost view"),
+    # Breaker thresholds: the knobs an operator reaches for mid-incident. Live
+    # because LazyCircuitBreaker rebuilds when these change — registering them
+    # before that was true would have shipped four switches that did nothing.
+    SettingSpec("CIRCUIT_BREAKER_LLM_THRESHOLD", "breakers", _cast_int(1, 1000), "Failures before the LLM is skipped"),
+    SettingSpec(
+        "CIRCUIT_BREAKER_LLM_TIMEOUT_SECONDS", "breakers", _cast_float(1.0, 3600.0), "How long the LLM stays skipped"
+    ),
+    SettingSpec(
+        "CIRCUIT_BREAKER_FEISHU_THRESHOLD", "breakers", _cast_int(1, 1000), "Failures before Feishu is skipped"
+    ),
+    SettingSpec(
+        "CIRCUIT_BREAKER_FEISHU_TIMEOUT_SECONDS", "breakers", _cast_float(1.0, 3600.0), "How long Feishu stays skipped"
+    ),
+    SettingSpec(
+        "CIRCUIT_BREAKER_FORWARD_THRESHOLD", "breakers", _cast_int(1, 1000), "Failures before forwarding is skipped"
+    ),
+    SettingSpec(
+        "CIRCUIT_BREAKER_FORWARD_TIMEOUT_SECONDS",
+        "breakers",
+        _cast_float(1.0, 3600.0),
+        "How long forwarding stays skipped",
+    ),
+    SettingSpec(
+        "CIRCUIT_BREAKER_DEEP_ANALYSIS_THRESHOLD",
+        "breakers",
+        _cast_int(1, 1000),
+        "Failures before investigations are skipped",
+    ),
+    SettingSpec(
+        "CIRCUIT_BREAKER_DEEP_ANALYSIS_TIMEOUT_SECONDS",
+        "breakers",
+        _cast_float(1.0, 3600.0),
+        "How long investigations stay skipped",
+    ),
     # Escalation
     SettingSpec(
         "INCIDENT_AUTO_SLA_MINUTES",

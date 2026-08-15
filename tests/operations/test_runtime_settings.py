@@ -225,8 +225,16 @@ def test_every_registered_key_is_actually_read_through_the_plane() -> None:
         read.update(pattern.findall(path.read_text(encoding="utf-8")))
     # The helper in operations/policies.py wraps override_or under its own name.
     wrapper = re.compile(r'_rt_override\(\s*"([A-Z0-9_]+)"')
+    # And a module that resolves keys by attribute name declares them in a
+    # RUNTIME_KEYS tuple, because a dynamic lookup is exactly where a dead
+    # setting would hide from this check.
+    declared = re.compile(r"RUNTIME_KEYS\s*=\s*\(([^)]*)\)", re.S)
+    literal = re.compile(r'"([A-Z0-9_]+)"')
     for path in sources:
-        read.update(wrapper.findall(path.read_text(encoding="utf-8")))
+        text = path.read_text(encoding="utf-8")
+        read.update(wrapper.findall(text))
+        for block in declared.findall(text):
+            read.update(literal.findall(block))
 
     unread = sorted(set(rs.SPECS) - read)
     assert unread == [], f"registered but never read through the plane: {unread}"

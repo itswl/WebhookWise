@@ -16,23 +16,46 @@ from core.resilience import LazyCircuitBreaker
 ValidateURL = Callable[[str], Awaitable[str]]
 
 
+# Resolved through CircuitBreakerSpec.resolved(), i.e. by attribute name rather
+# than as a literal argument to override_or. Named here so the "every registered
+# key is actually read" guard can see them — a dynamic lookup that no check can
+# follow is how a dead setting hides.
+RUNTIME_KEYS = (
+    "CIRCUIT_BREAKER_FEISHU_THRESHOLD",
+    "CIRCUIT_BREAKER_FEISHU_TIMEOUT_SECONDS",
+    "CIRCUIT_BREAKER_DEEP_ANALYSIS_THRESHOLD",
+    "CIRCUIT_BREAKER_DEEP_ANALYSIS_TIMEOUT_SECONDS",
+    "CIRCUIT_BREAKER_FORWARD_THRESHOLD",
+    "CIRCUIT_BREAKER_FORWARD_TIMEOUT_SECONDS",
+)
+
+
 @dataclass(frozen=True, slots=True)
 class CircuitBreakerSpec:
     name: str
     failure_threshold_attr: str
     recovery_timeout_attr: str
 
-    def build(self, config: AppConfig) -> CircuitBreaker:
+    def resolved(self, config: AppConfig) -> tuple[int, float]:
+        """(threshold, recovery timeout) as they stand now, override included."""
+        from services.operations import runtime_settings as rt
+
         circuit_config = config.circuit_breaker
-        return CircuitBreaker(
-            name=self.name,
-            failure_threshold=getattr(circuit_config, self.failure_threshold_attr),
-            recovery_timeout=getattr(circuit_config, self.recovery_timeout_attr),
+        return (
+            rt.override_or(self.failure_threshold_attr, int(getattr(circuit_config, self.failure_threshold_attr))),
+            rt.override_or(self.recovery_timeout_attr, float(getattr(circuit_config, self.recovery_timeout_attr))),
         )
 
+    def build(self, config: AppConfig) -> CircuitBreaker:
+        failure_threshold, recovery_timeout = self.resolved(config)
+        return CircuitBreaker(name=self.name, failure_threshold=failure_threshold, recovery_timeout=recovery_timeout)
+
     def lazy(self) -> LazyCircuitBreaker:
-        """A LazyCircuitBreaker that builds this spec from current config on first use."""
-        return LazyCircuitBreaker(lambda: self.build(get_config_manager()))
+        """A breaker built from current config, and rebuilt when that changes."""
+        return LazyCircuitBreaker(
+            lambda: self.build(get_config_manager()),
+            signature=lambda: self.resolved(get_config_manager()),
+        )
 
 
 _FEISHU_BREAKER_SPEC = CircuitBreakerSpec(
