@@ -53,6 +53,7 @@
             'rs.empty.title': '暂无运行时设置',
             'rs.empty.text': '后端尚未注册可调整的配置项。',
             'rs.domain.flapping': '抖动',
+            'rs.domain.ai': 'AI 与成本',
             'rs.domain.escalation': '升级',
             'rs.domain.backpressure': '背压',
             'rs.domain.kb': '知识库',

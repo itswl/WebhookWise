@@ -77,6 +77,34 @@ def _cast_float(minimum: float | None = None, maximum: float | None = None) -> C
     return cast
 
 
+def _cast_csv_names(raw: str) -> str:
+    """A comma-separated list of names, normalised and bounded.
+
+    Kept strict on write because the failure this guards is silent: a name that
+    does not match any alert rule excludes nothing, and nothing anywhere says
+    so. Rejecting the shapes that are obviously wrong — empty entries, a stray
+    separator, absurd length — at least turns a slip into an error message.
+    """
+    names = [part.strip() for part in raw.split(",")]
+    if any(not name for name in names) and raw.strip():
+        raise ValueError("empty entry in the list (check for a stray comma)")
+    cleaned = [name for name in names if name]
+    if len(cleaned) > 100:
+        raise ValueError("more than 100 entries")
+    if any(len(name) > 200 for name in cleaned):
+        raise ValueError("an entry is longer than 200 characters")
+    return ",".join(cleaned)
+
+
+def _cast_importance_list(raw: str) -> str:
+    allowed = {"critical", "high", "medium", "low"}
+    values = [part.strip().lower() for part in raw.split(",") if part.strip()]
+    unknown = [value for value in values if value not in allowed]
+    if unknown:
+        raise ValueError(f"not an importance: {', '.join(unknown)}")
+    return ",".join(values)
+
+
 def _cast_importance_mapping(raw: str) -> str:
     """Strict on write (the runtime parser is lenient and drops bad entries)."""
     from services.incidents.auto_sla import parse_importance_minutes
@@ -110,6 +138,29 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
     ),
     SettingSpec(
         "FLAPPING_SUPPRESS_ENABLED", "flapping", _cast_bool, "Withhold notifications while an identity flaps (opt-in)"
+    ),
+    # AI spend policy. These were the last operator decisions still living only
+    # in .env: invisible from the dashboard, needing an SSH and a restart, with
+    # a typo failing silently. Credentials and endpoints stay in env, where they
+    # belong; what is tunable here is policy.
+    SettingSpec(
+        "AI_EXCLUDED_RULES",
+        "ai",
+        _cast_csv_names,
+        "Alert rules never worth a model call (exact names, comma-separated); also blocks deep analysis",
+    ),
+    SettingSpec("AI_ROUTING_ENABLED", "ai", _cast_bool, "Let the cheap rule pass answer low-value alerts"),
+    SettingSpec(
+        "AI_ROUTING_SKIP_IMPORTANCE",
+        "ai",
+        _cast_importance_list,
+        'Importances the rule pass may answer alone, e.g. "low"',
+    ),
+    SettingSpec(
+        "AI_COST_MONTHLY_BUDGET_USD", "ai", _cast_float(0.0), "Month-to-date AI spend ceiling in USD; 0 disables"
+    ),
+    SettingSpec(
+        "AI_COST_BUDGET_ENFORCE", "ai", _cast_bool, "At 100% of the budget, degrade to rules instead of spending"
     ),
     # Escalation
     SettingSpec(

@@ -2814,6 +2814,56 @@ paths:
                 $ref: '#/components/schemas/PromptVersionsResponse'
       security:
       - HTTPBearer: []
+  /v1/alert-rules:
+    get:
+      summary: List Alert Rules
+      description: 'Alert rule names actually seen recently, with how often and how
+        they were judged.
+
+
+        AI_EXCLUDED_RULES is matched exactly, so a name that is off by one character
+
+        excludes nothing and says nothing — the failure is silent by construction.
+
+        The fix is not more validation, which cannot know what a real rule is called;
+
+        it is letting an operator read the names off their own traffic instead of
+
+        typing them from memory.'
+      operationId: list_alert_rules_v1_alert_rules_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 365
+          minimum: 1
+          default: 30
+          title: Days
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 200
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/admin/dead-letters:
     get:
       summary: Get Dead Letters Endpoint

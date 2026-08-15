@@ -3,12 +3,12 @@ Admin and Management API Routes.
 Handles system configuration, prompt management, and dead-letter replay.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +17,7 @@ from api import fail_response, internal_error_response, ok_response
 from core.app_context import AppContext
 from core.auth import verify_admin_write, verify_api_key
 from core.config import get_settings
-from core.datetime_utils import parse_utc_datetime, utc_isoformat
+from core.datetime_utils import parse_utc_datetime, utc_isoformat, utcnow
 from core.logger import get_logger
 from core.redis_client import redis_ping
 from core.redis_health import get_redis_health_snapshot
@@ -219,6 +219,54 @@ async def get_prompt_versions() -> JSONResponse:
             logger.warning("prompt %s unreadable while reporting versions: %s", kind, e)
         versions[kind] = get_prompt_version(kind)
     return ok_response(status=200, versions=versions)
+
+
+@admin_router.get("/alert-rules", dependencies=[Depends(verify_api_key)])
+async def list_alert_rules(
+    days: int = Query(30, ge=1, le=365),
+    limit: int = Query(200, ge=1, le=1000),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Alert rule names actually seen recently, with how often and how they were judged.
+
+    AI_EXCLUDED_RULES is matched exactly, so a name that is off by one character
+    excludes nothing and says nothing — the failure is silent by construction.
+    The fix is not more validation, which cannot know what a real rule is called;
+    it is letting an operator read the names off their own traffic instead of
+    typing them from memory.
+    """
+    since = utcnow() - timedelta(days=days)
+    rule_name = func.coalesce(
+        WebhookEvent.parsed_data["commonLabels"]["alertname"].astext,
+        WebhookEvent.parsed_data["RuleName"].astext,
+    )
+    rows = (
+        await session.execute(
+            select(
+                rule_name.label("rule"),
+                func.count().label("alerts"),
+                func.count(func.distinct(WebhookEvent.importance)).label("verdicts"),
+                func.max(WebhookEvent.created_at).label("last_seen"),
+            )
+            .where(WebhookEvent.created_at >= since, rule_name.isnot(None))
+            .group_by(rule_name)
+            .order_by(func.count().desc())
+            .limit(limit)
+        )
+    ).all()
+    return ok_response(
+        status=200,
+        days=days,
+        rules=[
+            {
+                "rule": row.rule,
+                "alerts": int(row.alerts or 0),
+                "distinct_verdicts": int(row.verdicts or 0),
+                "last_seen": utc_isoformat(row.last_seen) if row.last_seen else None,
+            }
+            for row in rows
+        ],
+    )
 
 
 # ── Dead Letter ───────────────────────────────────────────────────────────────

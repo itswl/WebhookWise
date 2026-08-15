@@ -137,3 +137,47 @@ def test_policies_consume_overrides() -> None:
 
     forwarding = forwarding_policy_from_config()
     assert forwarding.notification_cooldown_seconds == 120
+
+
+def test_ai_spend_policy_is_tunable_without_an_ssh() -> None:
+    """The last operator decisions that lived only in .env.
+
+    Invisible from the dashboard, needing a file edit and a restart to change,
+    and — for the exclusion list — failing silently on a typo. Registering them
+    here is what makes them discoverable; the readers go through override_or so
+    a stored value actually wins.
+    """
+    from services.operations import runtime_settings as rs
+
+    ai_keys = {key for key, spec in rs.SPECS.items() if spec.domain == "ai"}
+    assert ai_keys == {
+        "AI_EXCLUDED_RULES",
+        "AI_ROUTING_ENABLED",
+        "AI_ROUTING_SKIP_IMPORTANCE",
+        "AI_COST_MONTHLY_BUDGET_USD",
+        "AI_COST_BUDGET_ENFORCE",
+    }
+    # Credentials and endpoints are NOT tunable here: they describe the
+    # deployment, not the policy, and a live-editable API key is a liability.
+    assert not any(key.startswith(("OPENAI_", "AI_BASE", "AI_MODEL")) for key in rs.SPECS)
+
+
+def test_an_exclusion_list_rejects_the_shapes_that_would_silently_do_nothing() -> None:
+    from services.operations import runtime_settings as rs
+
+    cast = rs.SPECS["AI_EXCLUDED_RULES"].cast
+    assert cast(" 示例充值超限告警 , 示例提现超限告警 ") == "示例充值超限告警,示例提现超限告警"
+    assert cast("") == ""
+    with pytest.raises(ValueError):
+        cast("充值报警,,提现报警")  # a stray comma silently excludes nothing
+    with pytest.raises(ValueError):
+        cast("x" * 201)
+
+
+def test_the_skip_list_only_accepts_real_importances() -> None:
+    from services.operations import runtime_settings as rs
+
+    cast = rs.SPECS["AI_ROUTING_SKIP_IMPORTANCE"].cast
+    assert cast("Low, Medium") == "low,medium"
+    with pytest.raises(ValueError):
+        cast("low,urgent")

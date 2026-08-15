@@ -42,6 +42,7 @@ from services.analysis.alert_identity_context import build_alert_identity_contex
 from services.analysis.analysis_policies import AIProviderPolicy, RuleAnalysisPolicy
 from services.analysis.resource_risk import apply_resource_importance_override
 from services.dedup import generate_alert_hash
+from services.operations import runtime_settings
 from services.webhooks.types import (
     AnalysisResult,
     cache_hit_count,
@@ -220,7 +221,7 @@ async def _degrade_to_rules(
 
 
 def _excluded_rule_names(ai_config: Any) -> frozenset[str]:
-    raw = str(getattr(ai_config, "AI_EXCLUDED_RULES", "") or "")
+    raw = runtime_settings.override_or("AI_EXCLUDED_RULES", str(getattr(ai_config, "AI_EXCLUDED_RULES", "") or ""))
     return frozenset(name.strip().lower() for name in raw.split(",") if name.strip())
 
 
@@ -261,7 +262,9 @@ def _maybe_exclude_rule(parsed: dict[str, Any], source: str, ai_config: Any) -> 
 
 
 def _routing_skip_importances(ai_config: Any) -> frozenset[str]:
-    raw = str(getattr(ai_config, "AI_ROUTING_SKIP_IMPORTANCE", "") or "")
+    raw = runtime_settings.override_or(
+        "AI_ROUTING_SKIP_IMPORTANCE", str(getattr(ai_config, "AI_ROUTING_SKIP_IMPORTANCE", "") or "")
+    )
     return frozenset(p.strip().lower() for p in raw.split(",") if p.strip())
 
 
@@ -273,7 +276,7 @@ async def _maybe_route_to_rules(
 ) -> AnalysisResult | None:
     """Return a rule-only analysis (skipping the LLM) when tiered routing is on
     and the rule pass judges the alert low-value; else None (proceed to AI)."""
-    if not bool(getattr(ai_config, "AI_ROUTING_ENABLED", False)):
+    if not runtime_settings.override_or("AI_ROUTING_ENABLED", bool(getattr(ai_config, "AI_ROUTING_ENABLED", False))):
         return None
     skip = _routing_skip_importances(ai_config)
     if not skip:

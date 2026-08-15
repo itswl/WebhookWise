@@ -53,6 +53,7 @@
             'rs.empty.title': 'No runtime settings',
             'rs.empty.text': 'The backend has not registered any tunable settings.',
             'rs.domain.flapping': 'Flapping',
+            'rs.domain.ai': 'AI & cost',
             'rs.domain.escalation': 'Escalation',
             'rs.domain.backpressure': 'Backpressure',
             'rs.domain.kb': 'Knowledge base',

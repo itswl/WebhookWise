@@ -29,6 +29,7 @@ from core.app_context import get_config_manager
 from core.logger import get_logger
 from db.session import session_scope
 from models.analysis import AIUsageLog
+from services.operations import runtime_settings
 
 logger = get_logger("analysis.ai_budget")
 
@@ -77,8 +78,13 @@ async def budget_exhausted() -> tuple[bool, float, float]:
     deployment never reaches the database for this.
     """
     notif = get_config_manager().notifications
-    budget = float(getattr(notif, "AI_COST_MONTHLY_BUDGET_USD", 0.0) or 0.0)
-    if budget <= 0 or not bool(getattr(notif, "AI_COST_BUDGET_ENFORCE", False)):
+    budget = runtime_settings.override_or(
+        "AI_COST_MONTHLY_BUDGET_USD", float(getattr(notif, "AI_COST_MONTHLY_BUDGET_USD", 0.0) or 0.0)
+    )
+    enforce = runtime_settings.override_or(
+        "AI_COST_BUDGET_ENFORCE", bool(getattr(notif, "AI_COST_BUDGET_ENFORCE", False))
+    )
+    if budget <= 0 or not enforce:
         return False, 0.0, budget
 
     try:
