@@ -63,6 +63,10 @@ class DeepAnalysis(Base):
     # Which gateway this run was submitted to. The poller MUST ask the same one:
     # a session key from one gateway means nothing to another.
     gateway_name: Mapped[str] = mapped_column(String(50), default="", server_default="")
+    # Fingerprint of the deep-analysis prompt AS ASKED. Captured at trigger
+    # because the answer arrives minutes later and the prompt is editable
+    # at runtime; the poller cannot know what was sent.
+    prompt_version: Mapped[str] = mapped_column(String(32), default="", server_default="")
     status: Mapped[str] = mapped_column(String(20), default="completed", index=True)
     poll_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     next_poll_at: Mapped[datetime | None] = mapped_column(DateTime)

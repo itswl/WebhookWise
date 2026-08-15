@@ -537,3 +537,20 @@ async def test_prompt_versions_survives_one_unreadable_template(
     # One broken prompt must not cost the others their answer.
     assert body["success"] is True
     assert set(body["versions"]) == {"user", "deep_analysis", "incident_summary"}
+
+
+@pytest.mark.asyncio
+async def test_an_incident_summary_records_the_methodology_that_wrote_it(monkeypatch) -> None:
+    """The third prompt path. Editable at runtime, and otherwise leaves no trace."""
+    from services.analysis import ai_prompt
+
+    monkeypatch.setitem(ai_prompt._prompt_templates, "incident_summary", "summarise these: {alert_briefs}")
+
+    version = ai_prompt.get_prompt_version("incident_summary")
+
+    assert version and version != "unloaded"
+    # The same template must fingerprint the same way for a stored value to be
+    # comparable at all.
+    assert ai_prompt.get_prompt_version("incident_summary") == version
+    monkeypatch.setitem(ai_prompt._prompt_templates, "incident_summary", "summarise these differently: {alert_briefs}")
+    assert ai_prompt.get_prompt_version("incident_summary") != version

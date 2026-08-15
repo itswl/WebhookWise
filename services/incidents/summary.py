@@ -69,7 +69,11 @@ async def summarize_incident(incident_id: int) -> dict[str, Any] | None:
     title, alert_briefs = loaded
 
     from services.analysis.ai_llm_client import create_structured_completion
-    from services.analysis.ai_prompt import load_incident_summary_prompt_template
+    from services.analysis.ai_prompt import (
+        INCIDENT_SUMMARY_PROMPT_KIND,
+        get_prompt_version,
+        load_incident_summary_prompt_template,
+    )
     from services.analysis.ai_usage import log_ai_usage
 
     policy = AIProviderPolicy.from_config()
@@ -85,6 +89,10 @@ async def summarize_incident(incident_id: int) -> dict[str, Any] | None:
         policy=policy,
     )
     summary_data = result.model_dump(mode="json")
+    # Which methodology wrote this summary, for the same reason an analysis
+    # records it: the text is editable at runtime and leaves no other trace.
+    summary_data["_prompt_kind"] = INCIDENT_SUMMARY_PROMPT_KIND
+    summary_data["_prompt_version"] = get_prompt_version(INCIDENT_SUMMARY_PROMPT_KIND)
 
     async with session_scope() as session:
         incident = await session.get(Incident, incident_id)

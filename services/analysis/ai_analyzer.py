@@ -226,7 +226,7 @@ def _excluded_rule_names(ai_config: Any) -> frozenset[str]:
     return frozenset(name.strip().lower() for name in raw.split(",") if name.strip())
 
 
-def _maybe_exclude_rule(parsed: dict[str, Any], source: str, ai_config: Any) -> AnalysisResult | None:
+def _legacy_excluded(parsed: dict[str, Any], source: str, ai_config: Any) -> bool:
     """Rules an operator has decided are never worth a model call.
 
     Different from tiered routing, which asks how important THIS alert looks.
@@ -242,12 +242,17 @@ def _maybe_exclude_rule(parsed: dict[str, Any], source: str, ai_config: Any) -> 
     """
     excluded = _excluded_rule_names(ai_config)
     if not excluded:
-        return None
+        return False
     name = alert_rule_name(parsed).lower()
     if not name or name not in excluded:
-        return None
-    logger.info("[AI] Rule excluded from analysis source=%s rule=%s", source, name)
-    return set_analysis_route(analyze_with_rules(parsed, source), "rule_excluded")
+        return False
+    logger.warning(
+        "[AI] Rule excluded by the deprecated AI_EXCLUDED_RULES setting source=%s rule=%s; "
+        "move it to an inbound rule (skip_ai) — the setting will be removed",
+        source,
+        name,
+    )
+    return True
 
 
 def _routing_skip_importances(ai_config: Any) -> frozenset[str]:
@@ -317,14 +322,13 @@ async def analyze_webhook_with_ai(
     # payload — the operator-facing form) or AI_EXCLUDED_RULES (a plain list of
     # rule names). The rules table is the richer one; the setting stays because
     # a deployment already using it must not break.
-    actions = await inbound_actions_for(
-        parsed_data=parsed,
-        source=source,
-        rule_name=alert_rule_name(parsed),
-    )
-    excluded = _maybe_exclude_rule(parsed, source, ai_config)
-    if excluded is None and SKIP_AI in actions:
-        logger.info("[AI] Inbound rule skips analysis source=%s rule=%s", source, alert_rule_name(parsed))
+    rule_name = alert_rule_name(parsed)
+    actions = await inbound_actions_for(parsed_data=parsed, source=source, rule_name=rule_name)
+    excluded = None
+    if SKIP_AI in actions:
+        logger.info("[AI] Inbound rule skips analysis source=%s rule=%s", source, rule_name)
+        excluded = set_analysis_route(analyze_with_rules(parsed, source), "rule_excluded")
+    elif _legacy_excluded(parsed, source, ai_config):
         excluded = set_analysis_route(analyze_with_rules(parsed, source), "rule_excluded")
     if excluded is not None:
         await log_ai_usage("rule_excluded", alert_hash, source)

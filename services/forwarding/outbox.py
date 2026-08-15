@@ -37,6 +37,7 @@ from core.observability.metrics import (
 from core.observability.tracing import otel_span, set_span_error
 from db.session import session_scope
 from models import DeepAnalysis, ForwardOutbox, ForwardRule, WebhookEvent
+from services.analysis.ai_prompt import DEEP_ANALYSIS_PROMPT_KIND, get_prompt_version
 from services.forwarding import outbox_queries, outbox_records, outbox_scheduling
 from services.forwarding import rules as forwarding_rules
 from services.forwarding.channels import resolve_channel
@@ -487,6 +488,10 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
                 gateway_name=gateway[1],
                 gateway_run_id=gateway_run_id(result),
                 gateway_session_key=gateway_session_key(result),
+                # The prompt AS ASKED. The report lands minutes from now and the
+                # prompt is editable at runtime, so recording it at poll time
+                # would name whatever it says then, not what produced this.
+                prompt_version=get_prompt_version(DEEP_ANALYSIS_PROMPT_KIND),
                 status=DeepAnalysisStatus.PENDING,
                 poll_attempts=0,
                 next_poll_at=now + timedelta(seconds=initial_poll_delay),

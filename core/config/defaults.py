@@ -266,13 +266,11 @@ class AIConfig(StaticSettings):
     # IMPORTANCE lists the rule-importances that bypass the LLM (default "low").
     AI_ROUTING_ENABLED: bool = Field(default=False)
     AI_ROUTING_SKIP_IMPORTANCE: str = Field(default="low")
-    # Alert rules that are never worth a model call, whatever their severity
-    # says — the recurring business notices ("a single top-up exceeded 500")
-    # that are read at a glance and never investigated. Comma-separated,
-    # matched EXACTLY against the alert rule name, case-insensitively.
-    # These alerts are still ingested, still classified by the rule pass and
-    # still forwarded; they just never reach the LLM and never trigger a
-    # deep analysis. Behavioral patterns matched against inbound alert text.
+    # DEPRECATED: use an inbound rule with action skip_ai instead, which can
+    # match on source, environment and payload rather than an exact name, and
+    # is editable from the dashboard. Still honoured so a deployment already
+    # setting it does not change behaviour on upgrade; a hit logs a warning
+    # naming the replacement.
     AI_EXCLUDED_RULES: str = Field(default="")
 
     ENABLE_AI_DEGRADATION: bool = Field(default=True)
