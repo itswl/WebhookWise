@@ -221,7 +221,7 @@ async def get_prompt_versions() -> JSONResponse:
     return ok_response(status=200, versions=versions)
 
 
-@admin_router.get("/alert-rules", dependencies=[Depends(verify_api_key)])
+@admin_router.get("/admin/alert-rules", dependencies=[Depends(verify_api_key)])
 async def list_alert_rules(
     days: int = Query(30, ge=1, le=365),
     limit: int = Query(200, ge=1, le=1000),

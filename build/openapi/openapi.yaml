@@ -2814,7 +2814,7 @@ paths:
                 $ref: '#/components/schemas/PromptVersionsResponse'
       security:
       - HTTPBearer: []
-  /v1/alert-rules:
+  /v1/admin/alert-rules:
     get:
       summary: List Alert Rules
       description: 'Alert rule names actually seen recently, with how often and how
@@ -2830,7 +2830,7 @@ paths:
         it is letting an operator read the names off their own traffic instead of
 
         typing them from memory.'
-      operationId: list_alert_rules_v1_alert_rules_get
+      operationId: list_alert_rules_v1_admin_alert_rules_get
       security:
       - HTTPBearer: []
       parameters:
