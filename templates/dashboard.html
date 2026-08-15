@@ -391,6 +391,21 @@
                     </div>
                 </div>
 
+                <!-- View: Inbound Rules -->
+                <div id="routingViewInbound" class="inbound-rules-section" style="display: none;">
+                    <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div>
+                            <div class="section-title" data-i18n="inbound.title">Inbound Rules</div>
+                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="inbound.subtitle">What an alert costs on the way in. Matching alerts are still ingested, classified and forwarded — they just skip the model, or the investigation, or both.</p>
+                        </div>
+                        <button class="btn primary" data-act="showInboundRuleForm" data-args="">
+                            <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="inbound.add">Add Rule</span>
+                        </button>
+                    </div>
+                    <div id="inboundRuleForm" style="display: none;"></div>
+                    <div id="inboundRulesList"></div>
+                </div>
+
                 <!-- View: Silences -->
                 <div id="routingViewSilences" class="silences-section" style="display: none;">
                     <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -1217,6 +1232,7 @@
     <script defer src="/static/js/alerts.js"></script>
     <script defer src="/static/js/ai-cost.js"></script>
     <script defer src="/static/js/forward-rules.js"></script>
+    <script defer src="/static/js/inbound-rules.js"></script>
     <script defer src="/static/js/silences.js"></script>
     <script defer src="/static/js/sandbox.js"></script>
     <script defer src="/static/js/incidents.js"></script>

@@ -33,7 +33,7 @@ const check = (label, got, want) => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok ? '' : `\n        got ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`}`);
 };
 
-check('目的地总数', Object.keys(M.DESTINATIONS).length, 19);
+check('目的地总数', Object.keys(M.DESTINATIONS).length, 20);
 
 calls.length = 0; M.navigateTo('incidents');
 check('navigateTo(incidents) 切标签+子视图', calls, ['tab:alerts', 'ib:incidents']);

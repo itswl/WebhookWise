@@ -715,6 +715,39 @@ const API = {
     },
 
     /**
+     * Inbound rules: what an alert costs on the way in.
+     * @returns {Promise<object>} { data, actions }
+     */
+    async getInboundRules() {
+        const response = await this.authenticatedFetch('/v1/inbound-rules');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    async createInboundRule(ruleData) {
+        const response = await this.authenticatedFetch('/v1/inbound-rules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ruleData)
+        });
+        return await response.json();
+    },
+
+    async updateInboundRule(id, ruleData) {
+        const response = await this.authenticatedFetch('/v1/inbound-rules/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ruleData)
+        });
+        return await response.json();
+    },
+
+    async deleteInboundRule(id) {
+        const response = await this.authenticatedFetch('/v1/inbound-rules/' + id, { method: 'DELETE' });
+        return await response.json();
+    },
+
+    /**
      * Create a forwarding rule
      * @param {object} ruleData - Rule data
      * @returns {Promise<object>} Creation result
