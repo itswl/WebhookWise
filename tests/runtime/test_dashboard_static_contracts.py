@@ -1279,10 +1279,11 @@ def test_every_api_path_the_dashboard_calls_exists() -> None:
     # The closing quote must be followed by , or ) for the literal to be whole.
     literal_call = re.compile(r"authenticatedFetch\(\s*'(/v1/[A-Za-z0-9/_.-]+)'\s*[,)]")
     js_dir = PROJECT_ROOT / "templates/static/js"
-    missing: list[str] = []
-    for path in sorted(js_dir.glob("*.js")):
-        for called in literal_call.findall(path.read_text()):
-            if called not in known:
-                missing.append(f"{path.name}: {called}")
+    missing = [
+        f"{path.name}: {called}"
+        for path in sorted(js_dir.glob("*.js"))
+        for called in literal_call.findall(path.read_text())
+        if called not in known
+    ]
 
     assert missing == [], f"dashboard calls paths the API does not serve: {missing}"
