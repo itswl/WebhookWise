@@ -360,3 +360,53 @@ def test_taskiq_wiring_exports_registered_entrypoints() -> None:
     assert wiring.broker is not None
     assert wiring.dynamic_schedule_source is not None
     assert wiring.scheduler is not None
+
+
+@pytest.mark.asyncio
+async def test_an_excluded_alert_never_reaches_the_investigator() -> None:
+    """Severity alone cannot express this exclusion.
+
+    The rule pass still judges these payment alerts high — correctly — and the
+    deep-analysis forward rule matches on high, so without this check every one
+    of them would fund a $0.39 investigation nobody asked for.
+    """
+    from services.forwarding.outbox_records import create_outbox_records
+    from services.forwarding.policies import ForwardDeliveryPolicy
+    from services.forwarding.types import ForwardRuleSnapshot
+
+    class _Session:
+        def add(self, obj: object) -> None:
+            raise AssertionError("an excluded alert must not produce an outbox record")
+
+        async def flush(self) -> None:
+            return None
+
+    deep_rule = ForwardRuleSnapshot(
+        id=1,
+        name="deep",
+        match_event_type="",
+        match_importance="high",
+        match_source="",
+        match_duplicate="all",
+        match_payload="",
+        target_type="deep_analysis",
+        target_url="",
+        target_name="probe",
+        stop_on_match=False,
+    )
+
+    ids = await create_outbox_records(
+        _Session(),  # type: ignore[arg-type]
+        [deep_rule],
+        webhook_id=1,
+        orig_id=None,
+        forward_data={},
+        analysis_result={"importance": "high", "summary": "s", "_route_type": "rule_excluded"},
+        formatted_payload={},
+        event_type="webhook_forward",
+        is_periodic_reminder=False,
+        policy=ForwardDeliveryPolicy.from_config(),
+        log_tag="test",
+    )
+
+    assert ids == []

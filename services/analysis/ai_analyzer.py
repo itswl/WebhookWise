@@ -219,6 +219,47 @@ async def _degrade_to_rules(
     return res
 
 
+def _excluded_rule_names(ai_config: Any) -> frozenset[str]:
+    raw = str(getattr(ai_config, "AI_EXCLUDED_RULES", "") or "")
+    return frozenset(name.strip().lower() for name in raw.split(",") if name.strip())
+
+
+def alert_rule_name(parsed: dict[str, Any]) -> str:
+    """The alert rule behind this event, however the sender spells it."""
+    for key in ("RuleName", "alert_name", "AlertName", "alertname"):
+        value = str(parsed.get(key) or "").strip()
+        if value:
+            return value
+    labels = parsed.get("commonLabels")
+    if isinstance(labels, dict):
+        return str(labels.get("alertname") or "").strip()
+    return ""
+
+
+def _maybe_exclude_rule(parsed: dict[str, Any], source: str, ai_config: Any) -> AnalysisResult | None:
+    """Rules an operator has decided are never worth a model call.
+
+    Different from tiered routing, which asks how important THIS alert looks.
+    This asks whether this alert RULE is ever worth analysing, and the answer
+    does not change with severity: two payment-threshold notices produced 614 of
+    795 alerts in fifteen days, every one of them judged high and none of them
+    investigated by a human afterwards.
+
+    The verdict still comes from the rule pass, so the alert keeps its severity
+    and is forwarded exactly as before — what it loses is the LLM call and, via
+    create_outbox_records, the deep analysis that a high verdict would otherwise
+    trigger.
+    """
+    excluded = _excluded_rule_names(ai_config)
+    if not excluded:
+        return None
+    name = alert_rule_name(parsed).lower()
+    if not name or name not in excluded:
+        return None
+    logger.info("[AI] Rule excluded from analysis source=%s rule=%s", source, name)
+    return set_analysis_route(analyze_with_rules(parsed, source), "rule_excluded")
+
+
 def _routing_skip_importances(ai_config: Any) -> frozenset[str]:
     raw = str(getattr(ai_config, "AI_ROUTING_SKIP_IMPORTANCE", "") or "")
     return frozenset(p.strip().lower() for p in raw.split(",") if p.strip())
@@ -273,6 +314,15 @@ async def analyze_webhook_with_ai(
             set_analysis_route(cached_result, "cache")
             AI_REQUESTS_TOTAL.labels(sanitize_source(source), "cache", "hit").inc()
             return cached_result
+
+    # Named rules are never analysed, whatever their severity. Checked before
+    # tiered routing because it is a different question: not "does this alert
+    # look cheap" but "is this rule ever worth a model call".
+    excluded = _maybe_exclude_rule(parsed, source, ai_config)
+    if excluded is not None:
+        await log_ai_usage("rule_excluded", alert_hash, source)
+        AI_REQUESTS_TOTAL.labels(sanitize_source(source), "rule_excluded", "success").inc()
+        return excluded
 
     # Tiered routing (opt-in): if the cheap rule pass deems this a low-value alert,
     # skip the paid LLM and return the rule analysis. This is an intentional route,

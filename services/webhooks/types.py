@@ -56,9 +56,33 @@ MANUAL_RETRY_STARTED_AT: Final = GatewayMetaKey.MANUAL_RETRY_STARTED_AT.value
 
 # "rule" = degraded to rules (AI unavailable/failed). "rule_routed" = tiered
 # routing intentionally skipped the LLM for a low-value alert (not a degradation).
-AnalysisRouteType = Literal["ai", "cache", "rule", "rule_routed", "redis_reuse", "db_reuse", "rechain", "silenced_skip"]
+AnalysisRouteType = Literal[
+    "ai",
+    "cache",
+    "rule",
+    "rule_routed",
+    # Never analysed because policy names this alert rule, not because the
+    # rule pass judged it cheap. Distinct from rule_routed so an operator can
+    # tell "we decided this one is not worth a model" from "we decided never
+    # to analyse this rule at all".
+    "rule_excluded",
+    "redis_reuse",
+    "db_reuse",
+    "rechain",
+    "silenced_skip",
+]
 ALLOWED_ANALYSIS_ROUTE_TYPES: Final = frozenset(
-    {"ai", "cache", "rule", "rule_routed", "redis_reuse", "db_reuse", "rechain", "silenced_skip"}
+    {
+        "ai",
+        "cache",
+        "rule",
+        "rule_routed",
+        "rule_excluded",
+        "redis_reuse",
+        "db_reuse",
+        "rechain",
+        "silenced_skip",
+    }
 )
 
 # The routes that answered WITHOUT calling the LLM, i.e. what "cache hit" means

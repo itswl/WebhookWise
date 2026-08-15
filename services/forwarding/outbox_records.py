@@ -18,6 +18,7 @@ from services.webhooks.types import (
     AnalysisResult,
     ForwardOutboxStatus,
     ForwardResult,
+    analysis_route,
 )
 
 logger = get_logger("forward_outbox")
@@ -41,9 +42,24 @@ async def create_outbox_records(
     """Create outbox records for matched rules within an existing session."""
     now = utcnow()
     outbox_ids: list[int] = []
+    # An alert whose rule is excluded from AI analysis must not reach the
+    # investigator either. The exclusion cannot be expressed by importance: the
+    # rule pass still judges these high — correctly, they are payment alerts —
+    # and the deep-analysis rule matches on high, so severity alone would send
+    # every one of them to a $0.39 investigation nobody asked for.
+    ai_excluded = analysis_route(analysis_result, default="rule") == "rule_excluded"
+
     for rule in matched_rules:
         target_type = str(rule.target_type or "webhook")
         target_url = str(rule.target_url or "")
+        if ai_excluded and target_type == "deep_analysis":
+            logger.info(
+                "[%s] Rule '%s' targets deep analysis, but this alert rule is excluded from AI",
+                log_tag,
+                rule.name or rule.id,
+            )
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "skipped_ai_excluded").inc()
+            continue
         if target_type != "deep_analysis" and not target_url:
             logger.warning("[%s] Rule '%s' has empty target_url, skipping", log_tag, rule.name or rule.id)
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "skipped_empty_target").inc()
