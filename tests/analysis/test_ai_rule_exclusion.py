@@ -84,7 +84,7 @@ async def test_matching_is_exact_not_substring(monkeypatch, temp_config) -> None
 
 
 def test_the_rule_name_is_read_from_grafana_labels_too() -> None:
-    from services.analysis.ai_analyzer import alert_rule_name
+    from services.webhooks.inbound_rules import alert_rule_name
 
     assert alert_rule_name({"RuleName": "A"}) == "A"
     assert alert_rule_name({"commonLabels": {"alertname": "B"}}) == "B"

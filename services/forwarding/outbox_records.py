@@ -14,6 +14,7 @@ from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
 from models import ForwardOutbox
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.forwarding.types import ForwardRuleSnapshot
+from services.webhooks.inbound_rules import SKIP_DEEP_ANALYSIS, alert_rule_name, inbound_actions_for
 from services.webhooks.types import (
     AnalysisResult,
     ForwardOutboxStatus,
@@ -48,6 +49,15 @@ async def create_outbox_records(
     # and the deep-analysis rule matches on high, so severity alone would send
     # every one of them to a $0.39 investigation nobody asked for.
     ai_excluded = analysis_route(analysis_result, default="rule") == "rule_excluded"
+    if not ai_excluded and any(rule.target_type == "deep_analysis" for rule in matched_rules):
+        # Only asked when a deep-analysis target is actually in play: this is a
+        # cached lookup, but it is still work in the delivery path.
+        ai_excluded = SKIP_DEEP_ANALYSIS in await inbound_actions_for(
+            parsed_data=forward_data,
+            event_type=event_type,
+            importance=str(analysis_result.get("importance") or "") if analysis_result else "",
+            rule_name=alert_rule_name(forward_data or {}),
+        )
 
     for rule in matched_rules:
         target_type = str(rule.target_type or "webhook")

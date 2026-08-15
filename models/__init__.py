@@ -8,6 +8,7 @@ from models.analysis import AIUsageLog, DeepAnalysis
 from models.audit_log import AuditLog
 from models.decision_trace import DecisionTrace
 from models.forwarding import ForwardOutbox, ForwardRule
+from models.inbound import InboundRule
 from models.incident import Incident, IncidentMember, IncidentRecurrence
 from models.intelligence import (
     ChangeEvent,
@@ -39,6 +40,7 @@ __all__ = [
     "DeepAnalysis",
     "ForwardOutbox",
     "ForwardRule",
+    "InboundRule",
     "ImportanceOverride",
     "Incident",
     "IncidentIntelligenceFeedback",

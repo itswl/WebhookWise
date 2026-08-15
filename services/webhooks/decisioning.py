@@ -48,6 +48,32 @@ class SilenceSnapshot:
 
 
 @dataclass(frozen=True)
+class InboundRuleSnapshot:
+    """An inbound rule's criteria and its verb.
+
+    Same match vocabulary as a forward rule, because the matcher is the same
+    function; `match_rule_name` is the one addition, since an operator thinks in
+    alert rules ("stop analysing 示例充值超限告警") rather than in payload
+    paths.
+    """
+
+    id: int | None
+    name: str = ""
+    action: str = ""
+    priority: int = 0
+    match_event_type: str = ""
+    match_importance: str = ""
+    match_duplicate: str = "all"
+    match_source: str = ""
+    match_project: str = ""
+    match_region: str = ""
+    match_environment: str = ""
+    match_payload: str = ""
+    match_rule_name: str = ""
+    comment: str = ""
+
+
+@dataclass(frozen=True)
 class ForwardingPolicy:
     notification_cooldown_seconds: int
     enable_periodic_reminder: bool
@@ -590,3 +616,58 @@ def forwarding_policy_from_config() -> ForwardingPolicy:
         enable_periodic_reminder=rt.override_or("ENABLE_PERIODIC_REMINDER", bool(cfg.retry.ENABLE_PERIODIC_REMINDER)),
         reminder_interval_hours=rt.override_or("REMINDER_INTERVAL_HOURS", int(cfg.retry.REMINDER_INTERVAL_HOURS)),
     )
+
+
+def matching_inbound_actions(
+    rules: list[InboundRuleSnapshot],
+    *,
+    event_type: str = "",
+    importance: str = "",
+    source: str = "",
+    is_duplicate: bool = False,
+    parsed_data: dict[str, Any] | None = None,
+    rule_name: str = "",
+) -> set[str]:
+    """The actions every matching inbound rule asks for.
+
+    A set, not the first match: these are independent decisions, and "skip the
+    model" plus "skip the investigation" are two answers an operator may reach
+    by two different rules. Forwarding returns an ordered list because a target
+    list has an order; this does not.
+
+    `importance` is empty when this runs before the alert has been judged. A
+    rule that filters on importance therefore cannot match there — which is why
+    the write path refuses to save one whose action runs pre-judgement.
+    """
+    identity = extract_forward_match_fields(parsed_data)
+    matched: set[str] = set()
+    for rule in rules:
+        if rule.match_rule_name and not _csv_value_matches(rule.match_rule_name, rule_name):
+            continue
+        probe = ForwardRuleSnapshot(
+            id=rule.id,
+            name=rule.name or "inbound",
+            match_event_type=rule.match_event_type,
+            match_importance=rule.match_importance,
+            match_source=rule.match_source,
+            match_duplicate=rule.match_duplicate or "all",
+            match_payload=rule.match_payload,
+            match_project=rule.match_project,
+            match_region=rule.match_region,
+            match_environment=rule.match_environment,
+            target_type="inbound",
+            target_url="",
+            stop_on_match=False,
+            target_name="",
+        )
+        if _rule_matches(
+            probe,
+            event_type=event_type,
+            importance=importance,
+            source=source,
+            is_duplicate=is_duplicate,
+            parsed_data=parsed_data,
+            identity=identity,
+        ):
+            matched.add(rule.action)
+    return matched

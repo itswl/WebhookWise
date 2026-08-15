@@ -12,6 +12,7 @@ from api.v1.decision_trace import decision_trace_router
 from api.v1.deep_analysis import deep_analysis_router
 from api.v1.feishu_actions import feishu_actions_router
 from api.v1.forwarding import forwarding_router
+from api.v1.inbound_rules import inbound_rules_router
 from api.v1.incidents import incidents_router
 from api.v1.onboarding import onboarding_router, source_ingress_router
 from api.v1.operations import operations_router
@@ -37,6 +38,7 @@ v1_router.include_router(reanalysis_router, dependencies=_admin_api_deps)
 v1_router.include_router(ai_usage_router, dependencies=_admin_api_deps)
 v1_router.include_router(decision_trace_router, dependencies=_admin_api_deps)
 v1_router.include_router(forwarding_router, dependencies=_admin_api_deps)
+v1_router.include_router(inbound_rules_router, dependencies=_admin_api_deps)
 v1_router.include_router(silences_router, dependencies=_admin_api_deps)
 v1_router.include_router(sandbox_router, dependencies=_admin_api_deps)
 v1_router.include_router(incidents_router, dependencies=_admin_api_deps)

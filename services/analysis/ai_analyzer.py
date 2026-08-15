@@ -43,6 +43,7 @@ from services.analysis.analysis_policies import AIProviderPolicy, RuleAnalysisPo
 from services.analysis.resource_risk import apply_resource_importance_override
 from services.dedup import generate_alert_hash
 from services.operations import runtime_settings
+from services.webhooks.inbound_rules import SKIP_AI, alert_rule_name, inbound_actions_for
 from services.webhooks.types import (
     AnalysisResult,
     cache_hit_count,
@@ -225,18 +226,6 @@ def _excluded_rule_names(ai_config: Any) -> frozenset[str]:
     return frozenset(name.strip().lower() for name in raw.split(",") if name.strip())
 
 
-def alert_rule_name(parsed: dict[str, Any]) -> str:
-    """The alert rule behind this event, however the sender spells it."""
-    for key in ("RuleName", "alert_name", "AlertName", "alertname"):
-        value = str(parsed.get(key) or "").strip()
-        if value:
-            return value
-    labels = parsed.get("commonLabels")
-    if isinstance(labels, dict):
-        return str(labels.get("alertname") or "").strip()
-    return ""
-
-
 def _maybe_exclude_rule(parsed: dict[str, Any], source: str, ai_config: Any) -> AnalysisResult | None:
     """Rules an operator has decided are never worth a model call.
 
@@ -321,7 +310,20 @@ async def analyze_webhook_with_ai(
     # Named rules are never analysed, whatever their severity. Checked before
     # tiered routing because it is a different question: not "does this alert
     # look cheap" but "is this rule ever worth a model call".
+    #
+    # Two ways to say it: an inbound rule (matchable on source, project,
+    # payload — the operator-facing form) or AI_EXCLUDED_RULES (a plain list of
+    # rule names). The rules table is the richer one; the setting stays because
+    # a deployment already using it must not break.
+    actions = await inbound_actions_for(
+        parsed_data=parsed,
+        source=source,
+        rule_name=alert_rule_name(parsed),
+    )
     excluded = _maybe_exclude_rule(parsed, source, ai_config)
+    if excluded is None and SKIP_AI in actions:
+        logger.info("[AI] Inbound rule skips analysis source=%s rule=%s", source, alert_rule_name(parsed))
+        excluded = set_analysis_route(analyze_with_rules(parsed, source), "rule_excluded")
     if excluded is not None:
         await log_ai_usage("rule_excluded", alert_hash, source)
         AI_REQUESTS_TOTAL.labels(sanitize_source(source), "rule_excluded", "success").inc()
