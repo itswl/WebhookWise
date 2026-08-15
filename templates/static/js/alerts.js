@@ -7,7 +7,7 @@ let _promptVersionsNow = null;
 async function ensurePromptVersions() {
     if (_promptVersionsNow !== null) return _promptVersionsNow;
     try {
-        const resp = await API.authenticatedFetch('/v1/admin/prompt/versions');
+        const resp = await API.authenticatedFetch('/v1/prompt/versions');
         const data = await resp.json();
         _promptVersionsNow = (data && data.versions) || {};
     } catch (e) {

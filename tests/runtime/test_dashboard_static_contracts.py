@@ -1258,3 +1258,31 @@ def test_scroll_to_alert_never_silently_noops() -> None:
 
     body = _re.search(r"_scrollToAlert\(eventId\) \{(.*?)\n    \}", alerts, _re.S)
     assert body and "focusAlertById(eventId)" in body.group(1)
+
+
+def test_every_api_path_the_dashboard_calls_exists() -> None:
+    """A page can call a route that was never registered, and nothing notices.
+
+    The whole gate is blind to this: the JS is not type-checked against the API,
+    a wrong path answers 404 at runtime, and a feature written to degrade
+    gracefully — like the prompt-provenance comparison — then does nothing
+    forever without an error anywhere. Shipped exactly that way once
+    ('/v1/admin/prompt/versions', which is registered as '/v1/prompt/versions').
+    """
+    import json
+
+    contract = json.loads((PROJECT_ROOT / "build/openapi/openapi.json").read_text())
+    known = set(contract.get("paths", {}))
+
+    # Only COMPLETE literals: a path built by concatenation ('/v1/webhooks/' + id)
+    # is a prefix, not a route, and checking it here would flag every one of them.
+    # The closing quote must be followed by , or ) for the literal to be whole.
+    literal_call = re.compile(r"authenticatedFetch\(\s*'(/v1/[A-Za-z0-9/_.-]+)'\s*[,)]")
+    js_dir = PROJECT_ROOT / "templates/static/js"
+    missing: list[str] = []
+    for path in sorted(js_dir.glob("*.js")):
+        for called in literal_call.findall(path.read_text()):
+            if called not in known:
+                missing.append(f"{path.name}: {called}")
+
+    assert missing == [], f"dashboard calls paths the API does not serve: {missing}"
