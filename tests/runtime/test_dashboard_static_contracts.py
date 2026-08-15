@@ -1287,3 +1287,32 @@ def test_every_api_path_the_dashboard_calls_exists() -> None:
     ]
 
     assert missing == [], f"dashboard calls paths the API does not serve: {missing}"
+
+
+def test_every_translation_key_the_dashboard_asks_for_exists() -> None:
+    """A missing key renders as the key itself, and nothing fails.
+
+    Shipped exactly that: an inbound-rules row showed COMMON.ENABLED,
+    common.edit and common.delete to the operator, in both languages, because
+    those keys were invented at the call site and never added. Only a
+    screenshot caught it.
+    """
+    js_dir = PROJECT_ROOT / "templates/static/js"
+    dictionaries = {}
+    for language in ("zh", "en"):
+        text = (js_dir / f"i18n.{language}.js").read_text()
+        dictionaries[language] = set(re.findall(r"^\s*'([a-zA-Z0-9_.]+)':", text, re.M))
+
+    # Literal single-argument t('...') calls. Keys built by concatenation
+    # (t('inbound.action.' + rule.action)) cannot be checked statically.
+    asked = re.compile(r"\bt\(\s*'([a-zA-Z0-9_.]+)'\s*[),]")
+    missing: list[str] = []
+    for path in sorted(js_dir.glob("*.js")):
+        if path.name.startswith("i18n."):
+            continue
+        for key in asked.findall(path.read_text()):
+            for language, known in dictionaries.items():
+                if key not in known:
+                    missing.append(f"{path.name}: {key} ({language})")
+
+    assert missing == [], f"translation keys used but never defined: {sorted(set(missing))[:20]}"

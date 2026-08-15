@@ -63,8 +63,8 @@ function renderInboundRules(rules) {
     container.innerHTML = rules.map(function (rule) {
         const actionLabel = t('inbound.action.' + rule.action) || rule.action;
         const state = rule.enabled
-            ? `<span class="badge badge-success">${t('common.enabled')}</span>`
-            : `<span class="badge badge-outline">${t('common.disabled')}</span>`;
+            ? `<span class="badge badge-success">${t('inbound.status.enabled')}</span>`
+            : `<span class="badge badge-outline">${t('inbound.status.disabled')}</span>`;
         return `
             <div class="card" style="margin-bottom: 12px;">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
@@ -80,9 +80,9 @@ function renderInboundRules(rules) {
                         ${rule.comment ? `<div style="margin-top:4px; color: var(--text-muted); font-size: var(--fs-sm);">${escapeHtml(rule.comment)}</div>` : ''}
                     </div>
                     <div style="display:flex; gap:8px;">
-                        <button class="btn" data-act="showInboundRuleForm" data-args="${rule.id}">${t('common.edit')}</button>
+                        <button class="btn" data-act="showInboundRuleForm" data-args="${rule.id}">${t('rules.action.edit')}</button>
                         <button class="btn" data-act="deleteInboundRule" data-args="${rule.id}"
-                            style="color: var(--danger); border-color: transparent; background: transparent;">${t('common.delete')}</button>
+                            style="color: var(--danger); border-color: transparent; background: transparent;">${t('rules.action.delete')}</button>
                     </div>
                 </div>
             </div>`;
