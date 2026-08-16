@@ -410,3 +410,66 @@ async def test_an_excluded_alert_never_reaches_the_investigator() -> None:
     )
 
     assert ids == []
+
+
+@pytest.mark.asyncio
+async def test_a_cache_hit_cannot_smuggle_an_excluded_alert_to_the_investigator() -> None:
+    """The exclusion has to survive an answer that never went through it.
+
+    An identical alert served from the cache carries route `cache`, not
+    `rule_excluded`, and its cached verdict is `high` — precisely what the
+    deep-analysis forward rule matches on. Found by checking production after
+    the fact: 12 of those alerts took the cache route in one day, and none had
+    yet met a matching rule.
+    """
+    from services.forwarding import outbox_records
+    from services.forwarding.policies import ForwardDeliveryPolicy
+    from services.forwarding.types import ForwardRuleSnapshot
+    from services.webhooks.inbound_rules import SKIP_AI
+
+    class _Session:
+        def add(self, obj: object) -> None:
+            raise AssertionError("a cached, excluded alert must not fund an investigation")
+
+        async def flush(self) -> None:
+            return None
+
+    async def only_skip_ai(**kwargs: object) -> set[str]:
+        return {SKIP_AI}
+
+    original = outbox_records.inbound_actions_for
+    outbox_records.inbound_actions_for = only_skip_ai  # type: ignore[assignment]
+    try:
+        ids = await outbox_records.create_outbox_records(
+            _Session(),  # type: ignore[arg-type]
+            [
+                ForwardRuleSnapshot(
+                    id=1,
+                    name="deep",
+                    match_event_type="",
+                    match_importance="high",
+                    match_source="",
+                    match_duplicate="all",
+                    match_payload="",
+                    target_type="deep_analysis",
+                    target_url="",
+                    target_name="probe",
+                    stop_on_match=False,
+                )
+            ],
+            webhook_id=1,
+            orig_id=None,
+            forward_data={"RuleName": "示例充值超限告警"},
+            # The cache route, not rule_excluded: this analysis never went
+            # through the exclusion at all.
+            analysis_result={"importance": "high", "summary": "s", "_route_type": "cache"},
+            formatted_payload={},
+            event_type="webhook_forward",
+            is_periodic_reminder=False,
+            policy=ForwardDeliveryPolicy.from_config(),
+            log_tag="test",
+        )
+    finally:
+        outbox_records.inbound_actions_for = original  # type: ignore[assignment]
+
+    assert ids == []

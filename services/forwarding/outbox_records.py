@@ -14,7 +14,12 @@ from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
 from models import ForwardOutbox
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.forwarding.types import ForwardRuleSnapshot
-from services.webhooks.inbound_rules import SKIP_DEEP_ANALYSIS, alert_rule_name, inbound_actions_for
+from services.webhooks.inbound_rules import (
+    SKIP_AI,
+    SKIP_DEEP_ANALYSIS,
+    alert_rule_name,
+    inbound_actions_for,
+)
 from services.webhooks.types import (
     AnalysisResult,
     ForwardOutboxStatus,
@@ -52,12 +57,20 @@ async def create_outbox_records(
     if not ai_excluded and any(rule.target_type == "deep_analysis" for rule in matched_rules):
         # Only asked when a deep-analysis target is actually in play: this is a
         # cached lookup, but it is still work in the delivery path.
-        ai_excluded = SKIP_DEEP_ANALYSIS in await inbound_actions_for(
+        #
+        # Both actions, not just skip_deep_analysis. The analysis route says
+        # `rule_excluded` only when THIS alert went through the exclusion; an
+        # identical alert answered from the cache carries `cache` instead, and
+        # the cached verdict is `high`, which is exactly what the deep-analysis
+        # forward rule matches on. Asking only about skip_deep_analysis let a
+        # cache hit fund an investigation the operator had excluded.
+        actions = await inbound_actions_for(
             parsed_data=forward_data,
             event_type=event_type,
             importance=str(analysis_result.get("importance") or "") if analysis_result else "",
             rule_name=alert_rule_name(forward_data or {}),
         )
+        ai_excluded = bool(actions & {SKIP_AI, SKIP_DEEP_ANALYSIS})
 
     for rule in matched_rules:
         target_type = str(rule.target_type or "webhook")
