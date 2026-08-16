@@ -662,7 +662,11 @@ var WW_ACTION_GLOBALS = [
     'loadForwardRules', 'loadSilences', 'loadMaintenanceWindows', 'testRule',
     'showRuleForm', 'deleteRule', 'showSilenceForm', 'showMaintenanceWindowForm',
     'liftSilence', 'toggleTheme', 'openAuthModal',
-    'navigateFromSidebar', 'drillSilenceToTrace'
+    'navigateFromSidebar', 'drillSilenceToTrace',
+    'loadInboundRules', 'showInboundRuleForm', 'hideInboundRuleForm', 'saveInboundRule', 'deleteInboundRule',
+    // Registered late: these three rendered buttons whose clicks resolved to
+    // nothing, in silences, maintenance windows and the forwarding page.
+    'deleteSilence', 'deleteMaintenanceWindow', 'testRuleGateway'
 ];
 
 function wwResolveAction(name) {

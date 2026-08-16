@@ -1316,3 +1316,40 @@ def test_every_translation_key_the_dashboard_asks_for_exists() -> None:
                     missing.append(f"{path.name}: {key} ({language})")
 
     assert missing == [], f"translation keys used but never defined: {sorted(set(missing))[:20]}"
+
+
+def test_every_data_act_the_dashboard_renders_can_be_dispatched() -> None:
+    """A button whose action is not on the allowlist does nothing, silently.
+
+    wwResolveAction is an allowlist by design — a click must not be able to call
+    an arbitrary global. The cost is that forgetting to register a new handler
+    produces a button that looks right, clicks, and does nothing: shipped
+    exactly that on the inbound-rules page, where add, edit and delete were all
+    inert until a user reported it.
+    """
+    js_dir = PROJECT_ROOT / "templates/static/js"
+    utils = (js_dir / "utils.js").read_text()
+
+    def _listed(name: str) -> set[str]:
+        block = re.search(rf"var {name} = \[(.*?)\];", utils, re.S)
+        assert block, f"{name} not found in utils.js"
+        return set(re.findall(r"'([A-Za-z0-9_.]+)'", block.group(1)))
+
+    globals_allowed = _listed("WW_ACTION_GLOBALS")
+    roots_allowed = _listed("WW_ACTION_ROOTS")
+
+    used: set[str] = set()
+    for path in sorted(js_dir.glob("*.js")):
+        used.update(re.findall(r'data-act="([A-Za-z0-9_.]+)"', path.read_text()))
+    for path in sorted(PROJECT_ROOT.glob("templates/*.html")):
+        used.update(re.findall(r'data-act="([A-Za-z0-9_.]+)"', path.read_text()))
+
+    def _dispatchable(name: str) -> bool:
+        if "." in name:
+            root, _, method = name.partition(".")
+            return bool(method) and root in roots_allowed
+        return name in globals_allowed
+
+    unroutable = sorted(name for name in used if not _dispatchable(name))
+
+    assert unroutable == [], f"data-act names that cannot be dispatched: {unroutable}"
