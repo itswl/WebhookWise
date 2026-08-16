@@ -126,3 +126,36 @@ async def test_the_recovery_of_that_same_alert_is_still_free(monkeypatch, temp_c
 
     assert result["_route_type"] == "rule_routed"
     llm_spy.assert_not_awaited()
+
+
+def test_the_money_floor_does_not_fire_on_an_accidental_substring() -> None:
+    """ "order" is inside "reorder", and "payment" inside a service's name.
+
+    Both were lifting unrelated alerts to high after the floor shipped: a queue
+    drain and a deploy receipt for payments-web. ASCII keywords now need word
+    boundaries; CJK keeps substring matching, because Chinese offers no
+    boundary and 订单服务 genuinely is about 订单.
+    """
+    from core.text import split_csv_lower
+    from services.analysis.ai_analyzer import analyze_with_rules
+    from services.analysis.analysis_policies import RuleAnalysisPolicy
+
+    policy = RuleAnalysisPolicy(
+        high_keywords=("critical",),
+        content_high_keywords=tuple(split_csv_lower("payment,order,withdraw,充值,订单")),
+        warning_keywords=("warning",),
+        metric_keywords=("cpu",),
+        threshold_multiplier=4.0,
+    )
+
+    def importance(title: str) -> str:
+        alert = {"RuleName": title, "Level": "info", "status": "firing", "title": title, "message": ""}
+        return str(analyze_with_rules(alert, "grafana", policy=policy)["importance"])
+
+    # Accidents, no longer lifted.
+    assert importance("Sync completed: payments-web") == "low"
+    assert importance("reorder queue drained") == "low"
+    # The alerts the floor exists for, still lifted.
+    assert importance("Payment gateway 5xx spike") == "high"
+    assert importance("Withdraw failures spiking") == "high"
+    assert importance("示例充值超限告警") == "high"

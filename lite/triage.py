@@ -9,13 +9,42 @@ timeout, unparseable answer) falls through to rules and says so in `route`.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import httpx
 
 # Matched against incoming Chinese alert text: these are behavioural keywords,
 # not display copy, and translating them breaks classification.
-_HIGH = ("critical", "fatal", "down", "outage", "严重", "宕机", "故障", "不可用", "失败率")
+# Money and account security are here for the same reason the full service
+# floors them: this list is the DEGRADED path, used when the model cannot
+# answer, and a payment threshold breach that reads as "medium" because none of
+# the outage words appear is the failure that hid in the full service for weeks.
+_HIGH = (
+    "critical",
+    "fatal",
+    "down",
+    "outage",
+    "payment",
+    "withdraw",
+    "topup",
+    "security",
+    "breach",
+    "严重",
+    "宕机",
+    "故障",
+    "不可用",
+    "失败率",
+    "充值",
+    "提现",
+    "支付",
+    "订单",
+    "余额",
+    "资金",
+    "安全",
+    "攻击",
+    "泄露",
+)
 _MEDIUM = ("error", "warn", "high", "错误", "告警", "超时", "异常")
 _LOW = ("info", "notice", "recovered", "恢复", "通知")
 
@@ -33,21 +62,27 @@ _PROMPT = """你是一个运维告警分诊助手。请判断这条告警的重�
 内容:%(body)s"""
 
 
+def _hits(keywords: tuple[str, ...], text: str) -> bool:
+    """ASCII on word boundaries, CJK as substring.
+
+    "down" inside "downstream" and "order" inside "reorder" are accidents;
+    订单 inside 订单服务 is not, and Chinese offers no boundary to use.
+    """
+    return any((re.search(rf"\b{re.escape(k)}\b", text) if k.isascii() else k in text) for k in keywords if k)
+
+
 def rule_triage(source: str, title: str, body: str, resolved: bool) -> dict[str, str]:
     # A recovery keeps the importance its firing alert would get, deliberately.
     # Downgrading it to "low" would route it away from whoever was paged, so
     # they would be told about the problem and never told it was over. The card
     # carries the recovery marker instead; urgency is a display concern here.
     text = f"{title} {body}".lower()
-    for keyword in _HIGH:
-        if keyword in text:
-            return {"importance": "high", "summary": title, "route": "rule"}
-    for keyword in _MEDIUM:
-        if keyword in text:
-            return {"importance": "medium", "summary": title, "route": "rule"}
-    for keyword in _LOW:
-        if keyword in text:
-            return {"importance": "low", "summary": title, "route": "rule"}
+    if _hits(_HIGH, text):
+        return {"importance": "high", "summary": title, "route": "rule"}
+    if _hits(_MEDIUM, text):
+        return {"importance": "medium", "summary": title, "route": "rule"}
+    if _hits(_LOW, text):
+        return {"importance": "low", "summary": title, "route": "rule"}
     return {"importance": "medium", "summary": title, "route": "rule"}
 
 

@@ -1,6 +1,7 @@
 """AI analysis orchestrator."""
 
 import math
+import re
 import time
 from typing import Any
 
@@ -71,6 +72,27 @@ __all__ = [
 ]
 
 
+def _content_hits(keywords: tuple[str, ...] | list[str], content: str) -> bool:
+    """Whether the alert content carries one of these keywords.
+
+    ASCII keywords match on word boundaries; CJK ones as substrings. Without
+    that split, "order" fired on "reorder queue drained" and "payment" on a
+    deploy receipt for a service called payments-web — unrelated alerts lifted
+    to high by an accidental substring. Chinese has no word boundaries to use,
+    and there a compound like 订单服务 genuinely is about 订单, so substring
+    matching is right on that side.
+    """
+    for keyword in keywords:
+        if not keyword:
+            continue
+        if keyword.isascii():
+            if re.search(rf"\b{re.escape(keyword)}\b", content):
+                return True
+        elif keyword in content:
+            return True
+    return False
+
+
 def analyze_with_rules(
     data: dict[str, Any], source: str, *, policy: RuleAnalysisPolicy | None = None
 ) -> AnalysisResult:
@@ -119,7 +141,7 @@ def analyze_with_rules(
     # how bad it was is no longer the question.
     if importance in ("low", "medium") and not is_recovery_payload(data, None):
         content = f"{rule_name} {data.get('title') or ''} {data.get('message') or data.get('body') or ''}".lower()
-        if any(keyword in content for keyword in policy.content_high_keywords):
+        if _content_hits(policy.content_high_keywords, content):
             importance = "high"
 
     cur_val = data.get("CurrentValue") or data.get("current_value") or data.get("current") or data.get("value")
