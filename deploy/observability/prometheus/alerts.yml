@@ -518,7 +518,7 @@ groups:
       # cards among 600 good ones is a 4% error rate that no burn-rate alert
       # will notice, while meaning one destination is 100% dead.
       - alert: WebhookWiseActionCenterCritical
-        expr: (max by (action_kind) (action_center_active{action_severity="critical"}) or vector(0)) > 0
+        expr: (max by (action_kind) (action_center_open_count{action_severity="critical"}) or vector(0)) > 0
         for: 30m
         labels:
           severity: warning

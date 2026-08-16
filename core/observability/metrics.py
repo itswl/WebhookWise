@@ -161,7 +161,7 @@ FORWARD_OUTBOX_BACKLOG_AGE_SECONDS = Gauge(
 # Consumed by WebhookWiseActionCenterCritical in
 # deploy/observability/prometheus/alerts.yml.
 ACTION_CENTER_ACTIVE = Gauge(
-    "action.center.active",
+    "action.center.open_count",
     "Action-centre items currently open, by kind and severity",
     ("action.kind", "action.severity"),
 )
