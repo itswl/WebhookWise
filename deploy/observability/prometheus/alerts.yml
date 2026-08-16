@@ -518,7 +518,11 @@ groups:
       # cards among 600 good ones is a 4% error rate that no burn-rate alert
       # will notice, while meaning one destination is 100% dead.
       - alert: WebhookWiseActionCenterCritical
-        expr: (max by (action_kind) (action_center_open_count{action_severity="critical"}) or vector(0)) > 0
+# _ratio is the exporter's, not ours: OpenTelemetry appends it to a unitless
+        # gauge, and it is the only series that exists. Verified against the live
+        # Prometheus rather than assumed — the first two names this rule used had
+        # no series at all, so it was loaded, healthy and permanently inactive.
+        expr: (max by (action_kind) (action_center_open_count_ratio{action_severity="critical"}) or vector(0)) > 0
         for: 30m
         labels:
           severity: warning
