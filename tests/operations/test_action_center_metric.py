@@ -80,7 +80,9 @@ def _stub(monkeypatch: pytest.MonkeyPatch, poller: Any, report: Any) -> list[Any
     calls: list[Any] = []
     monkeypatch.setattr("services.operations.action_center.get_action_center", report)
     monkeypatch.setattr(poller, "session_scope", _fake_session_scope)
-    monkeypatch.setattr(poller, "ACTION_CENTER_ACTIVE", StubMetric(calls, "action_center_open_count", record_action=False))
+    monkeypatch.setattr(
+        poller, "ACTION_CENTER_ACTIVE", StubMetric(calls, "action_center_open_count", record_action=False)
+    )
     poller._published_action_labels = set()
     return calls
 
