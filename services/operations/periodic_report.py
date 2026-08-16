@@ -35,6 +35,7 @@ from models import (
     RunbookExecution,
     WebhookEvent,
 )
+from services.notifications.routing import resolve_notification_target
 from services.webhooks.types import ForwardOutboxStatus, ForwardResult
 
 logger = get_logger("periodic_report")
@@ -793,9 +794,13 @@ async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None 
         logger.debug("[PeriodicReport] %s not enabled, skipping", period.key)
         return {"skipped": "disabled"}
 
-    webhook_url = (
+    configured = (
         getattr(notif, period.webhook_attr) or notif.WEEKLY_REPORT_FEISHU_WEBHOOK or notif.DEEP_ANALYSIS_FEISHU_WEBHOOK
     )
+    target = await resolve_notification_target(
+        f"report_{period.key}", fallback_url=str(configured or ""), fallback_name=f"{period.key}-report"
+    )
+    webhook_url = target.url
     if not webhook_url:
         logger.warning(
             "[PeriodicReport] %s enabled but no webhook configured (%s / WEEKLY_REPORT_FEISHU_WEBHOOK / DEEP_ANALYSIS_FEISHU_WEBHOOK)",
@@ -878,12 +883,16 @@ async def check_ai_cost_budget() -> dict[str, Any]:
     if budget <= 0:
         return {"skipped": "disabled"}
 
-    webhook_url = (
+    configured = (
         notif.AI_COST_BUDGET_FEISHU_WEBHOOK
         or notif.DAILY_REPORT_FEISHU_WEBHOOK
         or notif.WEEKLY_REPORT_FEISHU_WEBHOOK
         or notif.DEEP_ANALYSIS_FEISHU_WEBHOOK
     )
+    target = await resolve_notification_target(
+        "ai_cost_budget", fallback_url=str(configured or ""), fallback_name="ai-cost-budget"
+    )
+    webhook_url = target.url
     if not webhook_url:
         logger.warning("[AICostBudget] budget set but no webhook configured; skipping")
         return {"skipped": "no_webhook"}

@@ -13,6 +13,7 @@ from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
 from models import ForwardOutbox, Incident, WebhookEvent
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.notifications.feishu_actions import build_incident_action_value
+from services.notifications.routing import resolve_notification_target
 from services.webhooks.types import ForwardOutboxStatus
 
 
@@ -136,12 +137,22 @@ async def queue_incident_notifications(
         and app_config.security.FEISHU_CARD_VERIFICATION_TOKEN.strip()
         and app_config.security.FEISHU_CARD_ACTION_SECRET.strip()
     )
-    target_url = (
+    # A rule may claim incident_created; the configured cascade is the fallback.
+    # These cards were reaching DEEP_ANALYSIS_FEISHU_WEBHOOK only because nothing
+    # else was set, and its token had been revoked for six days unnoticed.
+    configured = (
         f"feishu-app://{cfg.FEISHU_INCIDENT_CHAT_ID.strip()}"
         if app_enabled
         else str(cfg.DEEP_ANALYSIS_FEISHU_WEBHOOK or cfg.WEEKLY_REPORT_FEISHU_WEBHOOK or "").strip()
     )
-    if not target_url:
+    target = await resolve_notification_target(
+        "incident_created",
+        fallback_url=configured,
+        fallback_name="incident-notification",
+        fallback_target_type="feishu_app" if app_enabled else "feishu",
+    )
+    target_url = target.url
+    if not target_url and target.target_type != "feishu_app":
         return []
 
     policy = ForwardDeliveryPolicy.from_config()
@@ -161,12 +172,12 @@ async def queue_incident_notifications(
             idempotency_key=key,
             webhook_event_id=None,
             original_event_id=None,
-            forward_rule_id=None,
-            rule_name="system:incident-created",
-            target_type="feishu_app" if app_enabled else "feishu",
+            forward_rule_id=target.rule_id,
+            rule_name=target.rule_name if target.from_rule else "system:incident-created",
+            target_type=target.target_type,
             target_url=target_url,
-            target_name="incident-notification",
-            channel_name="feishu_app" if app_enabled else "feishu",
+            target_name=target.rule_name,
+            channel_name=target.target_type,
             event_type="incident_created",
             status=ForwardOutboxStatus.PENDING,
             attempts=0,
@@ -196,9 +207,13 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
     the breach louder than the original alert.
     """
     cfg = get_config_manager().notifications
-    target_url = str(
+    configured = str(
         cfg.SLA_BREACH_FEISHU_WEBHOOK or cfg.DEEP_ANALYSIS_FEISHU_WEBHOOK or cfg.WEEKLY_REPORT_FEISHU_WEBHOOK or ""
     ).strip()
+    target = await resolve_notification_target(
+        "sla_breached", fallback_url=configured, fallback_name="sla-breach-notification"
+    )
+    target_url = target.url
     if not target_url:
         return []
     from services.operations import runtime_settings as rt
@@ -303,11 +318,12 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
         }
         record = ForwardOutbox(
             idempotency_key=key,
-            rule_name="system:sla-breached",
-            target_type="feishu",
+            forward_rule_id=target.rule_id,
+            rule_name=target.rule_name if target.from_rule else "system:sla-breached",
+            target_type=target.target_type,
             target_url=target_url,
-            target_name="sla-notification",
-            channel_name="feishu",
+            target_name=target.rule_name,
+            channel_name=target.target_type,
             event_type="sla_breached",
             status=ForwardOutboxStatus.PENDING,
             attempts=0,
