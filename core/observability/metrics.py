@@ -147,6 +147,26 @@ FORWARD_OUTBOX_BACKLOG_AGE_SECONDS = Gauge(
 )
 
 
+# What the product already knows is wrong with itself, made pageable.
+#
+# The action centre detects permanent delivery faults, dead letters, stuck
+# processing and a provider outage — and it detected the two silent failures
+# found by hand this week. It just puts them on a page, and the operator works
+# in Feishu, not in this dashboard: 874 alerts sat open against 6 ever touched.
+#
+# The aggregate SLOs cannot cover this either. Twenty-six dead cards among six
+# hundred successful ones is a 4% error rate — invisible to a burn-rate alert,
+# while meaning one specific destination is completely dead.
+#
+# Consumed by WebhookWiseActionCenterCritical in
+# deploy/observability/prometheus/alerts.yml.
+ACTION_CENTER_ACTIVE = Gauge(
+    "action.center.active",
+    "Action-centre items currently open, by kind and severity",
+    ("action.kind", "action.severity"),
+)
+
+
 OBSERVABILITY_EVENTS_TOTAL = Counter(
     "observability.events",
     "Structured observability events emitted by the application",

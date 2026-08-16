@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from core.app_context import get_config_manager
 from core.logger import get_logger
 from core.observability.metrics import (
+    ACTION_CENTER_ACTIVE,
     DATABASE_EVENTS_COUNT,
     WEBHOOK_MQ_GROUP_LAG,
     WEBHOOK_MQ_GROUP_PENDING,
@@ -32,6 +33,7 @@ async def refresh_all_metrics(*, mq_queue: str | None = None, mq_consumer_group:
     await _refresh_db_status_counts()
     await _refresh_mq_stats(mq_queue=mq_queue, mq_consumer_group=mq_consumer_group)
     await _refresh_db_event_count()
+    await _refresh_action_center()
 
 
 async def _refresh_db_event_count() -> None:
@@ -84,3 +86,41 @@ async def _refresh_mq_stats(*, mq_queue: str | None = None, mq_consumer_group: s
         WEBHOOK_MQ_GROUP_LAG.labels(stream=queue_name, group=group_name).set(lag)
     except RedisError as e:
         logger.debug("[Metrics] Failed to refresh MQ group metrics: %s", e)
+
+
+# Label sets published last time, so a kind that has cleared is set to zero
+# rather than left at its last value. A gauge that never comes down would keep
+# an alert firing after the fault is fixed, which is how people learn to ignore
+# an alert.
+_published_action_labels: set[tuple[str, str]] = set()
+
+
+async def _refresh_action_center() -> None:
+    """Publish the action centre's own findings as a metric.
+
+    The detection already exists and is tested; recomputing "what counts as a
+    permanent fault" in PromQL would be a second definition to keep in sync.
+    """
+    global _published_action_labels
+    try:
+        from services.operations.action_center import get_action_center
+
+        async with session_scope() as session:
+            report = await get_action_center(session)
+    except Exception as e:  # noqa: BLE001
+        # Broader than the other steps on purpose: this one calls a whole
+        # subsystem rather than issuing one query, and a metrics refresher must
+        # never be the reason the other gauges stop updating.
+        logger.debug("[Metrics] Failed to refresh action-centre gauge: %s", e)
+        return
+
+    counts: dict[tuple[str, str], int] = {}
+    for item in report.get("items") or []:
+        key = (str(item.get("kind") or "unknown"), str(item.get("severity") or "unknown"))
+        counts[key] = counts.get(key, 0) + 1
+
+    for key in _published_action_labels - set(counts):
+        ACTION_CENTER_ACTIVE.labels(*key).set(0)
+    for key, count in counts.items():
+        ACTION_CENTER_ACTIVE.labels(*key).set(count)
+    _published_action_labels = set(counts)

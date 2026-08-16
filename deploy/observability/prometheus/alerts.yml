@@ -509,6 +509,24 @@ groups:
           summary: Forwarding outbox backlog contains records older than 10 minutes.
           runbook: Check forward-outbox-rate, forward-outbox-latency-p95, target service availability, and worker task errors.
 
+      # The product's own faults, paged through the stack that already works.
+      #
+      # The action centre detects these correctly — it found the revoked Feishu
+      # token and the failing gateway deliveries — but it publishes them to a
+      # dashboard, and the operator lives in Feishu: 874 alerts open against 6
+      # ever touched. The delivery SLOs cannot cover it either, because 26 dead
+      # cards among 600 good ones is a 4% error rate that no burn-rate alert
+      # will notice, while meaning one destination is 100% dead.
+      - alert: WebhookWiseActionCenterCritical
+        expr: (max by (action_kind) (action_center_active{action_severity="critical"}) or vector(0)) > 0
+        for: 30m
+        labels:
+          severity: warning
+          service: webhookwise-worker
+        annotations:
+          summary: WebhookWise is reporting a critical fault about itself ({{ $labels.action_kind }}).
+          runbook: Open the Action Center. delivery_exhausted with a permanent fault usually means a revoked webhook token or a target that no longer exists.
+
       - alert: WebhookWiseCircuitBreakerOpen
         expr: (max by (circuit_breaker_name) (circuit_breaker_active_state{circuit_breaker_state="open"}) or vector(0)) > 0
         for: 1m
