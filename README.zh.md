@@ -47,6 +47,7 @@ WebhookWise 位于执行类平台的上游:它决定哪些告警值得关注并�
 | OTel 优先可观测性 | 应用只经 OTLP 发出遥测;Alloy 路由指标/日志/追踪到 Prometheus、Loki、Tempo,Pyroscope、Beyla、Alertmanager、Grafana 组成诊断闭环。 |
 | 运行时策略平面 | 标记 `[runtime-policy]` 的配置支持数据库级实时覆写(仪表盘/API 均可修改),约 60 秒内在所有进程生效,故障时向可用侧降级。 |
 | 只读 MCP 服务 | 可选开启(`MCP_ENABLED`)的 Streamable-HTTP MCP 端点(`/mcp`),把查询层暴露给任意 Agent(Claude / Cursor / 自定义客户端);刻意只读——见 [docs/reference/mcp.md](docs/reference/mcp.md)。 |
+| Agent 技能 + 使用教程 | [`.claude/skills/`](.claude/skills) 内置三个工作流技能（单条告警调查、交接班回顾、降噪审计），编排 MCP 工具供任意 Agent 使用——Claude Code 在仓库内自动识别，hookprobe 以只读 user 层挂载。仪表盘另有双语六步教程页（`#/guide`）。 |
 | WebhookWise Lite | 同一产品思路的单进程版:SQLite、无 Redis、约 800 行、四道抑制闸门——见 [lite/README.md](lite/README.md)。 |
 
 ## 系统流程

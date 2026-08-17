@@ -58,6 +58,7 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 | OTel-first observability | The application emits telemetry over OTLP; Alloy routes metrics, logs, and traces to Prometheus, Loki, and Tempo, while Pyroscope, Beyla, Alertmanager, and Grafana complete the diagnostic loop. |
 | Runtime settings plane | Keys tagged `[runtime-policy]` accept DB-backed live overrides from the dashboard/API, propagate to every process within ~60s, and fail open — see [Runtime Settings](#runtime-settings--live-operator-policy). |
 | Read-only MCP server | Opt-in (`MCP_ENABLED`) Streamable-HTTP MCP endpoint at `/mcp` exposing the query layer to any agent (Claude / Cursor / custom); deliberately read-only — see [docs/reference/mcp.md](docs/reference/mcp.md). |
+| Agent skills + operator guide | Three workflow skills in [`.claude/skills/`](.claude/skills) (investigate an alert, shift review, noise tuning) orchestrate the MCP tools for any agent — Claude Code picks them up in-repo, hookprobe mounts them as its user layer. The dashboard ships a bilingual six-step guide at `#/guide`. |
 | WebhookWise Lite | A one-process edition of the same thesis: SQLite, no Redis, ~800 lines, four suppression gates — see [lite/README.md](lite/README.md). |
 
 ## System Flow
