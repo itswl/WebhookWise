@@ -127,6 +127,7 @@
             'action.empty.title': 'Everything is healthy',
             'action.empty.text': 'No delivery, processing, or AI problems need attention.',
             'action.msg.failed': 'Action failed',
+            'action.msg.undoPrompt': 'Action completed. Undo it now?',
             'noise.title': 'Noise Center',
             'noise.subtitle': 'Measure alert noise, review safe recommendations, and apply reversible optimizations.',
             'noise.window.7d': '7 days',

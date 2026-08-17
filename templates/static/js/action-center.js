@@ -145,7 +145,7 @@ const ActionCenterModule = (function () {
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.error || 'HTTP ' + response.status);
             const undo = result.data && result.data.undo;
-            if (undo && window.confirm('Action completed. Undo it now?')) {
+            if (undo && (await wwConfirm(t('action.msg.undoPrompt')))) {
                 await API.authenticatedFetch('/v1/action-center/actions', {
                     method: 'POST', body: JSON.stringify({ ...undo, batch_size: 50 })
                 });

@@ -127,6 +127,7 @@
             'action.empty.title': '当前运行正常',
             'action.empty.text': '没有需要处理的投递、任务或 AI 异常。',
             'action.msg.failed': '操作失败',
+            'action.msg.undoPrompt': '操作已完成。要立即撤销吗？',
             'noise.title': '告警降噪中心',
             'noise.subtitle': '量化告警噪音，查看安全建议，并执行可撤销的优化。',
             'noise.window.7d': '近 7 天',

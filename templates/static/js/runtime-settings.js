@@ -261,7 +261,7 @@ const RuntimeSettingsModule = (function () {
     }
 
     async function clearOverride(key) {
-        if (!window.confirm(t('rs.confirm.clear'))) return;
+        if (!(await wwConfirm(t('rs.confirm.clear')))) return;
         setRowBusy();
         try {
             const result = await API.clearRuntimeSetting(key);

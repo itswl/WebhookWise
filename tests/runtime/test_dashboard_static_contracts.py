@@ -1131,6 +1131,31 @@ def test_every_action_root_registers_itself() -> None:
     assert registered - allowlisted == set(), f"registrations outside the allowlist: {registered - allowlisted}"
 
 
+def test_native_dialogs_stay_replaced() -> None:
+    """window.confirm/prompt are unthemeable, block the event loop, and put
+    the browser's name above your text. The dashboard replaced them with
+    wwConfirm/wwPrompt (ESC + focus trap for free); seven native calls crept
+    back anyway, one with a hardcoded English string. utils.js is exempt —
+    it owns the replacements and documents what they replace."""
+    import re as _re
+
+    from tests.helpers.paths import PROJECT_ROOT as _ROOT
+
+    pattern = _re.compile(r"(?<![\w.])(?:window\.)?(?:confirm|prompt)\(")
+    offenders = {}
+    for path in sorted((_ROOT / "templates/static/js").glob("*.js")):
+        if path.name in ("utils.js",) or path.name.startswith("i18n."):
+            continue
+        hits = [
+            lineno
+            for lineno, line in enumerate(path.read_text().splitlines(), start=1)
+            if pattern.search(line) and not line.lstrip().startswith(("//", "*"))
+        ]
+        if hits:
+            offenders[path.name] = hits
+    assert offenders == {}, f"native dialogs crept back: {offenders}"
+
+
 def test_js_never_guards_on_the_empty_string() -> None:
     """`includes('')` and `startsWith('')` are always true. An emoji purge
     rewrote showToast's comparison literals to '' and every toast became a

@@ -136,7 +136,7 @@ const KbDraftsModule = (function () {
     }
 
     async function publish(sourceRef, button) {
-        if (!sourceRef || !window.confirm(t('kb.confirmPublish'))) return;
+        if (!sourceRef || !(await wwConfirm(t('kb.confirmPublish')))) return;
         if (button) button.disabled = true;
         try {
             const result = await API.publishKbDraft(sourceRef);
@@ -150,7 +150,7 @@ const KbDraftsModule = (function () {
     }
 
     async function discard(sourceRef, button) {
-        if (!sourceRef || !window.confirm(t('kb.confirmDiscard'))) return;
+        if (!sourceRef || !(await wwConfirm(t('kb.confirmDiscard'), { danger: true }))) return;
         if (button) button.disabled = true;
         try {
             const result = await API.discardKbDraft(sourceRef);

@@ -44,6 +44,13 @@ This project follows SemVer release headings.
   and can never exercise them.
 
 ### Fixed
+- Revoking a source credential from the ingress wizard now clears the whole
+  run and returns to the source picker — it used to stay parked on the dead
+  flow (stale payload editor, a lifecycle panel for a credential that no
+  longer exists).
+- All seven remaining native `window.confirm()` calls replaced with the
+  themed dialog (one carried a hardcoded English string, now in the
+  dictionaries); a contract keeps native dialogs out for good.
 - The delivery queue rendered one `NaN` row instead of data: `/v1/outbox`
   answers `{data: {items, total, next_cursor, has_more}}` — an object — and
   the module concat'd it as the row array. Dead-letter paging also derived

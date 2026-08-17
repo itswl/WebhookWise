@@ -459,15 +459,17 @@ const IngressSetupModule = (function () {
 
     async function revokeCredential(button) {
         if (!connection || !connection.id || connection.enabled === false) return;
-        if (!window.confirm(t('ingress.manage.revokeConfirm'))) return;
+        if (!(await wwConfirm(t('ingress.manage.revokeConfirm'), { danger: true }))) return;
         setBusy(button, true);
         try {
-            const payload = await API.revokeInboundSource(connection.id, 'dashboard');
-            connection = responseConnection(payload);
-            sourceToken = '';
-            setup = null;
-            render();
-            setStatus(t('ingress.manage.revoked'), 'success');
+            await API.revokeInboundSource(connection.id, 'dashboard');
+            // A revoked credential has no next step. The wizard used to stay
+            // parked on the dead flow — stale payload editor, a lifecycle
+            // panel for a credential that no longer exists — so revoking now
+            // clears the whole run and returns to the source picker. The
+            // toast (not setStatus) survives the re-render.
+            showToast(t('ingress.manage.revoked'), 'success');
+            reset();
         } catch (error) {
             setStatus(error.message || String(error), 'error');
             setBusy(button, false);

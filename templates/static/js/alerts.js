@@ -1722,7 +1722,7 @@ const AlertsModule = {
 
     async _runBulk(status, btn) {
         const ids = Array.from(this._bulkSelected);
-        if (!ids.length || !window.confirm(t('alerts.bulk.confirm', { n: ids.length }))) return;
+        if (!ids.length || !(await wwConfirm(t('alerts.bulk.confirm', { n: ids.length })))) return;
         btn.disabled = true;
         let failed = 0;
         for (const id of ids) {

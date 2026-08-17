@@ -150,7 +150,7 @@ const NoiseCenterModule = (function () {
     }
 
     async function applySuggestion(button) {
-        if (button.getAttribute('data-noise-risk') === 'medium' && !window.confirm(t('noise.confirm.medium'))) return;
+        if (button.getAttribute('data-noise-risk') === 'medium' && !(await wwConfirm(t('noise.confirm.medium')))) return;
         button.disabled = true;
         try {
             const response = await API.authenticatedFetch('/v1/noise-center/actions', {
@@ -167,7 +167,7 @@ const NoiseCenterModule = (function () {
     }
 
     async function undoAction(button) {
-        if (!window.confirm(t('noise.confirm.undo'))) return;
+        if (!(await wwConfirm(t('noise.confirm.undo')))) return;
         button.disabled = true;
         try {
             const response = await API.authenticatedFetch('/v1/noise-center/actions/' + button.getAttribute('data-noise-undo') + '/undo', {
