@@ -13,6 +13,7 @@ const RoutingModule = (function () {
 
     const VIEWS = {
         rules: 'routingViewRules',
+        handoff: 'routingViewHandoff',
         inbound: 'routingViewInbound',
         silences: 'routingViewSilences',
         sandbox: 'routingViewSandbox',
@@ -28,6 +29,8 @@ const RoutingModule = (function () {
     function loadView(view) {
         if (view === 'rules') {
             if (typeof loadForwardRules === 'function') loadForwardRules();
+        } else if (view === 'handoff') {
+            if (typeof HandoffModule !== 'undefined') HandoffModule.load();
         } else if (view === 'inbound') {
             if (typeof InboundRulesModule !== 'undefined') InboundRulesModule.load();
         } else if (view === 'silences') {

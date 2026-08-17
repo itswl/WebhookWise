@@ -55,6 +55,7 @@ const DESTINATIONS = {
     investigations: { tab: 'alerts', enter: () => setInboxView('investigations') },
 
     rules: { tab: 'routing', enter: () => setSubView('RoutingModule', 'rules') },
+    handoff: { tab: 'routing', enter: () => setSubView('RoutingModule', 'handoff') },
     inbound: { tab: 'routing', enter: () => setSubView('RoutingModule', 'inbound') },
     silences: { tab: 'routing', enter: () => setSubView('RoutingModule', 'silences') },
     sandbox: { tab: 'routing', enter: () => setSubView('RoutingModule', 'sandbox') },

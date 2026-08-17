@@ -664,6 +664,7 @@ var WW_ACTION_GLOBALS = [
     'liftSilence', 'toggleTheme', 'openAuthModal',
     'navigateFromSidebar', 'drillSilenceToTrace',
     'loadInboundRules', 'showInboundRuleForm', 'hideInboundRuleForm', 'saveInboundRule', 'deleteInboundRule',
+    'pickInboundRuleName', 'setHandoffWindow', 'copyHandoff',
     // Registered late: these three rendered buttons whose clicks resolved to
     // nothing, in silences, maintenance windows and the forwarding page.
     'deleteSilence', 'deleteMaintenanceWindow', 'testRuleGateway'

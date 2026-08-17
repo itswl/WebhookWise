@@ -41,8 +41,8 @@ const html = el('sidebar').innerHTML;
 let fails = 0;
 const check = (label, ok) => { if (!ok) fails++; console.log((ok ? 'PASS' : 'FAIL') + '  ' + label); };
 
-check('渲染了全部 20 项', (html.match(/data-sidebar-slug=/g) || []).length === 20);
-check('20 项全部走 sprite 图标', (html.match(/data-icon=/g) || []).length >= 20);
+check('渲染了全部 21 项', (html.match(/data-sidebar-slug=/g) || []).length === 21);
+check('21 项全部走 sprite 图标', (html.match(/data-icon=/g) || []).length >= 21);
 check('4 个分组头', (html.match(/sidebar-group/g) || []).length === 4);
 check('分组已翻译', html.includes('收件箱') && html.includes('运维'));
 check('incidents 带徽章占位', html.includes('sidebarIncidentsBadge'));

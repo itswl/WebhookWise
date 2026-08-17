@@ -391,6 +391,19 @@
                     </div>
                 </div>
 
+                <!-- View: Handoff & Audit -->
+                <div id="routingViewHandoff" style="display: none;">
+                    <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                        <div>
+                            <div class="section-title" data-i18n="handoff.title">Handoff &amp; Audit</div>
+                            <p style="margin:4px 0 0; color:var(--text-secondary); font-size:var(--fs-sm);" data-i18n="handoff.subtitle">What happened on the last shift, and who changed what. The brief is markdown, ready to paste where the next shift reads.</p>
+                        </div>
+                    </div>
+                    <div id="handoffBrief" style="margin-bottom:28px;"></div>
+                    <div class="section-title" style="margin-bottom:10px;" data-i18n="handoff.audit.title">Configuration changes</div>
+                    <div id="auditLogList"></div>
+                </div>
+
                 <!-- View: Inbound Rules -->
                 <div id="routingViewInbound" class="inbound-rules-section" style="display: none;">
                     <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -1232,6 +1245,7 @@
     <script defer src="/static/js/alerts.js"></script>
     <script defer src="/static/js/ai-cost.js"></script>
     <script defer src="/static/js/forward-rules.js"></script>
+    <script defer src="/static/js/handoff.js"></script>
     <script defer src="/static/js/inbound-rules.js"></script>
     <script defer src="/static/js/silences.js"></script>
     <script defer src="/static/js/sandbox.js"></script>

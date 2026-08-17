@@ -43,6 +43,7 @@ const CommandPalette = (function () {
             title: 'nav.group.routing',
             items: [
                 { slug: 'rules', icon: 'filter', label: 'nav.dest.rules', keywords: 'forward rules routing targets 转发 规则 路由' },
+                { slug: 'handoff', icon: 'clock', label: 'nav.dest.handoff', keywords: 'handoff shift audit changes 交接 值班 审计 变更' },
                 { slug: 'inbound', icon: 'sliders', label: 'nav.dest.inbound', keywords: 'inbound rules skip ai cost 入站 规则 不分析 成本' },
                 { slug: 'silences', icon: 'volume-x', label: 'nav.dest.silences', keywords: 'silence mute maintenance 静音 屏蔽 维护窗' },
                 // lowFreq: rendered in the sidebar's collapsed "rarely used"

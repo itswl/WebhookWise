@@ -211,7 +211,66 @@ const AlertQualityModule = (function () {
         const topFindings = Array.isArray(data.top_findings) ? data.top_findings : [];
         container.innerHTML = renderScanNote(data) + renderSummary(data) +
             renderGlobalCoverage(summary) + renderTopFindings(topFindings) +
-            renderSources(sources);
+            renderSources(sources) +
+            // Both of these had a working endpoint and no way in. They belong on
+            // this page rather than on pages of their own: "is the judging any
+            // good" and "which services carry the load" are quality questions,
+            // and this product's problem is not too few pages.
+            '<div id="qualityFeedback"></div><div id="qualityServices"></div>';
+        renderFeedbackSummary();
+        renderServiceProfiles();
+    }
+
+    async function renderFeedbackSummary() {
+        const box = document.getElementById('qualityFeedback');
+        if (!box) return;
+        try {
+            const result = await API.getFeedbackSummary();
+            const d = (result && result.data) || {};
+            if (!d.total) {
+                box.innerHTML = '<div class="section-title" style="margin-top:28px;">' +
+                    escapeHtml(t('quality.feedback.title')) + '</div><div class="empty-state"><p>' +
+                    escapeHtml(t('quality.feedback.empty')) + '</p></div>';
+                return;
+            }
+            box.innerHTML = '<div class="section-title" style="margin-top:28px;">' +
+                escapeHtml(t('quality.feedback.title')) + '</div>' +
+                '<div class="handoff-stats">' +
+                '<div class="handoff-stat"><div class="handoff-stat-value">' + escapeHtml(String(d.total)) +
+                '</div><div class="handoff-stat-label">' + escapeHtml(t('quality.feedback.total')) + '</div></div>' +
+                '<div class="handoff-stat"><div class="handoff-stat-value">' +
+                escapeHtml(String(d.agreement_pct)) + '%</div><div class="handoff-stat-label">' +
+                escapeHtml(t('quality.feedback.agreement')) + '</div></div>' +
+                '<div class="handoff-stat"><div class="handoff-stat-value">' + escapeHtml(String(d.corrections || 0)) +
+                '</div><div class="handoff-stat-label">' + escapeHtml(t('quality.feedback.corrections')) + '</div></div>' +
+                '</div><div class="handoff-sources">' + escapeHtml(t('quality.feedback.note')) + '</div>';
+        } catch (e) {
+            box.innerHTML = '';
+        }
+    }
+
+    async function renderServiceProfiles() {
+        const box = document.getElementById('qualityServices');
+        if (!box) return;
+        try {
+            const result = await API.getServiceProfiles(12);
+            const rows = (result && result.data) || [];
+            if (!rows.length) { box.innerHTML = ''; return; }
+            box.innerHTML = '<div class="section-title" style="margin-top:28px;">' +
+                escapeHtml(t('quality.services.title')) + '</div>' +
+                '<div class="ir-picker-list">' + rows.map(function (row) {
+                    const active = Number(row.active_incident_count || 0);
+                    return '<div class="ir-pick" style="cursor:default;">' +
+                        '<span class="ir-pick-name">' + escapeHtml(String(row.service || '')) + '</span>' +
+                        '<span class="ir-pick-meta">' +
+                        escapeHtml(t('quality.services.alerts', { n: row.alert_count || 0 })) + ' · ' +
+                        escapeHtml(t('quality.services.incidents', { n: row.incident_count || 0 })) +
+                        (active ? ' · <strong>' + escapeHtml(t('quality.services.active', { n: active })) + '</strong>' : '') +
+                        '</span></div>';
+                }).join('') + '</div>';
+        } catch (e) {
+            box.innerHTML = '';
+        }
     }
 
     async function load() {

@@ -718,6 +718,44 @@ const API = {
      * Inbound rules: what an alert costs on the way in.
      * @returns {Promise<object>} { data, actions }
      */
+    /**
+     * Alert rule names seen in recent traffic, so an exclusion list is written
+     * from what actually arrives rather than from memory.
+     */
+    /** Whether anyone ever disagreed with a verdict. Four records so far. */
+    async getFeedbackSummary() {
+        const response = await this.authenticatedFetch('/v1/feedback/summary');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /** Incident load per service, derived from history rather than a CMDB. */
+    async getServiceProfiles(limit) {
+        const response = await this.authenticatedFetch('/v1/services?limit=' + (limit || 12));
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /** The shift-handoff brief: counts plus a markdown summary to paste. */
+    async getHandoff(hours) {
+        const response = await this.authenticatedFetch('/v1/handoff?hours=' + (hours || 8));
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    /** Who changed what. Written from a dozen places, read from none until now. */
+    async getAuditLog(limit) {
+        const response = await this.authenticatedFetch('/v1/audit-log?limit=' + (limit || 60));
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
+    async getAlertRuleInventory(days) {
+        const response = await this.authenticatedFetch('/v1/admin/alert-rules?days=' + (days || 30) + '&limit=200');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
     async getInboundRules() {
         const response = await this.authenticatedFetch('/v1/inbound-rules');
         if (!response.ok) throw new Error('HTTP ' + response.status);

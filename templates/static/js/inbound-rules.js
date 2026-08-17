@@ -109,6 +109,10 @@ function showInboundRuleForm(id) {
                 </select>
             </label>
             ${field('inbound.field.ruleName', 'match_rule_name', rule.match_rule_name, t('inbound.hint.ruleName'))}
+            <div style="margin:-4px 0 12px;">
+                <button class="btn btn-sm" data-act="pickInboundRuleName" data-args="">${t('inbound.pickFromTraffic')}</button>
+                <div id="ir-picker" style="display:none;"></div>
+            </div>
             ${field('inbound.field.source', 'match_source', rule.match_source, 'grafana,prometheus')}
             ${field('inbound.field.environment', 'match_environment', rule.match_environment, 'prod,!test')}
             ${field('inbound.field.payload', 'match_payload', rule.match_payload, 'commonLabels.type=signal')}
@@ -174,3 +178,45 @@ async function deleteInboundRule(id) {
 const InboundRulesModule = {
     load: loadInboundRules
 };
+
+
+// Matching is exact, so a name that is off by one character excludes nothing
+// and says nothing. The names are in the traffic; this puts them in front of
+// the person writing the rule instead of asking them to remember.
+async function pickInboundRuleName() {
+    const box = document.getElementById('ir-picker');
+    if (!box) return;
+    if (box.style.display === 'block') { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    box.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+    try {
+        const result = await API.getAlertRuleInventory(30);
+        const rules = (result && result.rules) || [];
+        if (!rules.length) {
+            box.innerHTML = `<div class="da-preview-empty">${escapeHtml(t('inbound.pickEmpty'))}</div>`;
+            return;
+        }
+        box.innerHTML = `<div class="ir-picker-list">` + rules.map(function (row) {
+            // distinct_verdicts is the useful column: a rule the model has only
+            // ever answered one way is the safe kind to stop paying for.
+            const verdicts = Number(row.distinct_verdicts || 0);
+            const hint = verdicts <= 1 ? t('inbound.pickSteady') : t('inbound.pickVaries', { n: verdicts });
+            return `<button type="button" class="ir-pick" data-ir-pick="${escapeHtml(String(row.rule || ''))}">
+                <span class="ir-pick-name">${escapeHtml(String(row.rule || ''))}</span>
+                <span class="ir-pick-meta">${escapeHtml(String(row.alerts || 0))} · ${escapeHtml(hint)}</span>
+            </button>`;
+        }).join('') + `</div>`;
+        box.querySelectorAll('[data-ir-pick]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                const input = document.getElementById('ir-match_rule_name');
+                const picked = button.getAttribute('data-ir-pick');
+                if (!input) return;
+                const existing = input.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+                if (existing.indexOf(picked) < 0) existing.push(picked);
+                input.value = existing.join(',');
+            });
+        });
+    } catch (error) {
+        box.innerHTML = `<div class="da-preview-error">${escapeHtml(error.message || String(error))}</div>`;
+    }
+}
