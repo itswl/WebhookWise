@@ -56,6 +56,9 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 | Read-only alert quality center | Scores source payload completeness and highlights unstable identities, unmatched recoveries, timestamp anomalies, schema drift, and response gaps without changing source configuration. |
 | Transactional Outbox | Processing results and forwarding intent are written to the database in the same transaction, then delivered and retried asynchronously by the Worker. |
 | OTel-first observability | The application emits telemetry over OTLP; Alloy routes metrics, logs, and traces to Prometheus, Loki, and Tempo, while Pyroscope, Beyla, Alertmanager, and Grafana complete the diagnostic loop. |
+| Runtime settings plane | Keys tagged `[runtime-policy]` accept DB-backed live overrides from the dashboard/API, propagate to every process within ~60s, and fail open — see [Runtime Settings](#runtime-settings--live-operator-policy). |
+| Read-only MCP server | Opt-in (`MCP_ENABLED`) Streamable-HTTP MCP endpoint at `/mcp` exposing the query layer to any agent (Claude / Cursor / custom); deliberately read-only — see [docs/reference/mcp.md](docs/reference/mcp.md). |
+| WebhookWise Lite | A one-process edition of the same thesis: SQLite, no Redis, ~800 lines, four suppression gates — see [lite/README.md](lite/README.md). |
 
 ## System Flow
 

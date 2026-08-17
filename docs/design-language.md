@@ -102,3 +102,7 @@ enforcing test, it is named; treat a red contract as the design system talking.
   after the restraint pass: no known visual gaps. Dark remains the default and
   the reference; light gets re-checked when tokens change, not per-PR.
 - Spacing tokens exist but are not yet contract-enforced.
+- `rgba()` literals in JS renderers are tolerated for now (mostly border/tint
+  alphas with no token equivalent) — EXCEPT the five retired-palette triplets,
+  which a contract bans outright after showToast shipped a frozen pre-retheme
+  palette through a full redesign. Prefer `--*-bg` tokens when touching one.

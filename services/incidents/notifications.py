@@ -69,6 +69,19 @@ def _incident_card(
                         },
                         "value": build_incident_action_value("resolve", int(incident.id)),
                     },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "Silence 2h"},
+                        "type": "default",
+                        "confirm": {
+                            "title": {"tag": "plain_text", "content": "Silence for 2 hours?"},
+                            "text": {
+                                "tag": "plain_text",
+                                "content": "Mutes alerts matching this incident's source/project/environment. Lift it early from WebhookWise.",
+                            },
+                        },
+                        "value": build_incident_action_value("silence_2h", int(incident.id)),
+                    },
                 ],
             }
         )
@@ -196,6 +209,139 @@ async def queue_incident_notifications(
         outbox_ids.append(int(record.id))
         FORWARD_OUTBOX_RECORDS_TOTAL.labels("feishu_app" if app_enabled else "feishu", "created").inc()
     return outbox_ids
+
+
+def _format_duration(seconds: float) -> str:
+    total = max(0, int(seconds))
+    if total < 3600:
+        return f"{total // 60} 分钟"
+    hours, minutes = total // 3600, (total % 3600) // 60
+    if hours < 48:
+        return f"{hours} 小时 {minutes} 分钟"
+    return f"{hours // 24} 天 {hours % 24} 小时"
+
+
+def _incident_resolved_card(incident: Incident, *, resolver: str) -> dict[str, Any]:
+    """One recap card that closes the loop in chat: how long, how big, who,
+    and what the AI summary concluded — assembled from what already exists.
+    The summary is generated asynchronously, so a fast resolve says
+    "生成中" rather than waiting for the model."""
+    ended = incident.resolved_at or incident.ended_at or utcnow()
+    duration = _format_duration((ended - incident.started_at).total_seconds())
+
+    lines = [
+        f"**⏱️ 持续时长**：{duration}",
+        f"**📊 告警数量**：{incident.alert_count}",
+        f"**👤 解决人**：{resolver or incident.assignee or '—'}",
+    ]
+    elements: list[dict[str, Any]] = [
+        {"tag": "div", "text": {"tag": "lark_md", "content": f"**{incident.title[:120]}**"}},
+        {"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}},
+    ]
+
+    summary = incident.summary_analysis if isinstance(incident.summary_analysis, dict) else None
+    if summary:
+        summary_text = str(summary.get("summary") or "").strip()[:400]
+        root_cause = str(summary.get("root_cause") or "").strip()[:400]
+        parts = []
+        if summary_text:
+            parts.append(f"**📝 事件摘要**\n{summary_text}")
+        if root_cause:
+            parts.append(f"**🔍 根因**\n{root_cause}")
+        if parts:
+            elements.append({"tag": "hr"})
+            elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(parts)}})
+    elif incident.summary_status == "pending":
+        elements.append({"tag": "hr"})
+        elements.append(
+            {
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": "📝 AI 事件摘要生成中，稍后可在事件详情与复盘导出中查看。"},
+            }
+        )
+
+    return {
+        "msg_type": "interactive",
+        "card": {
+            "header": {
+                "title": {"tag": "plain_text", "content": f"✅ 事件已解决：{incident.title[:60]}"},
+                "template": "green",
+            },
+            "elements": elements,
+        },
+    }
+
+
+async def queue_incident_resolved_recap(session: AsyncSession, incident: Incident, *, resolver: str) -> int | None:
+    """Insert one idempotent recap intent when an incident is resolved.
+
+    Same transactional-outbox shape as incident_created; the idempotency key is
+    per incident, so a reopen followed by a second resolve does not send a
+    second card. Opt-in via INCIDENT_RESOLVE_RECAP_ENABLED (runtime policy).
+    """
+    from services.operations import runtime_settings as rt
+
+    app_config = get_config_manager()
+    cfg = app_config.notifications
+    if not rt.override_or("INCIDENT_RESOLVE_RECAP_ENABLED", bool(cfg.INCIDENT_RESOLVE_RECAP_ENABLED)):
+        return None
+    if incident.id is None:
+        return None
+
+    app_enabled = bool(
+        cfg.FEISHU_CARD_ACTIONS_ENABLED
+        and cfg.FEISHU_APP_ID.strip()
+        and cfg.FEISHU_APP_SECRET.strip()
+        and cfg.FEISHU_INCIDENT_CHAT_ID.strip()
+        and app_config.security.FEISHU_CARD_VERIFICATION_TOKEN.strip()
+        and app_config.security.FEISHU_CARD_ACTION_SECRET.strip()
+    )
+    configured = (
+        f"feishu-app://{cfg.FEISHU_INCIDENT_CHAT_ID.strip()}"
+        if app_enabled
+        else str(cfg.DEEP_ANALYSIS_FEISHU_WEBHOOK or cfg.WEEKLY_REPORT_FEISHU_WEBHOOK or "").strip()
+    )
+    target = await resolve_notification_target(
+        "incident_resolved",
+        fallback_url=configured,
+        fallback_name="incident-resolved-recap",
+        fallback_target_type="feishu_app" if app_enabled else "feishu",
+    )
+    if not target.url and target.target_type != "feishu_app":
+        return None
+
+    key = f"incident-resolved-recap:{incident.id}"
+    existing = (
+        await session.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return int(existing)
+
+    policy = ForwardDeliveryPolicy.from_config()
+    now = utcnow()
+    record = ForwardOutbox(
+        idempotency_key=key,
+        webhook_event_id=None,
+        original_event_id=None,
+        forward_rule_id=target.rule_id,
+        rule_name=target.rule_name if target.from_rule else "system:incident-resolved-recap",
+        target_type=target.target_type,
+        target_url=target.url,
+        target_name=target.rule_name,
+        channel_name=target.target_type,
+        event_type="incident_resolved",
+        status=ForwardOutboxStatus.PENDING,
+        attempts=0,
+        max_attempts=policy.max_attempts,
+        next_attempt_at=now,
+        formatted_payload=_incident_resolved_card(incident, resolver=resolver),
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(record)
+    await session.flush()
+    FORWARD_OUTBOX_RECORDS_TOTAL.labels(target.target_type, "created").inc()
+    return int(record.id)
 
 
 async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> list[int]:

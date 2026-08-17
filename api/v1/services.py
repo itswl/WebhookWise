@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api import fail_response, internal_error_response, ok_response
 from core.logger import get_logger
 from db.session import get_db_session
-from services.incidents.service_profiles import get_service_profile, list_service_profiles
+from services.incidents.service_profiles import get_service_profile, global_response_metrics, list_service_profiles
 
 logger = get_logger("api.v1.services")
 
@@ -38,6 +38,19 @@ async def list_service_profiles_endpoint(
         )
     except _SERVICE_ERRORS as error:
         logger.error("Failed to list service profiles: %s", error, exc_info=True)
+        return internal_error_response()
+
+
+@services_router.get("/services/response-metrics")
+async def response_metrics_endpoint(
+    window_days: int = Query(30, ge=1, le=365),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Global MTTA/MTTR/ack-rate over recent incidents (the Overview facade)."""
+    try:
+        return ok_response(http_status=200, data=await global_response_metrics(session, window_days=window_days))
+    except _SERVICE_ERRORS as error:
+        logger.error("Failed to compute response metrics: %s", error, exc_info=True)
         return internal_error_response()
 
 

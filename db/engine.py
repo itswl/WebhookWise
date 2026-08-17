@@ -86,7 +86,8 @@ def get_db_pool_capacity(engine: AsyncEngine) -> int | None:
         return None
     try:
         return int(size() + overflow())
-    except Exception:
+    except Exception as e:
+        _logger.debug("[DB] Pool capacity introspection failed: %s", e)
         return None
 
 
@@ -97,7 +98,8 @@ def get_db_pool_checked_out(engine: AsyncEngine) -> int | None:
         return None
     try:
         return int(checkedout())
-    except Exception:
+    except Exception as e:
+        _logger.debug("[DB] Pool checked-out introspection failed: %s", e)
         return None
 
 

@@ -152,7 +152,7 @@ const ActionCenterModule = (function () {
             }
             await load();
         } catch (error) {
-            showToast('Action failed: ' + (error.message || String(error)), 'error');
+            showToast(t('action.msg.failed') + ': ' + (error.message || String(error)), 'error');
             button.disabled = false;
         }
     }
@@ -175,3 +175,7 @@ const ActionCenterModule = (function () {
 
     return { load: load };
 })();
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="ActionCenterModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('ActionCenterModule', ActionCenterModule);

@@ -45,6 +45,9 @@ WebhookWise 位于执行类平台的上游:它决定哪些告警值得关注并�
 | 只读告警质量中心 | 为源载荷完整性打分,标记不稳定身份、未匹配恢复、时间戳异常、schema 漂移与响应缺口,不改动源配置。 |
 | 事务性 Outbox | 处理结果与转发意图在同一事务落库,由 Worker 异步投递与重试。 |
 | OTel 优先可观测性 | 应用只经 OTLP 发出遥测;Alloy 路由指标/日志/追踪到 Prometheus、Loki、Tempo,Pyroscope、Beyla、Alertmanager、Grafana 组成诊断闭环。 |
+| 运行时策略平面 | 标记 `[runtime-policy]` 的配置支持数据库级实时覆写(仪表盘/API 均可修改),约 60 秒内在所有进程生效,故障时向可用侧降级。 |
+| 只读 MCP 服务 | 可选开启(`MCP_ENABLED`)的 Streamable-HTTP MCP 端点(`/mcp`),把查询层暴露给任意 Agent(Claude / Cursor / 自定义客户端);刻意只读——见 [docs/reference/mcp.md](docs/reference/mcp.md)。 |
+| WebhookWise Lite | 同一产品思路的单进程版:SQLite、无 Redis、约 800 行、四道抑制闸门——见 [lite/README.md](lite/README.md)。 |
 
 ## 系统流程
 

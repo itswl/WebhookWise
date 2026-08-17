@@ -128,6 +128,90 @@ async def test_feishu_action_is_atomic_idempotent_and_audited(
 
 
 @pytest.mark.asyncio
+async def test_acknowledge_from_card_assigns_the_operator(
+    db_session: AsyncSession,
+    temp_config: Any,
+) -> None:
+    """The confirm dialog has always said "this assigns it to you"; the handler
+    now keeps that promise — without ever overwriting an existing assignee."""
+    temp_config.security.FEISHU_CARD_ACTION_SECRET = "unit-signing-secret"
+    temp_config.security.FEISHU_ALLOWED_TENANT_KEYS = "tenant-a"
+    temp_config.security.FEISHU_ALLOWED_OPERATOR_OPEN_IDS = "ou_operator"
+    unowned = Incident(
+        title="a", status="active", workflow_status="open", source="grafana", started_at=utcnow(), alert_count=1
+    )
+    owned = Incident(
+        title="b",
+        status="active",
+        workflow_status="open",
+        source="grafana",
+        started_at=utcnow(),
+        alert_count=1,
+        assignee="adrian",
+    )
+    db_session.add_all([unowned, owned])
+    await db_session.commit()
+
+    for event, incident in (("ack-1", unowned), ("ack-2", owned)):
+        value = build_incident_action_value("acknowledge", int(incident.id), expires_at=int(time.time()) + 60)
+        await process_incident_card_action(db_session, _callback(event_id=event, value=value), payload_sha256="c" * 64)
+    await db_session.refresh(unowned)
+    await db_session.refresh(owned)
+    assert unowned.assignee == "ou_operator"
+    assert owned.assignee == "adrian", "acknowledging someone else's incident is support, not theft"
+
+
+@pytest.mark.asyncio
+async def test_quick_silence_from_card_is_scoped_and_expiring(
+    db_session: AsyncSession,
+    temp_config: Any,
+) -> None:
+    """Silence-2h creates a bounded silence matching the incident's identity —
+    and refuses outright when the incident carries no match dimension, because
+    an all-empty silence would mute the entire ingress from one card tap."""
+    from models import Silence
+
+    temp_config.security.FEISHU_CARD_ACTION_SECRET = "unit-signing-secret"
+    temp_config.security.FEISHU_ALLOWED_TENANT_KEYS = "tenant-a"
+    temp_config.security.FEISHU_ALLOWED_OPERATOR_OPEN_IDS = "ou_operator"
+    scoped = Incident(
+        title="checkout 5xx",
+        status="active",
+        workflow_status="open",
+        source="grafana",
+        started_at=utcnow(),
+        alert_count=3,
+        correlation_dimensions={"service": "checkout", "project": "shop", "environment": "prod"},
+    )
+    dimensionless = Incident(
+        title="mystery", status="active", workflow_status="open", source="", started_at=utcnow(), alert_count=1
+    )
+    db_session.add_all([scoped, dimensionless])
+    await db_session.commit()
+
+    value = build_incident_action_value("silence_2h", int(scoped.id), expires_at=int(time.time()) + 60)
+    result = await process_incident_card_action(
+        db_session, _callback(event_id="sil-1", value=value), payload_sha256="d" * 64
+    )
+    assert result["changed"] is True
+
+    silence = (await db_session.execute(select(Silence).order_by(Silence.id.desc()))).scalars().first()
+    assert silence is not None
+    assert silence.match_source == "grafana"
+    assert silence.match_project == "shop"
+    assert silence.match_environment == "prod"
+    assert silence.created_by == "ou_operator"
+    assert silence.expires_at is not None
+
+    value = build_incident_action_value("silence_2h", int(dimensionless.id), expires_at=int(time.time()) + 60)
+    refused = await process_incident_card_action(
+        db_session, _callback(event_id="sil-2", value=value), payload_sha256="e" * 64
+    )
+    assert refused["changed"] is False
+    assert "no match dimensions" in str(refused)
+
+
+@pytest.mark.asyncio
 async def test_feishu_note_uses_verified_operator_identity(
     db_session: AsyncSession,
     temp_config: Any,

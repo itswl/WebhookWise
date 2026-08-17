@@ -287,6 +287,27 @@ def test_analyze_with_rules_gpu_utilization_promotes_to_high():
     assert res["_importance_override"] == "gpu_high"
 
 
+def test_analyze_with_rules_emits_a_triage_verdict():
+    """The act-now-vs-defer verdict rides every analysis: high → act_now,
+    low → defer, recoveries → defer regardless of severity (the condition is
+    over; how bad it was is no longer the question). Confidence stays modest —
+    this is the keyword pass, not the model."""
+    from services.analysis.ai_analyzer import analyze_with_rules
+
+    firing_high = analyze_with_rules({"RuleName": "PaymentDown", "Level": "critical"}, "prometheus")
+    assert firing_high["triage_verdict"] == "act_now"
+    assert 0.0 < firing_high["triage_confidence"] <= 0.7
+
+    info = analyze_with_rules({"RuleName": "DeployFinished", "Level": "info"}, "jenkins")
+    assert info["triage_verdict"] == "defer"
+
+    warning = analyze_with_rules({"RuleName": "LatencyIncreased", "Level": "warning"}, "cloud-monitor")
+    assert warning["triage_verdict"] == "monitor"
+
+    recovered = analyze_with_rules({"RuleName": "HighCPUUsage", "Level": "critical", "status": "resolved"}, "grafana")
+    assert recovered["triage_verdict"] == "defer"
+
+
 def test_analyze_with_rules_accepts_explicit_policy():
     from services.analysis.ai_analyzer import analyze_with_rules
     from services.analysis.analysis_policies import RuleAnalysisPolicy

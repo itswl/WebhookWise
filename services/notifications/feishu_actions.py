@@ -19,7 +19,8 @@ from models import Incident, IntegrationActionReceipt, OperationalNote
 from services.incidents.summary import queue_summary_if_needed
 from services.operations.audit_logger import add_audit
 
-_ALLOWED_ACTIONS = frozenset({"acknowledge", "resolve", "add_note"})
+_ALLOWED_ACTIONS = frozenset({"acknowledge", "resolve", "add_note", "silence_2h"})
+_QUICK_SILENCE_HOURS = 2
 _CALLBACK_MAX_SKEW_SECONDS = 600
 _MAX_NOTE_CHARS = 2_000
 
@@ -287,8 +288,12 @@ async def process_incident_card_action(
         else:
             incident.workflow_status = "acknowledged"
             incident.acknowledged_at = incident.acknowledged_at or now
+            # The card's confirm dialog has always SAID "this assigns it to
+            # you" — now it does. An existing assignee is never overwritten:
+            # acknowledging someone else's incident is support, not theft.
+            incident.assignee = incident.assignee or context.operator_open_id
             changed = True
-            message = f"Incident #{incident_id} acknowledged"
+            message = f"Incident #{incident_id} acknowledged and assigned to you"
     elif action == "resolve":
         if incident.workflow_status == "resolved":
             message = f"Incident #{incident_id} is already resolved"
@@ -298,8 +303,47 @@ async def process_incident_card_action(
             incident.resolved_at = incident.resolved_at or now
             incident.ended_at = incident.ended_at or now
             queue_summary_if_needed(incident, now)
+            # Function-level import: incidents.notifications imports this
+            # module for the card action values, so a top-level import here
+            # would be a cycle. Same recap as a dashboard resolve — the loop
+            # closes no matter which surface the operator used.
+            from services.incidents.notifications import queue_incident_resolved_recap
+
+            await queue_incident_resolved_recap(session, incident, resolver=context.operator_open_id)
             changed = True
             message = f"Incident #{incident_id} resolved"
+    elif action == "silence_2h":
+        # Quick mute from the card: silence this incident's identity for two
+        # hours. Refused when the incident carries no usable match dimension —
+        # a silence with every field empty would mute the ENTIRE ingress, and
+        # a card button must never be able to do that.
+        dims = {
+            str(key): str(value).strip()
+            for key, value in (incident.correlation_dimensions or {}).items()
+            if isinstance(value, str) and str(value).strip()
+        }
+        match_source = str(incident.source or "").strip()
+        match_project = dims.get("project", "")
+        match_environment = dims.get("environment", "")
+        if not (match_source or match_project or match_environment):
+            message = f"Incident #{incident_id} has no match dimensions; create the silence from the dashboard"
+        else:
+            from datetime import timedelta
+
+            from services.silences.store import create_silence
+
+            silence = await create_silence(
+                session,
+                match_source=match_source,
+                match_project=match_project,
+                match_environment=match_environment,
+                comment=f"Quick silence ({_QUICK_SILENCE_HOURS}h) from Feishu card, incident #{incident_id}",
+                created_by=context.operator_open_id,
+                expires_at=now + timedelta(hours=_QUICK_SILENCE_HOURS),
+            )
+            scope = " ".join(value for value in (match_source, match_project, match_environment) if value)
+            changed = True
+            message = f"Silence #{silence.id} created for {scope}, expires in {_QUICK_SILENCE_HOURS}h"
     else:
         note_body = str(context.form_value.get("note") or "").strip()
         if not note_body:

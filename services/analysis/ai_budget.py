@@ -45,13 +45,21 @@ def _month_start(now: datetime) -> datetime:
 
 
 async def month_to_date_spend() -> float:
-    """This calendar month's AI spend, cached briefly."""
+    """This calendar month's AI spend, cached briefly.
+
+    The buffered-but-unflushed rows in ai_usage are added on top of the table
+    SUM (and on top of the cached SUM): the usage writer trades up to a couple
+    of seconds of durability for hot-path cheapness, and without this the
+    budget brake read exactly that much less than reality on every check.
+    """
+    from services.analysis.ai_usage import pending_cost_estimate
+
     try:
         from core.redis_client import redis_get_str
 
         cached = await redis_get_str(_CACHE_KEY)
         if cached is not None:
-            return float(cached)
+            return float(cached) + pending_cost_estimate()
     except (RedisError, ValueError, TypeError):
         cached = None  # Redis is an accelerator here, never the source of truth
 
@@ -68,7 +76,7 @@ async def month_to_date_spend() -> float:
         await redis_setex_str(_CACHE_KEY, _CACHE_TTL_SECONDS, str(spent))
     except RedisError:
         pass
-    return spent
+    return spent + pending_cost_estimate()
 
 
 async def budget_exhausted() -> tuple[bool, float, float]:

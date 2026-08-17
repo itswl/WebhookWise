@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api import DELIVERY_ERROR_MESSAGE, TARGET_URL_UNAVAILABLE_MESSAGE, internal_error_response
 from core.auth import verify_admin_write, verify_api_key
 from core.logger import get_logger, mask_url
-from core.url_security import UnsafeTargetUrlError, validate_outbound_url
+from core.url_security import UnsafeTargetUrlError
 from db.session import get_db_session
 from schemas.forwarding import (
     ForwardRuleCreateRequest,
@@ -30,6 +30,7 @@ from services.forwarding.rules import (
     get_forward_rules,
     update_forward_rule,
 )
+from services.forwarding.target_validation import validated_target_url
 from services.operations.audit_logger import add_audit
 from services.webhooks.decision_trace_queries import get_forward_rule_hit_counts
 
@@ -41,22 +42,8 @@ JSONDict = dict[str, object]
 _FORWARDING_RUNTIME_ERRORS = (OSError, RuntimeError, SQLAlchemyError, TimeoutError, ValueError)
 
 
-async def _validated_target_url(target_type: str, target_url: object) -> str:
-    if target_type == "deep_analysis":
-        return str(target_url or "").strip()
-    if not isinstance(target_url, str) or not target_url.strip():
-        raise UnsafeTargetUrlError("Target URL cannot be empty")
-    if target_type == "feishu_relay":
-        # The relay door is PRIVATE infrastructure by design — the public-IP
-        # requirement exists to stop user-data-driven exfiltration to internal
-        # hosts, while a relay flip already demands the admin write key and
-        # the relay hop itself is HMAC-signed. Require plain http(s) shape and
-        # skip the public-resolution probe.
-        stripped = target_url.strip()
-        if not stripped.startswith(("http://", "https://")):
-            raise UnsafeTargetUrlError("feishu_relay target must be an http(s) URL")
-        return stripped
-    return await validate_outbound_url(target_url)
+# Shared with the integration catalog; the per-type policy lives in one place.
+_validated_target_url = validated_target_url
 
 
 def _validated_gateway(target_type: str, target_gateway: object) -> str:

@@ -74,10 +74,6 @@
     <div class="container">
         <!-- Inbox Tab: Alerts | Incidents | Investigations -->
         <div id="alertsTab" class="tab-content" style="display: none;">
-            <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; margin:20px 0; flex-wrap:wrap; gap:12px;">
-                <div class="inbox-view-switch" style="display:flex; gap:8px; align-items:center;">
-                </div>
-            </div>
             <div id="inboxViewAlerts">
             <!-- Stat cards -->
             <div class="stats-section">
@@ -89,17 +85,17 @@
                         <div class="stat-trend"><span data-i18n="alerts.stats.lastUpdated">Last updated:</span> <span id="lastUpdate">-</span></div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label" data-i18n="alerts.stats.high">High Priority</div>
+                        <div class="stat-label" data-i18n="alerts.stats.high">High Priority (loaded)</div>
                         <div class="stat-value" id="highCount">0</div>
                         <div class="stat-trend" data-i18n="alerts.stats.highTrend">Needs immediate action</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label" data-i18n="alerts.stats.medium">Medium Priority</div>
+                        <div class="stat-label" data-i18n="alerts.stats.medium">Medium Priority (loaded)</div>
                         <div class="stat-value" id="mediumCount">0</div>
                         <div class="stat-trend" data-i18n="alerts.stats.mediumTrend">Address soon</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label" data-i18n="alerts.stats.duplicate">Duplicate Alerts</div>
+                        <div class="stat-label" data-i18n="alerts.stats.duplicate">Duplicate Alerts (loaded)</div>
                         <div class="stat-value" id="duplicateCount">0</div>
                         <div class="stat-trend" data-i18n="alerts.stats.duplicateTrend">Automatically deduplicated</div>
                     </div>
@@ -300,9 +296,7 @@
                     </summary>
                     <div class="dt-help-body" data-i18n="dt.help.body">Every alert passes the same gates, in order: ① ingress backpressure (per-alert storms / queue high-water, opt-in) → ② dedup (repeats join an existing thread) → ③ smart noise reduction (derived alerts of one root cause) → ④ silences and maintenance windows (operator mutes) → ⑤ flapping mute (rapid firing↔recovered oscillation, opt-in) → ⑥ cooldown (just notified) → ⑦ forwarding rules (no matching rule, no delivery) → ⑧ periodic reminder policy. Each trace row below names the exact gate that stopped (or forwarded) the alert.</div>
                 </details>
-                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 12px;">
-                    <div class="dt-view-switch" style="display: flex; gap: 8px; align-items: center;">
-                    </div>
+                <div class="section-header" style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 12px;">
                     <div class="dt-period-selector" style="display: flex; gap: 8px; align-items: center;">
                         <span id="dtLastRefreshed" class="last-refreshed" style="font-size: var(--fs-xs); color: var(--text-muted);"></span>
                         <span class="btn-seg-group" role="group" data-i18n-aria-label="dt.period.groupLabel" aria-label="Time window">
@@ -368,16 +362,14 @@
         <!-- Routing Tab (Forward Rules | Silences | Sandbox sub-views) -->
         <div id="routingTab" class="tab-content" style="display: none;">
             <div class="routing-section" style="padding: 20px 0;">
-                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
-                    <div class="routing-view-switch" style="display: flex; gap: 8px; align-items: center;">
-                    </div>
-                </div>
-
                 <!-- View: Forward Rules -->
                 <div id="routingViewRules" class="forward-rules-section">
                     <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <div class="section-title" data-i18n="rules.title">Forward Rule Configuration</div>
-                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                            <label class="sr-only" for="ruleSearch" data-i18n="rules.searchLabel">Search rules</label>
+                            <input id="ruleSearch" type="search" class="filter-input" style="width: 200px;"
+                                   data-i18n-placeholder="rules.searchPlaceholder" placeholder="Search rules…" data-sb="sb23">
                             <button data-sb="sb4" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> <span data-i18n="routing.view.sandbox">Test Payload</span></button>
                             <button data-sb="sb5" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg> <span data-i18n="routing.view.audit">Audit</span></button>
                             <button data-sb="sb6" class="btn btn-primary"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="rules.add">Add Rule</span></button>
@@ -426,9 +418,14 @@
                             <div class="section-title" data-i18n="silences.title">Silences</div>
                             <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="silences.subtitle">While active, alerts matching the criteria are not forwarded. Events are still ingested, deduplicated, and analyzed.</p>
                         </div>
-                        <button data-sb="sb7" class="btn btn-primary">
-                            <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="silences.add">Add Silence</span>
-                        </button>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <label class="sr-only" for="silenceSearch" data-i18n="silences.searchLabel">Search silences</label>
+                            <input id="silenceSearch" type="search" class="filter-input" style="width: 200px;"
+                                   data-i18n-placeholder="silences.searchPlaceholder" placeholder="Search silences…" data-sb="sb24">
+                            <button data-sb="sb7" class="btn btn-primary">
+                                <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="silences.add">Add Silence</span>
+                            </button>
+                        </div>
                     </div>
                     <!-- Silence debt: how much each active silence is suppressing;
                          chronic no-expiry mutes are flagged. Filled by silences.js. -->
@@ -660,6 +657,40 @@
             </div>
         </div>
 
+        <!-- Delivery queue: browse the forwarding outbox and triage/replay
+             dead letters. Filled by delivery-queue.js. -->
+        <div id="deliveryQueueTab" class="operations-view" style="display: none;">
+            <div style="padding:20px 0;">
+                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;">
+                    <div>
+                        <div class="section-title" data-i18n="delivery.title">Delivery queue</div>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="delivery.subtitle">Every outbound intent and its fate — filter the outbox, inspect the last error, replay dead letters.</p>
+                    </div>
+                    <button data-sb="sb21" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                </div>
+                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin:8px 0;">
+                    <div class="section-title" style="font-size: var(--fs-md);" data-i18n="delivery.outbox.title">Forwarding outbox</div>
+                    <label class="sr-only" for="deliveryOutboxStatus" data-i18n="delivery.outbox.statusLabel">Status filter</label>
+                    <select id="deliveryOutboxStatus" class="form-input" style="width: auto;" data-sb="sb22">
+                        <option value="" data-i18n="delivery.status.all">All statuses</option>
+                        <option value="pending" data-i18n="delivery.status.pending">Pending</option>
+                        <option value="processing" data-i18n="delivery.status.processing">Processing</option>
+                        <option value="retrying" data-i18n="delivery.status.retrying">Retrying</option>
+                        <option value="sent" data-i18n="delivery.status.sent">Sent</option>
+                        <option value="exhausted" data-i18n="delivery.status.exhausted">Exhausted</option>
+                        <option value="expired" data-i18n="delivery.status.expired">Expired</option>
+                    </select>
+                </div>
+                <div id="deliveryOutboxList">
+                    <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
+                </div>
+                <div class="section-title" style="font-size: var(--fs-md); margin: 20px 0 8px;" data-i18n="delivery.dl.title">Dead letters</div>
+                <div id="deliveryDeadLetters">
+                    <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Runtime settings: live-tunable policy values (env default + admin
              override). Overrides propagate to all processes within ~1 minute
              via pub/sub + periodic refresh; no restart required. Filled by
@@ -673,7 +704,7 @@
                     </div>
                     <button data-sb="sb19" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                 </div>
-                <p style="margin:0 0 16px; padding:10px 14px; background:var(--bg-subtle); border:1px dashed var(--border); border-radius:var(--radius); color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="rs.propagationNote">⏱️ Changes take effect across all processes within about 1 minute (pub/sub + periodic refresh); no restart is required.</p>
+                <p style="margin:0 0 16px; padding:10px 14px; background:var(--bg-subtle); border:1px dashed var(--border); border-radius:var(--radius); color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="rs.propagationNote">Changes take effect across all processes within about 1 minute (pub/sub + periodic refresh); no restart is required.</p>
                 <div id="runtimeSettingsList">
                     <div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div>
                 </div>
@@ -693,8 +724,6 @@
                     <p class="modal-subtitle" id="incidentResolutionSubtitle"></p>
                 </div>
                 <button type="button" class="modal-close" data-modal-close data-i18n-aria-label="common.close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
-                <button data-sb="sb20" class="btn btn-icon" type="button"
-                        data-i18n-aria-label="common.close" aria-label="Close">×</button>
             </div>
             <div class="modal-body">
                 <input id="incidentResolutionId" type="hidden">
@@ -1261,6 +1290,7 @@
     <script defer src="/static/js/kb-drafts.js"></script>
     <script defer src="/static/js/runtime-settings.js"></script>
     <script defer src="/static/js/response-center.js"></script>
+    <script defer src="/static/js/delivery-queue.js"></script>
     <script defer src="/static/js/ingress-setup.js"></script>
     <script defer src="/static/js/command-palette.js"></script>
     <script defer src="/static/js/dashboard.js"></script>
@@ -1271,7 +1301,7 @@
          data-i18n-aria-label="palette.open" aria-label="Jump to anywhere">
         <div class="palette-panel">
             <div class="palette-input-row">
-                <span class="palette-prompt" aria-hidden="true">&#128269;</span>
+                <span class="palette-prompt" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></span>
                 <input id="paletteInput" type="text" autocomplete="off" spellcheck="false"
                        data-i18n-placeholder="palette.placeholder" placeholder="Search destinations…"
                        role="combobox" aria-expanded="true" aria-controls="paletteList">

@@ -6,6 +6,10 @@
 
 // Stores the current list of silences
 let silences = [];
+// Client-side search + page over the loaded list (config tables grow
+// monotonically; the alerts view got filters long ago, this one never did).
+let silenceQuery = '';
+let silencePage = 1;
 
 /**
  * Load the list of silences
@@ -129,7 +133,7 @@ function renderSilenceDebt(data) {
         '</tr></thead><tbody>';
     withVolume.forEach(function (row) {
         const isChronic = !!row.chronic;
-        const rowStyle = isChronic ? ' style="background: rgba(245, 158, 11, 0.08);"' : '';
+        const rowStyle = isChronic ? ' style="background: var(--warning-bg);"' : '';
         let badge = '';
         if (isChronic) {
             badge = ' <span class="badge badge-danger" title="' + escapeHtml(t('silences.debt.chronicTitle')) + '" style="font-size: 0.65rem;">' + wwIcon('alert-triangle') + ' ' + t('silences.debt.chronicBadge') + '</span>';
@@ -169,11 +173,22 @@ function renderSilences(list) {
     // Active silences first, so the currently-muting ones are at the top.
     const sorted = [...list].sort((a, b) => (b.active === a.active ? 0 : (b.active ? 1 : -1)));
 
+    const paged = wwFilterPage(sorted, silenceQuery, silencePage, 20, (s) =>
+        [s.name, s.comment, s.match_source, s.match_project, s.match_region, s.match_environment,
+            s.match_rule_name, s.created_by].filter(Boolean).join(' '));
+    silencePage = paged.page;
+    if (!paged.rows.length) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('filter') + '</div>' +
+            '<div class="empty-title">' + t('common.noMatches') + '</div></div>';
+        return;
+    }
+
     let html = '<div class="silences-list" style="display: flex; flex-direction: column; gap: 15px;">';
-    sorted.forEach(silence => {
+    paged.rows.forEach(silence => {
         html += renderSilenceCard(silence);
     });
     html += '</div>';
+    html += wwPagerHtml(paged, 'SilencesModule.page');
     container.innerHTML = html;
 }
 
@@ -471,11 +486,11 @@ async function saveSilence() {
             closeSilenceForm();
             loadSilences();
         } else {
-            showToast('' + t('silences.alert.saveFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
+            showToast(t('silences.alert.saveFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to save silence:', error);
-        showToast('' + t('silences.alert.saveFailed') + ': ' + error.message, 'error');
+        showToast(t('silences.alert.saveFailed') + ': ' + error.message, 'error');
     }
 }
 
@@ -501,11 +516,11 @@ async function liftSilence(id) {
         if (result.success) {
             loadSilences();
         } else {
-            showToast('' + t('silences.alert.operationFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
+            showToast(t('silences.alert.operationFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to lift silence:', error);
-        showToast('' + t('silences.alert.operationFailed') + ': ' + error.message, 'error');
+        showToast(t('silences.alert.operationFailed') + ': ' + error.message, 'error');
     }
 }
 
@@ -520,14 +535,14 @@ async function deleteSilence(id) {
     try {
         const result = await API.deleteSilence(id);
         if (result.success) {
-            showToast('' + t('silences.alert.deleteSuccess'), 'info');
+            showToast(t('silences.alert.deleteSuccess'), 'info');
             loadSilences();
         } else {
-            showToast('' + t('silences.alert.deleteFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
+            showToast(t('silences.alert.deleteFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to delete silence:', error);
-        showToast('' + t('silences.alert.deleteFailed') + ': ' + error.message, 'error');
+        showToast(t('silences.alert.deleteFailed') + ': ' + error.message, 'error');
     }
 }
 
@@ -574,7 +589,7 @@ async function backtestSilenceRule() {
     try {
         const result = await API.backtestSilence(silenceData);
         if (!result.success || !result.data) {
-            container.innerHTML = `<div style="color: var(--danger); font-size: 0.85rem;">${wwIcon('alert-triangle')} Error: ${escapeHtml(result.error || 'Unknown error')}</div>`;
+            container.innerHTML = `<div style="color: var(--danger); font-size: 0.85rem;">${wwIcon('alert-triangle')} ${escapeHtml(t('silence.backtest.failed'))}: ${escapeHtml(result.error || t('common.unknown'))}</div>`;
             return;
         }
 
@@ -766,7 +781,7 @@ function renderMaintenanceWindows(list) {
         const comment = mw.comment
             ? '<div style="color: var(--text-muted); font-size: 0.78rem; margin-top: 2px;">' + escapeHtml(mw.comment) + '</div>'
             : '';
-        html += '<tr' + (mw.active_now ? ' style="background: rgba(245, 158, 11, 0.08);"' : '') + '>' +
+        html += '<tr' + (mw.active_now ? ' style="background: var(--warning-bg);"' : '') + '>' +
             '<td style="' + td + ' font-weight: 600;">' + escapeHtml(mw.name || '') + comment + '</td>' +
             '<td style="' + td + ' white-space: nowrap;">' + escapeHtml(formatMwSchedule(mw)) + '</td>' +
             '<td style="' + td + ' color: var(--text-secondary);">' + escapeHtml(formatMwMatch(mw)) + '</td>' +
@@ -917,10 +932,10 @@ async function saveMaintenanceWindow() {
     try {
         if (windowId) {
             await API.updateMaintenanceWindow(windowId, windowData);
-            showToast('' + t('mw.alert.updateSuccess'), 'info');
+            showToast(t('mw.alert.updateSuccess'), 'info');
         } else {
             await API.createMaintenanceWindow(windowData);
-            showToast('' + t('mw.alert.createSuccess'), 'info');
+            showToast(t('mw.alert.createSuccess'), 'info');
         }
         closeMaintenanceWindowForm();
         // Saving sweeps occurrences server-side (may materialize or lift a
@@ -928,7 +943,7 @@ async function saveMaintenanceWindow() {
         loadSilences();
     } catch (error) {
         console.error('Failed to save maintenance window:', error);
-        showToast('' + t('silences.alert.saveFailed') + ': ' + (error.message || String(error)), 'error');
+        showToast(t('silences.alert.saveFailed') + ': ' + (error.message || String(error)), 'error');
     }
 }
 
@@ -942,13 +957,13 @@ async function deleteMaintenanceWindow(id) {
     }
     try {
         await API.deleteMaintenanceWindow(id);
-        showToast('' + t('mw.alert.deleteSuccess'), 'info');
+        showToast(t('mw.alert.deleteSuccess'), 'info');
         // Deleting sweeps occurrences server-side (lifts any live "[mw:"
         // silence), so refresh the whole view.
         loadSilences();
     } catch (error) {
         console.error('Failed to delete maintenance window:', error);
-        showToast('' + t('silences.alert.deleteFailed') + ': ' + (error.message || String(error)), 'error');
+        showToast(t('silences.alert.deleteFailed') + ': ' + (error.message || String(error)), 'error');
     }
 }
 
@@ -956,5 +971,18 @@ async function deleteMaintenanceWindow(id) {
 const SilencesModule = {
     init: function() {
     },
-    loadSilences: loadSilences
+    loadSilences: loadSilences,
+    page: function (n) {
+        silencePage = Number(n) || 1;
+        renderSilences(silences);
+    },
+    search: function (value) {
+        silenceQuery = String(value || '');
+        silencePage = 1;
+        renderSilences(silences);
+    }
 };
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="SilencesModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('SilencesModule', SilencesModule);

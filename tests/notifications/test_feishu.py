@@ -251,6 +251,34 @@ def test_recovery_card_is_not_identical_to_the_alert_it_closes() -> None:
     assert "已恢复" in recovered_headline
 
 
+def test_card_renders_the_triage_verdict_but_never_on_recoveries() -> None:
+    """The verdict answers "do I get up for this" — but on a recovery card the
+    reused firing analysis would answer YES for a condition that just ended,
+    so recoveries suppress it. Analyses cached before the field existed carry
+    no verdict and must render nothing rather than invent one."""
+    from services.notifications.feishu_cards import build_feishu_card
+
+    def card(state: str, analysis: dict[str, Any]) -> str:
+        built = build_feishu_card(
+            {"source": "grafana", "body": {"state": state, "title": f"[{state}] x"}},
+            analysis,  # type: ignore[arg-type]
+        )
+        return str(built["card"]["elements"])
+
+    with_verdict = {"importance": "high", "summary": "s", "triage_verdict": "act_now", "triage_confidence": 0.82}
+    firing = card("alerting", dict(with_verdict))
+    assert "处置建议" in firing and "立即处理" in firing and "82%" in firing
+
+    recovered = card("ok", dict(with_verdict))
+    assert "处置建议" not in recovered
+
+    legacy = card("alerting", {"importance": "high", "summary": "s"})
+    assert "处置建议" not in legacy
+
+    unknown = card("alerting", {"importance": "high", "summary": "s", "triage_verdict": "??"})
+    assert "处置建议" not in unknown
+
+
 def test_generic_channel_payload_carries_the_recovery_flag() -> None:
     from types import SimpleNamespace
 

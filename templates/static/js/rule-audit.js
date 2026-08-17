@@ -79,7 +79,7 @@ const RuleAuditModule = (function () {
             var r = rows[i];
             var lastSeen = r.last_seen ? timeAgo(r.last_seen) : '—';
             var flagsHtml = (r.flags || []).map(flagBadge).join('');
-            var rowStyle = (r.flags && r.flags.indexOf('zombie') >= 0) ? 'background:rgba(245,158,11,0.06);' : '';
+            var rowStyle = (r.flags && r.flags.indexOf('zombie') >= 0) ? 'background:var(--warning-bg);' : '';
 
             html += '<tr style="border-bottom:1px solid var(--border-light);' + rowStyle + '">';
             html += '<td style="padding:0.5rem 0.75rem; color:var(--text-muted);">' + escapeHtml(String(r.source)) + '</td>';

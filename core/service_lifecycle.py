@@ -109,6 +109,10 @@ async def stop_runtime_services(
         else:
             await reset_ai_client_hook()
     await context.close(close_redis=dispose_redis_client)
+
+    from core.http_client import aclose_deep_analysis_client
+
+    await aclose_deep_analysis_client()
     if context is get_default_app_context():
         set_default_app_context(None)
 

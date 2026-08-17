@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,7 +61,11 @@ webhook_router = APIRouter()
 
 JSONDict = dict[str, Any]
 MAX_SOURCE_LENGTH = 100
-_WEBHOOK_RUNTIME_ERRORS = (OSError, RuntimeError, ValueError, TypeError)
+# RedisError must be listed explicitly: redis-py's ConnectionError/TimeoutError
+# subclass RedisError(Exception) only, so without it a failed XADD escaped this
+# tuple, left enqueue_status/ingress_outcome reporting success, and surfaced to
+# the sender as a bare 500 instead of a retryable 503.
+_WEBHOOK_RUNTIME_ERRORS = (OSError, RedisError, RuntimeError, ValueError, TypeError)
 _CLIENT_IP_CONTEXT_ERRORS = (OSError, RuntimeError, ValueError, TypeError, AttributeError)
 _QUEUED_HEADER_NAMES = frozenset({"content-type", "user-agent", "x-request-id", "x-webhook-source"})
 _MAX_QUEUED_HEADER_VALUE_LENGTH = 512
@@ -242,7 +247,14 @@ async def _receive_and_enqueue_webhook(
             len(raw_body),
         )
         logger.debug("[Webhook] Enqueue exception request_id=%s source=%s error=%s", request_id, source_hint, e)
-        raise
+        # Same contract as the queue-backpressure path above: the failure is on
+        # our side and transient, so tell the (retrying) upstream to hold and
+        # resend rather than answering with an opaque 500.
+        raise HTTPException(
+            status_code=503,
+            detail="Queue unavailable, retry shortly",
+            headers={"Retry-After": "10"},
+        ) from e
     finally:
         QUEUE_OPERATIONS_TOTAL.labels("webhook_process_task", "enqueue", enqueue_status).inc()
         QUEUE_OPERATION_DURATION_SECONDS.labels("webhook_process_task", "enqueue", enqueue_status).observe(
@@ -329,7 +341,7 @@ async def receive_webhook(
                 )
                 set_span_ok(ingress_span)
             return result
-    except (HTTPException, OSError, RuntimeError, TypeError, ValueError) as exc:
+    except (HTTPException, OSError, RedisError, RuntimeError, TypeError, ValueError) as exc:
         ingress_outcome = "error"
         logger.warning(
             "[Webhook] Ingest request exception request_id=%s source=%s error=%s",

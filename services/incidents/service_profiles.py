@@ -303,6 +303,57 @@ async def get_service_profile(
     }
 
 
+async def global_response_metrics(
+    session: AsyncSession,
+    *,
+    window_days: int = 30,
+) -> dict[str, object]:
+    """MTTA/MTTR/ack-rate across ALL recent incidents, for the Overview facade.
+
+    Same arithmetic as the per-service profile (acknowledged_at/resolved_at
+    minus started_at), just ungrouped: the per-service view answers "which
+    service hurts", this answers "how fast are we responding at all" — the
+    number FlashDuty-class products put on the front page.
+    """
+    window_days = max(1, min(int(window_days), 365))
+    incidents = list(
+        (
+            await session.execute(
+                select(Incident)
+                .where(
+                    Incident.started_at >= utcnow() - timedelta(days=window_days),
+                    Incident.alert_count > 0,
+                )
+                .order_by(Incident.started_at.desc(), Incident.id.desc())
+                .limit(_MAX_INCIDENTS)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    acknowledgement_minutes = [
+        duration
+        for incident in incidents
+        if (duration := _duration_minutes(incident.acknowledged_at, incident.started_at)) is not None
+    ]
+    resolution_minutes = [
+        duration
+        for incident in incidents
+        if (duration := _duration_minutes(incident.resolved_at, incident.started_at)) is not None
+    ]
+    resolved_count = sum(incident.workflow_status == "resolved" for incident in incidents)
+    return {
+        "window_days": window_days,
+        "incident_count": len(incidents),
+        "resolved_incident_count": resolved_count,
+        "acknowledgement_rate_pct": (
+            round(100.0 * len(acknowledgement_minutes) / len(incidents), 1) if incidents else None
+        ),
+        "average_mtta_minutes": _average(acknowledgement_minutes),
+        "average_mttr_minutes": _average(resolution_minutes),
+    }
+
+
 async def list_service_profiles(
     session: AsyncSession,
     *,

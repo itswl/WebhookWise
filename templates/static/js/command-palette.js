@@ -65,6 +65,7 @@ const CommandPalette = (function () {
                 { slug: 'noise', icon: 'activity', label: 'nav.dest.noise', keywords: 'noise reduction dedup 降噪 噪音' },
                 { slug: 'kb', icon: 'book-open', label: 'nav.dest.kb', keywords: 'knowledge base drafts runbook 知识库 草稿', lowFreq: true },
                 { slug: 'gaps', icon: 'lightbulb', label: 'nav.dest.gaps', keywords: 'knowledge gaps missing 知识缺口', lowFreq: true },
+                { slug: 'delivery', icon: 'send', label: 'nav.dest.delivery', keywords: 'delivery outbox dead letters replay 投递 死信 队列 重放', lowFreq: true },
                 { slug: 'settings', icon: 'sliders', label: 'nav.dest.settings', keywords: 'runtime settings policy config 设置 配置 策略' },
             ],
         },
@@ -305,3 +306,7 @@ const CommandPalette = (function () {
         _compute: compute,
     };
 })();
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="CommandPalette.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('CommandPalette', CommandPalette);

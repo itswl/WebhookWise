@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 
 from fastapi import Request
-from sqlalchemy import bindparam, text
+from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -239,7 +239,12 @@ async def count_with_timeout(
     try:
         async with session.begin_nested() as nested:
             with contextlib.suppress(Exception):
-                await session.execute(text(f"SET LOCAL statement_timeout = '{timeout_ms}'"))
+                # set_config() binds the value; SET LOCAL cannot take a bind
+                # parameter, and an f-string here was the one interpolated SQL
+                # statement in the codebase (unreachable today — every caller
+                # passes a literal int — but nothing would catch a request
+                # value being wired in later).
+                await session.execute(select(func.set_config("statement_timeout", str(int(timeout_ms)), True)))
             result = await session.execute(stmt)
             value = int(result.scalar() or 0)
             # Roll the SAVEPOINT back instead of releasing it: a COUNT has no

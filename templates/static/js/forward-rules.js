@@ -5,6 +5,9 @@
 
 // Stores the current list of rules
 let forwardRules = [];
+// Client-side search + page over the loaded list; mirrors silences.js.
+let ruleQuery = '';
+let rulePage = 1;
 
 /**
  * Load the list of forward rules
@@ -66,13 +69,24 @@ function renderForwardRules(rules) {
     // Sort by priority (higher priority first)
     const sortedRules = [...rules].sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
+    const paged = wwFilterPage(sortedRules, ruleQuery, rulePage, 20, (r) =>
+        [r.name, r.match_source, r.match_project, r.match_region, r.match_environment,
+            r.match_importance, r.target_type, r.target_name, r.target_url].filter(Boolean).join(' '));
+    rulePage = paged.page;
+    if (!paged.rows.length) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('filter') + '</div>' +
+            '<div class="empty-title">' + t('common.noMatches') + '</div></div>';
+        return;
+    }
+
     let html = '<div class="rules-list" style="display: flex; flex-direction: column; gap: 15px;">';
 
-    sortedRules.forEach(rule => {
+    paged.rows.forEach(rule => {
         html += renderRuleCard(rule);
     });
 
     html += '</div>';
+    html += wwPagerHtml(paged, 'ForwardRulesModule.page');
     container.innerHTML = html;
 }
 
@@ -214,7 +228,7 @@ function renderRuleCard(rule) {
                     font-weight: 600;
                     color: var(--text-secondary);
                     border: 1px solid var(--border);
-                ">⬆️ ${t('rules.card.priority', { n: rule.priority || 0 })}</span>
+                ">${t('rules.card.priority', { n: rule.priority || 0 })}</span>
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
@@ -557,11 +571,11 @@ async function saveRule() {
             closeRuleForm();
             loadForwardRules();
         } else {
-            showToast('' + t('rules.alert.saveFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
+            showToast(t('rules.alert.saveFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to save rule:', error);
-        showToast('' + t('rules.alert.saveFailed') + ': ' + error.message, 'error');
+        showToast(t('rules.alert.saveFailed') + ': ' + error.message, 'error');
     }
 }
 
@@ -583,12 +597,12 @@ async function toggleRule(id, enabled) {
             // Re-render
             renderForwardRules(forwardRules);
         } else {
-            showToast('' + t('rules.alert.operationFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
+            showToast(t('rules.alert.operationFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
             loadForwardRules(); // Reload to restore state
         }
     } catch (error) {
         console.error('Failed to toggle rule state:', error);
-        showToast('' + t('rules.alert.operationFailed') + ': ' + error.message, 'error');
+        showToast(t('rules.alert.operationFailed') + ': ' + error.message, 'error');
         loadForwardRules();
     }
 }
@@ -609,14 +623,14 @@ async function deleteRule(id) {
         const result = await API.deleteForwardRule(id);
 
         if (result.success) {
-            showToast('' + t('rules.alert.deleteSuccess'), 'info');
+            showToast(t('rules.alert.deleteSuccess'), 'info');
             loadForwardRules();
         } else {
-            showToast('' + t('rules.alert.deleteFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
+            showToast(t('rules.alert.deleteFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to delete rule:', error);
-        showToast('' + t('rules.alert.deleteFailed') + ': ' + error.message, 'error');
+        showToast(t('rules.alert.deleteFailed') + ': ' + error.message, 'error');
     }
 }
 
@@ -636,13 +650,13 @@ async function testRule(id) {
         const result = await API.testForwardRule(id);
 
         if (result.success) {
-            showToast('' + t('rules.alert.testSuccess') + '\n\n' + (result.message || t('rules.alert.testMessageSent')), 'info');
+            showToast(t('rules.alert.testSuccess') + '\n\n' + (result.message || t('rules.alert.testMessageSent')), 'info');
         } else {
-            showToast('' + t('rules.alert.testFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
+            showToast(t('rules.alert.testFailed') + ': ' + (result.error || t('common.unknownError')), 'error');
         }
     } catch (error) {
         console.error('Failed to test rule:', error);
-        showToast('' + t('rules.alert.testFailed') + ': ' + error.message, 'error');
+        showToast(t('rules.alert.testFailed') + ': ' + error.message, 'error');
     }
 }
 
@@ -650,7 +664,16 @@ async function testRule(id) {
 const ForwardRulesModule = {
     init: function() {
     },
-    loadRules: loadForwardRules
+    loadRules: loadForwardRules,
+    page: function (n) {
+        rulePage = Number(n) || 1;
+        renderForwardRules(forwardRules);
+    },
+    search: function (value) {
+        ruleQuery = String(value || '');
+        rulePage = 1;
+        renderForwardRules(forwardRules);
+    }
 };
 
 
@@ -677,3 +700,7 @@ document.addEventListener('change', function (event) {
     const id = box.getAttribute('data-toggle-rule');
     if (typeof toggleRule === 'function') toggleRule(id, box.checked);
 });
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="ForwardRulesModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('ForwardRulesModule', ForwardRulesModule);

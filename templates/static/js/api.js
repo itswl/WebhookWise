@@ -736,6 +736,14 @@ const API = {
         return await response.json();
     },
 
+    /** Global MTTA/MTTR/ack-rate over recent incidents, for the Overview band. */
+    async getResponseMetrics(windowDays = 30) {
+        const response = await this.authenticatedFetch(
+            '/v1/services/response-metrics?window_days=' + encodeURIComponent(windowDays));
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return await response.json();
+    },
+
     /** The shift-handoff brief: counts plus a markdown summary to paste. */
     async getHandoff(hours) {
         const response = await this.authenticatedFetch('/v1/handoff?hours=' + (hours || 8));

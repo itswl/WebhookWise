@@ -31,6 +31,7 @@ from services.analysis.ai_errors import is_ai_provider_retryable_error, is_ai_pr
 from services.analysis.ai_prompt import get_prompt_source, load_user_prompt_template
 from services.analysis.alert_identity_context import build_alert_identity_context
 from services.analysis.analysis_policies import AIProviderPolicy
+from services.analysis.prompt_safety import neutralize_untrusted_text
 from services.webhooks.payload_sanitizer import sanitize_for_ai_async
 from services.webhooks.types import AnalysisResult
 
@@ -282,10 +283,14 @@ async def _build_user_prompt(data: dict[str, Any], source: str, policy: AIProvid
     # offload both dumps to a thread so the worker event loop is not stalled.
     identity_yaml, data_yaml = await asyncio.to_thread(_dump_prompt_yaml, identity_context, cleaned_data)
     kb_context = await _retrieve_kb_context(source, identity_context, cleaned_data)
+    # Payload values are attacker-controlled and the model's verdict drives
+    # forwarding/silencing, so defang fences the same way deep analysis does:
+    # a value must not be able to close its code block and speak as the prompt.
+    # KB context is operator-published content and stays as written.
     user_prompt = (await load_user_prompt_template()).format(
-        source=source,
-        identity_json=identity_yaml,
-        data_json=data_yaml,
+        source=neutralize_untrusted_text(str(source)),
+        identity_json=neutralize_untrusted_text(identity_yaml),
+        data_json=neutralize_untrusted_text(data_yaml),
         kb_context=kb_context,
     )
     logger.info(

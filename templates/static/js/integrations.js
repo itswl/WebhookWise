@@ -24,9 +24,7 @@ const IntegrationsModule = (function () {
             catalog.map(function (item) {
                 return '<button type="button" class="integration-card" data-template="' + escapeHtml(item.id) +
                     '" style="text-align:left; padding:18px; border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--bg-surface); color:inherit; cursor:pointer;">' +
-                    (item.icon
-                        ? '<div style="font-size:32px;">' + escapeHtml(item.icon) + '</div>'
-                        : '<div style="font-size:32px;">' + wwIcon('layers') + '</div>') +
+                    '<div style="font-size:32px;">' + wwIcon(item.sprite || 'layers') + '</div>' +
                     '<div style="font-weight:700; margin:8px 0 5px;">' + escapeHtml(item.name) + '</div>' +
                     '<div style="font-size:0.82rem; color:var(--text-secondary); line-height:1.45;">' + escapeHtml(item.description) + '</div></button>';
             }).join('') + '</div>';
@@ -43,7 +41,7 @@ const IntegrationsModule = (function () {
         setup.innerHTML = '<div style="border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px; background:var(--bg-surface);">' +
             '<div style="font-weight:700; margin-bottom:14px;">1. Configure ' + escapeHtml(selected.name) + '</div>' +
             '<div class="filter-grid">' +
-            field('integrationName', 'Rule name', selected.name + ' alerts') +
+            field('integrationName', 'Rule name', t('integration.defaultRuleName', { name: selected.name })) +
             (selected.requires_url ? field('integrationUrl', 'Target URL', '', selected.url_hint) : '') +
             field('integrationSource', 'Source filter', '', 'Optional') +
             field('integrationProject', 'Project filter', '', 'Optional') +

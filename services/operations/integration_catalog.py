@@ -6,37 +6,70 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.url_security import UnsafeTargetUrlError, validate_outbound_url
 from schemas.operations import IntegrationSetupRequest, IntegrationTestRequest
 from services.forwarding.rules import create_forward_rule
+from services.forwarding.target_validation import validated_target_url
 from services.operations.audit_logger import add_audit
 
+# `sprite` names an icon in the dashboard's sprite sheet — emoji icons were
+# retired from the dashboard, and a server-supplied emoji would smuggle one
+# straight past that decision.
 _CATALOG: tuple[dict[str, Any], ...] = (
     {
         "id": "feishu",
         "name": "Feishu bot",
         "description": "Send formatted alert cards to a Feishu group bot.",
-        "icon": "💬",
+        "sprite": "message",
         "target_type": "feishu",
         "requires_url": True,
         "url_hint": "https://open.feishu.cn/open-apis/bot/v2/hook/...",
         "recommended_for": ["operations", "incident_response"],
     },
     {
+        "id": "dingtalk",
+        "name": "DingTalk bot",
+        "description": "Send markdown alert messages to a DingTalk group robot.",
+        "sprite": "bell",
+        "target_type": "dingtalk",
+        "requires_url": True,
+        "url_hint": "https://oapi.dingtalk.com/robot/send?access_token=...",
+        "recommended_for": ["operations", "incident_response"],
+    },
+    {
+        "id": "wecom",
+        "name": "WeCom bot",
+        "description": "Send markdown alert messages to a WeCom (企业微信) group bot.",
+        "sprite": "inbox",
+        "target_type": "wecom",
+        "requires_url": True,
+        "url_hint": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...",
+        "recommended_for": ["operations", "incident_response"],
+    },
+    {
         "id": "generic_webhook",
         "name": "Generic webhook",
         "description": "Deliver normalized alert and analysis JSON to an HTTP endpoint.",
-        "icon": "🔗",
+        "sprite": "link",
         "target_type": "webhook",
         "requires_url": True,
         "url_hint": "https://example.com/webhooks/alerts",
         "recommended_for": ["automation", "custom_integrations"],
     },
     {
+        "id": "feishu_relay",
+        "name": "Feishu relay",
+        "description": "Hand analysis results to a hookrelay front door (HMAC-signed); the relay owns rendering and downstream delivery.",
+        "sprite": "radio",
+        "target_type": "feishu_relay",
+        "requires_url": True,
+        "url_hint": "http://hookrelay:8100/hook/...",
+        "recommended_for": ["operations"],
+    },
+    {
         "id": "deep_analysis",
         "name": "Deep analysis",
         "description": "Route selected alerts into the configured deep-analysis gateway.",
-        "icon": "🧠",
+        "sprite": "lightbulb",
         "target_type": "deep_analysis",
         "requires_url": False,
         "url_hint": "Uses the server deep-analysis configuration",
@@ -72,7 +105,7 @@ async def test_integration(payload: IntegrationTestRequest) -> dict[str, Any]:
                 else "Deep analysis is disabled in the server configuration"
             ),
         }
-    target_url = await _validated_url(payload.target_url)
+    target_url = await validated_target_url(target_type, payload.target_url)
     from services.forwarding.remote import send_forward_rule_test
 
     result = await send_forward_rule_test(
@@ -90,7 +123,8 @@ async def test_integration(payload: IntegrationTestRequest) -> dict[str, Any]:
 async def install_integration(session: AsyncSession, payload: IntegrationSetupRequest) -> dict[str, Any]:
     template = _template(payload.template_id)
     target_type = str(template["target_type"])
-    target_url = "" if target_type == "deep_analysis" else await _validated_url(payload.target_url)
+    # deep_analysis is configuration-managed: the rule never carries a URL.
+    target_url = "" if target_type == "deep_analysis" else await validated_target_url(target_type, payload.target_url)
     if payload.enabled:
         probe = await test_integration(
             IntegrationTestRequest(template_id=payload.template_id, name=payload.name, target_url=target_url)
@@ -128,9 +162,3 @@ async def install_integration(session: AsyncSession, payload: IntegrationSetupRe
         "target_type": target_type,
         "enabled": rule.enabled,
     }
-
-
-async def _validated_url(value: str) -> str:
-    if not value.strip():
-        raise UnsafeTargetUrlError("Target URL cannot be empty")
-    return await validate_outbound_url(value)

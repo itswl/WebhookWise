@@ -33,7 +33,10 @@ class AuditLog(Base):
     # Human-readable summary line for the activity feed.
     summary: Mapped[str] = mapped_column(String(500), nullable=False)
 
-    # Who did it — captured from the dashboard's auth context.
+    # Who did it — self-declared by the caller (request body / client default).
+    # There are no per-user accounts: every writer holds the shared admin key,
+    # so this is attribution the operator asserts, not an authenticated
+    # identity. Do not treat it as one.
     actor: Mapped[str | None] = mapped_column(String(100))
 
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow(), index=True)

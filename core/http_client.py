@@ -71,9 +71,11 @@ def get_deep_analysis_client() -> httpx.AsyncClient:
     every request died with "target host resolves to a non-public IP", so the
     whole deep-analysis leg has been failing by design rather than by accident.
 
-    Same reasoning, and same shape, as _FeishuRelayChannel's own client: a
-    trusted internal hop, chosen by an operator, does not need the guard built
-    for untrusted input.
+    Same reasoning applies to _FeishuRelayChannel, which shares this client:
+    a trusted internal hop, chosen by an operator, does not need the guard
+    built for untrusted input — but it still gets the pooled connections,
+    trust_env=False, follow_redirects=False, and trace headers that an ad-hoc
+    httpx.AsyncClient() would not.
 
     Passing an explicit transport is what opts out — build_http_client only
     hardens the default one.
@@ -83,3 +85,16 @@ def get_deep_analysis_client() -> httpx.AsyncClient:
         _deep_analysis_client = build_http_client(transport=httpx.AsyncHTTPTransport())
         logger.info("[HTTP] Deep-analysis client initialized (private targets allowed)")
     return _deep_analysis_client
+
+
+async def aclose_deep_analysis_client() -> None:
+    """Close the module-owned internal-hop client on process shutdown.
+
+    AppContext.close() only owns the context client; without this, every
+    graceful API/worker shutdown leaked this client's open connections.
+    """
+    global _deep_analysis_client
+    client = _deep_analysis_client
+    _deep_analysis_client = None
+    if client is not None and not client.is_closed:
+        await client.aclose()

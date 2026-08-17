@@ -848,13 +848,6 @@ def test_alert_and_incident_references_are_links() -> None:
     assert 'data-act="openIncident"' in _static_js("overview.js")
 
 
-def test_routing_pill_bar_keeps_a_parent_highlighted() -> None:
-    """Sandbox and Audit have no pill of their own; the bar used to go blank."""
-    js = _static_js("routing.js")
-    assert "PILL_PARENT" in js
-    assert "sandbox: 'rules'" in js and "audit: 'rules'" in js
-
-
 def test_command_palette_is_reachable_without_a_keyboard() -> None:
     """The palette replaced persistent navigation. If it were keyboard-only,
     a touch or mouse-only operator would have no way to move at all."""
@@ -933,9 +926,21 @@ def test_module_lookup_never_goes_through_window_indexing() -> None:
 
 
 def _emoji_count(text: str) -> int:
+    """Count emoji-as-iconography glyphs, after decoding HTML entities.
+
+    The original range [U+1F300–U+1FAFF, U+2600–U+27BF] had four documented
+    escapes: 🆔 (U+1F194, below the 1F300 floor), ⏱/⌛ (U+23Fx/U+231B, below
+    the 2600 floor), ⬆ (U+2B06, above the 27BF ceiling), and 🔍 written as an
+    HTML entity, invisible to a source-text scan. Hence: wider blocks plus
+    html.unescape first. ⌘ (U+2318) is allowed — a keyboard glyph in shortcut
+    hints is typography, not iconography.
+    """
+    import html as _html
     import re as _re
 
-    return len(_re.findall(r"[\U0001F300-\U0001FAFF☀-➿]", text))
+    decoded = _html.unescape(text)
+    allowed = {"⌘"}
+    return sum(1 for ch in _re.findall(r"[\U0001F000-\U0001FAFF⌀-⏿☀-➿⬀-⯿]", decoded) if ch not in allowed)
 
 
 def test_dashboard_uses_the_icon_system_not_emoji() -> None:
@@ -1079,6 +1084,70 @@ def test_js_renderers_carry_no_hardcoded_colors() -> None:
         if found:
             offenders[path.name] = sorted(set(found))
     assert offenders == {}, f"hardcoded colours crept back: {offenders}"
+
+
+def test_js_renderers_do_not_reuse_the_retired_palette() -> None:
+    """showToast froze the PREVIOUS palette in rgba() literals, which the hex
+    ban cannot see — its toasts stayed emerald/indigo through a full retheme.
+    rgba() in general is still tolerated (documented debt), but these five
+    retired triplets are banned outright so the old palette cannot creep back
+    through the alpha channel."""
+    import re as _re
+
+    from tests.helpers.paths import PROJECT_ROOT as _ROOT
+
+    retired = r"rgba\(\s*(?:16\s*,\s*185\s*,\s*129|239\s*,\s*68\s*,\s*68|245\s*,\s*158\s*,\s*11|99\s*,\s*102\s*,\s*241|102\s*,\s*126\s*,\s*234)\b"
+    offenders = {}
+    for path in sorted((_ROOT / "templates/static/js").glob("*.js")):
+        if path.name.startswith("i18n."):
+            continue
+        found = _re.findall(retired, path.read_text())
+        if found:
+            offenders[path.name] = sorted(set(found))
+    assert offenders == {}, f"retired-palette rgba() literals crept back: {offenders}"
+
+
+def test_every_action_root_registers_itself() -> None:
+    """const modules create global lexical bindings with NO window property, so
+    the dispatcher's window[name] lookup silently returned null for every
+    "Module.method" data-act — measured in a real browser, all of them were
+    dead. Each allowlisted root must therefore call wwRegisterActionRoot in
+    some module file, and nothing may register a name the allowlist doesn't
+    carry."""
+    import re as _re
+
+    from tests.helpers.paths import PROJECT_ROOT as _ROOT
+
+    utils = _static_js("utils.js")
+    roots_src = utils[utils.index("WW_ACTION_ROOTS = [") : utils.index("];", utils.index("WW_ACTION_ROOTS = ["))]
+    allowlisted = set(_re.findall(r"'([A-Za-z]+)'", roots_src))
+    assert allowlisted, "could not parse WW_ACTION_ROOTS"
+
+    registered = set()
+    for path in sorted((_ROOT / "templates/static/js").glob("*.js")):
+        registered.update(_re.findall(r"wwRegisterActionRoot\('([A-Za-z]+)',", path.read_text()))
+
+    assert allowlisted - registered == set(), f"allowlisted roots never register: {allowlisted - registered}"
+    assert registered - allowlisted == set(), f"registrations outside the allowlist: {registered - allowlisted}"
+
+
+def test_js_never_guards_on_the_empty_string() -> None:
+    """`includes('')` and `startsWith('')` are always true. An emoji purge
+    rewrote showToast's comparison literals to '' and every toast became a
+    green success missing its first two characters — the guard could no longer
+    fail, so no branch below it ever ran. Empty-string membership checks are
+    always a bug."""
+    import re as _re
+
+    from tests.helpers.paths import PROJECT_ROOT as _ROOT
+
+    pattern = _re.compile(r"\.(?:includes|startsWith|endsWith)\(\s*(?:''|\"\")\s*\)")
+    offenders = {}
+    for path in sorted((_ROOT / "templates/static/js").glob("*.js")):
+        found = pattern.findall(path.read_text())
+        if found:
+            offenders[path.name] = len(found)
+    assert offenders == {}, f"always-true empty-string guards: {offenders}"
 
 
 def test_colour_stays_in_points_not_surfaces() -> None:

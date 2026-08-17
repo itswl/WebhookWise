@@ -98,6 +98,38 @@ def validate_startup_security(config: AppConfig, *, app_env: str | None = None) 
                 "WEBHOOK_SECRET is still an example placeholder value; please replace it with a real random key"
             )
         _warn_if_short_secret("WEBHOOK_SECRET", webhook_secret)
+    if env == "production":
+        _warn_on_open_ingress_defaults(config)
+
+
+def _warn_on_open_ingress_defaults(config: AppConfig) -> None:
+    """Warn (not fail) about ship-disabled protections on the public surface.
+
+    These stay non-fatal because both defaults are documented and an existing
+    deployment must keep starting — but out of the box the UNAUTHENTICATED
+    ingress has no per-IP ceiling while the authenticated admin API has one,
+    and a captured signed request replays forever. The log line is the nudge.
+    """
+    security = config.security
+    if (
+        security.WEBHOOK_RATE_LIMIT_PER_MINUTE == 0
+        and security.WEBHOOK_RATE_LIMIT_BURST == 0
+        and security.WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE == 0
+    ):
+        logger.warning(
+            "[Security] Webhook ingress rate limiting is disabled (all WEBHOOK_RATE_LIMIT_* are 0): "
+            "the public ingress has no per-IP ceiling. Set WEBHOOK_RATE_LIMIT_PER_MINUTE to cap it."
+        )
+    if not security.WEBHOOK_REPLAY_PROTECTION_ENABLED:
+        logger.warning(
+            "[Security] Webhook replay protection is disabled: a captured signed request can be replayed "
+            "indefinitely. Set WEBHOOK_REPLAY_PROTECTION_ENABLED=true once senders emit x-webhook-timestamp."
+        )
+    if config.kb.KB_ENABLED and not config.kb.KB_EMBEDDING_API_URL.strip():
+        logger.warning(
+            "[KB] KB_ENABLED is on but KB_EMBEDDING_API_URL is empty: retrieval runs on the deterministic "
+            "placeholder embedding and returns near-noise. Configure an embeddings endpoint for real recall."
+        )
 
 
 def _warn_if_short_secret(name: str, value: str) -> None:

@@ -338,7 +338,7 @@ var DeepAnalysesModule = (function() {
         if (record.is_duplicate) {
             alertTypeTag = '<span class="badge badge-outline" style="color: var(--text-secondary); font-size: 0.7rem;">' + wwIcon('refresh') + ' ' + escapeHtml(t('deep.duplicateAlert')) + '</span>';
         } else {
-            alertTypeTag = '<span class="badge badge-success" style="font-size: 0.7rem;">🆕 ' + escapeHtml(t('deep.newAlert')) + '</span>';
+            alertTypeTag = '<span class="badge badge-success" style="font-size: 0.7rem;">' + wwIcon('sparkles') + ' ' + escapeHtml(t('deep.newAlert')) + '</span>';
         }
 
         let html = `
@@ -420,7 +420,7 @@ var DeepAnalysesModule = (function() {
             `;
         } else if (record.status === 'failed') {
             detailsHtml += `
-                <div style="background: var(--danger-bg); border: 1px solid rgba(239,68,68,0.2); padding: 1.5rem; border-radius: var(--radius-md); color: var(--danger);">
+                <div style="background: var(--danger-bg); border: 1px solid var(--danger); padding: 1.5rem; border-radius: var(--radius-md); color: var(--danger);">
                     <h4 style="margin-bottom: 0.5rem; font-weight: 600;">${escapeHtml(t('deep.taskCrashed'))}</h4>
                     <p style="margin: 0; font-size: 0.95rem;">${escapeHtml(report.failure_reason || report.root_cause || report.primary_text || t('deep.unknownException'))}</p>
                 </div>
@@ -616,23 +616,23 @@ var DeepAnalysesModule = (function() {
 
         url = url.trim();
         if (!url) {
-            showToast('' + t('deep.forward.urlEmpty'), 'info');
+            showToast(t('deep.forward.urlEmpty'), 'info');
             return;
         }
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
-            showToast('' + t('deep.forward.urlInvalid'), 'info');
+            showToast(t('deep.forward.urlInvalid'), 'info');
             return;
         }
 
         try {
             var result = await API.forwardDeepAnalysis(analysisId, url);
             if (result.success) {
-                showToast('' + (result.message || t('deep.forward.pushed')), 'info');
+                showToast((result.message || t('deep.forward.pushed')), 'info');
             } else {
-                showToast('' + t('deep.forward.failed') + ': ' + (result.message || t('common.unknownError')), 'error');
+                showToast(t('deep.forward.failed') + ': ' + (result.message || t('common.unknownError')), 'error');
             }
         } catch (e) {
-            showToast('' + t('common.requestFailed') + ': ' + e.message, 'error');
+            showToast(t('common.requestFailed') + ': ' + e.message, 'error');
         }
     }
 
@@ -642,13 +642,13 @@ var DeepAnalysesModule = (function() {
         try {
             var result = await API.deepAnalyze(webhookEventId, '', 'auto');
             if (result.success) {
-                showToast('' + t('deep.reanalyze.started'), 'info');
+                showToast(t('deep.reanalyze.started'), 'info');
                 load();
             } else {
-                showToast('' + t('deep.reanalyze.failed') + ': ' + (result.message || result.error || t('common.unknownError')), 'error');
+                showToast(t('deep.reanalyze.failed') + ': ' + (result.message || result.error || t('common.unknownError')), 'error');
             }
         } catch (e) {
-            showToast('' + t('common.requestFailed') + ': ' + e.message, 'error');
+            showToast(t('common.requestFailed') + ': ' + e.message, 'error');
         }
     }
 
@@ -658,13 +658,13 @@ var DeepAnalysesModule = (function() {
         try {
             var result = await API.retryDeepAnalysis(analysisId);
             if (result.success) {
-                showToast('' + (result.message || t('deep.retry.triggered')), 'info');
+                showToast((result.message || t('deep.retry.triggered')), 'info');
                 load();
             } else {
-                showToast('' + t('deep.retry.failed') + ': ' + (result.error || result.message || t('common.unknownError')), 'error');
+                showToast(t('deep.retry.failed') + ': ' + (result.error || result.message || t('common.unknownError')), 'error');
             }
         } catch (e) {
-            showToast('' + t('common.requestFailed') + ': ' + e.message, 'error');
+            showToast(t('common.requestFailed') + ': ' + e.message, 'error');
         }
     }
 
@@ -773,3 +773,7 @@ document.addEventListener('click', function (event) {
     event.preventDefault();
     watchDeepAnalysis(button.getAttribute('data-da-watch'));
 });
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="DeepAnalysesModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('DeepAnalysesModule', DeepAnalysesModule);

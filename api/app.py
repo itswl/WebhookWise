@@ -15,6 +15,7 @@ from core.logger import get_logger, stop_log_listener
 from core.observability import setup_observability, shutdown_observability
 from core.service_lifecycle import start_runtime_services, stop_runtime_services
 from core.taskiq_broker import broker
+from core.version import __version__
 from core.web.middleware import RequestBodyLimitMiddleware, SecurityHeadersMiddleware, TraceContextMiddleware
 from core.web.startup_checks import validate_startup_security
 from services.analysis.ai_llm_client import initialize_openai_client, reset_openai_client
@@ -108,7 +109,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 # (or uncompromised — it would be executing scripts on the origin that holds
 # the alert data and the credentials).
 app = FastAPI(
-    title="Webhook AI Assistant",
+    title="WebhookWise",
+    version=__version__,
     lifespan=lifespan,
     debug=False,
     docs_url=None,
@@ -205,8 +207,8 @@ app.add_middleware(TraceContextMiddleware)
 _WORKER_ID = _app_context(app).config.server.WORKER_ID
 logger.debug("worker_id=%s", _WORKER_ID)
 
-app.include_router(health_router)
-app.include_router(dashboard_router)
+app.include_router(health_router, tags=["Health"])
+app.include_router(dashboard_router, tags=["Dashboard"])
 app.include_router(v1_router)
 
 # Read-only MCP (Streamable HTTP) server at /mcp, guarded by the management API

@@ -276,6 +276,12 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
         'Auto-arm incident SLAs, e.g. "high=30,medium=240"; empty = off',
     ),
     SettingSpec("SLA_BREACH_MENTION_ALL", "escalation", _cast_bool, "@all mention on SLA-breach cards"),
+    SettingSpec(
+        "INCIDENT_RESOLVE_RECAP_ENABLED",
+        "escalation",
+        _cast_bool,
+        "Send one recap card to chat when an incident is resolved",
+    ),
     # Backpressure / queue
     SettingSpec(
         "WEBHOOK_MQ_BACKLOG_WARN_FRACTION",

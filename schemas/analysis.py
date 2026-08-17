@@ -16,6 +16,20 @@ class Importance(StrEnum):
     LOW = "low"
 
 
+class TriageVerdict(StrEnum):
+    """Machine-readable act-now-vs-defer verdict.
+
+    Values are stable identifiers (rendered translated in cards/dashboard);
+    they answer the operator's first question — "do I get up for this" —
+    which importance alone does not: a high-importance alert that is already
+    recovering is not an act-now.
+    """
+
+    ACT_NOW = "act_now"
+    MONITOR = "monitor"
+    DEFER = "defer"
+
+
 class WebhookAnalysisResult(BaseModel):
     """AI analysis result model"""
 
@@ -34,6 +48,16 @@ class WebhookAnalysisResult(BaseModel):
     risks: list[str] = Field(default_factory=list, description="List of potential related risks")
     monitoring_suggestions: list[str] = Field(
         default_factory=list, description="Follow-up monitoring optimization suggestions"
+    )
+    triage_verdict: TriageVerdict = Field(
+        default=TriageVerdict.MONITOR,
+        description="Whether an operator should act now (act_now), keep an eye on it (monitor), or can safely defer (defer)",
+    )
+    triage_confidence: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Confidence in the triage verdict, 0.0-1.0",
     )
 
     def to_dict(self) -> dict[str, Any]:

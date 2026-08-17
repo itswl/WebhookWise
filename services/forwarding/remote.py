@@ -104,6 +104,23 @@ async def send_forward_rule_test(*, rule_name: str, target_url: str, target_type
         )
         return await resolve_channel(cast(Any, probe)).deliver(cast(Any, probe))
 
+    # DingTalk/WeCom bots reject arbitrary JSON shapes; the test must post the
+    # same markdown payload a real delivery would build, or a healthy rule
+    # reports a failure (the relay lesson above, again).
+    from services.notifications import dingtalk, wecom
+
+    if target_type == "dingtalk" or dingtalk.is_dingtalk_url(target_url):
+        return await post_json_to_remote(
+            target_url,
+            dingtalk.build_dingtalk_markdown(test_webhook, test_analysis),
+            target_type_label="dingtalk",
+        )
+    if target_type == "wecom" or wecom.is_wecom_url(target_url):
+        return await post_json_to_remote(
+            target_url,
+            wecom.build_wecom_markdown(test_webhook, test_analysis),
+            target_type_label="wecom",
+        )
     if is_feishu_url(target_url):
         payload: JsonObject = build_feishu_card(test_webhook, test_analysis)
         return await send_to_feishu(target_url, payload)

@@ -68,6 +68,7 @@ const DESTINATIONS = {
     noise: { tab: 'operations', enter: () => setOperationsView('noise') },
     kb: { tab: 'operations', enter: () => setOperationsView('kb') },
     gaps: { tab: 'operations', enter: () => setOperationsView('gaps') },
+    delivery: { tab: 'operations', enter: () => setOperationsView('delivery') },
     settings: { tab: 'operations', enter: () => setOperationsView('settings') },
 };
 const DEFAULT_DESTINATION = 'overview';
@@ -471,32 +472,8 @@ async function initDashboard() {
  * Bind global events
  */
 function bindGlobalEvents() {
-    // Tab switching
-    document.querySelectorAll('.nav-tab').forEach(tab => {
-        tab.addEventListener('click', (e) => {
-            const navTab = e.target.closest('.nav-tab');
-            const tabId = navTab ? navTab.getAttribute('data-tab') : null;
-            if (tabId) {
-                switchMainTab(tabId);
-            }
-        });
-    });
-
-    document.querySelectorAll('[data-inbox-view]').forEach(button => {
-        button.addEventListener('click', (e) => {
-            const target = e.target.closest('[data-inbox-view]');
-            const view = target ? target.getAttribute('data-inbox-view') : null;
-            if (view) setInboxView(view);
-        });
-    });
-
-    document.querySelectorAll('[data-operations-view]').forEach(button => {
-        button.addEventListener('click', (e) => {
-            const target = e.target.closest('[data-operations-view]');
-            const view = target ? target.getAttribute('data-operations-view') : null;
-            if (view) setOperationsView(view);
-        });
-    });
+    // Navigation is sidebar + command palette only; the old .nav-tab and
+    // sub-view switch bars are gone from the markup, so nothing binds them.
 
     // Browser Back/Forward and pasted links.
     window.addEventListener('hashchange', applyHashRoute);
@@ -587,12 +564,13 @@ function bindGlobalEvents() {
             }
         }
 
-        // Ctrl/Cmd + R to refresh
+        // Ctrl/Cmd + R soft-refreshes WHATEVER view is open — it used to
+        // reload only the alerts list, so from any other destination the
+        // browser's reload shortcut was swallowed and refreshed something
+        // the user could not see.
         if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
             e.preventDefault();
-            if (typeof AlertsModule !== 'undefined') {
-                AlertsModule.loadAlerts();
-            }
+            refreshCurrentTab();
         }
     });
 
@@ -614,15 +592,6 @@ function switchMainTab(tabId, options) {
         IngressSetupModule.deactivate();
     }
     currentTab = tabId;
-
-    // Update the navbar active state
-    document.querySelectorAll('.nav-tab').forEach(tab => {
-        if (tab.getAttribute('data-tab') === tabId) {
-            tab.classList.add('active');
-        } else {
-            tab.classList.remove('active');
-        }
-    });
 
     // Show/hide content areas
     const tabContents = {
@@ -685,9 +654,6 @@ function setInboxView(view) {
         const element = document.getElementById(views[key]);
         if (element) element.style.display = key === currentInboxView ? 'block' : 'none';
     });
-    document.querySelectorAll('[data-inbox-view]').forEach(function (button) {
-        button.classList.toggle('active', button.getAttribute('data-inbox-view') === currentInboxView);
-    });
 
     recordDestination(currentInboxView);
 
@@ -730,15 +696,13 @@ function setOperationsView(view) {
         noise: 'noiseCenterTab',
         kb: 'kbDraftsTab',
         gaps: 'knowledgeGapsTab',
+        delivery: 'deliveryQueueTab',
         settings: 'runtimeSettingsTab'
     };
     currentOperationsView = views[view] ? view : 'actions';
     Object.keys(views).forEach(function (key) {
         const element = document.getElementById(views[key]);
         if (element) element.style.display = key === currentOperationsView ? 'block' : 'none';
-    });
-    document.querySelectorAll('[data-operations-view]').forEach(function (button) {
-        button.classList.toggle('active', button.getAttribute('data-operations-view') === currentOperationsView);
     });
     recordDestination(currentOperationsView);
 
@@ -748,6 +712,8 @@ function setOperationsView(view) {
         if (typeof KbDraftsModule !== 'undefined') KbDraftsModule.load();
     } else if (currentOperationsView === 'gaps') {
         if (typeof ResponseCenterModule !== 'undefined') ResponseCenterModule.loadKnowledgeGaps();
+    } else if (currentOperationsView === 'delivery') {
+        if (typeof DeliveryQueueModule !== 'undefined') DeliveryQueueModule.load();
     } else if (currentOperationsView === 'settings') {
         if (typeof RuntimeSettingsModule !== 'undefined') RuntimeSettingsModule.load();
     } else if (typeof ActionCenterModule !== 'undefined') {

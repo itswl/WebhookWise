@@ -599,3 +599,7 @@ const IngressSetupModule = (function () {
         deactivate: clearSensitive
     };
 })();
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="IngressSetupModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('IngressSetupModule', IngressSetupModule);

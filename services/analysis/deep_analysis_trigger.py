@@ -27,6 +27,7 @@ from services.analysis.ai_prompt import (
 from services.analysis.alert_identity_context import build_alert_identity_context
 from services.analysis.deep_analysis_gateways import UnknownGatewayError
 from services.analysis.deep_analysis_platforms import resolve_dialect
+from services.analysis.prompt_safety import neutralize_untrusted_text
 from services.forwarding.circuit_breakers import (
     DeepAnalysisForwardDependencies,
     build_deep_analysis_forward_dependencies,
@@ -92,18 +93,9 @@ def _build_gateway_prompt_payload(source: str, alert_data: dict[str, Any]) -> di
     return {"overview": overview, "payload": alert_data}
 
 
-def _neutralize_untrusted_text(text: str) -> str:
-    """Defang fence/delimiter sequences in attacker-controllable text.
-
-    Alert payload values (and an optional user question) are untrusted: a value
-    containing a ``` fence or a heading marker could otherwise break out of its
-    JSON code block and inject text the agent treats as instructions. We replace
-    backtick runs with a benign sentinel so the surrounding ```json fence cannot
-    be closed early. Applied to the serialized JSON string, this does not change
-    the structure the agent reads for legitimate (backtick-free) payloads.
-    """
-    # Zero-width space breaks a literal ``` run without removing information.
-    return text.replace("```", "`​`​`")
+# Shared with the primary analysis leg; kept importable under the old name
+# because this is where the mechanism was born.
+_neutralize_untrusted_text = neutralize_untrusted_text
 
 
 async def request_gateway_analysis(

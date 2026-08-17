@@ -239,3 +239,7 @@ const SandboxModule = {
     init: function () { /* bind-only; the sandbox form is static */ },
     load: function () { /* lazy: the form is static, nothing to fetch on open */ }
 };
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="SandboxModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('SandboxModule', SandboxModule);

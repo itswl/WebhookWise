@@ -329,6 +329,7 @@ class _FeishuRelayChannel:
         import httpx
 
         from core.app_context import get_config_manager
+        from core.http_client import get_deep_analysis_client
         from services.notifications import feishu
 
         secret = str(get_config_manager().notifications.FORWARD_RELAY_SECRET or "")
@@ -411,21 +412,26 @@ class _FeishuRelayChannel:
         stamp = str(int(time.time()))
         signature = hmac_mod.new(secret.encode(), stamp.encode() + b"." + body, hashlib.sha256).hexdigest()
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    str(record.target_url or ""),
-                    content=body,
-                    headers={
-                        "content-type": "application/json",
-                        "X-Hook-Signature": signature,
-                        "X-Hook-Timestamp": stamp,
-                        # At-least-once made safe for the receiver: the key is
-                        # stable across retries of THIS outbox row, so a
-                        # re-send after a crash between send and bookkeeping is
-                        # recognisable as the same delivery.
-                        "X-Hook-Idempotency-Key": f"outbox-{record.id}",
-                    },
-                )
+            # The shared internal-hop client (same one the deep-analysis leg
+            # uses): pooled, trust_env=False, no redirects. A per-delivery
+            # httpx.AsyncClient() here used to re-handshake TCP+TLS for every
+            # alert AND honoured HTTP(S)_PROXY from the environment — the only
+            # outbound path in the service that did.
+            response = await get_deep_analysis_client().post(
+                str(record.target_url or ""),
+                content=body,
+                timeout=10.0,
+                headers={
+                    "content-type": "application/json",
+                    "X-Hook-Signature": signature,
+                    "X-Hook-Timestamp": stamp,
+                    # At-least-once made safe for the receiver: the key is
+                    # stable across retries of THIS outbox row, so a
+                    # re-send after a crash between send and bookkeeping is
+                    # recognisable as the same delivery.
+                    "X-Hook-Idempotency-Key": f"outbox-{record.id}",
+                },
+            )
         except httpx.HTTPError as error:
             return {"status": "failed", "reason": f"relay unreachable: {error.__class__.__name__}", "retryable": True}
         if response.status_code >= 300:

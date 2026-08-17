@@ -115,7 +115,7 @@ const RuntimeSettingsModule = (function () {
                 '<span style="color: var(--text-muted); white-space: nowrap;">' + updatedAt + '</span>'
             : '—';
 
-        return '<tr' + (overridden ? ' style="background: rgba(245, 158, 11, 0.06);"' : '') + '>' +
+        return '<tr' + (overridden ? ' style="background: var(--warning-bg);"' : '') + '>' +
             '<td style="' + td + ' ' + MONO + ' overflow-wrap: anywhere; font-weight: 600;">' + escapeHtml(setting.key) + '</td>' +
             '<td style="' + td + ' color: var(--text-secondary);">' + escapeHtml(setting.description || '') + '</td>' +
             '<td style="' + td + ' ' + MONO + '">' + escapeHtml(displayValue(setting.env_value)) + '</td>' +
@@ -250,7 +250,7 @@ const RuntimeSettingsModule = (function () {
             editingValue = null;
             rowError = null;
             applyUpdated(result);
-            showToast('' + t('rs.alert.saved'), 'info');
+            showToast(t('rs.alert.saved'), 'info');
         } catch (error) {
             // Keep the row in edit mode with the typed value; the backend's
             // validation message is shown verbatim under the input.
@@ -269,7 +269,7 @@ const RuntimeSettingsModule = (function () {
             editingValue = null;
             rowError = null;
             applyUpdated(result);
-            showToast('' + t('rs.alert.cleared'), 'info');
+            showToast(t('rs.alert.cleared'), 'info');
         } catch (error) {
             rowError = { key: key, message: error.message || String(error) };
             render();
@@ -296,3 +296,7 @@ const RuntimeSettingsModule = (function () {
 
     return { load: load };
 })();
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="RuntimeSettingsModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('RuntimeSettingsModule', RuntimeSettingsModule);

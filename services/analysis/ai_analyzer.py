@@ -213,6 +213,18 @@ def analyze_with_rules(
 
     res = apply_resource_importance_override(res, data)
 
+    # Act-now-vs-defer verdict, derived AFTER the override so it reads the
+    # final importance. Keyword-based, so confidence stays modest — the LLM
+    # path judges this itself with the payload in front of it.
+    if is_recovery_payload(data, None):
+        res["triage_verdict"], res["triage_confidence"] = "defer", 0.7
+    elif res["importance"] == "high":
+        res["triage_verdict"], res["triage_confidence"] = "act_now", 0.6
+    elif res["importance"] == "low":
+        res["triage_verdict"], res["triage_confidence"] = "defer", 0.5
+    else:
+        res["triage_verdict"], res["triage_confidence"] = "monitor", 0.5
+
     metric_source = sanitize_source(source)
     AI_REQUESTS_TOTAL.labels(metric_source, "rule", "success").inc()
     AI_ANALYSIS_DURATION_SECONDS.labels(source=metric_source, engine="rule").observe(time.time() - start_time)

@@ -72,6 +72,18 @@ async def log_ai_usage(
         await _write_rows(rows_to_write)
 
 
+def pending_cost_estimate() -> float:
+    """Cost sitting in the in-process buffer, not yet flushed to the table.
+
+    The budget brake sums the TABLE, so up to _FLUSH_AFTER_SECONDS of spend was
+    invisible to it — and a crash-looping worker systematically under-reported.
+    Adding the live buffer closes the lag half of that gap (rows lost to a hard
+    crash stay lost; that loss window is documented above as accepted).
+    Read without the lock: single event loop, no await between reads.
+    """
+    return float(sum(float(row.cost_estimate or 0.0) for row in _buffer))
+
+
 async def flush_ai_usage() -> None:
     """Write out any buffered usage rows now (timer fire or process shutdown)."""
     global _flush_timer

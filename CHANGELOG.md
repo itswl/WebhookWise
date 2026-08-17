@@ -5,6 +5,114 @@ This project follows SemVer release headings.
 
 ## Unreleased
 
+### Added
+- **Triage verdict on every analysis**: the LLM (and the rule fallback) now
+  emit `triage_verdict` (`act_now` / `monitor` / `defer`) plus a 0-1
+  `triage_confidence` — the act-now-vs-defer answer importance alone does not
+  give. Rendered on the Feishu alert card (suppressed on recoveries) and as a
+  dot chip in the dashboard's AI report. Display-only: routing decisions do
+  not read it yet.
+- **Recap card on resolve** (`INCIDENT_RESOLVE_RECAP_ENABLED`, runtime-policy,
+  default off): resolving an incident — from the dashboard or the Feishu card
+  — queues one idempotent recap card with duration, alert count, resolver,
+  and the AI incident summary when it has landed. Assembled from existing
+  data; no extra model call. Routed like other system notifications
+  (`event_type=incident_resolved` rules win, fallback cascade otherwise).
+- **Delivery queue destination** (`#/delivery`, Operations → More): browse
+  the forwarding outbox with a status filter and cursor paging, retry
+  exhausted rows, and triage dead letters — single / selected / replay-all
+  with confirms. The API for all of it existed with no UI reaching it; bulk
+  dead-letter replay was API-only.
+- **Response metrics on Overview**: global MTTA / MTTR / acknowledgement rate
+  over the last 30 days (new `/v1/services/response-metrics`, same arithmetic
+  as the per-service profiles) plus a noise-suppressed tile from silence
+  debt. Each card drills into its owning view.
+- **Feishu card actions grew up**: Acknowledge now actually assigns the
+  operator (its confirm dialog had promised this all along; an existing
+  assignee is never overwritten), and a new Silence-2h button creates a
+  bounded silence scoped to the incident's source/project/environment —
+  refused outright when the incident carries no match dimension, because an
+  all-empty silence would mute the entire ingress from one card tap.
+- **Search + paging on config views**: forward rules and silences get a
+  search box and 20-per-page pager (client-side, over the loaded list) via a
+  shared `wwFilterPage`/`wwPagerHtml` helper — the views that grow
+  monotonically no longer render unboundedly.
+- **Real-Redis Lua semantics tests**: the multi-tier rate limiter, the atomic
+  dedup read-modify-write, the circuit-breaker state machine, and the AI
+  cache now execute against a real Redis in `tests/real_infra/` (env-gated,
+  as before) — the mocked `eval` in the main suite returns 1 unconditionally
+  and can never exercise them.
+
+### Fixed
+- **Every two-part `data-act="Module.method"` action was dead in production**:
+  const-declared modules create global lexical bindings with no `window`
+  property, and the dispatcher resolved roots via `window[name]` — measured
+  in a real browser, deep-analysis retry/forward, decision-trace filters, the
+  skip-reason drill and more all resolved to null and did nothing. Modules
+  now register themselves in an explicit allowlisted registry
+  (`wwRegisterActionRoot`); a parity contract and a resolver harness pin it.
+- Webhook ingress now catches `RedisError` on enqueue: a Redis outage used to
+  report success in two queue metrics and answer the sender with a bare 500;
+  it now returns `503 Retry-After: 10` and counts as `error`, matching the
+  queue-backpressure path and the documented delivery semantics.
+- Every toast rendered as a green success and lost its first two characters —
+  an emoji purge had rewritten the keyword guards to `includes('')`, which is
+  always true. Toasts now honour the caller's type (keywords only upgrade the
+  default), are styled by tokened CSS classes instead of a frozen inline
+  palette, and announce errors as `role="alert"`. New headless harness plus
+  a static contract banning empty-string guards keep both regressions out.
+- The `feishu_relay` channel built a throwaway `httpx.AsyncClient` per
+  delivery — unpooled, honouring `HTTP(S)_PROXY` from the environment, no
+  trace headers. It now shares the internal-hop client, which is also closed
+  on shutdown (it used to leak on every graceful stop); a contract test bans
+  ad-hoc `AsyncClient` construction outside `core/http_client`.
+- The primary AI-analysis prompt now neutralizes payload/identity/source text
+  and carries an explicit data-not-instructions boundary (deep analysis
+  already did): the model's verdict drives forwarding and silencing, so a
+  crafted alert body could previously steer its own routing.
+- ARIA buttons (`role="button"` spans: the incidents badge, skip-reason drill
+  chips) were focusable but dead to Enter/Space; one delegated keydown bridge
+  activates them all.
+- `Ctrl/Cmd+R` soft-refreshes the view actually open instead of always
+  reloading the alerts list; the duplicate close button in the incident
+  resolution modal is gone.
+- The AI budget brake now counts spend still buffered in-process, closing the
+  window where a crash-looping worker systematically under-reported and
+  released the brake early.
+- `feishu-app://` targets pass rule validation (the channel existed but no
+  rule could be saved to it through the API); `SET LOCAL statement_timeout`
+  interpolation replaced with a bound `set_config()` call.
+
+### Changed
+- OpenAPI metadata is finally the product's: title `WebhookWise`, version from
+  `core/version.py` (was `Webhook AI Assistant` v0.1.0), and every operation
+  (~120) is grouped by tags instead of one flat list.
+- The integration catalog covers every delivery channel — DingTalk, WeCom, and
+  Feishu relay gained guided entries (test-before-enable included; the bot
+  tests post real markdown payloads, not raw JSON the bots reject) — and
+  catalog icons moved from server-supplied emoji to sprite names.
+- Production startup now warns (non-fatally) when ingress rate limiting is
+  fully disabled, when replay protection is off, and when `KB_ENABLED` runs
+  on placeholder embeddings.
+- The emoji contract widened (entity decoding, wider Unicode blocks) and
+  caught four documented escapes plus two undocumented ones (⌛, 🆕) — all six
+  replaced with sprite icons or dropped; a retired-palette contract bans the
+  five pre-retheme rgba() triplets.
+- The alerts stat cards that count only loaded rows now say so (`(loaded)`);
+  untranslated strings in action-center/silences/integrations/overview moved
+  into the dictionaries; number/time formatting follows the UI language
+  instead of hardcoded `zh-CN`; the legacy OpenClaw engine filter option is
+  labelled as legacy.
+- README capability tables (EN/中文) now list the runtime-settings plane, the
+  read-only MCP server, and WebhookWise Lite.
+
+### Removed
+- Four dead sub-view switcher mechanisms (`.nav-tab`, `[data-inbox-view]`,
+  `[data-operations-view]`, `[data-dt-view]`, `[data-routing-view]` binders
+  and their three empty header containers), the `PILL_PARENT` map and the
+  contract test guarding a pill bar that no longer exists, and the no-op
+  `[data-ov-period]` binding.
+
 ## [3.8.0] - 2026-08-05
 
 ### Added

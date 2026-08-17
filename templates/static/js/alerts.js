@@ -288,7 +288,7 @@ const AlertsModule = {
             this.currentPage = 1;
             this.filterAlerts(true);
 
-            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
+            document.getElementById('lastUpdate').textContent = formatTime(new Date());
         } catch (error) {
             console.error('Load failed:', error);
             showError(t('alerts.error.loadFailed') + ': ' + error.message);
@@ -497,7 +497,7 @@ const AlertsModule = {
             html += '<span class="alert-title' + (summaryText ? '' : ' is-muted') + '">' + escapeHtml(summaryText || t('alerts.summaryUnavailable', {id: webhook.id})) + '</span>';
             html += '</div>';
             html += '<div class="alert-meta">';
-            html += '<span class="alert-meta-item">🆔 #' + webhookId + '</span>';
+            html += '<span class="alert-meta-item">#' + webhookId + '</span>';
             html += '<span class="alert-meta-item">' + wwIcon('target') + ' ' + escapeHtml(String(webhook.source || 'unknown')) + '</span>';
 
             // Always show the client IP
@@ -829,6 +829,21 @@ const AlertsModule = {
         return html;
     },
 
+    // Act-now-vs-defer verdict as a dot chip (colour in the point, neutral
+    // chip). Absent on analyses cached before the field existed — render
+    // nothing rather than inventing a recommendation.
+    renderTriageChip(analysis) {
+        const verdict = String(analysis.triage_verdict || '').toLowerCase();
+        const dotFor = { act_now: 'ww-dot-danger', monitor: 'ww-dot-warning', defer: 'ww-dot-muted' };
+        if (!dotFor[verdict]) return '';
+        const confidence = (typeof analysis.triage_confidence === 'number')
+            ? ' · ' + Math.round(analysis.triage_confidence * 100) + '%'
+            : '';
+        return '<div style="margin-top: 0.6rem;"><span class="badge badge-outline" style="font-weight: 500;">' +
+            '<span class="ww-dot ' + dotFor[verdict] + '"></span>' +
+            escapeHtml(t('alerts.ai.triage.' + verdict)) + escapeHtml(confidence) + '</span></div>';
+    },
+
     renderAIAnalysis(analysis) {
         if (!analysis || Object.keys(analysis).length === 0) {
             return '<div style="padding: 2rem; text-align: center; color: var(--text-muted);">' + t('alerts.ai.noData') + '</div>';
@@ -845,6 +860,7 @@ const AlertsModule = {
 
                 <div style="font-size: 1.1rem; color: var(--text-main); font-weight: 600; margin-bottom: 1.5rem; line-height: 1.5; padding-bottom: 1rem; border-bottom: 1px solid var(--border);">
                     ${escapeHtml(String(analysis.summary || t('alerts.ai.noSummary')))}
+                    ${this.renderTriageChip(analysis)}
                 </div>
 
                 <div class="ai-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem;">
@@ -1258,14 +1274,14 @@ const AlertsModule = {
 
 
             if (result.success) {
-                showToast('' + t('alerts.msg.reanalyzeSuccess'), 'info');
+                showToast(t('alerts.msg.reanalyzeSuccess'), 'info');
                 this.loadAlerts();
             } else {
-                showToast('' + t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')), 'error');
+                showToast(t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')), 'error');
             }
         } catch (error) {
             console.error('Reanalysis error:', error);
-            showToast('' + t('alerts.msg.requestFailed') + ': ' + error.message, 'error');
+            showToast(t('alerts.msg.requestFailed') + ': ' + error.message, 'error');
         }
     },
 
@@ -1310,13 +1326,13 @@ const AlertsModule = {
                 const result = await API.forward(id, url);
 
                 if (result.success) {
-                    showToast('' + t('alerts.msg.forwardSuccess'), 'info');
+                    showToast(t('alerts.msg.forwardSuccess'), 'info');
                     this.closeForwardModal();
                 } else {
-                    showToast('' + t('alerts.msg.forwardFailed') + ': ' + (result.error || t('alerts.msg.unknownError')), 'error');
+                    showToast(t('alerts.msg.forwardFailed') + ': ' + (result.error || t('alerts.msg.unknownError')), 'error');
                 }
             } catch (error) {
-                showToast('' + t('alerts.msg.requestFailed') + ': ' + error.message, 'error');
+                showToast(t('alerts.msg.requestFailed') + ': ' + error.message, 'error');
             }
         });
     },
@@ -1397,7 +1413,7 @@ const AlertsModule = {
             var isAnchor = ev.id === anchorId;
             var isCaused = causedBy[ev.id] !== undefined;
             var borderColor = isAnchor ? 'var(--primary, var(--primary))' : (isCaused ? 'var(--warning, var(--warning))' : 'var(--border, var(--text-secondary))');
-            var bg = isAnchor ? 'var(--primary-bg, rgba(99,102,241,0.08))' : 'transparent';
+            var bg = isAnchor ? 'var(--primary-bg)' : 'transparent';
 
             // Causal connector: if this event was caused by a previous one in the
             // timeline, show a small arrow link.
@@ -1580,7 +1596,7 @@ const AlertsModule = {
                     this.loadDeepAnalyses(id);
                 } else {
                     // If the alert item is not on the current page, show a simple notice
-                    showToast('' + t('alerts.deep.completeNotice'), 'info');
+                    showToast(t('alerts.deep.completeNotice'), 'info');
                 }
             } else {
                 showToast(t('alerts.msg.analysisFailed') + ': ' + (result.error || t('alerts.msg.unknownError')), 'error');
@@ -1604,7 +1620,7 @@ const AlertsModule = {
             color: white;
             padding: 16px 24px;
             border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: var(--shadow-lg);
             z-index: 10000;
             max-width: 360px;
             animation: slideIn 0.3s ease-out;
@@ -1853,3 +1869,7 @@ const AlertsModule = {
         }
     }
 };
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="AlertsModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('AlertsModule', AlertsModule);

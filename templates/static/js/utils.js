@@ -61,7 +61,10 @@ function timeAgo(timestamp) {
  * @returns {string} The formatted number string
  */
 function formatNumber(num) {
-    return num.toLocaleString('zh-CN');
+    // Grouping follows the UI language; zh-CN was hardcoded here even when the
+    // dashboard rendered in English.
+    var zh = typeof I18N !== 'undefined' && I18N.getLang && I18N.getLang() === 'zh';
+    return num.toLocaleString(zh ? 'zh-CN' : 'en-US');
 }
 
 /**
@@ -242,91 +245,41 @@ function showToast(message, type = 'info') {
     if (!container) {
         container = document.createElement('div');
         container.id = 'toastContainer';
-        container.style.cssText = `
-            position: fixed;
-            bottom: 2rem;
-            right: 2rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            z-index: 10000;
-            pointer-events: none;
-        `;
         document.body.appendChild(container);
     }
 
+    // The caller's type wins. Keyword sniffing only upgrades the DEFAULT, so
+    // untyped calls (window.alert, legacy call sites) still colour sensibly.
+    // An earlier emoji-purge rewrote the comparison literals here to '' —
+    // and includes('')/startsWith('') are always true, so EVERY toast turned
+    // into a green success and lost its first two characters. Never match on
+    // the empty string.
+    const text = String(message);
+    let tone = type;
+    if (tone === 'info') {
+        const lower = text.toLowerCase();
+        if (lower.includes('success') || lower.includes('成功')) {
+            tone = 'success';
+        } else if (lower.includes('failed') || lower.includes('error') || lower.includes('失败') || lower.includes('crashed')) {
+            tone = 'error';
+        } else if (lower.includes('warning') || lower.includes('警告') || lower.includes('conflict')) {
+            tone = 'warning';
+        }
+    }
+    if (tone !== 'success' && tone !== 'error' && tone !== 'warning' && tone !== 'info') {
+        tone = 'info';
+    }
+
     const toast = document.createElement('div');
-    
-    let icon = '';
-    let bgColor = 'var(--bg-elevated, var(--text-secondary))';
-    let borderColor = 'var(--border, var(--text-secondary))';
-    let textColor = 'var(--text-main, var(--bg-subtle))';
-
-    const msgLower = String(message).toLowerCase();
-    if (msgLower.includes('') || msgLower.includes('success') || msgLower.includes('成功')) {
-        icon = '';
-        type = 'success';
-        bgColor = 'rgba(16, 185, 129, 0.15)';
-        borderColor = 'rgba(16, 185, 129, 0.4)';
-        textColor = 'var(--success, var(--success))';
-    } else if (msgLower.includes('') || msgLower.includes('failed') || msgLower.includes('error') || msgLower.includes('失败') || msgLower.includes('crashed')) {
-        icon = '';
-        type = 'error';
-        bgColor = 'rgba(239, 68, 68, 0.15)';
-        borderColor = 'rgba(239, 68, 68, 0.4)';
-        textColor = 'var(--danger, var(--danger))';
-    } else if (msgLower.includes('') || msgLower.includes('warning') || msgLower.includes('警告') || msgLower.includes('conflict')) {
-        icon = '';
-        type = 'warning';
-        bgColor = 'rgba(245, 158, 11, 0.15)';
-        borderColor = 'rgba(245, 158, 11, 0.4)';
-        textColor = 'var(--warning, var(--warning))';
-    } else if (msgLower.includes('') || msgLower.includes('') || msgLower.includes('fresh') || msgLower.includes('started')) {
-        icon = '';
-        type = 'info';
-        bgColor = 'rgba(99, 102, 241, 0.15)';
-        borderColor = 'rgba(99, 102, 241, 0.4)';
-        textColor = 'var(--primary, var(--primary))';
-    }
-
-    // Clean prefix emojis
-    let cleanMessage = String(message);
-    if (cleanMessage.startsWith('') || cleanMessage.startsWith('') || cleanMessage.startsWith('') || cleanMessage.startsWith('') || cleanMessage.startsWith('') || cleanMessage.startsWith('') || cleanMessage.startsWith('')) {
-        cleanMessage = cleanMessage.substring(2).trim();
-    }
-
-    toast.style.cssText = `
-        background: ${bgColor};
-        color: ${textColor};
-        border: 1px solid ${borderColor};
-        padding: 0.85rem 1.35rem;
-        border-radius: var(--radius-lg, 10px);
-        box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0,0,0,0.1));
-        font-size: 0.9rem;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 0.65rem;
-        pointer-events: auto;
-        animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        max-width: 420px;
-        box-sizing: border-box;
-    `;
-
-    const iconElement = document.createElement('span');
-    iconElement.textContent = icon;
-    const messageElement = document.createElement('span');
-    messageElement.style.lineHeight = '1.45';
-    messageElement.style.whiteSpace = 'pre-wrap';
-    messageElement.textContent = cleanMessage;
-    toast.append(iconElement, messageElement);
+    toast.className = 'toast toast--' + tone;
+    // Errors interrupt politely for assistive tech; the rest are status notes.
+    toast.setAttribute('role', tone === 'error' ? 'alert' : 'status');
+    toast.textContent = text;
     container.appendChild(toast);
 
     // Auto remove toast
     setTimeout(() => {
-        toast.style.animation = 'toastOut 0.3s ease-in forwards';
+        toast.classList.add('toast-exit');
         setTimeout(() => {
             toast.remove();
         }, 300);
@@ -655,8 +608,23 @@ var WW_ACTION_ROOTS = [
     'AlertsModule', 'DecisionTraceModule', 'DeepAnalysesModule', 'OverviewModule',
     'SilencesModule', 'RuntimeSettingsModule', 'IncidentsModule', 'ForwardRulesModule',
     'RoutingModule', 'ResponseCenterModule', 'KbDraftsModule', 'NoiseCenterModule',
-    'ActionCenterModule', 'SandboxModule', 'IngressSetupModule', 'CommandPalette'
+    'ActionCenterModule', 'SandboxModule', 'IngressSetupModule', 'CommandPalette',
+    'DeliveryQueueModule'
 ];
+
+// const-declared modules create global LEXICAL bindings with no window
+// property, so the resolver's window[name] lookup returned undefined for
+// every "Module.method" action — measured in a real browser: all two-part
+// data-acts (deep-analysis retry/forward, decision-trace filters, the skip
+// drill) were silently dead. Each module file registers itself here at load;
+// a module that fails to parse simply never registers, and every other
+// module's actions keep working.
+var WW_ACTION_ROOT_REFS = {};
+function wwRegisterActionRoot(name, root) {
+    if (WW_ACTION_ROOTS.indexOf(name) >= 0 && root && typeof root === 'object') {
+        WW_ACTION_ROOT_REFS[name] = root;
+    }
+}
 var WW_ACTION_GLOBALS = [
     'navigateTo', 'openAlert', 'openIncident', 'closeSidebarDrawer', 'copyToClipboard',
     'loadForwardRules', 'loadSilences', 'loadMaintenanceWindows', 'testRule',
@@ -670,6 +638,44 @@ var WW_ACTION_GLOBALS = [
     'deleteSilence', 'deleteMaintenanceWindow', 'testRuleGateway'
 ];
 
+/**
+ * Client-side search + page window over an already-loaded config list.
+ * Config views (silences, forward rules) fetch their whole table; on a busy
+ * install they grow monotonically, and a list without search or paging is
+ * the view that ages worst. Server-side paging would be over-engineering at
+ * config-table sizes — filter what is already here.
+ */
+function wwFilterPage(list, query, page, pageSize, textOf) {
+    var q = String(query || '').trim().toLowerCase();
+    var filtered = q
+        ? list.filter(function (item) { return String(textOf(item) || '').toLowerCase().indexOf(q) >= 0; })
+        : list;
+    var pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    var current = Math.min(Math.max(1, Number(page) || 1), pages);
+    return {
+        rows: filtered.slice((current - 1) * pageSize, current * pageSize),
+        total: filtered.length,
+        page: current,
+        pages: pages,
+    };
+}
+
+/** Shared pager strip for wwFilterPage views: total + prev/next via data-act. */
+function wwPagerHtml(result, actPrefix) {
+    if (result.total === 0) return '';
+    var html = '<div style="display: flex; gap: 8px; align-items: center; margin-top: 0.75rem;">';
+    html += '<span style="color: var(--text-muted); font-size: var(--fs-sm);">' +
+        escapeHtml(t('utils.pager.summary', { total: result.total, page: result.page, pages: result.pages })) + '</span>';
+    if (result.page > 1) {
+        html += '<button class="btn btn-sm" data-act="' + escapeHtml(actPrefix) + '" data-args="' + (result.page - 1) + '">' + t('common.prevPage') + '</button>';
+    }
+    if (result.page < result.pages) {
+        html += '<button class="btn btn-sm" data-act="' + escapeHtml(actPrefix) + '" data-args="' + (result.page + 1) + '">' + t('common.nextPage') + '</button>';
+    }
+    html += '</div>';
+    return html;
+}
+
 function wwResolveAction(name) {
     if (!name) return null;
     var parts = String(name).split('.');
@@ -679,7 +685,9 @@ function wwResolveAction(name) {
         return typeof fn === 'function' ? fn : null;
     }
     if (parts.length !== 2 || WW_ACTION_ROOTS.indexOf(parts[0]) < 0) return null;
-    var root = window[parts[0]];
+    // Registry first (const modules never reach window); window kept as a
+    // fallback for anything var-declared or test-injected.
+    var root = WW_ACTION_ROOT_REFS[parts[0]] || window[parts[0]];
     if (!root || typeof root[parts[1]] !== 'function') return null;
     return root[parts[1]].bind(root);
 }
@@ -706,4 +714,17 @@ document.addEventListener('click', function (event) {
     var args = wwParseArgs(el.getAttribute('data-args'));
     if (el.hasAttribute('data-self')) args.push(el);
     fn.apply(null, args);
+});
+
+// A <span role="button" tabindex="0"> takes keyboard focus but the browser
+// synthesises no click from Enter/Space — every ARIA button was Tab-reachable
+// and then dead to the keyboard. One bridge keeps the promise for all of them
+// (real <button> elements never reach here; the browser handles them itself).
+document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    var el = event.target;
+    if (!(el instanceof Element) || !el.matches('[role="button"]')) return;
+    if (el.tagName === 'BUTTON' || el.tagName === 'A' || el.tagName === 'INPUT') return;
+    event.preventDefault();
+    el.click();
 });

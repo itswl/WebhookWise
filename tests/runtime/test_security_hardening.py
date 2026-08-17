@@ -893,6 +893,62 @@ async def test_webhook_receive_always_uses_ingress_backpressure_and_taskiq(
 
 
 @pytest.mark.asyncio
+async def test_webhook_enqueue_failure_is_a_retryable_503_and_counts_as_error(
+    monkeypatch: pytest.MonkeyPatch, temp_config: Any
+) -> None:
+    """A Redis outage during XADD must surface as backpressure, not success.
+
+    redis-py's ConnectionError subclasses RedisError(Exception) only, so it
+    used to sail past the OSError/RuntimeError tuples: both queue metrics
+    recorded success, the ingress outcome stayed "accepted", and the sender
+    got a bare 500 with no Retry-After — the README's "on XADD failure the
+    upstream should retry" contract with no retry signal attached.
+    """
+    import httpx
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    from api.app import app
+
+    monkeypatch.setattr(temp_config.server, "RUN_MODE", "api")
+    monkeypatch.setattr(temp_config.security, "REQUIRE_WEBHOOK_AUTH", False)
+    monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_PER_MINUTE", 0)
+    monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_BURST", 0)
+    monkeypatch.setattr(temp_config.security, "WEBHOOK_RATE_LIMIT_GLOBAL_PER_MINUTE", 0)
+
+    async def failing_kiq(**kwargs: object) -> None:
+        raise RedisConnectionError("redis is down")
+
+    queue_ops: list[tuple[str, ...]] = []
+    ingress_outcomes: list[tuple[str, ...]] = []
+
+    class _Counter:
+        def __init__(self, sink: list[tuple[str, ...]]) -> None:
+            self._sink = sink
+
+        def labels(self, *args: str, **kwargs: str) -> "_Counter":
+            self._sink.append(tuple(args) + tuple(kwargs.values()))
+            return self
+
+        def inc(self, *_args: object) -> None: ...
+
+        def observe(self, *_args: object) -> None: ...
+
+    monkeypatch.setattr("api.v1.webhook.process_webhook_task.kiq", failing_kiq)
+    monkeypatch.setattr("api.v1.webhook.QUEUE_OPERATIONS_TOTAL", _Counter(queue_ops))
+    monkeypatch.setattr("api.v1.webhook.QUEUE_OPERATION_DURATION_SECONDS", _Counter([]))
+    monkeypatch.setattr("api.v1.webhook.WEBHOOK_INGRESS_REQUESTS_TOTAL", _Counter(ingress_outcomes))
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post("/v1/webhook/prometheus", json={"alertname": "redis-down"})
+
+    assert response.status_code == 503
+    assert response.headers.get("Retry-After") == "10"
+    assert queue_ops == [("webhook_process_task", "enqueue", "error")] * len(queue_ops) and queue_ops
+    assert ingress_outcomes == [("prometheus", "error")]
+
+
+@pytest.mark.asyncio
 async def test_readiness_requires_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     from api.health import readiness_check
 

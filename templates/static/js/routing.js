@@ -9,7 +9,6 @@
  */
 const RoutingModule = (function () {
     let currentView = 'rules';
-    let bound = false;
 
     const VIEWS = {
         rules: 'routingViewRules',
@@ -22,9 +21,6 @@ const RoutingModule = (function () {
         quality: 'routingViewQuality',
         integrations: 'routingViewIntegrations'
     };
-
-    // Views reached from within another view rather than from the pill bar.
-    const PILL_PARENT = { sandbox: 'rules', audit: 'rules' };
 
     function loadView(view) {
         if (view === 'rules') {
@@ -60,34 +56,14 @@ const RoutingModule = (function () {
             const el = document.getElementById(VIEWS[key]);
             if (el) el.style.display = key === currentView ? 'block' : 'none';
         });
-        // Sandbox and Audit are entered from buttons inside the Rules view and
-        // have no pill of their own. Highlighting their PARENT keeps the bar
-        // from going completely blank, which left the user with no indication
-        // of where they were.
-        const highlighted = PILL_PARENT[currentView] || currentView;
-        document.querySelectorAll('[data-routing-view]').forEach(function (btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-routing-view') === highlighted);
-        });
         if (typeof recordDestination === 'function') recordDestination(currentView);
         loadView(currentView);
     }
 
-    function bindEvents() {
-        if (bound) return;
-        document.querySelectorAll('[data-routing-view]').forEach(function (btn) {
-            btn.addEventListener('click', function (e) {
-                const button = e.target.closest('[data-routing-view]');
-                const view = button ? button.getAttribute('data-routing-view') : null;
-                if (view) setView(view);
-            });
-        });
-        bound = true;
-    }
-
     return {
-        init: function () {
-            bindEvents();
-        },
+        // Sub-view switching arrives via navigateTo/setView (sidebar and
+        // palette); there is no pill bar left to bind.
+        init: function () {},
         // Called when the Routing tab is opened: show + load the active sub-view.
         load: function () {
             setView(currentView);
@@ -99,3 +75,7 @@ const RoutingModule = (function () {
         setView: setView
     };
 })();
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="RoutingModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('RoutingModule', RoutingModule);

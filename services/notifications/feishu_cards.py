@@ -21,6 +21,10 @@ _IMPORTANCE_LABEL = {
 }
 _CHINA_TZ = timezone(timedelta(hours=8), "UTC+8")
 
+# Stable machine values → card copy. Unknown/absent verdicts render nothing:
+# analyses cached before the field existed must not invent a recommendation.
+_TRIAGE_LABEL = {"act_now": "立即处理", "monitor": "关注观察", "defer": "可延后"}
+
 
 def _add_md_section(elements: list[JsonObject], title: str, content: object, max_len: int = 800) -> None:
     text = _truncate_section_text(content, max_len)
@@ -157,6 +161,23 @@ def build_feishu_card(
     identity_line = format_identity_line(analysis_result, parsed)
     if identity_line:
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"🏷️ {identity_line}"}})
+
+    # 2b) Act-now-vs-defer verdict — the reader's first question, answered
+    #     before they scan anything else. Suppressed on recovery cards: the
+    #     green header already says "no action needed", and the reused firing
+    #     analysis would claim the opposite.
+    verdict_label = _TRIAGE_LABEL.get(str(analysis_result.get("triage_verdict", "")).strip().lower())
+    if verdict_label and not is_recovery:
+        raw_confidence = analysis_result.get("triage_confidence")
+        confidence_suffix = (
+            f"（置信度 {round(float(raw_confidence) * 100)}%）" if isinstance(raw_confidence, (int, float)) else ""
+        )
+        elements.append(
+            {
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": f"⚡ 处置建议：**{verdict_label}**{confidence_suffix}"},
+            }
+        )
 
     # 3) Impact as its own clearly-titled block (secondary to the headline).
     if impact:

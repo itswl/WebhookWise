@@ -8,25 +8,10 @@
 const OverviewModule = {
     currentPeriod: 'day',
 
-    init() {
-        this.bindEvents();
-    },
-
-    bindEvents() {
-        document.querySelectorAll('[data-ov-period]').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                const b = e.target.closest('[data-ov-period]');
-                const period = b ? b.getAttribute('data-ov-period') : null;
-                if (period) this.load(period);
-            });
-        });
-    },
-
-    updatePeriodButtons(period) {
-        document.querySelectorAll('[data-ov-period]').forEach((btn) => {
-            btn.classList.toggle('active', btn.getAttribute('data-ov-period') === period);
-        });
-    },
+    // The period selector on the shared Overview-tab header is [data-dt-period],
+    // owned by DecisionTraceModule; this module only receives the chosen period
+    // through load(period). The old [data-ov-period] binding matched nothing.
+    init() {},
 
     // Drill from a skip-reason chip into the Decision Trace sub-view, filtered to
     // that skip_code. Overview and Decision Trace are sub-views of the same tab,
@@ -51,7 +36,6 @@ const OverviewModule = {
 
     async load(period) {
         this.currentPeriod = period || this.currentPeriod || 'day';
-        this.updatePeriodButtons(this.currentPeriod);
         const container = document.getElementById('overviewContent');
         if (!container) return;
         const mark = document.getElementById('ovLastRefreshed');
@@ -59,12 +43,14 @@ const OverviewModule = {
             // Overview + AI usage + recent incidents + sparkline + queue health,
             // in parallel. Everything but the core overview is best-effort
             // (.catch → null) so one failing probe never blanks the page.
-            const [ovRes, aiRes, incRes, sparkRes, queueRes] = await Promise.all([
+            const [ovRes, aiRes, incRes, sparkRes, queueRes, respRes, debtRes] = await Promise.all([
                 API.getOverview(this.currentPeriod),
                 API.getAIUsage(this.currentPeriod).catch(() => null),
                 API.getIncidents({ status: 'active', page_size: 5 }).catch(() => null),
                 this._fetchSparkline(7).catch(() => null),
                 API.getQueueHealth().catch(() => null),
+                API.getResponseMetrics(30).catch(() => null),
+                API.getSilenceDebt(30).catch(() => null),
             ]);
             if (!ovRes || !ovRes.success || !ovRes.data) {
                 container.innerHTML = this.emptyHtml();
@@ -72,7 +58,9 @@ const OverviewModule = {
                 const incidents = (incRes && incRes.success && incRes.data) ? incRes.data : [];
                 var sparkData = (sparkRes && sparkRes.success && sparkRes.data) ? sparkRes.data : [];
                 const queue = (queueRes && queueRes.success && queueRes.data) ? queueRes.data : null;
-                container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents, sparkData, queue);
+                const response = (respRes && respRes.success && respRes.data) ? respRes.data : null;
+                const debt = (debtRes && debtRes.success && debtRes.data) ? debtRes.data : null;
+                container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents, sparkData, queue, response, debt);
             }
             if (mark) mark.textContent = t('common.lastRefreshed', { time: new Date().toLocaleTimeString() });
         } catch (err) {
@@ -85,7 +73,41 @@ const OverviewModule = {
         return '<div class="empty-state"><div class="empty-icon">' + wwIcon('bar-chart') + '</div><div class="empty-title">' + t('overview.empty.title') + '</div><div class="empty-text">' + t('overview.empty.text') + '</div></div>';
     },
 
-    renderHtml(d, ai, incidents, sparkData, queue) {
+    // "How fast are we responding, and how much noise never reached anyone" —
+    // the answers already existed (service profiles, silence debt) but only in
+    // drill-down views; the facade now states them. Fixed 30-day window: MTTA
+    // over "today" is a coin flip, not a metric.
+    _renderResponseBand(response, debt, fmt) {
+        const minutes = (value) => {
+            if (typeof value !== 'number') return '—';
+            if (value >= 90) return t('silences.debt.timeHours', { n: (value / 60).toFixed(1) });
+            return t('silences.debt.timeMinutes', { n: Math.round(value) });
+        };
+        let cards = '';
+        if (response && response.incident_count > 0) {
+            cards += this._card(wwIcon('clock'), t('overview.card.mtta'), minutes(response.average_mtta_minutes),
+                t('overview.card.mttaTrend', { n: fmt(response.incident_count) }), null,
+                { act: 'navigateTo', args: 'incidents' });
+            cards += this._card(wwIcon('history'), t('overview.card.mttr'), minutes(response.average_mttr_minutes),
+                t('overview.card.mttrTrend', { n: fmt(response.resolved_incident_count || 0) }), null,
+                { act: 'navigateTo', args: 'incidents' });
+            const ack = response.acknowledgement_rate_pct;
+            cards += this._card(wwIcon('check'), t('overview.card.ackRate'),
+                (typeof ack === 'number') ? ack.toFixed(1) + '%' : '—',
+                t('overview.card.ackRateTrend'), null,
+                { act: 'navigateTo', args: 'work-queue' });
+        }
+        if (debt && Number(debt.total_suppressed) > 0) {
+            cards += this._card(wwIcon('volume-x'), t('overview.card.suppressed'), fmt(debt.total_suppressed),
+                t('overview.card.suppressedTrend', { n: fmt(debt.active_silences || 0) }), null,
+                { act: 'navigateTo', args: 'silences' });
+        }
+        if (!cards) return '';
+        return '<div style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem;">' + t('overview.section.response') + '</div>' +
+            '<div class="stats-grid" style="margin-bottom: 1.5rem;">' + cards + '</div>';
+    },
+
+    renderHtml(d, ai, incidents, sparkData, queue, response, debt) {
         const fmt = (typeof formatNumber === 'function') ? formatNumber : (n) => String(n);
         const delivery = d.delivery || {};
         const cost = ai ? (ai.cost && ai.cost.total) || 0 : null;
@@ -128,6 +150,8 @@ const OverviewModule = {
             html += '<div style="margin-bottom: 1.5rem;">' + (queueCard || skipCard) + '</div>';
         }
 
+        html += this._renderResponseBand(response, debt, fmt);
+
         // Top alert rules (rule grain; unidentified senders fall back to source).
         const sources = d.top_rules || [];
         if (sources.length) {
@@ -155,7 +179,7 @@ const OverviewModule = {
                 html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" data-act="openIncident" data-args="' + Number(inc.id) + '">';
                 html += '<div style="flex:1; min-width:0;">';
                 html += '<div style="font-weight:500; font-size:0.9rem;">' + escapeHtml(inc.title) + '</div>';
-                html += '<div style="font-size:0.76rem; color:var(--text-muted);">' + escapeHtml(inc.source || '') + ' · ' + inc.alert_count + ' alerts · ' + (impEmoji[inc.top_importance] || '') + (inc.top_importance || '') + '</div>';
+                html += '<div style="font-size:0.76rem; color:var(--text-muted);">' + escapeHtml(inc.source || '') + ' · ' + escapeHtml(t('overview.incidentAlerts', { n: inc.alert_count })) + ' · ' + (impEmoji[inc.top_importance] || '') + (inc.top_importance || '') + '</div>';
                 html += '</div>';
                 html += '<span style="color:var(--text-muted); font-size:0.7rem;">' + formatTime(inc.started_at) + '</span>';
                 html += '</div>';
@@ -304,3 +328,7 @@ const OverviewModule = {
         return (ai.route_breakdown && ai.route_breakdown[key]) || 0;
     },
 };
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="OverviewModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('OverviewModule', OverviewModule);

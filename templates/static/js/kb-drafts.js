@@ -179,3 +179,7 @@ const KbDraftsModule = (function () {
 
     return { load: load };
 })();
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="KbDraftsModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('KbDraftsModule', KbDraftsModule);

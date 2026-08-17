@@ -48,7 +48,10 @@ document.addEventListener('DOMContentLoaded', function () {
     bind('#knowledgeGapWindow', 'change', function (event) { ResponseCenterModule.loadKnowledgeGaps(); });
     bind('[data-sb="sb18"]', 'click', function (event) { ResponseCenterModule.loadKnowledgeGaps(); });
     bind('[data-sb="sb19"]', 'click', function (event) { RuntimeSettingsModule.load(); });
-    bind('[data-sb="sb20"]', 'click', function (event) { IncidentsModule.closeResolutionModal(); });
+    bind('[data-sb="sb21"]', 'click', function (event) { DeliveryQueueModule.load(); });
+    bind('[data-sb="sb22"]', 'change', function (event) { DeliveryQueueModule.reloadOutbox(); });
+    bind('[data-sb="sb23"]', 'input', function (event) { ForwardRulesModule.search(event.target.value); });
+    bind('[data-sb="sb24"]', 'input', function (event) { SilencesModule.search(event.target.value); });
     bind('[data-sb="sb21"]', 'click', function (event) { IncidentsModule.closeResolutionModal(); });
     bind('#incidentResolutionDraftBtn', 'click', function (event) { IncidentsModule.saveResolutionDraft(); });
     bind('#incidentResolutionCloseBtn', 'click', function (event) { IncidentsModule.submitResolution(); });

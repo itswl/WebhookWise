@@ -110,6 +110,11 @@ class AnalysisResult(TypedDict):
     root_cause: NotRequired[str]
     impact: NotRequired[str]
     confidence: NotRequired[float]
+    # Act-now-vs-defer triage: stable machine values ("act_now"|"monitor"|
+    # "defer") + 0-1 confidence. Display-only for now — decisioning does not
+    # read them; wiring them into routing is a separate decision.
+    triage_verdict: NotRequired[str]
+    triage_confidence: NotRequired[float]
     _route_type: NotRequired[AnalysisRouteType]
     _degraded: NotRequired[bool]
     _degraded_reason: NotRequired[str]

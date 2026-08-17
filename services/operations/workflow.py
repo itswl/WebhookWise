@@ -111,6 +111,13 @@ async def update_workflow(
                 resource.status = "closed"
                 resource.ended_at = resource.ended_at or now
                 queue_summary_if_needed(resource, now)
+                # Recap only for a real resolution — an "ignored" incident is a
+                # judgement that it was not worth attention, and a recap card
+                # would argue the opposite. Rides this same transaction.
+                if new_status == "resolved":
+                    from services.incidents.notifications import queue_incident_resolved_recap
+
+                    await queue_incident_resolved_recap(session, resource, resolver=actor)
             elif new_status == "open" and resource.status == "closed":
                 resource.status = "active"
                 resource.ended_at = None

@@ -9,8 +9,11 @@ def test_toast_renders_dynamic_messages_as_text() -> None:
     source = (PROJECT_ROOT / "templates/static/js/utils.js").read_text(encoding="utf-8")
 
     assert source.count("function showToast(") == 1
-    assert "messageElement.textContent = cleanMessage" in source
-    assert "${cleanMessage}" not in source
+    body = source[source.index("function showToast(") : source.index("function _wwDialog(")]
+    # The message is attacker-influenceable (server error strings end up in
+    # toasts); it must land as text, never as markup.
+    assert "toast.textContent = text" in body
+    assert "innerHTML" not in body
 
 
 def test_security_headers_include_csp_and_browser_capability_restrictions() -> None:

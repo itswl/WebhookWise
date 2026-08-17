@@ -547,3 +547,7 @@ const ResponseCenterModule = (function () {
         setBucket: setBucket
     };
 })();
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="ResponseCenterModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('ResponseCenterModule', ResponseCenterModule);

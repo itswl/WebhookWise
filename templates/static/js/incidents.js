@@ -1921,3 +1921,7 @@ const IncidentsModule = (function () {
         silenceIncidentSources: silenceIncidentSources
     };
 })();
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="IncidentsModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('IncidentsModule', IncidentsModule);

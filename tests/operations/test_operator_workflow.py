@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -105,12 +106,114 @@ async def test_incidents_can_be_merged_then_split_without_duplicate_membership(s
 
 
 @pytest.mark.asyncio
+async def test_resolving_an_incident_queues_one_recap_card(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, temp_config: Any
+) -> None:
+    """The recap closes the loop in chat: exactly one card per incident (a
+    reopen + second resolve reuses the idempotency key), only for "resolved"
+    (an "ignored" incident was judged not worth attention), and only when the
+    operator opted in."""
+    from sqlalchemy import select as sa_select
+
+    from core.datetime_utils import utcnow
+    from models import ForwardOutbox
+    from services.operations.workflow import update_workflow
+
+    monkeypatch.setattr(temp_config.notifications, "INCIDENT_RESOLVE_RECAP_ENABLED", True)
+    monkeypatch.setattr(temp_config.notifications, "DEEP_ANALYSIS_FEISHU_WEBHOOK", "https://open.feishu.cn/hook/x")
+
+    now = utcnow()
+    resolved = Incident(
+        title="支付网关5xx激增",
+        status="active",
+        source="grafana",
+        started_at=now,
+        alert_count=3,
+        summary_analysis={"summary": "网关升级触发连接池耗尽", "root_cause": "连接池上限过低"},
+    )
+    ignored = Incident(title="noise", status="active", source="grafana", started_at=now, alert_count=1)
+    session.add_all([resolved, ignored])
+    await session.commit()
+
+    await update_workflow(
+        session,
+        resource_type="incident",
+        resource_id=int(resolved.id),
+        changes={"workflow_status": "resolved"},
+        actor="adrian",
+    )
+    rows = list(
+        (await session.execute(sa_select(ForwardOutbox).where(ForwardOutbox.event_type == "incident_resolved")))
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+    card = str(rows[0].formatted_payload)
+    assert "事件已解决" in card and "网关升级触发连接池耗尽" in card and "adrian" in card
+
+    # Reopen + resolve again: the idempotency key already exists, no second card.
+    await update_workflow(
+        session, resource_type="incident", resource_id=int(resolved.id), changes={"workflow_status": "open"}
+    )
+    await update_workflow(
+        session, resource_type="incident", resource_id=int(resolved.id), changes={"workflow_status": "resolved"}
+    )
+    # Ignored incidents never recap.
+    await update_workflow(
+        session, resource_type="incident", resource_id=int(ignored.id), changes={"workflow_status": "ignored"}
+    )
+    rows = list(
+        (await session.execute(sa_select(ForwardOutbox).where(ForwardOutbox.event_type == "incident_resolved")))
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_recap_stays_silent_when_disabled(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, temp_config: Any
+) -> None:
+    from sqlalchemy import select as sa_select
+
+    from core.datetime_utils import utcnow
+    from models import ForwardOutbox
+    from services.operations.workflow import update_workflow
+
+    monkeypatch.setattr(temp_config.notifications, "INCIDENT_RESOLVE_RECAP_ENABLED", False)
+    incident = Incident(title="t", status="active", source="s", started_at=utcnow(), alert_count=2)
+    session.add(incident)
+    await session.commit()
+
+    await update_workflow(
+        session, resource_type="incident", resource_id=int(incident.id), changes={"workflow_status": "resolved"}
+    )
+    rows = (
+        (await session.execute(sa_select(ForwardOutbox).where(ForwardOutbox.event_type == "incident_resolved")))
+        .scalars()
+        .all()
+    )
+    assert list(rows) == []
+
+
+@pytest.mark.asyncio
 async def test_integration_catalog_installs_openclaw_as_a_forward_rule(session: AsyncSession) -> None:
     from core.app_context import get_config_manager
     from schemas.operations import IntegrationSetupRequest
     from services.operations.integration_catalog import install_integration, integration_catalog
 
-    assert {item["id"] for item in integration_catalog()} == {"feishu", "generic_webhook", "deep_analysis"}
+    # Every implemented delivery channel is installable from the catalog —
+    # dingtalk/wecom/feishu_relay used to be reachable only by hand-writing a
+    # rule despite being advertised as first-class targets.
+    assert {item["id"] for item in integration_catalog()} == {
+        "feishu",
+        "dingtalk",
+        "wecom",
+        "generic_webhook",
+        "feishu_relay",
+        "deep_analysis",
+    }
+    assert all(item.get("sprite") for item in integration_catalog()), "catalog icons come from the sprite sheet"
     get_config_manager().deep_analysis.DEEP_ANALYSIS_ENABLED = True
     result = await install_integration(
         session,

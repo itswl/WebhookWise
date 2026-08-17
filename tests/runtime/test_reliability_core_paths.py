@@ -363,6 +363,7 @@ async def test_forwarding_target_url_validation_branches(
 ) -> None:
     from api.v1 import forwarding
     from core.url_security import UnsafeTargetUrlError
+    from services.forwarding import target_validation
 
     seen_urls: list[str] = []
 
@@ -370,7 +371,9 @@ async def test_forwarding_target_url_validation_branches(
         seen_urls.append(url)
         return "https://validated.example/hook"
 
-    monkeypatch.setattr(forwarding, "validate_outbound_url", validate_outbound_url)
+    # The per-type policy moved to services/forwarding/target_validation so the
+    # integration catalog can share it; the API keeps a thin alias.
+    monkeypatch.setattr(target_validation, "validate_outbound_url", validate_outbound_url)
 
     assert await forwarding._validated_target_url("deep_analysis", " session-1 ") == "session-1"
     assert await forwarding._validated_target_url("webhook", "https://example.com/hook") == (

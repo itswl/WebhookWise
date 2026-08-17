@@ -16,8 +16,8 @@ const check = (label, got, want) => {
 };
 const slugs = r => r.map(i => i.slug);
 
-check('目的地总数 = 21', M._all.length, 21);
-check('空查询列出全部(功能地图)', M._compute('').length, 21);
+check('目的地总数 = 22', M._all.length, 22);
+check('空查询列出全部(功能地图)', M._compute('').length, 22);
 check('精确名: silence', slugs(M._compute('silence'))[0], 'silences');
 check('中文: 静音', slugs(M._compute('静音'))[0], 'silences');
 check('中文: 降噪', slugs(M._compute('降噪'))[0], 'noise');
@@ -29,12 +29,12 @@ check('无匹配返回空', M._compute('zzzzqqq').length, 0);
 // recents float to the top of the empty state
 store['ww-palette-recent'] = JSON.stringify(['settings', 'noise']);
 check('最近使用置顶', slugs(M._compute('')).slice(0, 2), ['settings', 'noise']);
-check('最近使用不重复出现', M._compute('').length, 21);
+check('最近使用不重复出现', M._compute('').length, 22);
 // a stale slug from an older build must not break the list
 store['ww-palette-recent'] = JSON.stringify(['no-such-view']);
-check('陈旧的最近记录被忽略', M._compute('').length, 21);
+check('陈旧的最近记录被忽略', M._compute('').length, 22);
 store['ww-palette-recent'] = 'not json';
-check('损坏的 localStorage 不崩溃', M._compute('').length, 21);
+check('损坏的 localStorage 不崩溃', M._compute('').length, 22);
 
 // Direct record jumps: typing an id is answered by the palette itself
 // (before this, reaching alert 245 meant navigate-then-scroll).

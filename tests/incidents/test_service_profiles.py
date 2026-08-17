@@ -112,3 +112,52 @@ async def test_service_profile_requires_discovered_data(
     db_session: AsyncSession,
 ) -> None:
     assert await get_service_profile(db_session, "missing") is None
+
+
+@pytest.mark.asyncio
+async def test_global_response_metrics_aggregate_all_incidents(
+    db_session: AsyncSession,
+) -> None:
+    """The Overview facade's MTTA/MTTR: same arithmetic as the per-service
+    profile, ungrouped — and honest Nones on an empty window instead of
+    zeroes pretending to be measurements."""
+    from datetime import timedelta
+
+    from core.datetime_utils import utcnow
+    from models import Incident
+    from services.incidents.service_profiles import global_response_metrics
+
+    empty = await global_response_metrics(db_session, window_days=30)
+    assert empty["incident_count"] == 0
+    assert empty["average_mtta_minutes"] is None
+    assert empty["average_mttr_minutes"] is None
+    assert empty["acknowledgement_rate_pct"] is None
+
+    now = utcnow()
+    acked = Incident(
+        title="a",
+        status="closed",
+        workflow_status="resolved",
+        source="grafana",
+        started_at=now - timedelta(minutes=60),
+        acknowledged_at=now - timedelta(minutes=50),
+        resolved_at=now - timedelta(minutes=30),
+        alert_count=2,
+    )
+    silent = Incident(
+        title="b",
+        status="active",
+        workflow_status="open",
+        source="grafana",
+        started_at=now - timedelta(minutes=20),
+        alert_count=1,
+    )
+    db_session.add_all([acked, silent])
+    await db_session.commit()
+
+    metrics = await global_response_metrics(db_session, window_days=30)
+    assert metrics["incident_count"] == 2
+    assert metrics["resolved_incident_count"] == 1
+    assert metrics["average_mtta_minutes"] == 10.0
+    assert metrics["average_mttr_minutes"] == 30.0
+    assert metrics["acknowledgement_rate_pct"] == 50.0

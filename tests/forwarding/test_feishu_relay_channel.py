@@ -50,13 +50,10 @@ class _FakeClient:
 
     def __init__(self, *args: Any, **kwargs: Any) -> None: ...
 
-    async def __aenter__(self) -> "_FakeClient":
-        return self
-
-    async def __aexit__(self, *args: Any) -> None: ...
-
-    async def post(self, url: str, *, content: bytes, headers: dict[str, str]) -> _FakeResponse:
-        _FakeClient.sent.append({"url": url, "content": content, "headers": headers})
+    async def post(
+        self, url: str, *, content: bytes, headers: dict[str, str], timeout: float | None = None
+    ) -> _FakeResponse:
+        _FakeClient.sent.append({"url": url, "content": content, "headers": headers, "timeout": timeout})
         if _FakeClient.raise_error is not None:
             raise _FakeClient.raise_error
         return _FakeClient.response
@@ -64,9 +61,13 @@ class _FakeClient:
 
 @pytest.fixture
 def relay_env(monkeypatch: pytest.MonkeyPatch, temp_config: Any) -> None:
+    import core.http_client as core_http_client
+
     monkeypatch.setattr(temp_config.notifications, "FORWARD_RELAY_SECRET", "door-secret")
     monkeypatch.setattr(temp_config.notifications, "FORWARD_RELAY_MODE", "processed")
-    monkeypatch.setattr(httpx, "AsyncClient", _FakeClient)
+    # The channel now shares the internal-hop client instead of constructing a
+    # throwaway httpx.AsyncClient per delivery; the fake stands in for it.
+    monkeypatch.setattr(core_http_client, "get_deep_analysis_client", lambda: _FakeClient())
     _FakeClient.sent = []
     _FakeClient.response = _FakeResponse(200)
     _FakeClient.raise_error = None
@@ -197,6 +198,21 @@ async def test_rule_validation_accepts_private_relay_urls() -> None:
     )
     with pytest.raises(UnsafeTargetUrlError):
         await _validated_target_url("feishu_relay", "ftp://hookrelay:8100/x")
+
+
+@pytest.mark.asyncio
+async def test_rule_validation_accepts_feishu_app_chat_targets() -> None:
+    """feishu-app:// is not a URL; the generic validator rejected the scheme
+    outright, so the feishu_app channel could never be targeted by a rule
+    saved through the API despite being a fully implemented channel."""
+    from core.url_security import UnsafeTargetUrlError
+    from services.forwarding.target_validation import validated_target_url
+
+    assert await validated_target_url("feishu_app", "feishu-app://oc_incidents") == "feishu-app://oc_incidents"
+    with pytest.raises(UnsafeTargetUrlError):
+        await validated_target_url("feishu_app", "feishu-app://")
+    with pytest.raises(UnsafeTargetUrlError):
+        await validated_target_url("feishu_app", "https://example.com/not-a-chat")
 
 
 @pytest.mark.asyncio

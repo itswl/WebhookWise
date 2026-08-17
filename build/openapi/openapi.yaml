@@ -1,10 +1,12 @@
 openapi: 3.1.0
 info:
-  title: Webhook AI Assistant
-  version: 0.1.0
+  title: WebhookWise
+  version: 3.8.0
 paths:
   /live:
     get:
+      tags:
+      - Health
       summary: Liveness Check
       description: Process liveness check; does not touch external dependencies.
       operationId: liveness_check_live_get
@@ -17,6 +19,8 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
   /ready:
     get:
+      tags:
+      - Health
       summary: Readiness Check
       description: 'Readiness check: the API depends on the DB and the Redis queue.'
       operationId: readiness_check_ready_get
@@ -29,6 +33,8 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
   /dashboard:
     get:
+      tags:
+      - Dashboard
       summary: Dashboard
       description: Return the dashboard page with content-hash-versioned asset references.
       operationId: dashboard_dashboard_get
@@ -40,6 +46,8 @@ paths:
               schema: {}
   /:
     get:
+      tags:
+      - Dashboard
       summary: Dashboard
       description: Return the dashboard page with content-hash-versioned asset references.
       operationId: dashboard__get
@@ -51,6 +59,8 @@ paths:
               schema: {}
   /v1/deep-analyze/{webhook_id}:
     post:
+      tags:
+      - Deep Analysis
       summary: Deep Analyze Webhook
       operationId: deep_analyze_webhook_v1_deep_analyze__webhook_id__post
       security:
@@ -85,6 +95,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/deep-analyses:
     get:
+      tags:
+      - Deep Analysis
       summary: List All Deep Analyses
       operationId: list_all_deep_analyses_v1_deep_analyses_get
       security:
@@ -145,6 +157,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/deep-analyses/detail/{analysis_id}:
     get:
+      tags:
+      - Deep Analysis
       summary: Get Deep Analysis Detail
       description: 'Full record for one analysis (normalized_report + raw analysis_result).
 
@@ -177,6 +191,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/deep-analyses/{webhook_id}:
     get:
+      tags:
+      - Deep Analysis
       summary: Get Deep Analyses
       operationId: get_deep_analyses_v1_deep_analyses__webhook_id__get
       security:
@@ -214,6 +230,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/deep-analyses/{analysis_id}/stream:
     get:
+      tags:
+      - Deep Analysis
       summary: Stream Deep Analysis
       description: 'Relay the investigator''s own progress stream to the browser.
 
@@ -260,6 +278,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/deep-analyses/{analysis_id}/retry:
     post:
+      tags:
+      - Deep Analysis
       summary: Retry Deep Analysis
       description: Re-fetch or re-trigger the deep-analysis result.
       operationId: retry_deep_analysis_v1_deep_analyses__analysis_id__retry_post
@@ -286,6 +306,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/deep-analyses/{analysis_id}/forward:
     post:
+      tags:
+      - Deep Analysis
       summary: Forward Deep Analysis
       description: Forward the deep analysis result to a given URL (Feishu card or
         generic Webhook).
@@ -322,6 +344,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/reanalyze/{webhook_id}:
     post:
+      tags:
+      - Re-analysis
       summary: Reanalyze Webhook
       operationId: reanalyze_webhook_v1_reanalyze__webhook_id__post
       security:
@@ -348,6 +372,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/forward/{webhook_id}:
     post:
+      tags:
+      - Re-analysis
       summary: Manual Forward Webhook
       operationId: manual_forward_webhook_v1_forward__webhook_id__post
       security:
@@ -382,6 +408,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/ai-usage:
     get:
+      tags:
+      - AI Usage
       summary: Get Ai Usage Endpoint
       operationId: get_ai_usage_endpoint_v1_ai_usage_get
       security:
@@ -410,6 +438,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/decision-traces/stats:
     get:
+      tags:
+      - Decision Traces
       summary: Get Decision Trace Stats Endpoint
       operationId: get_decision_trace_stats_endpoint_v1_decision_traces_stats_get
       security:
@@ -438,6 +468,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/overview:
     get:
+      tags:
+      - Decision Traces
       summary: Get Overview Endpoint
       operationId: get_overview_endpoint_v1_overview_get
       security:
@@ -466,6 +498,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/decision-traces/quality-stats:
     get:
+      tags:
+      - Decision Traces
       summary: Get Decision Trace Quality Stats Endpoint
       operationId: get_decision_trace_quality_stats_endpoint_v1_decision_traces_quality_stats_get
       security:
@@ -494,6 +528,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/decision-traces:
     get:
+      tags:
+      - Decision Traces
       summary: List Decision Traces Endpoint
       description: List decision traces (newest first), each with its full chain inline.
       operationId: list_decision_traces_endpoint_v1_decision_traces_get
@@ -589,6 +625,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/decision-traces/ai-disagreements:
     get:
+      tags:
+      - Decision Traces
       summary: List Ai Rule Disagreements Endpoint
       description: 'Review queue: recent alerts where a rule overrode the AI''s importance.'
       operationId: list_ai_rule_disagreements_endpoint_v1_decision_traces_ai_disagreements_get
@@ -626,6 +664,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/decision-traces/by-event/{webhook_id}:
     get:
+      tags:
+      - Decision Traces
       summary: Get Decision Trace By Event Endpoint
       description: Get the decision trace for a single webhook event.
       operationId: get_decision_trace_by_event_endpoint_v1_decision_traces_by_event__webhook_id__get
@@ -652,6 +692,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/forward-rules:
     get:
+      tags:
+      - Forward Rules
       summary: Get Forward Rules Endpoint
       operationId: get_forward_rules_endpoint_v1_forward_rules_get
       responses:
@@ -664,6 +706,8 @@ paths:
       security:
       - HTTPBearer: []
     post:
+      tags:
+      - Forward Rules
       summary: Create Forward Rule Endpoint
       operationId: create_forward_rule_endpoint_v1_forward_rules_post
       requestBody:
@@ -689,6 +733,8 @@ paths:
       - HTTPBearer: []
   /v1/deep-analysis-gateways:
     get:
+      tags:
+      - Forward Rules
       summary: Get Deep Analysis Gateways Endpoint
       description: The gateways a rule may name. Tokens are never included.
       operationId: get_deep_analysis_gateways_endpoint_v1_deep_analysis_gateways_get
@@ -706,6 +752,8 @@ paths:
       - HTTPBearer: []
   /v1/deep-analysis-gateways/{gateway_name}/test:
     post:
+      tags:
+      - Forward Rules
       summary: Test Deep Analysis Gateway Endpoint
       description: 'Check one gateway is reachable and its token works.
 
@@ -737,6 +785,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/forward-rules/sensitive:
     get:
+      tags:
+      - Forward Rules
       summary: Get Sensitive Forward Rules Endpoint
       operationId: get_sensitive_forward_rules_endpoint_v1_forward_rules_sensitive_get
       responses:
@@ -750,6 +800,8 @@ paths:
       - HTTPBearer: []
   /v1/forward-rules/{rule_id}:
     put:
+      tags:
+      - Forward Rules
       summary: Update Forward Rule Endpoint
       operationId: update_forward_rule_endpoint_v1_forward_rules__rule_id__put
       security:
@@ -781,6 +833,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
+      tags:
+      - Forward Rules
       summary: Delete Forward Rule Endpoint
       operationId: delete_forward_rule_endpoint_v1_forward_rules__rule_id__delete
       security:
@@ -806,6 +860,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/forward-rules/{rule_id}/test:
     post:
+      tags:
+      - Forward Rules
       summary: Test Forward Rule Endpoint
       operationId: test_forward_rule_endpoint_v1_forward_rules__rule_id__test_post
       security:
@@ -831,6 +887,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/outbox:
     get:
+      tags:
+      - Forward Rules
       summary: List Outbox Endpoint
       description: Query forwarding queue records.
       operationId: list_outbox_endpoint_v1_outbox_get
@@ -891,6 +949,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/forward-rules/audit:
     get:
+      tags:
+      - Forward Rules
       summary: Get Rule Audit Endpoint
       description: 'Aggregate alert-rule health: zombie / pure-noise / flapping rules.
 
@@ -936,6 +996,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/source-health:
     get:
+      tags:
+      - Forward Rules
       summary: Get Source Health Endpoint
       description: 'Per-source health: volume, dedup rate, forward rate, recency.'
       operationId: get_source_health_endpoint_v1_source_health_get
@@ -965,6 +1027,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/inbound-rules:
     get:
+      tags:
+      - Inbound Rules
       summary: List Inbound Rules
       operationId: list_inbound_rules_v1_inbound_rules_get
       security:
@@ -995,6 +1059,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     post:
+      tags:
+      - Inbound Rules
       summary: Create Rule
       operationId: create_rule_v1_inbound_rules_post
       security:
@@ -1021,6 +1087,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/inbound-rules/{rule_id}:
     put:
+      tags:
+      - Inbound Rules
       summary: Update Rule
       operationId: update_rule_v1_inbound_rules__rule_id__put
       security:
@@ -1053,6 +1121,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
+      tags:
+      - Inbound Rules
       summary: Delete Rule
       operationId: delete_rule_v1_inbound_rules__rule_id__delete
       security:
@@ -1078,6 +1148,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/silences:
     get:
+      tags:
+      - Silences
       summary: List Silences Endpoint
       operationId: list_silences_endpoint_v1_silences_get
       security:
@@ -1104,6 +1176,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     post:
+      tags:
+      - Silences
       summary: Create Silence Endpoint
       operationId: create_silence_endpoint_v1_silences_post
       security:
@@ -1129,6 +1203,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/silences/debt:
     get:
+      tags:
+      - Silences
       summary: Silence Debt Endpoint
       description: 'Rank active silences by how much they have suppressed over the
         window.
@@ -1165,6 +1241,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/silences/{silence_id}:
     put:
+      tags:
+      - Silences
       summary: Update Silence Endpoint
       operationId: update_silence_endpoint_v1_silences__silence_id__put
       security:
@@ -1196,6 +1274,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
+      tags:
+      - Silences
       summary: Delete Silence Endpoint
       operationId: delete_silence_endpoint_v1_silences__silence_id__delete
       security:
@@ -1221,6 +1301,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/silences/{silence_id}/lift:
     post:
+      tags:
+      - Silences
       summary: Lift Silence Endpoint
       operationId: lift_silence_endpoint_v1_silences__silence_id__lift_post
       security:
@@ -1247,6 +1329,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/maintenance-windows:
     get:
+      tags:
+      - Silences
       summary: List Maintenance Windows Endpoint
       operationId: list_maintenance_windows_endpoint_v1_maintenance_windows_get
       responses:
@@ -1259,6 +1343,8 @@ paths:
       security:
       - HTTPBearer: []
     post:
+      tags:
+      - Silences
       summary: Create Maintenance Window Endpoint
       operationId: create_maintenance_window_endpoint_v1_maintenance_windows_post
       requestBody:
@@ -1284,6 +1370,8 @@ paths:
       - HTTPBearer: []
   /v1/maintenance-windows/{window_id}:
     put:
+      tags:
+      - Silences
       summary: Update Maintenance Window Endpoint
       operationId: update_maintenance_window_endpoint_v1_maintenance_windows__window_id__put
       security:
@@ -1315,6 +1403,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
+      tags:
+      - Silences
       summary: Delete Maintenance Window Endpoint
       operationId: delete_maintenance_window_endpoint_v1_maintenance_windows__window_id__delete
       security:
@@ -1340,6 +1430,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/silences/backtest:
     post:
+      tags:
+      - Silences
       summary: Backtest Silence Endpoint
       description: Dry-run a proposed silence rule against historical database events.
       operationId: backtest_silence_endpoint_v1_silences_backtest_post
@@ -1366,6 +1458,8 @@ paths:
       - HTTPBearer: []
   /v1/sandbox/test:
     post:
+      tags:
+      - Sandbox
       summary: Test Webhook Endpoint
       description: 'Dry-run a pasted webhook payload: report what WW would extract
         and decide.
@@ -1398,6 +1492,8 @@ paths:
       - HTTPBearer: []
   /v1/incidents:
     get:
+      tags:
+      - Incidents
       summary: List Incidents Endpoint
       description: List incidents, newest first. Filter by status (active/quiet/closed).
       operationId: list_incidents_endpoint_v1_incidents_get
@@ -1460,6 +1556,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/intelligence:
     get:
+      tags:
+      - Incidents
       summary: Get Incident Intelligence Endpoint
       description: Return explainable similar incidents, related changes, and runbooks.
       operationId: get_incident_intelligence_endpoint_v1_incidents__incident_id__intelligence_get
@@ -1495,6 +1593,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/intelligence/feedback:
     post:
+      tags:
+      - Incidents
       summary: Record Incident Intelligence Feedback Endpoint
       description: Record operator feedback for one incident-intelligence recommendation.
       operationId: record_incident_intelligence_feedback_endpoint_v1_incidents__incident_id__intelligence_feedback_post
@@ -1527,6 +1627,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/runbook-executions:
     get:
+      tags:
+      - Incidents
       summary: List Runbook Executions Endpoint
       description: List manual runbook executions attached to an incident.
       operationId: list_runbook_executions_endpoint_v1_incidents__incident_id__runbook_executions_get
@@ -1552,6 +1654,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     post:
+      tags:
+      - Incidents
       summary: Start Runbook Execution Endpoint
       description: Start or retrieve one idempotent, operator-driven runbook execution.
       operationId: start_runbook_execution_endpoint_v1_incidents__incident_id__runbook_executions_post
@@ -1584,6 +1688,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/runbook-executions/{execution_id}:
     put:
+      tags:
+      - Incidents
       summary: Update Runbook Execution Endpoint
       description: Update manual step progress, terminal state, notes, or effectiveness.
       operationId: update_runbook_execution_endpoint_v1_incidents__incident_id__runbook_executions__execution_id__put
@@ -1622,6 +1728,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/resolution:
     get:
+      tags:
+      - Incidents
       summary: Get Incident Resolution Endpoint
       description: Read the operator-owned resolution draft and its completeness.
       operationId: get_incident_resolution_endpoint_v1_incidents__incident_id__resolution_get
@@ -1647,6 +1755,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     put:
+      tags:
+      - Incidents
       summary: Save Incident Resolution Endpoint
       description: Save a partial resolution draft; completeness never gates closure.
       operationId: save_incident_resolution_endpoint_v1_incidents__incident_id__resolution_put
@@ -1679,6 +1789,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/recurrence:
     get:
+      tags:
+      - Incidents
       summary: Get Incident Recurrence Endpoint
       description: Read a pending or reviewed recurrence association.
       operationId: get_incident_recurrence_endpoint_v1_incidents__incident_id__recurrence_get
@@ -1705,6 +1817,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/recurrence/confirm:
     post:
+      tags:
+      - Incidents
       summary: Confirm Incident Recurrence Endpoint
       description: Confirm a pending recurrence without reopening either incident.
       operationId: confirm_incident_recurrence_endpoint_v1_incidents__incident_id__recurrence_confirm_post
@@ -1737,6 +1851,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/recurrence/dismiss:
     post:
+      tags:
+      - Incidents
       summary: Dismiss Incident Recurrence Endpoint
       description: Dismiss a pending recurrence without mutating either incident.
       operationId: dismiss_incident_recurrence_endpoint_v1_incidents__incident_id__recurrence_dismiss_post
@@ -1769,6 +1885,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}:
     get:
+      tags:
+      - Incidents
       summary: Get Incident Detail Endpoint
       description: Full incident detail with member alert timeline.
       operationId: get_incident_detail_endpoint_v1_incidents__incident_id__get
@@ -1795,6 +1913,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/postmortem:
     get:
+      tags:
+      - Incidents
       summary: Export Incident Postmortem Endpoint
       description: Export the incident as a Markdown postmortem draft (download).
       operationId: export_incident_postmortem_endpoint_v1_incidents__incident_id__postmortem_get
@@ -1821,6 +1941,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/summary:
     get:
+      tags:
+      - Incidents
       summary: Get Incident Summary Endpoint
       description: Return the structured summary of an incident (including LLM analysis).
       operationId: get_incident_summary_endpoint_v1_incidents__incident_id__summary_get
@@ -1847,6 +1969,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/summarize:
     post:
+      tags:
+      - Incidents
       summary: Trigger Incident Summary Endpoint
       description: Manually trigger LLM summarization for a specific incident.
       operationId: trigger_incident_summary_endpoint_v1_incidents__incident_id__summarize_post
@@ -1873,6 +1997,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/close:
     post:
+      tags:
+      - Incidents
       summary: Close Incident Endpoint
       description: 'Mark an incident as closed (operator resolution).
 
@@ -1914,6 +2040,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/reopen:
     post:
+      tags:
+      - Incidents
       summary: Reopen Incident Endpoint
       description: Re-open a previously closed or quieted incident.
       operationId: reopen_incident_endpoint_v1_incidents__incident_id__reopen_post
@@ -1940,6 +2068,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/response-center/work-queue:
     get:
+      tags:
+      - Response Center
       summary: Get Work Queue Endpoint
       description: Return one bounded incident-response queue with explainable priority.
       operationId: get_work_queue_endpoint_v1_response_center_work_queue_get
@@ -2008,6 +2138,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/response-center/knowledge-gaps:
     get:
+      tags:
+      - Response Center
       summary: Get Knowledge Gaps Endpoint
       description: Return recurring or costly incident patterns without a proven runbook.
       operationId: get_knowledge_gaps_endpoint_v1_response_center_knowledge_gaps_get
@@ -2046,6 +2178,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/alert-quality/overview:
     get:
+      tags:
+      - Alert Quality
       summary: Get Alert Quality Endpoint
       description: Return bounded quality diagnostics without changing alert sources.
       operationId: get_alert_quality_endpoint_v1_alert_quality_overview_get
@@ -2084,6 +2218,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/services:
     get:
+      tags:
+      - Service Profiles
       summary: List Service Profiles Endpoint
       description: List services discovered from recent non-empty incidents.
       operationId: list_service_profiles_endpoint_v1_services_get
@@ -2120,8 +2256,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/services/response-metrics:
+    get:
+      tags:
+      - Service Profiles
+      summary: Response Metrics Endpoint
+      description: Global MTTA/MTTR/ack-rate over recent incidents (the Overview facade).
+      operationId: response_metrics_endpoint_v1_services_response_metrics_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: window_days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 365
+          minimum: 1
+          default: 30
+          title: Window Days
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/service-profile:
     get:
+      tags:
+      - Service Profiles
       summary: Get Service Profile Endpoint
       description: Return one transparent service profile without requiring a CMDB.
       operationId: get_service_profile_endpoint_v1_service_profile_get
@@ -2167,6 +2336,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/integrations/feishu/card-actions:
     post:
+      tags:
+      - Feishu Integration
       summary: Feishu Card Action Callback
       description: Verify and apply an idempotent operator action from a Feishu card.
       operationId: feishu_card_action_callback_v1_integrations_feishu_card_actions_post
@@ -2178,6 +2349,8 @@ paths:
               schema: {}
   /v1/changes/{change_id}/impact:
     get:
+      tags:
+      - Change Events
       summary: Get Change Impact Endpoint
       description: Return a deterministic, explainable before/after impact assessment.
       operationId: get_change_impact_endpoint_v1_changes__change_id__impact_get
@@ -2204,6 +2377,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/changes:
     post:
+      tags:
+      - Change Events
       summary: Ingest Change Event Endpoint
       description: Idempotently ingest one deployment, configuration, or infrastructure
         change.
@@ -2230,6 +2405,8 @@ paths:
       - HTTPBearer: []
   /v1/queue-health:
     get:
+      tags:
+      - Activity
       summary: Queue Health Endpoint
       description: 'Redis Stream backlog health: depth vs MAXLEN, pending, and consumer
         lag.
@@ -2249,6 +2426,8 @@ paths:
       - HTTPBearer: []
   /v1/action-center:
     get:
+      tags:
+      - Activity
       summary: Action Center Endpoint
       description: Current delivery, processing, and AI problems that need operator
         action.
@@ -2263,6 +2442,8 @@ paths:
       - HTTPBearer: []
   /v1/audit-log:
     get:
+      tags:
+      - Activity
       summary: List Audit Log Endpoint
       description: 'Recent team activity: who changed what silences/rules/incidents.'
       operationId: list_audit_log_endpoint_v1_audit_log_get
@@ -2299,6 +2480,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/handoff:
     get:
+      tags:
+      - Activity
       summary: Handoff Summary Endpoint
       description: On-call handoff summary for the last N hours.
       operationId: handoff_summary_endpoint_v1_handoff_get
@@ -2328,6 +2511,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/sparkline:
     get:
+      tags:
+      - Activity
       summary: Sparkline Endpoint
       description: Daily alert counts for sparkline charts on the Overview page.
       operationId: sparkline_endpoint_v1_sparkline_get
@@ -2357,6 +2542,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/cross-source:
     get:
+      tags:
+      - Activity
       summary: Cross Source Endpoint
       description: Cross-source alert correlation — time windows where multiple sources
         fired together.
@@ -2371,6 +2558,8 @@ paths:
       - HTTPBearer: []
   /v1/{kind}/{resource_id}/workflow:
     put:
+      tags:
+      - Operations
       summary: Update Workflow Endpoint
       operationId: update_workflow_endpoint_v1__kind___resource_id__workflow_put
       security:
@@ -2408,6 +2597,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/{kind}/{resource_id}/workflow/undo:
     post:
+      tags:
+      - Operations
       summary: Undo Workflow Endpoint
       description: 'Take back the last workflow change — Acknowledge and Resolve are
         one tap
@@ -2442,6 +2633,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     get:
+      tags:
+      - Operations
       summary: Workflow Undo Available Endpoint
       description: 'What an undo would take back, or null. The dashboard asks before
         drawing
@@ -2477,6 +2670,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/{kind}/{resource_id}/notes:
     get:
+      tags:
+      - Operations
       summary: List Notes Endpoint
       operationId: list_notes_endpoint_v1__kind___resource_id__notes_get
       security:
@@ -2507,6 +2702,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     post:
+      tags:
+      - Operations
       summary: Add Note Endpoint
       operationId: add_note_endpoint_v1__kind___resource_id__notes_post
       security:
@@ -2544,6 +2741,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/{kind}/{resource_id}/feedback:
     post:
+      tags:
+      - Operations
       summary: Add Feedback Endpoint
       operationId: add_feedback_endpoint_v1__kind___resource_id__feedback_post
       security:
@@ -2581,6 +2780,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/feedback/summary:
     get:
+      tags:
+      - Operations
       summary: Feedback Summary Endpoint
       operationId: feedback_summary_endpoint_v1_feedback_summary_get
       security:
@@ -2609,6 +2810,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/noise-center:
     get:
+      tags:
+      - Operations
       summary: Noise Center Endpoint
       operationId: noise_center_endpoint_v1_noise_center_get
       security:
@@ -2637,6 +2840,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/noise-center/actions:
     post:
+      tags:
+      - Operations
       summary: Apply Noise Suggestion Endpoint
       operationId: apply_noise_suggestion_endpoint_v1_noise_center_actions_post
       requestBody:
@@ -2661,6 +2866,8 @@ paths:
       - HTTPBearer: []
   /v1/noise-center/actions/{action_id}/undo:
     post:
+      tags:
+      - Operations
       summary: Undo Noise Action Endpoint
       operationId: undo_noise_action_endpoint_v1_noise_center_actions__action_id__undo_post
       security:
@@ -2692,6 +2899,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/merge:
     post:
+      tags:
+      - Operations
       summary: Merge Incidents Endpoint
       operationId: merge_incidents_endpoint_v1_incidents__incident_id__merge_post
       security:
@@ -2723,6 +2932,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/incidents/{incident_id}/split:
     post:
+      tags:
+      - Operations
       summary: Split Incident Endpoint
       operationId: split_incident_endpoint_v1_incidents__incident_id__split_post
       security:
@@ -2754,6 +2965,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/action-center/actions:
     post:
+      tags:
+      - Operations
       summary: Run Remediation Endpoint
       operationId: run_remediation_endpoint_v1_action_center_actions_post
       requestBody:
@@ -2778,6 +2991,8 @@ paths:
       - HTTPBearer: []
   /v1/integrations/catalog:
     get:
+      tags:
+      - Operations
       summary: Integration Catalog Endpoint
       operationId: integration_catalog_endpoint_v1_integrations_catalog_get
       responses:
@@ -2790,6 +3005,8 @@ paths:
       - HTTPBearer: []
   /v1/integrations/test:
     post:
+      tags:
+      - Operations
       summary: Test Integration Endpoint
       operationId: test_integration_endpoint_v1_integrations_test_post
       requestBody:
@@ -2814,6 +3031,8 @@ paths:
       - HTTPBearer: []
   /v1/integrations:
     post:
+      tags:
+      - Operations
       summary: Install Integration Endpoint
       operationId: install_integration_endpoint_v1_integrations_post
       requestBody:
@@ -2838,6 +3057,8 @@ paths:
       - HTTPBearer: []
   /v1/health/deep:
     get:
+      tags:
+      - Admin
       summary: Deep Health Check
       operationId: deep_health_check_v1_health_deep_get
       responses:
@@ -2850,6 +3071,8 @@ paths:
       - HTTPBearer: []
   /v1/prompt/reload:
     post:
+      tags:
+      - Admin
       summary: Reload Prompt
       operationId: reload_prompt_v1_prompt_reload_post
       security:
@@ -2877,6 +3100,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/prompt:
     get:
+      tags:
+      - Admin
       summary: Get Prompt
       operationId: get_prompt_v1_prompt_get
       security:
@@ -2904,6 +3129,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/prompt/versions:
     get:
+      tags:
+      - Admin
       summary: Get Prompt Versions
       description: 'What every prompt says right now, as a fingerprint per kind.
 
@@ -2929,6 +3156,8 @@ paths:
       - HTTPBearer: []
   /v1/admin/alert-rules:
     get:
+      tags:
+      - Admin
       summary: List Alert Rules
       description: 'Alert rule names actually seen recently, with how often and how
         they were judged.
@@ -2979,6 +3208,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/admin/dead-letters:
     get:
+      tags:
+      - Admin
       summary: Get Dead Letters Endpoint
       operationId: get_dead_letters_endpoint_v1_admin_dead_letters_get
       security:
@@ -3046,6 +3277,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/admin/dead-letters/{event_id}:
     get:
+      tags:
+      - Admin
       summary: Get Dead Letter Detail Endpoint
       operationId: get_dead_letter_detail_endpoint_v1_admin_dead_letters__event_id__get
       security:
@@ -3071,6 +3304,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/admin/outbox/{outbox_id}/retry:
     post:
+      tags:
+      - Admin
       summary: Retry Outbox Endpoint
       operationId: retry_outbox_endpoint_v1_admin_outbox__outbox_id__retry_post
       security:
@@ -3096,6 +3331,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/admin/suppressed:
     get:
+      tags:
+      - Admin
       summary: List Suppressed Endpoint
       operationId: list_suppressed_endpoint_v1_admin_suppressed_get
       security:
@@ -3133,6 +3370,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/admin/dead-letters/{event_id}/replay:
     post:
+      tags:
+      - Admin
       summary: Replay Single Dead Letter
       operationId: replay_single_dead_letter_v1_admin_dead_letters__event_id__replay_post
       security:
@@ -3159,6 +3398,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/admin/dead-letters/replay-batch:
     post:
+      tags:
+      - Admin
       summary: Replay Dead Letter Batch
       operationId: replay_dead_letter_batch_v1_admin_dead_letters_replay_batch_post
       requestBody:
@@ -3184,6 +3425,8 @@ paths:
       - HTTPBearer: []
   /v1/admin/dead-letters/replay-all:
     post:
+      tags:
+      - Admin
       summary: Replay All Dead Letters
       operationId: replay_all_dead_letters_v1_admin_dead_letters_replay_all_post
       security:
@@ -3213,6 +3456,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/admin/kb/documents:
     post:
+      tags:
+      - Admin Config
       summary: Ingest Kb Document Endpoint
       description: 'Ingest one knowledge-base document: chunk + embed + upsert (idempotent).'
       operationId: ingest_kb_document_endpoint_v1_admin_kb_documents_post
@@ -3238,6 +3483,8 @@ paths:
       - HTTPBearer: []
   /v1/admin/kb/drafts:
     get:
+      tags:
+      - Admin Config
       summary: List Kb Drafts Endpoint
       description: List KB drafts awaiting review (one row per sedimented document).
       operationId: list_kb_drafts_endpoint_v1_admin_kb_drafts_get
@@ -3251,6 +3498,8 @@ paths:
       - HTTPBearer: []
   /v1/admin/kb/drafts/{source_ref}:
     get:
+      tags:
+      - Admin Config
       summary: Get Kb Draft Endpoint
       description: Full ordered content of one KB draft — the material under review.
       operationId: get_kb_draft_endpoint_v1_admin_kb_drafts__source_ref__get
@@ -3276,6 +3525,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     put:
+      tags:
+      - Admin Config
       summary: Update Kb Draft Endpoint
       description: Amend a draft before approval (re-chunked and re-embedded on save).
       operationId: update_kb_draft_endpoint_v1_admin_kb_drafts__source_ref__put
@@ -3307,6 +3558,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
+      tags:
+      - Admin Config
       summary: Discard Kb Draft Endpoint
       description: Discard a KB draft without publishing it.
       operationId: discard_kb_draft_endpoint_v1_admin_kb_drafts__source_ref__delete
@@ -3333,6 +3586,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/admin/kb/drafts/{source_ref}/publish:
     post:
+      tags:
+      - Admin Config
       summary: Publish Kb Draft Endpoint
       description: Publish a KB draft into the RAG corpus (operator approval).
       operationId: publish_kb_draft_endpoint_v1_admin_kb_drafts__source_ref__publish_post
@@ -3359,6 +3614,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/admin/config/export:
     get:
+      tags:
+      - Admin Config
       summary: Export Config Endpoint
       description: 'Export forward rules + active silences + maintenance windows as
         YAML.
@@ -3378,6 +3635,8 @@ paths:
       - HTTPBearer: []
   /v1/admin/config/import:
     post:
+      tags:
+      - Admin Config
       summary: Import Config Endpoint
       description: 'Upsert a previously exported YAML bundle (dry_run to preview).
 
@@ -3410,6 +3669,8 @@ paths:
       - HTTPBearer: []
   /v1/admin/feature-adoption:
     get:
+      tags:
+      - Admin Config
       summary: Feature Adoption Endpoint
       description: 'Monthly usage counters for recently shipped operator features.
 
@@ -3430,6 +3691,8 @@ paths:
       - HTTPBearer: []
   /v1/runtime-settings:
     get:
+      tags:
+      - Runtime Settings
       summary: List Runtime Settings Endpoint
       description: All registered runtime-policy keys with env default / override
         / effective.
@@ -3444,6 +3707,8 @@ paths:
       - HTTPBearer: []
   /v1/runtime-settings/{key}:
     put:
+      tags:
+      - Runtime Settings
       summary: Put Runtime Setting Endpoint
       description: Set one override (validated against the registry); live within
         ~1 min.
@@ -3476,6 +3741,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
+      tags:
+      - Runtime Settings
       summary: Delete Runtime Setting Endpoint
       description: Clear one override — the key falls back to its env value / default.
       operationId: delete_runtime_setting_endpoint_v1_runtime_settings__key__delete
@@ -3502,6 +3769,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/onboarding/source-types:
     get:
+      tags:
+      - Source Onboarding
       summary: List Source Types Endpoint
       operationId: list_source_types_endpoint_v1_onboarding_source_types_get
       responses:
@@ -3514,6 +3783,8 @@ paths:
       - HTTPBearer: []
   /v1/onboarding/sources:
     get:
+      tags:
+      - Source Onboarding
       summary: List Sources Endpoint
       operationId: list_sources_endpoint_v1_onboarding_sources_get
       security:
@@ -3541,6 +3812,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     post:
+      tags:
+      - Source Onboarding
       summary: Create Source Endpoint
       operationId: create_source_endpoint_v1_onboarding_sources_post
       security:
@@ -3565,6 +3838,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/onboarding/sources/{connection_id}:
     get:
+      tags:
+      - Source Onboarding
       summary: Get Source Endpoint
       operationId: get_source_endpoint_v1_onboarding_sources__connection_id__get
       security:
@@ -3589,6 +3864,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
     patch:
+      tags:
+      - Source Onboarding
       summary: Update Source Endpoint
       operationId: update_source_endpoint_v1_onboarding_sources__connection_id__patch
       security:
@@ -3620,6 +3897,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/onboarding/sources/{connection_id}/status:
     get:
+      tags:
+      - Source Onboarding
       summary: Source Status Endpoint
       operationId: source_status_endpoint_v1_onboarding_sources__connection_id__status_get
       security:
@@ -3645,6 +3924,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/onboarding/sources/{connection_id}/rotate:
     post:
+      tags:
+      - Source Onboarding
       summary: Rotate Source Endpoint
       operationId: rotate_source_endpoint_v1_onboarding_sources__connection_id__rotate_post
       security:
@@ -3676,6 +3957,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/onboarding/sources/{connection_id}/revoke:
     post:
+      tags:
+      - Source Onboarding
       summary: Revoke Source Endpoint
       operationId: revoke_source_endpoint_v1_onboarding_sources__connection_id__revoke_post
       security:
@@ -3707,6 +3990,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/source-webhooks/{public_id}:
     post:
+      tags:
+      - Source Ingress
       summary: Receive Managed Source Webhook
       description: Receive a webhook through a revocable source-scoped credential.
       operationId: receive_managed_source_webhook_v1_source_webhooks__public_id__post
@@ -3733,6 +4018,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/webhook/{source}:
     post:
+      tags:
+      - Webhooks
       summary: Receive Webhook
       description: Webhook ingress entry point (supports /v1/webhook and /v1/webhook/{source}).
       operationId: receive_webhook_v1_webhook__source__post
@@ -3760,6 +4047,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/webhook:
     post:
+      tags:
+      - Webhooks
       summary: Receive Webhook
       description: Webhook ingress entry point (supports /v1/webhook and /v1/webhook/{source}).
       operationId: receive_webhook_v1_webhook_post
@@ -3787,6 +4076,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/webhooks:
     get:
+      tags:
+      - Webhooks
       summary: Get Webhooks Endpoint
       description: Get the summary list of all webhook events.
       operationId: get_webhooks_endpoint_v1_webhooks_get
@@ -3872,6 +4163,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/webhooks/by-request/{request_id}:
     get:
+      tags:
+      - Webhooks
       summary: Get Webhook By Request Id Endpoint
       description: Query the final persisted event by the async-receive request_id.
       operationId: get_webhook_by_request_id_endpoint_v1_webhooks_by_request__request_id__get
@@ -3900,6 +4193,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/webhooks/{webhook_id}:
     get:
+      tags:
+      - Webhooks
       summary: Get Webhook Detail Endpoint
       description: Get the details of a single webhook event.
       operationId: get_webhook_detail_endpoint_v1_webhooks__webhook_id__get
@@ -3926,6 +4221,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/webhooks/{webhook_id}/timeline:
     get:
+      tags:
+      - Webhooks
       summary: Get Webhook Timeline Endpoint
       description: 'Return a chronological timeline of alerts related to *webhook_id*.
 
@@ -3959,6 +4256,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /v1/webhooks/{webhook_id}/replay-dry-run:
     post:
+      tags:
+      - Webhooks
       summary: Replay Dry Run Endpoint
       description: 'Re-run current forward rules and silences against a historical
         alert.

@@ -342,7 +342,7 @@ var DecisionTraceModule = (function () {
             'processing': { cls: 'badge-outline', icon: wwIcon('send') },
             'retrying': { cls: 'badge-outline', icon: wwIcon('refresh') },
             'exhausted': { cls: 'badge-danger', icon: wwIcon('x') },
-            'expired': { cls: 'badge-danger', icon: '⌛' }
+            'expired': { cls: 'badge-danger', icon: wwIcon('clock') }
         };
         var m = map[status] || { cls: 'badge-outline', icon: '•' };
         var label = t('outbox.status.' + status);
@@ -703,9 +703,6 @@ var DecisionTraceModule = (function () {
         if (overviewEl) overviewEl.style.display = currentView === 'overview' ? 'block' : 'none';
         if (traceEl) traceEl.style.display = currentView === 'trace' ? 'block' : 'none';
         if (costEl) costEl.style.display = currentView === 'cost' ? 'block' : 'none';
-        document.querySelectorAll('[data-dt-view]').forEach(function (btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-dt-view') === currentView);
-        });
         // Report from HERE, with the view just entered — reporting from load()
         // used the stale view, which is exactly why the Overview-tab
         // destinations needed a second click before the URL and highlight moved.
@@ -771,13 +768,6 @@ var DecisionTraceModule = (function () {
                 if (period) setPeriod(period);
             });
         });
-        document.querySelectorAll('[data-dt-view]').forEach(function (btn) {
-            btn.addEventListener('click', function (e) {
-                var button = e.target.closest('[data-dt-view]');
-                var view = button ? button.getAttribute('data-dt-view') : null;
-                if (view) setView(view);
-            });
-        });
         var resultSel = document.getElementById('dtResultFilter');
         if (resultSel) resultSel.addEventListener('change', function () { setResult(resultSel.value || ''); });
         var sourceSel = document.getElementById('dtSourceFilter');
@@ -829,3 +819,7 @@ var DecisionTraceModule = (function () {
         renderDetails: renderDetails
     };
 })();
+
+// Join the delegated-action registry: const bindings never reach window,
+// so without this every data-act="DecisionTraceModule.*" resolves to null.
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('DecisionTraceModule', DecisionTraceModule);
