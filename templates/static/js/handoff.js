@@ -26,21 +26,29 @@ async function _loadHandoffBrief(container) {
     try {
         const result = await API.getHandoff(handoffHours);
         const data = (result && result.data) || {};
+        // Standard stat-card idiom (same as Overview/alerts) instead of the
+        // bespoke handoff-stat row; colour stays in the value point.
         const stat = (labelKey, value, tone) =>
-            `<div class="handoff-stat"><div class="handoff-stat-value"${tone ? ` style="color:${tone}"` : ''}>` +
-            `${escapeHtml(String(value))}</div><div class="handoff-stat-label">${escapeHtml(t(labelKey))}</div></div>`;
+            `<div class="stat-card">
+                <div class="stat-label">${escapeHtml(t(labelKey))}</div>
+                <div class="stat-value"${tone ? ` style="color:${tone}"` : ''}>${escapeHtml(String(value))}</div>
+            </div>`;
 
         const sources = (data.top_sources || [])
             .map((row) => `${escapeHtml(String(row.source || ''))} <strong>${escapeHtml(String(row.count || 0))}</strong>`)
             .join(' · ');
 
+        // 8/12/24h mirror the shift lengths a handoff brief is written for
+        // (one shift, a half day, a full day) — the same segmented-control
+        // idiom as the trace header's Day/Week/Month.
         container.innerHTML =
-            `<div class="handoff-window">` +
+            `<div class="handoff-window">
+                <span class="btn-seg-group" role="group" aria-label="${escapeHtml(t('handoff.windowLabel'))}">` +
             [8, 12, 24].map((hours) =>
-                `<button class="btn btn-sm${hours === handoffHours ? ' primary' : ''}" data-act="setHandoffWindow" ` +
-                `data-args="${hours}">${escapeHtml(t('handoff.hours', { n: hours }))}</button>`).join(' ') +
-            `</div>` +
-            `<div class="handoff-stats">` +
+                `<button class="btn${hours === handoffHours ? ' active' : ''}" data-act="setHandoffWindow" ` +
+                `data-args="${hours}">${escapeHtml(t('handoff.hours', { n: hours }))}</button>`).join('') +
+            `</span></div>` +
+            `<div class="stats-grid" style="margin-bottom: 1rem;">` +
             stat('handoff.stat.alerts', data.total_alerts || 0) +
             stat('handoff.stat.high', data.high_alerts || 0, (data.high_alerts || 0) > 0 ? 'var(--warning)' : '') +
             stat('handoff.stat.activeIncidents', data.active_incidents || 0,
@@ -51,9 +59,9 @@ async function _loadHandoffBrief(container) {
             // The brief is markdown on purpose: it is meant to be pasted into
             // the chat where the next shift actually reads things.
             `<div class="handoff-brief-bar">
-                <button class="btn btn-sm" data-act="copyHandoff" data-args="">${escapeHtml(t('handoff.copy'))}</button>
+                <button class="btn btn-sm" data-act="copyHandoff" data-args="">${wwIcon('copy')} ${escapeHtml(t('handoff.copy'))}</button>
              </div>
-             <pre class="handoff-brief" id="handoffText">${escapeHtml(String(data.summary_text || ''))}</pre>`;
+             <pre class="ww-pre handoff-brief" id="handoffText">${escapeHtml(String(data.summary_text || ''))}</pre>`;
     } catch (error) {
         container.innerHTML =
             `<div class="empty-state"><p>${wwIcon('x')} ${escapeHtml(error.message || String(error))}</p></div>`;
@@ -68,14 +76,14 @@ async function _loadAuditLog(container) {
             container.innerHTML = `<div class="empty-state"><p>${escapeHtml(t('handoff.audit.empty'))}</p></div>`;
             return;
         }
-        container.innerHTML = rows.map((row) => {
+        container.innerHTML = '<div class="audit-list">' + rows.map((row) => {
             const when = row.created_at ? formatTime(row.created_at) : '';
             return `<div class="audit-row">
-                <span class="a-tool">${escapeHtml(String(row.action || ''))}</span>
+                <span class="badge badge-outline">${escapeHtml(String(row.action || ''))}</span>
                 <span class="audit-what">${escapeHtml(String(row.summary || row.resource_name || ''))}</span>
                 <span class="audit-who">${escapeHtml(String(row.actor || ''))} · ${escapeHtml(when)}</span>
             </div>`;
-        }).join('');
+        }).join('') + '</div>';
     } catch (error) {
         container.innerHTML =
             `<div class="empty-state"><p>${wwIcon('x')} ${escapeHtml(error.message || String(error))}</p></div>`;

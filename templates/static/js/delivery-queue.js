@@ -9,6 +9,7 @@
 const DeliveryQueueModule = (function () {
     let outboxCursor = null;
     let outboxRows = [];
+    let outboxTotal = null;
     let dlPage = 1;
     let dlHasMore = false;
     let dlRows = [];
@@ -37,6 +38,7 @@ const DeliveryQueueModule = (function () {
         if (reset) {
             outboxCursor = null;
             outboxRows = [];
+            outboxTotal = null;
             container.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('common.loading') + '</p></div>';
         }
         const statusSel = document.getElementById('deliveryOutboxStatus');
@@ -47,10 +49,16 @@ const DeliveryQueueModule = (function () {
                 status: statusSel ? statusSel.value : '',
             });
             if (!result.success) throw new Error(result.error || 'request failed');
-            outboxRows = outboxRows.concat(result.data || []);
-            const pg = result.pagination || {};
-            outboxCursor = pg.has_more ? pg.next_cursor : null;
-            renderOutbox(container, pg.total);
+            // The endpoint's envelope is {data: {items, total, next_cursor,
+            // has_more}} — data is an OBJECT. Treating it as the row array
+            // concat'd the object itself and rendered one NaN row in prod.
+            const data = result.data || {};
+            outboxRows = outboxRows.concat(Array.isArray(data.items) ? data.items : []);
+            outboxCursor = data.has_more ? data.next_cursor : null;
+            // total is only computed on the first page (cursor scrolls skip
+            // the COUNT); keep the last known value across "load more".
+            if (typeof data.total === 'number') outboxTotal = data.total;
+            renderOutbox(container, outboxTotal);
         } catch (error) {
             container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('alert-triangle') + '</div>' +
                 '<div class="empty-title">' + t('common.loadFailed') + '</div>' +
@@ -140,7 +148,12 @@ const DeliveryQueueModule = (function () {
             if (!result.success) throw new Error(result.error || 'request failed');
             dlRows = result.data || [];
             const pg = result.pagination || {};
-            dlHasMore = !!pg.has_more;
+            // The endpoint's pagination carries {page, page_size, total} and no
+            // has_more — derive it, falling back to "full page" when the COUNT
+            // timed out (total=null).
+            dlHasMore = (typeof pg.total === 'number')
+                ? dlPage * (pg.page_size || 20) < pg.total
+                : dlRows.length === (pg.page_size || 20);
             renderDeadLetters(container, pg.total);
         } catch (error) {
             container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('alert-triangle') + '</div>' +

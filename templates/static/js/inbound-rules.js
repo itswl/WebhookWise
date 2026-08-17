@@ -93,33 +93,45 @@ function showInboundRuleForm(id) {
     const rule = id ? inboundRules.find(r => String(r.id) === String(id)) || {} : {};
     const container = document.getElementById('inboundRuleForm');
     if (!container) return;
+    // Design-system form idiom (form-group/form-label/form-input), matching
+    // the silence and integration forms. The previous markup used classes
+    // that exist nowhere in the stylesheets (.input, .btn.primary, .mem-bar),
+    // so every field rendered as a bare browser-default box.
     const field = (key, name, value, placeholder) => `
-        <label style="display:block; margin-bottom:10px;">
-            <span style="display:block; font-size: var(--fs-sm); color: var(--text-secondary); margin-bottom:4px;">${t(key)}</span>
-            <input class="input" id="ir-${name}" value="${escapeHtml(String(value || ''))}" placeholder="${escapeHtml(placeholder || '')}">
-        </label>`;
+        <div class="form-group">
+            <label class="form-label" for="ir-${name}">${t(key)}</label>
+            <input type="text" class="form-input" id="ir-${name}" value="${escapeHtml(String(value || ''))}"
+                   placeholder="${escapeHtml(placeholder || '')}" autocomplete="off">
+        </div>`;
     container.innerHTML = `
         <div class="card" style="margin-bottom:16px;">
+            <div class="section-title" style="font-size: var(--fs-md); margin-bottom: 1rem;">
+                ${t(rule.id ? 'inbound.form.editTitle' : 'inbound.form.addTitle')}
+            </div>
             <input type="hidden" id="ir-id" value="${escapeHtml(String(rule.id || ''))}">
-            ${field('inbound.field.name', 'name', rule.name, '')}
-            <label style="display:block; margin-bottom:10px;">
-                <span style="display:block; font-size: var(--fs-sm); color: var(--text-secondary); margin-bottom:4px;">${t('inbound.field.action')}</span>
-                <select class="input" id="ir-action">
-                    ${inboundActions.map(a => `<option value="${escapeHtml(a)}" ${rule.action === a ? 'selected' : ''}>${escapeHtml(t('inbound.action.' + a) || a)}</option>`).join('')}
-                </select>
-            </label>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 1.25rem;">
+                ${field('inbound.field.name', 'name', rule.name, '')}
+                <div class="form-group">
+                    <label class="form-label" for="ir-action">${t('inbound.field.action')}</label>
+                    <select class="form-input" id="ir-action">
+                        ${inboundActions.map(a => `<option value="${escapeHtml(a)}" ${rule.action === a ? 'selected' : ''}>${escapeHtml(t('inbound.action.' + a) || a)}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
             ${field('inbound.field.ruleName', 'match_rule_name', rule.match_rule_name, t('inbound.hint.ruleName'))}
-            <div style="margin:-4px 0 12px;">
-                <button class="btn btn-sm" data-act="pickInboundRuleName" data-args="">${t('inbound.pickFromTraffic')}</button>
+            <div style="margin:-0.4rem 0 1rem;">
+                <button class="btn btn-sm" data-act="pickInboundRuleName" data-args="">${wwIcon('list')} ${t('inbound.pickFromTraffic')}</button>
                 <div id="ir-picker" style="display:none;"></div>
             </div>
-            ${field('inbound.field.source', 'match_source', rule.match_source, 'grafana,prometheus')}
-            ${field('inbound.field.environment', 'match_environment', rule.match_environment, 'prod,!test')}
-            ${field('inbound.field.payload', 'match_payload', rule.match_payload, 'commonLabels.type=signal')}
-            ${field('inbound.field.importance', 'match_importance', rule.match_importance, t('inbound.hint.importance'))}
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 1.25rem;">
+                ${field('inbound.field.source', 'match_source', rule.match_source, 'grafana,prometheus')}
+                ${field('inbound.field.environment', 'match_environment', rule.match_environment, 'prod,!test')}
+                ${field('inbound.field.payload', 'match_payload', rule.match_payload, 'commonLabels.type=signal')}
+                ${field('inbound.field.importance', 'match_importance', rule.match_importance, t('inbound.hint.importance'))}
+            </div>
             ${field('inbound.field.comment', 'comment', rule.comment, '')}
-            <div class="mem-bar" style="display:flex; gap:8px; align-items:center; margin-top:8px;">
-                <button class="btn primary" data-act="saveInboundRule" data-args="">${t('common.save')}</button>
+            <div style="display:flex; gap:8px; align-items:center; margin-top: 0.5rem;">
+                <button class="btn btn-primary" data-act="saveInboundRule" data-args="">${t('common.save')}</button>
                 <button class="btn" data-act="hideInboundRuleForm" data-args="">${t('common.cancel')}</button>
                 <span id="ir-status" style="color: var(--danger); font-size: var(--fs-sm);"></span>
             </div>
@@ -166,7 +178,10 @@ async function saveInboundRule() {
 }
 
 async function deleteInboundRule(id) {
-    if (!confirm(t('inbound.confirmDelete'))) return;
+    // Themed dialog, not the browser's confirm(): native dialogs are the one
+    // surface the design system cannot reach, and the rest of the dashboard
+    // already replaced them.
+    if (!(await wwConfirm(t('inbound.confirmDelete'), { danger: true }))) return;
     try {
         await API.deleteInboundRule(id);
         await loadInboundRules();

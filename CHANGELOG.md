@@ -44,6 +44,23 @@ This project follows SemVer release headings.
   and can never exercise them.
 
 ### Fixed
+- The delivery queue rendered one `NaN` row instead of data: `/v1/outbox`
+  answers `{data: {items, total, next_cursor, has_more}}` — an object — and
+  the module concat'd it as the row array. Dead-letter paging also derived
+  nothing: that endpoint's pagination has no `has_more`, so the next-page
+  button could never appear. Both envelopes are now pinned verbatim in a
+  frontend harness.
+- The handoff window buttons never showed which window was active (`primary`
+  is not a class any stylesheet defines), and the audit list had no `.audit-row`
+  layout at all — raw text soup. The page now uses the system idioms: the
+  segmented Day/Week/Month-style control, stat cards, the shared `.ww-pre`
+  code surface for the markdown brief (replacing a private pre style island),
+  and audit rows with action badges.
+- The inbound-rule form rendered as bare browser-default boxes — its markup
+  used classes that exist nowhere (`.input`, `.btn.primary`, `.mem-bar`).
+  Rebuilt on `form-group`/`form-label`/`form-input` with a responsive grid,
+  a form title, and `btn-primary`; its native `confirm()` replaced with the
+  themed dialog.
 - **Every two-part `data-act="Module.method"` action was dead in production**:
   const-declared modules create global lexical bindings with no `window`
   property, and the dispatcher resolved roots via `window[name]` — measured
