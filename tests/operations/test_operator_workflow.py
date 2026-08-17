@@ -149,7 +149,7 @@ async def test_resolving_an_incident_queues_one_recap_card(
     )
     assert len(rows) == 1
     card = str(rows[0].formatted_payload)
-    assert "事件已解决" in card and "网关升级触发连接池耗尽" in card and "adrian" in card
+    assert "事故已解决" in card and "网关升级触发连接池耗尽" in card and "adrian" in card
 
     # Reopen + resolve again: the idempotency key already exists, no second card.
     await update_workflow(
