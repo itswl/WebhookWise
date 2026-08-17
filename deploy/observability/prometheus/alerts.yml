@@ -588,6 +588,33 @@ groups:
   #
   # These watch the collector from OUTSIDE it, via Prometheus's own scrape of
   # Alloy — the one path that does not depend on the pipeline being healthy.
+  # The deep-analysis investigator. It reports through its own channels when it
+  # works; when it is down, the deep-analysis leg silently degrades to "no
+  # report arrives" — which is also what a quiet day looks like. Only a scrape
+  # from outside can tell those apart.
+  - name: hookprobe
+    interval: 60s
+    rules:
+      - alert: WebhookWiseDeepAnalysisGatewayDown
+        expr: up{job="hookprobe"} == 0
+        for: 10m
+        labels:
+          severity: critical
+          service: hookprobe
+        annotations:
+          summary: The deep-analysis gateway (hookprobe) is not answering its scrape.
+          runbook: docker logs hookprobe; check hookstack_net membership on both sides; the leg fails open (alerts still deliver without deep analysis).
+
+      - alert: WebhookWiseDeepAnalysisBudgetExhausted
+        expr: max(hookprobe_budget_exhausted) == 1
+        for: 5m
+        labels:
+          severity: warning
+          service: hookprobe
+        annotations:
+          summary: The investigator's budget window is spent; new family-door escalations are refused.
+          runbook: Refusals settle as report-shaped runs saying why. Raise HOOKPROBE_BUDGET_USD or wait for the window; the WW-triggered leg is not gated by this.
+
   - name: telemetry-pipeline
     interval: 60s
     rules:

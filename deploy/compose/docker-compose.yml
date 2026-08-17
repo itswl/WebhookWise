@@ -29,6 +29,16 @@ x-app-observability-env: &app-observability-env
 
 networks:
   webhook_net:
+  # The wire to the hookstack family (the deep-analysis investigator, and
+  # the shadow pipe/judge). Owned here — created on `up`, no manual step —
+  # and joined by the hookstack composes as `external`. A separate network
+  # so the investigator's agent, which runs arbitrary bash, can reach the
+  # gateway contract and nothing else: measured before the split, it could
+  # open sockets to postgres, redis and the receiver, and the only thing
+  # standing between it and the production database was the absence of a
+  # password.
+  hookstack_net:
+    name: hookstack_net
 
 services:
   migrate:
@@ -124,6 +134,7 @@ services:
 
     networks:
       - webhook_net
+      - hookstack_net
 
   worker:
     build:
@@ -182,6 +193,7 @@ services:
         condition: service_healthy
     networks:
       - webhook_net
+      - hookstack_net
 
   scheduler:
     build:

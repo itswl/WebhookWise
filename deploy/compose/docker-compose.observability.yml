@@ -60,6 +60,7 @@ services:
       - "9090:9090"
     networks:
       - webhook_net
+      - hookstack_net
 
   alertmanager:
     image: ${ALERTMANAGER_IMAGE:-prom/alertmanager:v0.32.1}
@@ -202,4 +203,8 @@ volumes:
 networks:
   webhook_net:
     name: webhookwise_webhook_net
+    external: true
+  # Owned by the app compose; prometheus joins to scrape the investigator.
+  hookstack_net:
+    name: hookstack_net
     external: true
