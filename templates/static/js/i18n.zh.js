@@ -1039,6 +1039,8 @@
             'handoff.title': '交接与审计',
             'handoff.subtitle': '上一班发生了什么，谁改了什么。纪要是 markdown，可直接贴到下一班真正会看的地方。',
             'handoff.windowLabel': '交接窗口',
+            'handoff.copied': '纪要已复制',
+            'common.actionError': '操作执行失败',
             'handoff.hours': '最近 {n} 小时',
             'handoff.stat.alerts': '告警',
             'handoff.stat.high': '高优先级',

@@ -1040,6 +1040,8 @@
             'handoff.title': 'Handoff & Audit',
             'handoff.subtitle': 'What happened on the last shift, and who changed what. The brief is markdown, ready to paste where the next shift reads.',
             'handoff.windowLabel': 'Handoff window',
+            'handoff.copied': 'Brief copied',
+            'common.actionError': 'Action failed',
             'handoff.hours': 'Last {n}h',
             'handoff.stat.alerts': 'Alerts',
             'handoff.stat.high': 'High priority',

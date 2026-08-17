@@ -97,7 +97,10 @@ function setHandoffWindow(hours) {
 
 function copyHandoff() {
     const text = document.getElementById('handoffText');
-    if (text) copyToClipboard(text.textContent || '');
+    // wwCopyText, not copyToClipboard: the latter expects the BUTTON element
+    // of a code block and walked .closest() on whatever it was given — handing
+    // it a string threw a silent TypeError, so the copy button did nothing.
+    if (text) wwCopyText(text.textContent || '', t('handoff.copied'));
 }
 
 const HandoffModule = {

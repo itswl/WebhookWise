@@ -100,6 +100,25 @@ function syntaxHighlightJSON(json) {
  * Copy code block content to the clipboard
  * @param {HTMLElement} btn - The clicked copy button element
  */
+/**
+ * Copy plain text with toast feedback. The button-flavoured copyToClipboard
+ * below expects a DOM element (it walks to its code block); passing it a
+ * string threw a silent TypeError — the handoff brief's copy button did
+ * exactly that and "did nothing" in production.
+ */
+function wwCopyText(text, successMessage) {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        showToast(t('common.copyFailed'), 'error');
+        return;
+    }
+    navigator.clipboard.writeText(String(text || '')).then(() => {
+        showToast(successMessage || t('common.copied'), 'success');
+    }).catch((err) => {
+        console.error('Copy failed:', err);
+        showToast(t('common.copyFailed'), 'error');
+    });
+}
+
 function copyToClipboard(btn) {
     const codeBlock = btn.closest('.code-wrapper').querySelector('pre');
     const text = codeBlock.textContent;
@@ -713,7 +732,15 @@ document.addEventListener('click', function (event) {
     if (!fn) return;
     var args = wwParseArgs(el.getAttribute('data-args'));
     if (el.hasAttribute('data-self')) args.push(el);
-    fn.apply(null, args);
+    // A handler that throws must not degrade to a button that "does
+    // nothing": that silence is how a copy button shipped broken. Surface
+    // the failure to the operator and the console both.
+    try {
+        fn.apply(null, args);
+    } catch (error) {
+        console.error('Action failed:', el.getAttribute('data-act'), error);
+        showToast(t('common.actionError') + ': ' + (error.message || String(error)), 'error');
+    }
 });
 
 // A <span role="button" tabindex="0"> takes keyboard focus but the browser
