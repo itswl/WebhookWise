@@ -66,7 +66,7 @@ Recent alert summaries, newest first. Each row also carries a lightweight
 #### `get_alert_decision_trace`
 The full decision chain for one alert: why it was forwarded or skipped.
 - **Input**: `webhook_event_id` (int)
-- **Returns**: `{ result: { id, webhook_event_id, created_at, outcome, skip_code, source, importance, route, importance_override, degraded_reason, silence_id, matched_rules, ... } }`, or `null` if no trace exists.
+- **Returns**: `{ trace: { id, webhook_event_id, created_at, outcome, skip_code, source, importance, route, importance_override, degraded_reason, silence_id, matched_rules, ... } | null }` — null when no trace exists.
 
 #### `list_alert_decision_traces`
 Recent decision traces, newest first, each with its chain inline.
@@ -157,7 +157,7 @@ Alerts whose processing permanently failed.
 #### `get_dead_letter_alert`
 Full detail of one dead-letter alert.
 - **Input**: `event_id` (int)
-- **Returns**: the event detail dict, or `null` if the event is not a dead letter.
+- **Returns**: `{ alert: {...} | null }` — null when the event is not a dead letter.
 
 ### Knowledge base
 

@@ -113,11 +113,13 @@ async def test_get_alert_decision_trace(
     from api.mcp import server
 
     await _seed(session_factory)
-    trace = await server.get_alert_decision_trace(webhook_event_id=1)
-    assert trace is not None
-    assert trace["outcome"] == "forwarded"
-    # Unknown event → None (not an error).
-    assert await server.get_alert_decision_trace(webhook_event_id=999) is None
+    envelope = await server.get_alert_decision_trace(webhook_event_id=1)
+    assert envelope["trace"] is not None
+    assert envelope["trace"]["outcome"] == "forwarded"
+    # Unknown event → {trace: null} (not an error, and not an SDK-wrapped
+    # {"result": ...}: a `dict | None` return annotation used to give the
+    # single-lookup tools a different envelope than every list tool).
+    assert await server.get_alert_decision_trace(webhook_event_id=999) == {"trace": None}
 
 
 @pytest.mark.asyncio
@@ -163,10 +165,11 @@ async def test_forward_rule_roi_and_dead_letters(
 
     dead = await server.list_dead_letter_alerts()
     assert [d["id"] for d in dead["items"]] == [2]
-    detail = await server.get_dead_letter_alert(event_id=2)
-    assert detail is not None and detail["failure_reason"] == "boom"
-    # A non-dead-letter event returns None.
-    assert await server.get_dead_letter_alert(event_id=1) is None
+    envelope = await server.get_dead_letter_alert(event_id=2)
+    assert envelope["alert"] is not None and envelope["alert"]["failure_reason"] == "boom"
+    # A non-dead-letter event returns {alert: null} — same envelope discipline
+    # as get_alert_decision_trace.
+    assert await server.get_dead_letter_alert(event_id=1) == {"alert": None}
 
 
 @pytest.mark.asyncio
@@ -378,3 +381,16 @@ async def test_mounted_at_mcp_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
                 json=init_body,
             )
             assert unauth.status_code == 401
+
+
+def test_no_tool_returns_an_optional_dict() -> None:
+    """A `-> dict | None` tool annotation makes the SDK wrap the payload as
+    {"result": ...}, splitting the envelope shape between single-lookup and
+    list tools. Tools return a plain dict with an explicit nullable field
+    ({"trace": null}) instead."""
+    import re
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[2] / "api/mcp/server.py").read_text(encoding="utf-8")
+    offenders = re.findall(r"async def (\w+)\([^)]*\) -> [^:{]*\|\s*None:", source)
+    assert offenders == [], f"tools with union-None returns (SDK will wrap them): {offenders}"

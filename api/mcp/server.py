@@ -73,11 +73,14 @@ def _valid_period(period: str) -> str:
     title="Get alert decision trace",
     description="Return the full decision trace for a single webhook alert by its event id: why it was "
     "forwarded or skipped, which rules matched, the ordered decision steps, and the delivery status. "
-    "Returns null if no trace exists for that event.",
+    "Returns {trace: null} if no trace exists for that event.",
 )
-async def get_alert_decision_trace(webhook_event_id: int) -> dict[str, Any] | None:
+async def get_alert_decision_trace(webhook_event_id: int) -> dict[str, Any]:
+    # A plain dict return, never `dict | None`: the union annotation made the
+    # SDK wrap the payload as {"result": ...}, giving the two single-lookup
+    # tools a different envelope shape than every list tool.
     async with session_scope() as session:
-        return await get_decision_trace_for_event(session, webhook_event_id)
+        return {"trace": await get_decision_trace_for_event(session, webhook_event_id)}
 
 
 @mcp_server.tool(
@@ -227,11 +230,12 @@ async def list_dead_letter_alerts(
 @mcp_server.tool(
     title="Get dead-letter alert detail",
     description="Return the full detail of a single dead-letter alert by its event id (payload, error/failure "
-    "reason, retry count). Returns null if the event is not a dead letter.",
+    "reason, retry count). Returns {alert: null} if the event is not a dead letter.",
 )
-async def get_dead_letter_alert(event_id: int) -> dict[str, Any] | None:
+async def get_dead_letter_alert(event_id: int) -> dict[str, Any]:
+    # Plain dict, never `dict | None` — see get_alert_decision_trace.
     async with session_scope() as session:
-        return await get_dead_letter_detail(session, event_id)
+        return {"alert": await get_dead_letter_detail(session, event_id)}
 
 
 @mcp_server.tool(
