@@ -233,16 +233,19 @@ const AlertQualityModule = (function () {
                     escapeHtml(t('quality.feedback.empty')) + '</p></div>';
                 return;
             }
+            // stat-card idiom — this block used the handoff page's private
+            // classes, which were retired when that page moved to the same
+            // idiom; a rarely-rendered section must not depend on another
+            // page's CSS.
+            const stat = (value, labelKey) =>
+                '<div class="stat-card"><div class="stat-label">' + escapeHtml(t(labelKey)) + '</div>' +
+                '<div class="stat-value">' + escapeHtml(String(value)) + '</div></div>';
             box.innerHTML = '<div class="section-title" style="margin-top:28px;">' +
                 escapeHtml(t('quality.feedback.title')) + '</div>' +
-                '<div class="handoff-stats">' +
-                '<div class="handoff-stat"><div class="handoff-stat-value">' + escapeHtml(String(d.total)) +
-                '</div><div class="handoff-stat-label">' + escapeHtml(t('quality.feedback.total')) + '</div></div>' +
-                '<div class="handoff-stat"><div class="handoff-stat-value">' +
-                escapeHtml(String(d.agreement_pct)) + '%</div><div class="handoff-stat-label">' +
-                escapeHtml(t('quality.feedback.agreement')) + '</div></div>' +
-                '<div class="handoff-stat"><div class="handoff-stat-value">' + escapeHtml(String(d.corrections || 0)) +
-                '</div><div class="handoff-stat-label">' + escapeHtml(t('quality.feedback.corrections')) + '</div></div>' +
+                '<div class="stats-grid" style="margin-bottom: 0.75rem;">' +
+                stat(d.total, 'quality.feedback.total') +
+                stat(String(d.agreement_pct) + '%', 'quality.feedback.agreement') +
+                stat(d.corrections || 0, 'quality.feedback.corrections') +
                 '</div><div class="handoff-sources">' + escapeHtml(t('quality.feedback.note')) + '</div>';
         } catch (e) {
             box.innerHTML = '';

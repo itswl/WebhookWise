@@ -238,3 +238,15 @@ def test_every_registered_key_is_actually_read_through_the_plane() -> None:
 
     unread = sorted(set(rs.SPECS) - read)
     assert unread == [], f"registered but never read through the plane: {unread}"
+
+
+def test_every_registered_key_resolves_an_env_default(temp_config) -> None:
+    """The dashboard's env-default column resolves each registered key against
+    the config groups. The old hand-maintained map silently fell behind the
+    registry — 53 of 80 keys showed a blank default, including one added the
+    very day it shipped — so this asserts EVERY key resolves for real."""
+    from api.v1.runtime_settings import _env_value
+    from services.operations import runtime_settings as rs
+
+    unresolved = sorted(key for key in rs.SPECS if _env_value(key) is None)
+    assert unresolved == [], f"registered keys with no resolvable env default: {unresolved}"

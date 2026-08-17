@@ -22,11 +22,15 @@ const IntegrationsModule = (function () {
         const container = document.getElementById('integrationCatalog');
         container.innerHTML = '<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px;">' +
             catalog.map(function (item) {
+                // Server catalog text is English; the dictionary overlays a
+                // translation by template id, falling back for unknown ids.
+                const name = t('integration.catalog.' + item.id + '.name', null, item.name);
+                const desc = t('integration.catalog.' + item.id + '.desc', null, item.description);
                 return '<button type="button" class="integration-card" data-template="' + escapeHtml(item.id) +
                     '" style="text-align:left; padding:18px; border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--bg-surface); color:inherit; cursor:pointer;">' +
                     '<div style="font-size:32px;">' + wwIcon(item.sprite || 'layers') + '</div>' +
-                    '<div style="font-weight:700; margin:8px 0 5px;">' + escapeHtml(item.name) + '</div>' +
-                    '<div style="font-size:0.82rem; color:var(--text-secondary); line-height:1.45;">' + escapeHtml(item.description) + '</div></button>';
+                    '<div style="font-weight:700; margin:8px 0 5px;">' + escapeHtml(name) + '</div>' +
+                    '<div style="font-size:0.82rem; color:var(--text-secondary); line-height:1.45;">' + escapeHtml(desc) + '</div></button>';
             }).join('') + '</div>';
         container.querySelectorAll('[data-template]').forEach(function (button) {
             button.addEventListener('click', function () { selectTemplate(button.getAttribute('data-template')); });

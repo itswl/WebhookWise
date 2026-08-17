@@ -245,7 +245,7 @@ def _incident_resolved_card(incident: Incident, *, resolver: str) -> dict[str, A
         root_cause = str(summary.get("root_cause") or "").strip()[:400]
         parts = []
         if summary_text:
-            parts.append(f"**📝 事件摘要**\n{summary_text}")
+            parts.append(f"**📝 事故摘要**\n{summary_text}")
         if root_cause:
             parts.append(f"**🔍 根因**\n{root_cause}")
         if parts:
@@ -256,7 +256,7 @@ def _incident_resolved_card(incident: Incident, *, resolver: str) -> dict[str, A
         elements.append(
             {
                 "tag": "div",
-                "text": {"tag": "lark_md", "content": "📝 AI 事件摘要生成中，稍后可在事件详情与复盘导出中查看。"},
+                "text": {"tag": "lark_md", "content": "📝 AI 事故摘要生成中，稍后可在事故详情与复盘导出中查看。"},
             }
         )
 
@@ -264,7 +264,7 @@ def _incident_resolved_card(incident: Incident, *, resolver: str) -> dict[str, A
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": f"✅ 事件已解决：{incident.title[:60]}"},
+                "title": {"tag": "plain_text", "content": f"✅ 事故已解决：{incident.title[:60]}"},
                 "template": "green",
             },
             "elements": elements,

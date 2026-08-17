@@ -33,9 +33,11 @@ const IngressSetupModule = (function () {
     }
 
     function sourceTypeDescription(item) {
-        return typeof item === 'object' && item
-            ? String(item.description || item.hint || '')
-            : '';
+        if (typeof item !== 'object' || !item) return '';
+        const server = String(item.description || item.hint || '');
+        // The server catalog speaks English; the dictionary overlays a
+        // translation by id and falls back to the server text for unknown ids.
+        return item.id ? t('ingress.sourceType.' + item.id + '.desc', null, server) : server;
     }
 
     function responseData(payload) {

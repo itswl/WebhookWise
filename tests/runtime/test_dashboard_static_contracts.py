@@ -1131,6 +1131,67 @@ def test_every_action_root_registers_itself() -> None:
     assert registered - allowlisted == set(), f"registrations outside the allowlist: {registered - allowlisted}"
 
 
+_GHOST_CLASS_ALLOWLIST = frozenset(
+    {
+        # Frozen 2026-08-17: classes referenced by markup with no stylesheet
+        # rule. Everything here is either a structural/JS hook (operations-view,
+        # mw-day-checkbox) or a legacy family whose layout lives in inline
+        # styles (ai-*, silence-*, rule-*). Shrink this set opportunistically;
+        # never grow it silently — a NEW entry means a page just shipped with
+        # browser-default styling, which is exactly how the inbound-rule form,
+        # the audit list, and the handoff window buttons broke.
+        "ai-analysis", "ai-content", "ai-details", "ai-header", "ai-item",
+        "ai-label", "ai-meta", "ai-value", "alert-more-trigger", "badge-drill",
+        "data-table", "decision-trace-section", "detail-section",
+        "dt-list-filters", "dt-period-selector", "event-type-grid",
+        "impact-unknown", "inbound-rules-section", "incident-card",
+        "incident-intelligence-excerpt", "incident-row", "incident-tree",
+        "incidents-section", "integration-card", "last-refreshed",
+        "mw-day-checkbox", "operations-view", "pipeline-flow", "pipeline-step",
+        "raw-data", "response-queue-service", "routing-section",
+        "rule-audit-section", "rule-conditions", "rule-target", "rules-list",
+        "sandbox-grid", "sandbox-section", "silence-actions", "silence-card",
+        "silence-conditions", "silence-header", "silences-list",
+        "silences-section", "status-", "step-indicator", "tree-indicator",
+        "tree-node", "ww-icon",
+    }
+)
+
+
+def test_no_new_ghost_classes() -> None:
+    """Every class the markup references must exist in a stylesheet — or sit
+    on the frozen allowlist above. Four pages shipped on browser-default
+    styling because their classes (.input, primary, .mem-bar, .audit-row,
+    btn-danger/btn-warn/btn-ghost) existed nowhere; this ratchet catches the
+    next one at commit time."""
+    import re as _re
+
+    from tests.helpers.paths import PROJECT_ROOT as _ROOT
+
+    token = _re.compile(r"^[a-z][a-z0-9-]*$")
+    used: dict[str, set[str]] = {}
+    paths = [_ROOT / "templates/dashboard.html", *sorted((_ROOT / "templates/static/js").glob("*.js"))]
+    for path in paths:
+        if path.name.startswith("i18n."):
+            continue
+        text = path.read_text()
+        for match in _re.finditer(r"""class=\\?["']([^"'\\$<>{}]+)["'\\]""", text):
+            for cls in match.group(1).split():
+                if token.match(cls) and not cls.endswith("-"):
+                    used.setdefault(cls, set()).add(path.name)
+
+    defined: set[str] = set()
+    for css in sorted((_ROOT / "templates/static/css").glob("*.css")):
+        defined.update(_re.findall(r"\.([a-z][a-z0-9-]*)", css.read_text()))
+
+    ghosts = {
+        cls: sorted(files)
+        for cls, files in used.items()
+        if cls not in defined and cls not in _GHOST_CLASS_ALLOWLIST
+    }
+    assert ghosts == {}, f"classes with no stylesheet rule (define them or consciously allowlist): {ghosts}"
+
+
 def test_native_dialogs_stay_replaced() -> None:
     """window.confirm/prompt are unthemeable, block the event loop, and put
     the browser's name above your text. The dashboard replaced them with

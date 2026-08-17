@@ -41,41 +41,48 @@ class RuntimeSettingWriteRequest(BaseModel):
     actor: str = Field(default="", max_length=100)
 
 
+# Keys whose env default is a computed fallback chain rather than one field.
+_ENV_VALUE_SPECIAL: dict[str, Any] = {
+    "WEBHOOK_INGRESS_STORM_THRESHOLD": lambda cfg: cfg.mq.WEBHOOK_INGRESS_STORM_THRESHOLD
+    or cfg.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD,
+    "WEBHOOK_INGRESS_STORM_WINDOW_SECONDS": lambda cfg: cfg.mq.WEBHOOK_INGRESS_STORM_WINDOW_SECONDS
+    or cfg.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS,
+}
+
+_CONFIG_GROUPS = (
+    "noise",
+    "ai",
+    "kb",
+    "notifications",
+    "deep_analysis",
+    "circuit_breaker",
+    "retry",
+    "maintenance",
+    "mq",
+    "security",
+    "tasks",
+    "server",
+)
+
+
 def _env_value(key: str) -> Any:
-    """The env/default value behind each registered key (display only)."""
+    """The env/default value behind each registered key (display only).
+
+    Resolved by name across the config groups instead of a hand-maintained
+    map: the map silently fell behind the registry (53 of 80 keys showed a
+    blank env-default column on the dashboard, including a key added the day
+    it shipped). Registered keys are unique across groups — the registry is
+    the namespace.
+    """
     cfg = get_config_manager()
-    getters: dict[str, Any] = {
-        "FLAPPING_WINDOW_MINUTES": cfg.noise.FLAPPING_WINDOW_MINUTES,
-        "FLAPPING_MIN_TRANSITIONS": cfg.noise.FLAPPING_MIN_TRANSITIONS,
-        "FLAPPING_SUPPRESS_ENABLED": cfg.noise.FLAPPING_SUPPRESS_ENABLED,
-        "INCIDENT_AUTO_SLA_MINUTES": cfg.notifications.INCIDENT_AUTO_SLA_MINUTES,
-        "SLA_BREACH_MENTION_ALL": cfg.notifications.SLA_BREACH_MENTION_ALL,
-        "WEBHOOK_MQ_BACKLOG_WARN_FRACTION": cfg.mq.WEBHOOK_MQ_BACKLOG_WARN_FRACTION,
-        "WEBHOOK_MQ_INGRESS_HIGH_WATER_FRACTION": cfg.mq.WEBHOOK_MQ_INGRESS_HIGH_WATER_FRACTION,
-        "WEBHOOK_INGRESS_STORM_THRESHOLD": cfg.mq.WEBHOOK_INGRESS_STORM_THRESHOLD
-        or cfg.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD,
-        "WEBHOOK_INGRESS_STORM_WINDOW_SECONDS": cfg.mq.WEBHOOK_INGRESS_STORM_WINDOW_SECONDS
-        or cfg.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS,
-        "KB_CARD_LINKS_ENABLED": cfg.kb.KB_CARD_LINKS_ENABLED,
-        "KB_CARD_LINKS_MAX": cfg.kb.KB_CARD_LINKS_MAX,
-        "ENABLE_ALERT_NOISE_REDUCTION": cfg.noise.ENABLE_ALERT_NOISE_REDUCTION,
-        "NOISE_REDUCTION_WINDOW_MINUTES": cfg.noise.NOISE_REDUCTION_WINDOW_MINUTES,
-        "ROOT_CAUSE_MIN_CONFIDENCE": cfg.noise.ROOT_CAUSE_MIN_CONFIDENCE,
-        "NOISE_RELATED_MIN_CONFIDENCE": cfg.noise.NOISE_RELATED_MIN_CONFIDENCE,
-        "NOISE_SOURCE_WEIGHT": cfg.noise.NOISE_SOURCE_WEIGHT,
-        "NOISE_RESOURCE_WEIGHT": cfg.noise.NOISE_RESOURCE_WEIGHT,
-        "NOISE_SEMANTIC_WEIGHT": cfg.noise.NOISE_SEMANTIC_WEIGHT,
-        "NOISE_SEVERITY_WEIGHT": cfg.noise.NOISE_SEVERITY_WEIGHT,
-        "NOISE_TIME_WEIGHT": cfg.noise.NOISE_TIME_WEIGHT,
-        "NOISE_SEVERITY_DOWNGRADE_SCORE": cfg.noise.NOISE_SEVERITY_DOWNGRADE_SCORE,
-        "SUPPRESS_DERIVED_ALERT_FORWARD": cfg.noise.SUPPRESS_DERIVED_ALERT_FORWARD,
-        "NOTIFICATION_COOLDOWN_SECONDS": cfg.retry.NOTIFICATION_COOLDOWN_SECONDS,
-        "SELF_NOTIFY_MIN_INTERVAL_MINUTES": cfg.notifications.SELF_NOTIFY_MIN_INTERVAL_MINUTES,
-        "ENABLE_PERIODIC_REMINDER": cfg.retry.ENABLE_PERIODIC_REMINDER,
-        "REMINDER_INTERVAL_HOURS": cfg.retry.REMINDER_INTERVAL_HOURS,
-        "DECISION_TRACE_RETENTION_DAYS": cfg.maintenance.DECISION_TRACE_RETENTION_DAYS,
-    }
-    return getters.get(key)
+    special = _ENV_VALUE_SPECIAL.get(key)
+    if special is not None:
+        return special(cfg)
+    for group_name in _CONFIG_GROUPS:
+        group = getattr(cfg, group_name, None)
+        if group is not None and hasattr(group, key):
+            return getattr(group, key)
+    return None
 
 
 def _setting_dict(key: str, override_row: RuntimeSetting | None) -> dict[str, Any]:

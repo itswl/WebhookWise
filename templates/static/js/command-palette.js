@@ -35,7 +35,7 @@ const CommandPalette = (function () {
             items: [
                 { slug: 'alerts', icon: 'bell', label: 'nav.dest.alerts', keywords: 'alerts events inbox 告警 事件 收件箱' },
                 { slug: 'work-queue', icon: 'list', label: 'nav.dest.workQueue', keywords: 'work queue triage sla 工作队列 待办' },
-                { slug: 'incidents', icon: 'flame', label: 'nav.dest.incidents', keywords: 'incidents outage 事件单 故障' },
+                { slug: 'incidents', icon: 'flame', label: 'nav.dest.incidents', keywords: 'incidents outage 事故 事件单 故障' },
                 { slug: 'investigations', icon: 'flask', label: 'nav.dest.investigations', keywords: 'deep analysis investigations 调查 深度分析' },
             ],
         },

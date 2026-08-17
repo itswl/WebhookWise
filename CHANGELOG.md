@@ -44,6 +44,27 @@ This project follows SemVer release headings.
   and can never exercise them.
 
 ### Fixed
+- A full 22-destination screenshot sweep against production data, plus a
+  ghost-class audit, turned up and fixed: the tonal button classes the
+  renderers had used all along (`btn-danger`/`btn-warn`/`btn-ghost` —
+  including the danger confirm in `wwConfirm`) existed in no stylesheet and
+  rendered as plain buttons — now defined, colour in the point; one more
+  ghost `primary` on the inbound page's add button; the alert-quality
+  feedback block regressed onto the handoff page's retired classes (now
+  stat cards); and the runtime-settings env-default column resolved through
+  a hand-maintained map that had fallen 53 keys behind the registry — it now
+  reflects over the config groups, with a behavioral parity test.
+- Terminology unified in the Chinese UI: incident is 事故 everywhere (nav,
+  page titles, Overview/handoff stats, the resolve recap card — the
+  incidents.* namespace already said 事故), and silence is 静默 (the nav
+  said 静音 while the page said 静默).
+- The integration catalog and ingress source-type cards now render
+  translated names/descriptions in the Chinese UI (dictionary overlay by id,
+  falling back to the server's English for unknown ids).
+- A ghost-class ratchet contract freezes today's 48 known unstyled-hook
+  classes and fails on any NEW class that no stylesheet defines — the exact
+  failure family behind the inbound form, the audit list, the handoff
+  window buttons, and the toast palette.
 - Revoking a source credential from the ingress wizard now clears the whole
   run and returns to the source picker — it used to stay parked on the dead
   flow (stale payload editor, a lifecycle panel for a credential that no

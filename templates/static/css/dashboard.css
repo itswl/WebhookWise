@@ -384,6 +384,39 @@ body {
   box-shadow: 0 8px 18px -4px rgba(99, 102, 241, 0.5);
 }
 
+/* Tonal button variants. These class names were already used all over the
+   renderers (quick-silence, dead-letter replay, the danger confirm in
+   wwConfirm) but never defined, so every "dangerous" button rendered as a
+   plain one. Colour stays in the point — text and border — never a fill. */
+.btn-danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.btn-danger:hover {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
+.btn-warn {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.btn-warn:hover {
+  background: var(--warning-bg);
+  border-color: var(--warning);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn-ghost:hover {
+  background: var(--bg-subtle);
+}
+
 .btn-sm {
   padding: 0.375rem 0.75rem;
   font-size: var(--fs-xs);
