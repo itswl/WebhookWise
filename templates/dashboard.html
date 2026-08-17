@@ -710,6 +710,88 @@
                 </div>
             </div>
         </div>
+
+        <!-- Operator guide: the alert's journey through the pipeline, one card per
+             station, each linking to the page where that job is actually done.
+             Static content — no module, no fetch. -->
+        <div id="guideTab" class="operations-view" style="display: none;">
+            <div style="padding:20px 0;">
+                <div class="section-header" style="margin-bottom:20px;">
+                    <div>
+                        <div class="section-title" data-i18n="guide.title">Getting started</div>
+                        <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="guide.subtitle">How an alert travels through WebhookWise, and where each job gets done.</p>
+                    </div>
+                </div>
+                <div class="guide-grid">
+                    <div class="guide-card">
+                        <div class="guide-card-head">
+                            <span class="guide-step">1</span>
+                            <h3 class="guide-card-title"><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg> <span data-i18n="guide.ingress.title">Connect an alert source</span></h3>
+                        </div>
+                        <p class="guide-card-desc" data-i18n="guide.ingress.desc">Point Grafana, Prometheus, Zabbix or any JSON webhook at WebhookWise. Use per-source credentials from the setup wizard, so a leaked key never exposes more than one source.</p>
+                        <div class="guide-links">
+                            <a class="btn" href="#/ingress" data-i18n="guide.ingress.link">Ingress setup</a>
+                        </div>
+                    </div>
+                    <div class="guide-card">
+                        <div class="guide-card-head">
+                            <span class="guide-step">2</span>
+                            <h3 class="guide-card-title"><svg class="icon" aria-hidden="true"><use href="#i-filter"/></svg> <span data-i18n="guide.rules.title">Route with forward rules</span></h3>
+                        </div>
+                        <p class="guide-card-desc" data-i18n="guide.rules.desc">Match on keywords and severity, deliver to Feishu or any webhook. Try a real payload in the sandbox before a rule goes live.</p>
+                        <div class="guide-links">
+                            <a class="btn" href="#/rules" data-i18n="guide.rules.link">Forward rules</a>
+                            <a class="btn" href="#/sandbox" data-i18n="guide.rules.link2">Sandbox</a>
+                        </div>
+                    </div>
+                    <div class="guide-card">
+                        <div class="guide-card-head">
+                            <span class="guide-step">3</span>
+                            <h3 class="guide-card-title"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg> <span data-i18n="guide.trace.title">Read the decision trace</span></h3>
+                        </div>
+                        <p class="guide-card-desc" data-i18n="guide.trace.desc">Every alert passes eight suppression gates — dedup, silence, storm, budget and more. The trace records which gate stopped it, so "why didn't I get notified" always has an answer.</p>
+                        <div class="guide-links">
+                            <a class="btn" href="#/trace" data-i18n="guide.trace.link">Decision traces</a>
+                        </div>
+                    </div>
+                    <div class="guide-card">
+                        <div class="guide-card-head">
+                            <span class="guide-step">4</span>
+                            <h3 class="guide-card-title"><svg class="icon" aria-hidden="true"><use href="#i-volume-x"/></svg> <span data-i18n="guide.silence.title">Silence and de-noise</span></h3>
+                        </div>
+                        <p class="guide-card-desc" data-i18n="guide.silence.desc">Silence known noise by dimension, schedule maintenance windows, and check silence ROI to see what each rule actually suppressed.</p>
+                        <div class="guide-links">
+                            <a class="btn" href="#/silences" data-i18n="guide.silence.link">Silences</a>
+                            <a class="btn" href="#/noise" data-i18n="guide.silence.link2">Noise center</a>
+                        </div>
+                    </div>
+                    <div class="guide-card">
+                        <div class="guide-card-head">
+                            <span class="guide-step">5</span>
+                            <h3 class="guide-card-title"><svg class="icon" aria-hidden="true"><use href="#i-flame"/></svg> <span data-i18n="guide.incident.title">Work incidents, hand off shifts</span></h3>
+                        </div>
+                        <p class="guide-card-desc" data-i18n="guide.incident.desc">Related alerts group into incidents. Acknowledge, assign, resolve — an AI recap can post on resolve, and the handoff brief summarizes your shift for the next one.</p>
+                        <div class="guide-links">
+                            <a class="btn" href="#/incidents" data-i18n="guide.incident.link">Incidents</a>
+                            <a class="btn" href="#/handoff" data-i18n="guide.incident.link2">Handoff</a>
+                        </div>
+                    </div>
+                    <div class="guide-card">
+                        <div class="guide-card-head">
+                            <span class="guide-step">6</span>
+                            <h3 class="guide-card-title"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg> <span data-i18n="guide.agent.title">Hook up an AI agent</span></h3>
+                        </div>
+                        <p class="guide-card-desc" data-i18n="guide.agent.desc">A read-only MCP server exposes alerts, traces, incidents and cost to any MCP client. The built-in agent-guide resource documents every tool; deep investigations land under Investigations.</p>
+                        <div class="code-block"><pre>claude mcp add --transport http webhookwise \
+  https://&lt;your-host&gt;/mcp/ \
+  --header "Authorization: Bearer &lt;API_KEY&gt;"</pre></div>
+                        <div class="guide-links">
+                            <a class="btn" href="#/investigations" data-i18n="guide.agent.link">Investigations</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         </div>
 
     </div>

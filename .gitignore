@@ -42,7 +42,10 @@ openclaw-main/
 
 # Local virtualenv
 .venv/
-.claude/
+# Keep local Claude state out, but ship the agent skills library
+# (.claude/skills/) — hookprobe mounts it read-only as its user skills layer.
+.claude/*
+!.claude/skills/
 
 # hookrelay scrape credential (per host)
 deploy/observability/prometheus/hookrelay.token

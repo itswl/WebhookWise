@@ -70,6 +70,7 @@ const DESTINATIONS = {
     gaps: { tab: 'operations', enter: () => setOperationsView('gaps') },
     delivery: { tab: 'operations', enter: () => setOperationsView('delivery') },
     settings: { tab: 'operations', enter: () => setOperationsView('settings') },
+    guide: { tab: 'operations', enter: () => setOperationsView('guide') },
 };
 const DEFAULT_DESTINATION = 'overview';
 
@@ -697,7 +698,8 @@ function setOperationsView(view) {
         kb: 'kbDraftsTab',
         gaps: 'knowledgeGapsTab',
         delivery: 'deliveryQueueTab',
-        settings: 'runtimeSettingsTab'
+        settings: 'runtimeSettingsTab',
+        guide: 'guideTab'
     };
     currentOperationsView = views[view] ? view : 'actions';
     Object.keys(views).forEach(function (key) {
@@ -716,6 +718,8 @@ function setOperationsView(view) {
         if (typeof DeliveryQueueModule !== 'undefined') DeliveryQueueModule.load();
     } else if (currentOperationsView === 'settings') {
         if (typeof RuntimeSettingsModule !== 'undefined') RuntimeSettingsModule.load();
+    } else if (currentOperationsView === 'guide') {
+        // Static content — nothing to load.
     } else if (typeof ActionCenterModule !== 'undefined') {
         ActionCenterModule.load();
     }

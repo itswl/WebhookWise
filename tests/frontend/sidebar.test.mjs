@@ -41,8 +41,8 @@ const html = el('sidebar').innerHTML;
 let fails = 0;
 const check = (label, ok) => { if (!ok) fails++; console.log((ok ? 'PASS' : 'FAIL') + '  ' + label); };
 
-check('渲染了全部 22 项', (html.match(/data-sidebar-slug=/g) || []).length === 22);
-check('22 项全部走 sprite 图标', (html.match(/data-icon=/g) || []).length >= 22);
+check('渲染了全部 23 项', (html.match(/data-sidebar-slug=/g) || []).length === 23);
+check('23 项全部走 sprite 图标', (html.match(/data-icon=/g) || []).length >= 23);
 check('4 个分组头', (html.match(/sidebar-group/g) || []).length === 4);
 check('分组已翻译', html.includes('收件箱') && html.includes('运维'));
 check('incidents 带徽章占位', html.includes('sidebarIncidentsBadge'));
@@ -56,7 +56,7 @@ for (const slug of ['sandbox', 'audit', 'integrations', 'kb', 'gaps']) {
   check('低频层包含 ' + slug, detailsHtml.includes('data-sidebar-slug="' + slug + '"'));
 }
 check('主列表不再平铺低频项', !html.slice(0, html.indexOf('<details')).includes('data-sidebar-slug="sandbox"'));
-check('低频计数正确', html.includes('(6)'));
+check('低频计数正确', html.includes('(7)'));
 check('版本脚注渲染', html.includes('sidebar-version') && html.includes('v3.6.1'));
 // Navigation + drawer dismissal now travel as ONE dispatched action name
 // (markup carries no call chain since the CSP burn-down).

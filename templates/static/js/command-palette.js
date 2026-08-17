@@ -67,6 +67,7 @@ const CommandPalette = (function () {
                 { slug: 'gaps', icon: 'lightbulb', label: 'nav.dest.gaps', keywords: 'knowledge gaps missing 知识缺口', lowFreq: true },
                 { slug: 'delivery', icon: 'send', label: 'nav.dest.delivery', keywords: 'delivery outbox dead letters replay 投递 死信 队列 重放', lowFreq: true },
                 { slug: 'settings', icon: 'sliders', label: 'nav.dest.settings', keywords: 'runtime settings policy config 设置 配置 策略' },
+                { slug: 'guide', icon: 'info', label: 'nav.dest.guide', keywords: 'guide tutorial help onboarding how to mcp agent 教程 帮助 入门 使用说明 接入', lowFreq: true },
             ],
         },
     ];

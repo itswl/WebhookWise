@@ -4406,3 +4406,67 @@ body.sidebar-collapsed .sidebar-collapse .sidebar-icon { transform: rotate(180de
   border-color: currentColor;
 }
 .badge-action:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+
+/* ===== Operator guide (#/guide) ===== */
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.25rem;
+}
+
+.guide-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.guide-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.guide-step {
+  flex: none;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guide-card-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.guide-card-desc {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  flex: 1;
+}
+
+.guide-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.guide-card .code-block { margin: 0; }

@@ -6,6 +6,26 @@ This project follows SemVer release headings.
 ## Unreleased
 
 ### Added
+- **Operator guide** (`#/guide`, Operations → More): a six-step tour of the
+  pipeline — connect a source, route with rules, read the decision trace,
+  silence and de-noise, work incidents and handoffs, hook up an AI agent via
+  MCP — each card linking to the page where the job is done. Static content,
+  fully bilingual.
+- **Agent skills in-repo** (`.claude/skills/`): three workflow skills for any
+  agent connected to the WebhookWise MCP server — `ww-investigate-alert`
+  (why did/didn't alert N notify), `ww-shift-review` (handoff brief), and
+  `ww-noise-tuning` (zombie rules, dead silences, repeat clusters). They
+  orchestrate the existing read-only tools and defer field semantics to the
+  `agent-guide` MCP resource. `.gitignore` now carves `.claude/skills/` out
+  of the ignored `.claude/` state.
+
+### Changed
+- **MCP single-lookup envelopes unified**: `get_alert_decision_trace` returns
+  `{trace: {...} | null}` and `get_dead_letter_alert` returns
+  `{alert: {...} | null}` instead of the SDK-generated `{result: ...}`
+  wrapper their `dict | None` annotations used to trigger — every tool now
+  answers with a plain object envelope. A test ratchet bans union-`None`
+  tool returns so the split shape cannot come back.
 - **Triage verdict on every analysis**: the LLM (and the rule fallback) now
   emit `triage_verdict` (`act_now` / `monitor` / `defer`) plus a 0-1
   `triage_confidence` — the act-now-vs-defer answer importance alone does not
