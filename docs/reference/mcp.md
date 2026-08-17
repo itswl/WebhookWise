@@ -178,6 +178,14 @@ enqueue, no AI call, no persistence).
 
 ## Resources
 
+#### `webhookwise://reference/agent-guide`
+**Read this first from an agent.** The usage guide for LLMs: which tool
+answers which question, investigation recipes, field semantics
+(`triage_verdict`, `skip_code`, `route`), and the read-only boundary. The
+authoritative copy lives in `api/mcp/agent_guide.py` (docs/ does not ship in
+the image).
+
+
 - `webhookwise://reference/decision-trace-fields` — a Markdown field guide for
   interpreting decision-trace fields (`outcome`, `skip_code`, `route`, etc.).
 

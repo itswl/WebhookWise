@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.types import ASGIApp
 
+from api.mcp.agent_guide import AGENT_GUIDE
 from api.mcp.auth import MCPAuthMiddleware
 from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
@@ -419,6 +420,11 @@ _DECISION_TRACE_FIELD_GUIDE = """\
 - degraded_reason: set when analysis ran in a degraded mode (e.g. ai_error).
 - silence_id: the silence rule that suppressed the alert (only when silenced).
 - matched_rules: names of the forward rules the alert matched.
+
+Analysis payloads (get_ai_analysis, list_recent_alerts) also carry:
+- triage_verdict: "act_now" | "monitor" | "defer" — should an operator act now.
+- triage_confidence: 0-1 confidence in that verdict (rule-pass verdicts are
+  deliberately modest; analyses cached before the field existed omit both).
 """
 
 
@@ -431,6 +437,18 @@ _DECISION_TRACE_FIELD_GUIDE = """\
 )
 def decision_trace_field_guide() -> str:
     return _DECISION_TRACE_FIELD_GUIDE
+
+
+@mcp_server.resource(
+    "webhookwise://reference/agent-guide",
+    name="agent-guide",
+    title="Agent usage guide",
+    description="How an agent should use this MCP surface: which tool answers which question, "
+    "investigation recipes, field semantics, and the read-only boundary.",
+    mime_type="text/markdown",
+)
+def agent_guide() -> str:
+    return AGENT_GUIDE
 
 
 # ── Prompts: reusable investigation templates an agent can invoke ────────────
@@ -446,9 +464,12 @@ def investigate_alert_prompt(webhook_event_id: str) -> str:
         f"Investigate WebhookWise alert with webhook_event_id={webhook_event_id}.\n"
         "1. Call get_alert_decision_trace to see whether it was forwarded or skipped and why "
         "(check skip_code, route, silence_id, matched_rules).\n"
-        "2. Call get_ai_analysis for the existing root-cause/summary/recommendations — reuse it, don't re-derive.\n"
-        "3. If it was silenced, call list_active_silences to identify the muting rule.\n"
-        "4. Optionally call search_knowledge_base with the alert's key terms for relevant runbooks.\n"
+        "2. Call get_ai_analysis for the existing verdict — triage_verdict/confidence, root cause, "
+        "summary, recommendations. Reuse it, don't re-derive.\n"
+        "3. Call list_incidents to see whether this alert belongs to a wider incident — sibling alerts "
+        "and the incident's workflow state are the strongest context.\n"
+        "4. If it was silenced, call list_active_silences to identify the muting rule.\n"
+        "5. Optionally call search_knowledge_base with the alert's key terms for relevant runbooks.\n"
         "Then explain, in plain language, what happened to this alert and what to do next."
     )
 

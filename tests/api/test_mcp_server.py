@@ -99,6 +99,9 @@ async def test_resources_and_prompts_registered() -> None:
 
     resources = {str(r.uri) for r in await mcp_server.list_resources()}
     assert "webhookwise://reference/decision-trace-fields" in resources
+    # The agent-facing usage guide must ship as a resource: docs/ stays out
+    # of the image, so a guide an agent cannot fetch does not exist.
+    assert "webhookwise://reference/agent-guide" in resources
     prompts = {p.name for p in await mcp_server.list_prompts()}
     assert prompts == {"investigate_alert", "review_silence_roi"}
 

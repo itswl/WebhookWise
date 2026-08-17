@@ -42,6 +42,12 @@ This project follows SemVer release headings.
   cache now execute against a real Redis in `tests/real_infra/` (env-gated,
   as before) — the mocked `eval` in the main suite returns 1 unconditionally
   and can never exercise them.
+- **An agent usage guide ships as an MCP resource**
+  (`webhookwise://reference/agent-guide`): which tool answers which question,
+  investigation recipes, field semantics, and the read-only boundary — the
+  authoritative copy lives in `api/mcp/agent_guide.py` because docs/ does not
+  ship in the image. The `investigate_alert` prompt and the decision-trace
+  field guide caught up with `triage_verdict` and `list_incidents`.
 - The MCP face caught up with the month's features — four new read-only
   tools: `list_incidents` (grouped alerts with workflow state), 
   `get_handoff_brief` (the shift digest with its paste-ready markdown),
