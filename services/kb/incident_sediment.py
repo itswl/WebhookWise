@@ -37,21 +37,22 @@ def _compose_kb_content(
 ) -> str:
     """Render an incident's IncidentSummaryResult into a KB document body.
 
-    Section labels are authored (English) scaffolding; the incident's own
-    text is preserved verbatim (it is data, and may be Chinese). Human-confirmed
+    Section labels are Chinese scaffolding — this document is retrieved by
+    Chinese queries and read by Chinese-language operators. The incident's own
+    text is preserved verbatim (it is data). Human-confirmed
     resolution facts take precedence over generated root-cause and impact text.
     """
     confirmed = resolution_record or {}
     sections: list[str] = []
     for label, value in (
-        ("Summary", summary.get("summary")),
-        ("Root cause category", confirmed.get("root_cause_category")),
-        ("Root cause", confirmed.get("root_cause") or summary.get("root_cause")),
-        ("Impact", confirmed.get("impact") or summary.get("impact")),
-        ("Resolution", confirmed.get("resolution")),
-        ("Recovery evidence", confirmed.get("recovery_evidence")),
-        ("Resolution owner", confirmed.get("owner")),
-        ("Timeline", summary.get("timeline_summary")),
+        ("概要", summary.get("summary")),
+        ("根因分类", confirmed.get("root_cause_category")),
+        ("根因", confirmed.get("root_cause") or summary.get("root_cause")),
+        ("影响", confirmed.get("impact") or summary.get("impact")),
+        ("处置过程", confirmed.get("resolution")),
+        ("恢复证据", confirmed.get("recovery_evidence")),
+        ("处置负责人", confirmed.get("owner")),
+        ("时间线", summary.get("timeline_summary")),
     ):
         text_value = str(value or "").strip()
         if text_value:
@@ -61,8 +62,8 @@ def _compose_kb_content(
     if association:
         change_text = association
         if isinstance(related_change_id, int):
-            change_text = f"{association} (change #{related_change_id})"
-        sections.append(f"## Change association\n{change_text}")
+            change_text = f"{association}（变更 #{related_change_id}）"
+        sections.append(f"## 变更关联\n{change_text}")
     if "follow_ups" in confirmed and isinstance(confirmed.get("follow_ups"), list):
         raw_recommendations: object = confirmed.get("follow_ups") or []
     else:
@@ -70,7 +71,7 @@ def _compose_kb_content(
     recommendation_values = raw_recommendations if isinstance(raw_recommendations, list) else []
     recommendations = [str(r).strip() for r in recommendation_values if str(r).strip()]
     if recommendations:
-        sections.append("## Follow-ups\n" + "\n".join(f"- {r}" for r in recommendations))
+        sections.append("## 后续事项\n" + "\n".join(f"- {r}" for r in recommendations))
     return "\n\n".join(sections)
 
 
@@ -112,7 +113,7 @@ async def draft_kb_from_incident(session: AsyncSession, incident_id: int) -> boo
     }
     await ingest_document(
         session,
-        title=f"Incident resolution: {incident.title}"[:300],
+        title=f"事故复盘：{incident.title}"[:300],
         content=content,
         source_ref=source_ref,
         tags={

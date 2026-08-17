@@ -5,6 +5,10 @@ decision-trace outcomes, workflow timestamps (ack / escalation / resolution),
 and the AI incident summary. This module is pure assembly over those rows (no
 LLM call): the export is a *draft* for a human to edit, with the system's
 facts filled in so nobody reconstructs a timeline from chat scrollback.
+
+The scaffolding (headings, field labels) is Chinese: the export is read and
+edited by Chinese-language operations, like the recap card. Machine terms
+(outcome/skip codes, statuses) stay verbatim.
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ def _fmt(ts: datetime | None) -> str:
 
 def _duration(start: datetime | None, end: datetime | None) -> str:
     if start is None or end is None:
-        return "ongoing"
+        return "进行中"
     minutes = int((end - start).total_seconds() // 60)
     hours, mins = divmod(max(0, minutes), 60)
     return f"{hours}h {mins}m" if hours else f"{mins}m"
@@ -47,7 +51,7 @@ def _event_line(event_row: Any, outcome_by_event: dict[int, str]) -> str:
         summary = str(analysis.get("summary") or "").strip()
     delivered = outcome_by_event.get(int(event_row.id), "")
     delivery_note = f" · {delivered}" if delivered else ""
-    duplicate_note = " · duplicate" if bool(event_row.is_duplicate) else ""
+    duplicate_note = " · 重复" if bool(event_row.is_duplicate) else ""
     text = summary or f"{event_row.source} event"
     return (
         f"| {_fmt(event_row.timestamp)} | {event_row.source or '—'} | "
@@ -93,34 +97,34 @@ async def build_postmortem_markdown(session: AsyncSession, incident_id: int) -> 
             outcome_by_event[int(event_id)] = label
 
     lines: list[str] = [
-        f"# Postmortem draft: {incident.title}",
+        f"# 复盘草稿：{incident.title}",
         "",
-        f"- **Incident:** #{incident.id}",
-        f"- **Status:** {incident.status} / {incident.workflow_status}",
-        f"- **Source(s):** {incident.source or '—'}",
-        f"- **Top importance:** {incident.top_importance or '—'}",
-        f"- **Started:** {_fmt(incident.started_at)}",
-        f"- **Resolved:** {_fmt(incident.resolved_at)}",
-        f"- **Duration:** {_duration(incident.started_at, incident.resolved_at)}",
-        f"- **Alerts in incident:** {incident.alert_count}",
-        f"- **Assignee:** {incident.assignee or 'unassigned'}",
+        f"- **事故:** #{incident.id}",
+        f"- **状态:** {incident.status} / {incident.workflow_status}",
+        f"- **来源:** {incident.source or '—'}",
+        f"- **最高重要度:** {incident.top_importance or '—'}",
+        f"- **开始:** {_fmt(incident.started_at)}",
+        f"- **解决:** {_fmt(incident.resolved_at)}",
+        f"- **持续时长:** {_duration(incident.started_at, incident.resolved_at)}",
+        f"- **事故内告警数:** {incident.alert_count}",
+        f"- **负责人:** {incident.assignee or '未指派'}",
     ]
     if incident.acknowledged_at is not None:
-        lines.append(f"- **Acknowledged:** {_fmt(incident.acknowledged_at)}")
+        lines.append(f"- **认领时间:** {_fmt(incident.acknowledged_at)}")
     if incident.escalated_at is not None:
-        lines.append(f"- **Escalated (SLA breach):** {_fmt(incident.escalated_at)}")
+        lines.append(f"- **升级（SLA 超时）:** {_fmt(incident.escalated_at)}")
 
     summary = incident.summary_analysis if isinstance(incident.summary_analysis, dict) else {}
     confirmed = incident.resolution_record if isinstance(incident.resolution_record, dict) else {}
     if confirmed.get("owner"):
-        lines.append(f"- **Resolution owner:** {str(confirmed['owner']).strip()}")
+        lines.append(f"- **处置负责人:** {str(confirmed['owner']).strip()}")
     for heading, value in (
-        ("Summary", summary.get("summary")),
-        ("Root cause category", confirmed.get("root_cause_category")),
-        ("Root cause", confirmed.get("root_cause") or summary.get("root_cause")),
-        ("Impact", confirmed.get("impact") or summary.get("impact")),
-        ("Resolution", confirmed.get("resolution")),
-        ("Recovery evidence", confirmed.get("recovery_evidence")),
+        ("概要", summary.get("summary")),
+        ("根因分类", confirmed.get("root_cause_category")),
+        ("根因", confirmed.get("root_cause") or summary.get("root_cause")),
+        ("影响", confirmed.get("impact") or summary.get("impact")),
+        ("处置过程", confirmed.get("resolution")),
+        ("恢复证据", confirmed.get("recovery_evidence")),
     ):
         text_value = str(value or "").strip()
         if text_value:
@@ -130,28 +134,28 @@ async def build_postmortem_markdown(session: AsyncSession, incident_id: int) -> 
         related_change_id = confirmed.get("related_change_id")
         change_text = association
         if isinstance(related_change_id, int):
-            change_text = f"{association} (change #{related_change_id})"
-        lines += ["", "## Change association", "", change_text]
+            change_text = f"{association}（变更 #{related_change_id}）"
+        lines += ["", "## 变更关联", "", change_text]
 
-    lines += ["", "## Timeline", ""]
+    lines += ["", "## 时间线", ""]
     if member_rows:
-        lines += ["| Time (UTC) | Source | Importance | What happened |", "| --- | --- | --- | --- |"]
+        lines += ["| 时间（UTC） | 来源 | 重要度 | 发生了什么 |", "| --- | --- | --- | --- |"]
         lines += [_event_line(row, outcome_by_event) for row in member_rows]
         if incident.alert_count > len(member_rows):
             lines.append("")
-            lines.append(f"_Showing the first {len(member_rows)} of {incident.alert_count} member alerts._")
+            lines.append(f"_仅显示前 {len(member_rows)} 条，共 {incident.alert_count} 条成员告警。_")
     else:
-        lines.append("_No member alerts recorded._")
+        lines.append("_没有记录到成员告警。_")
 
     # Workflow milestones appended to the timeline as bullet points.
     milestones: list[tuple[datetime | None, str]] = [
-        (incident.escalated_at, "SLA-breach escalation notified"),
-        (incident.acknowledged_at, "Acknowledged"),
-        (incident.resolved_at, "Resolved"),
+        (incident.escalated_at, "已发送 SLA 超时升级通知"),
+        (incident.acknowledged_at, "已认领"),
+        (incident.resolved_at, "已解决"),
     ]
     milestone_lines = [f"- {_fmt(ts)} — {label}" for ts, label in milestones if ts is not None]
     if milestone_lines:
-        lines += ["", "### Milestones", ""] + milestone_lines
+        lines += ["", "### 关键节点", ""] + milestone_lines
 
     runbook_executions = list(
         (
@@ -166,16 +170,16 @@ async def build_postmortem_markdown(session: AsyncSession, incident_id: int) -> 
         .all()
     )
     if runbook_executions:
-        lines += ["", "## Runbook executions", ""]
+        lines += ["", "## Runbook 执行", ""]
         for execution in runbook_executions:
             lines += [
                 f"### {execution.title}",
                 "",
-                f"- **Status:** {execution.status}",
-                f"- **Actor:** {execution.actor}",
-                f"- **Started:** {_fmt(execution.started_at)}",
-                f"- **Completed:** {_fmt(execution.completed_at)}",
-                f"- **Effectiveness:** {execution.effectiveness or 'not rated'}",
+                f"- **状态:** {execution.status}",
+                f"- **执行人:** {execution.actor}",
+                f"- **开始:** {_fmt(execution.started_at)}",
+                f"- **完成:** {_fmt(execution.completed_at)}",
+                f"- **有效性:** {execution.effectiveness or '未评价'}",
             ]
             steps = execution.steps if isinstance(execution.steps, list) else []
             if steps:
@@ -184,7 +188,7 @@ async def build_postmortem_markdown(session: AsyncSession, incident_id: int) -> 
                     if not isinstance(step, dict):
                         continue
                     marker = "x" if bool(step.get("completed")) else " "
-                    text = str(step.get("text") or "Unnamed manual step").strip()
+                    text = str(step.get("text") or "未命名手工步骤").strip()
                     lines.append(f"- [{marker}] {text}")
             if execution.notes:
                 lines += ["", f"> {execution.notes.strip()}"]
@@ -195,13 +199,13 @@ async def build_postmortem_markdown(session: AsyncSession, incident_id: int) -> 
     raw_recommendations = confirmed_follow_ups if has_confirmed_follow_ups else summary.get("recommendations")
     recommendation_items = raw_recommendations if isinstance(raw_recommendations, list) else []
     recommendations = [str(r).strip() for r in recommendation_items if str(r).strip()]
-    lines += ["", "## Action items", ""]
+    lines += ["", "## 后续事项", ""]
     if recommendations:
         lines += [f"- [ ] {r}" for r in recommendations]
     elif has_confirmed_follow_ups:
-        lines.append("_No follow-ups recorded._")
+        lines.append("_未记录后续事项。_")
     else:
-        lines.append("- [ ] _Fill in follow-ups._")
+        lines.append("- [ ] _待补充后续事项。_")
 
     kb_ref = (
         await session.execute(
@@ -211,7 +215,8 @@ async def build_postmortem_markdown(session: AsyncSession, incident_id: int) -> 
         )
     ).first()
     if kb_ref is not None:
-        lines += ["", f"_Knowledge base: “{kb_ref.title}” ({kb_ref.status})._"]
+        status_zh = {"draft": "草稿", "published": "已发布"}.get(str(kb_ref.status), str(kb_ref.status))
+        lines += ["", f"_知识库：“{kb_ref.title}”（{status_zh}）。_"]
 
-    lines += ["", f"_Generated by WebhookWise at {utc_isoformat(utcnow())}_"]
+    lines += ["", f"_由 WebhookWise 生成于 {utc_isoformat(utcnow())}_"]
     return "\n".join(lines).rstrip() + "\n"

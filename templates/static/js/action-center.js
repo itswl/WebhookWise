@@ -83,21 +83,33 @@ const ActionCenterModule = (function () {
 
         listEl.innerHTML = '<div style="display:flex; flex-direction:column; gap:12px;">' + items.map(function (item) {
             const critical = item.severity === 'critical';
+            // Server titles/labels are English by contract; title_key +
+            // title_params (and the action name) let us render a localized
+            // equivalent, falling back to the server string for unknown keys.
+            let title = item.title || '';
+            if (item.title_key) {
+                const key = 'action.t.' + item.title_key;
+                const localized = t(key, item.title_params || {});
+                if (localized !== key) title = localized;
+            }
             const color = critical ? 'var(--danger)' : 'var(--warning)';
             const icon = critical ? wwIcon('alert-triangle') : wwIcon('alert-triangle');
             const when = item.occurred_at && typeof formatTime === 'function' ? formatTime(item.occurred_at) : '';
             const actionButtons = (item.actions || []).map(function (action) {
+                const btnKey = 'action.btn.' + (action.action || '');
+                const btnLocalized = t(btnKey);
+                const btnLabel = btnLocalized !== btnKey ? btnLocalized : (action.label || 'Run');
                 return '<button type="button" class="btn btn-sm btn-primary" data-remediation="' +
                     escapeHtml(action.action || '') + '" data-resource-id="' +
                     escapeHtml(String(action.resource_id || '')) + '" data-resource-type="' +
-                    escapeHtml(action.resource_type || '') + '">' + escapeHtml(action.label || 'Run') + '</button>';
+                    escapeHtml(action.resource_type || '') + '">' + escapeHtml(btnLabel) + '</button>';
             }).join('');
             return '<div class="action-center-item" data-action-view-target="' +
                 escapeHtml(item.view || '') + '" data-action-kind="' + escapeHtml(item.kind || '') + '" style="text-align:left; width:100%; background:var(--bg-surface);' +
                 ' border:1px solid var(--border); border-left:3px solid ' + color + '; border-radius:var(--radius-lg);' +
                 ' padding:16px; color:inherit;">' +
                 '<div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start;">' +
-                '<div><div style="font-weight:700; margin-bottom:6px;">' + icon + ' ' + escapeHtml(item.title || '') +
+                '<div><div style="font-weight:700; margin-bottom:6px;">' + icon + ' ' + escapeHtml(title) +
                 (Number(item.count || 1) > 1 ? ' <span class="badge">×' + escapeHtml(String(item.count)) + '</span>' : '') +
                 '</div><div style="font-size:0.85rem; color:var(--text-secondary); overflow-wrap:anywhere;">' +
                 escapeHtml(item.detail || '') + '</div></div>' +

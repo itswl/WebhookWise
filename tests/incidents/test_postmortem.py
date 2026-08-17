@@ -71,7 +71,7 @@ async def test_postmortem_assembles_header_timeline_and_actions(session: AsyncSe
             DecisionTrace(webhook_event_id=first.id, outcome="forwarded", skip_code="none"),
             DecisionTrace(webhook_event_id=second.id, outcome="skipped", skip_code="cooldown"),
             KBDocument(
-                title="Incident resolution: gpu-mem-high",
+                title="事故复盘：gpu-mem-high",
                 content="body",
                 content_hash="pm-hash",
                 chunk_index=0,
@@ -100,20 +100,20 @@ async def test_postmortem_assembles_header_timeline_and_actions(session: AsyncSe
     markdown = await build_postmortem_markdown(session, int(incident.id))
     assert markdown is not None
 
-    assert "# Postmortem draft: volcengine incident — gpu-mem-high" in markdown
-    assert "- **Duration:** 1h 0m" in markdown
-    assert "- **Escalated (SLA breach):**" in markdown
-    assert "## Root cause" in markdown and "Model cache never evicted." in markdown
+    assert "# 复盘草稿：volcengine incident — gpu-mem-high" in markdown
+    assert "- **持续时长:** 1h 0m" in markdown
+    assert "- **升级（SLA 超时）:**" in markdown
+    assert "## 根因" in markdown and "Model cache never evicted." in markdown
     # Timeline rows carry the per-alert summary, dup marker, and trace outcome.
     assert "GPU 显存超过 95% · forwarded" in markdown
-    assert "duplicate · skipped (cooldown)" in markdown
+    assert "重复 · skipped (cooldown)" in markdown
     assert "- [ ] Add cache eviction" in markdown
-    assert "## Runbook executions" in markdown
+    assert "## Runbook 执行" in markdown
     assert "### GPU recovery" in markdown
     assert "- [x] Drain rendering traffic" in markdown
-    assert "- **Effectiveness:** effective" in markdown
+    assert "- **有效性:** effective" in markdown
     assert "> Memory pressure cleared." in markdown
-    assert "Knowledge base: “Incident resolution: gpu-mem-high” (draft)" in markdown
+    assert "知识库：“事故复盘：gpu-mem-high”（草稿）" in markdown
 
 
 @pytest.mark.asyncio
@@ -132,8 +132,8 @@ async def test_postmortem_handles_bare_incident_and_missing(session: AsyncSessio
 
     markdown = await build_postmortem_markdown(session, int(incident.id))
     assert markdown is not None
-    assert "- **Duration:** ongoing" in markdown
-    assert "_No member alerts recorded._" in markdown
-    assert "- [ ] _Fill in follow-ups._" in markdown
+    assert "- **持续时长:** 进行中" in markdown
+    assert "_没有记录到成员告警。_" in markdown
+    assert "- [ ] _待补充后续事项。_" in markdown
 
     assert await build_postmortem_markdown(session, 999999) is None

@@ -111,14 +111,14 @@ const NoiseCenterModule = (function () {
             return;
         }
         target.innerHTML = '<div style="overflow-x:auto;"><table class="data-table" style="width:100%;">' +
-            '<thead><tr><th>' + escapeHtml(t('noise.sources.rule')) + '</th><th>' + escapeHtml(t('noise.summary.total')) +
-            '</th><th>' + escapeHtml(t('noise.summary.duplicateRate')) + '</th><th>' + escapeHtml(t('noise.summary.noiseRate')) +
-            '</th><th>' + escapeHtml(t('noise.summary.avoided')) + '</th><th>' + escapeHtml(t('noise.sources.recoveries')) + '</th></tr></thead><tbody>' +
+            '<thead><tr><th>' + escapeHtml(t('noise.sources.rule')) + '</th><th class="num">' + escapeHtml(t('noise.summary.total')) +
+            '</th><th class="num">' + escapeHtml(t('noise.summary.duplicateRate')) + '</th><th class="num">' + escapeHtml(t('noise.summary.noiseRate')) +
+            '</th><th class="num">' + escapeHtml(t('noise.summary.avoided')) + '</th><th class="num">' + escapeHtml(t('noise.sources.recoveries')) + '</th></tr></thead><tbody>' +
             sources.map(function (source) {
                 var label = source.name || source.source || 'unknown';
-                return '<tr><td><strong>' + escapeHtml(label) + '</strong>' + wwSourceSuffix(label, source.sources) + '</td><td>' + escapeHtml(String(source.total || 0)) +
-                    '</td><td>' + escapeHtml(String(source.duplicate_rate || 0)) + '%</td><td>' + escapeHtml(String(source.noise_rate || 0)) +
-                    '%</td><td>' + escapeHtml(String(source.notifications_avoided || 0)) + '</td><td>' + escapeHtml(String(source.recoveries || 0)) + '</td></tr>';
+                return '<tr><td><strong>' + escapeHtml(label) + '</strong>' + wwSourceSuffix(label, source.sources) + '</td><td class="num">' + escapeHtml(String(source.total || 0)) +
+                    '</td><td class="num">' + escapeHtml(String(source.duplicate_rate || 0)) + '%</td><td class="num">' + escapeHtml(String(source.noise_rate || 0)) +
+                    '%</td><td class="num">' + escapeHtml(String(source.notifications_avoided || 0)) + '</td><td class="num">' + escapeHtml(String(source.recoveries || 0)) + '</td></tr>';
             }).join('') + '</tbody></table></div>';
     }
 

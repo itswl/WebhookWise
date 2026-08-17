@@ -18,10 +18,34 @@ const IncidentsModule = (function () {
     var _focusIncidentId = null;
 
     var STATUS_BADGES = {
-        active: { label: 'Active', cls: 'badge-high', icon: wwIcon('flame') },
-        quiet: { label: 'Quiet', cls: 'badge-medium', icon: wwIcon('volume-x') },
-        closed: { label: 'Closed', cls: 'badge-low', icon: wwIcon('check') }
+        active: { label: 'incidents.status.active', cls: 'badge-high', icon: wwIcon('flame') },
+        quiet: { label: 'incidents.status.quiet', cls: 'badge-medium', icon: wwIcon('volume-x') },
+        closed: { label: 'incidents.status.closed', cls: 'badge-low', icon: wwIcon('check') }
     };
+
+    /** i18n lookup that falls back to the raw value for unknown keys. */
+    function badgeText(key, fallback) {
+        var label = t(key);
+        return label === key ? fallback : label;
+    }
+
+    /**
+     * Status + workflow chips, deduplicated: "open" is the default workflow
+     * (no chip), and a closed incident whose workflow is resolved shows ONE
+     * "resolved" chip instead of the old CLOSED + RESOLVED pair saying the
+     * same thing twice.
+     */
+    function incidentBadgesHtml(row, badge) {
+        var wf = String(row.workflow_status || 'open');
+        var html = '';
+        if (!(row.status === 'closed' && wf === 'resolved')) {
+            html += '<span class="badge ' + badge.cls + '" style="font-size:0.65rem;">' + escapeHtml(badgeText(badge.label, String(row.status || ''))) + '</span>';
+        }
+        if (wf !== 'open') {
+            html += '<span class="badge badge-outline" style="font-size:0.65rem;">' + escapeHtml(badgeText('alerts.workflow.' + wf, wf.replace('_', ' '))) + '</span>';
+        }
+        return html;
+    }
 
     async function load() {
         // Self-binding: IncidentsModule.init() is not part of the dashboard
@@ -82,8 +106,7 @@ const IncidentsModule = (function () {
             html += '<div style="flex:1; min-width:0;">';
             html += '<div style="display:flex; align-items:center; gap:0.5rem;">';
             html += '<span style="font-weight:600; font-size:1rem; color:var(--text-main);">' + escapeHtml(row.title) + '</span>';
-            html += '<span class="badge ' + badge.cls + '" style="font-size:0.65rem;">' + badge.label + '</span>';
-            html += '<span class="badge badge-outline" style="font-size:0.65rem;">' + escapeHtml((row.workflow_status || 'open').replace('_', ' ')) + '</span>';
+            html += incidentBadgesHtml(row, badge);
             html += renderRecurrenceBadge(row.recurrence || row.recurrence_candidate);
             html += '</div>';
             html += '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">';
@@ -1865,8 +1888,7 @@ const IncidentsModule = (function () {
         h += '<div style="flex:1; min-width:0;">';
         h += '<div style="display:flex; align-items:center; gap:0.5rem;">';
         h += '<span style="font-weight:600; font-size:1rem; color:var(--text-main);">' + escapeHtml(row.title) + '</span>';
-        h += '<span class="badge ' + badge.cls + '" style="font-size:0.65rem;">' + badge.label + '</span>';
-        h += '<span class="badge badge-outline" style="font-size:0.65rem;">' + escapeHtml((row.workflow_status || 'open').replace('_', ' ')) + '</span>';
+        h += incidentBadgesHtml(row, badge);
         h += renderRecurrenceBadge(row.recurrence || row.recurrence_candidate);
         h += '</div>';
         h += '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">';

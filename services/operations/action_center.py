@@ -46,6 +46,8 @@ def _item(
     kind: str,
     severity: str,
     title: str,
+    title_key: str = "",
+    title_params: dict[str, Any] | None = None,
     detail: str,
     count: int = 1,
     occurred_at: datetime | None = None,
@@ -59,6 +61,10 @@ def _item(
         "kind": kind,
         "severity": severity,
         "title": title,
+        # The English title stays authoritative; title_key/title_params let the
+        # dashboard render a localized equivalent without parsing the string.
+        "title_key": title_key,
+        "title_params": title_params or {},
         "detail": detail,
         "count": count,
         "occurred_at": utc_isoformat(occurred_at),
@@ -103,6 +109,8 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 kind="integration_disabled",
                 severity="critical",
                 title=f"Forwarding rule disabled: {rule.name}",
+                title_key="rule_disabled",
+                title_params={"name": rule.name},
                 detail=_safe_error(audit.summary),
                 occurred_at=audit.created_at,
                 resource_type="forward_rule",
@@ -178,6 +186,8 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                     if permanent
                     else f"Delivery exhausted: {record.rule_name or record.target_type}"
                 ),
+                title_key="delivery_fault_permanent" if permanent else "delivery_exhausted",
+                title_params={"name": record.rule_name or record.target_type},
                 detail=_safe_error(record.last_error),
                 count=len(records),
                 occurred_at=record.updated_at,
@@ -216,6 +226,8 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 kind="dead_letter",
                 severity="critical",
                 title=f"{dead_letter_count} dead-letter event(s) need review",
+                title_key="dead_letters",
+                title_params={"count": dead_letter_count},
                 detail=_safe_error(latest_dead_letter.error_message if latest_dead_letter else None),
                 count=dead_letter_count,
                 occurred_at=latest_dead_letter.updated_at if latest_dead_letter else None,
@@ -248,6 +260,8 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 kind="stuck_processing",
                 severity="warning",
                 title=f"{stuck_count} event(s) appear stuck",
+                title_key="stuck_events",
+                title_params={"count": stuck_count},
                 detail="Events have remained non-terminal for more than 15 minutes",
                 count=stuck_count,
                 occurred_at=now,
@@ -271,6 +285,8 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 kind="queue_backlog",
                 severity="critical",
                 title=f"Ingest queue backlog at {backlog_pct}% of capacity",
+                title_key="queue_backlog",
+                title_params={"pct": backlog_pct},
                 detail=(
                     f"Unconsumed backlog {queue['backlog']} / MAXLEN {queue['maxlen']} "
                     f"(pending {queue['pending']}, lag {queue['lag']}). Consumers are falling behind; beyond "
@@ -295,6 +311,8 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 kind="flapping_identity",
                 severity="warning",
                 title=f"{len(flapping)} alert identit{'y is' if len(flapping) == 1 else 'ies are'} flapping",
+                title_key="flapping",
+                title_params={"count": len(flapping)},
                 detail=(
                     f"Rapid firing↔recovered oscillation: {labels}. Fix the upstream threshold or add a "
                     "for-duration; FLAPPING_SUPPRESS_ENABLED=true withholds notifications while they flap."
@@ -325,6 +343,8 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 kind="delivery_backlog",
                 severity="warning",
                 title=f"{stale_outbox_count} delivery record(s) are delayed",
+                title_key="delivery_delayed",
+                title_params={"count": stale_outbox_count},
                 detail="Pending or retrying deliveries are older than five minutes",
                 count=stale_outbox_count,
                 occurred_at=now,
@@ -363,6 +383,8 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 kind="ai_provider",
                 severity="warning",
                 title=f"{summary_failure_count} incident summary job(s) are degraded",
+                title_key="summaries_degraded",
+                title_params={"count": summary_failure_count},
                 detail=_safe_error(latest_summary_failure.summary_last_error if latest_summary_failure else None),
                 count=summary_failure_count,
                 occurred_at=latest_summary_failure.updated_at if latest_summary_failure else None,
@@ -412,6 +434,8 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 kind="sla_breached",
                 severity="critical",
                 title=f"Incident SLA breached: {incident.title}",
+                title_key="incident_sla",
+                title_params={"title": incident.title},
                 detail=f"Due at {utc_isoformat(incident.sla_due_at)}; status is {incident.workflow_status}",
                 occurred_at=incident.sla_due_at,
                 resource_type="incident",
@@ -436,6 +460,8 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 kind="sla_breached",
                 severity="critical",
                 title=f"Alert SLA breached: #{event.id}",
+                title_key="alert_sla",
+                title_params={"id": event.id},
                 detail=f"Due at {utc_isoformat(event.sla_due_at)}; status is {event.workflow_status}",
                 occurred_at=event.sla_due_at,
                 resource_type="webhook_event",

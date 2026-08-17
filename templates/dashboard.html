@@ -369,7 +369,7 @@
                         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                             <label class="sr-only" for="ruleSearch" data-i18n="rules.searchLabel">Search rules</label>
                             <input id="ruleSearch" type="search" class="filter-input" style="width: 200px;"
-                                   data-i18n-placeholder="rules.searchPlaceholder" placeholder="Search rules…" data-sb="sb23">
+                                   data-i18n-placeholder="rules.searchPlaceholder" placeholder="Search rules…" data-sb="sb33">
                             <button data-sb="sb4" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> <span data-i18n="routing.view.sandbox">Test Payload</span></button>
                             <button data-sb="sb5" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg> <span data-i18n="routing.view.audit">Audit</span></button>
                             <button data-sb="sb6" class="btn btn-primary"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="rules.add">Add Rule</span></button>
@@ -403,9 +403,14 @@
                             <div class="section-title" data-i18n="inbound.title">Inbound Rules</div>
                             <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="inbound.subtitle">What an alert costs on the way in. Matching alerts are still ingested, classified and forwarded — they just skip the model, or the investigation, or both.</p>
                         </div>
-                        <button class="btn btn-primary" data-act="showInboundRuleForm" data-args="">
-                            <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="inbound.add">Add Rule</span>
-                        </button>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <label class="sr-only" for="inboundSearch" data-i18n="inbound.searchLabel">Search inbound rules</label>
+                            <input id="inboundSearch" type="search" class="filter-input" style="width: 200px;"
+                                   data-i18n-placeholder="inbound.searchPlaceholder" placeholder="Search rules…" data-sb="sb37">
+                            <button class="btn btn-primary" data-act="showInboundRuleForm" data-args="">
+                                <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="inbound.add">Add Rule</span>
+                            </button>
+                        </div>
                     </div>
                     <div id="inboundRuleForm" style="display: none;"></div>
                     <div id="inboundRulesList"></div>
@@ -421,7 +426,7 @@
                         <div style="display:flex; gap:8px; align-items:center;">
                             <label class="sr-only" for="silenceSearch" data-i18n="silences.searchLabel">Search silences</label>
                             <input id="silenceSearch" type="search" class="filter-input" style="width: 200px;"
-                                   data-i18n-placeholder="silences.searchPlaceholder" placeholder="Search silences…" data-sb="sb24">
+                                   data-i18n-placeholder="silences.searchPlaceholder" placeholder="Search silences…" data-sb="sb34">
                             <button data-sb="sb7" class="btn btn-primary">
                                 <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="silences.add">Add Silence</span>
                             </button>
@@ -507,12 +512,12 @@
 
                 <!-- View: Sandbox -->
                 <div id="routingViewSandbox" class="sandbox-section" style="display: none;">
-                    <div class="section-header" style="margin-bottom: 20px;">
-                        <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
+                    <div class="section-header" style="gap:12px; margin-bottom: 20px;">
+                        <div>
                             <div class="section-title" data-i18n="sandbox.title">Payload Sandbox</div>
-                            <button data-sb="sb10" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg> <span data-i18n="routing.view.rules">Forward Rules</span></button>
+                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="sandbox.subtitle">Paste a raw alert payload and see what WebhookWise would extract and decide — which adapter parses it, the alert identity, and which rules/silences would match. Nothing is queued, analyzed by AI, or saved.</p>
                         </div>
-                        <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="sandbox.subtitle">Paste a raw alert payload and see what WebhookWise would extract and decide — which adapter parses it, the alert identity, and which rules/silences would match. Nothing is queued, analyzed by AI, or saved.</p>
+                        <button data-sb="sb10" class="btn" style="flex:none;"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg> <span data-i18n="routing.view.rules">Forward Rules</span></button>
                     </div>
                     <div class="sandbox-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start;">
                         <div>
@@ -545,6 +550,9 @@
                             <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="audit.subtitle">Surface zombie rules (gone quiet), pure-noise rules (never forwarded), and flapping rules (oscillating near threshold). Read-only over existing data.</p>
                         </div>
                         <div style="display:flex; gap:8px; align-items:center;">
+                            <label class="sr-only" for="auditSearch" data-i18n="audit.searchLabel">Search rules</label>
+                            <input id="auditSearch" type="search" class="filter-input" style="width: 180px;"
+                                   data-i18n-placeholder="audit.searchPlaceholder" placeholder="Search rules…" data-sb="sb40">
                             <select id="auditWindowDays" style="border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
                                 <option value="7" data-i18n="audit.window.7d">7 days</option>
                                 <option value="30" selected data-i18n="audit.window.30d">30 days</option>
@@ -626,7 +634,12 @@
                         <div class="section-title" data-i18n="kb.title">Knowledge drafts</div>
                         <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="kb.subtitle">Resolved-incident summaries awaiting review before they feed the AI knowledge base (RAG).</p>
                     </div>
-                    <button data-sb="sb17" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <label class="sr-only" for="kbDraftsSearch" data-i18n="kb.searchLabel">Search drafts</label>
+                        <input id="kbDraftsSearch" type="search" class="filter-input" style="width: 200px;"
+                               data-i18n-placeholder="kb.searchPlaceholder" placeholder="Search drafts…" data-sb="sb38">
+                        <button data-sb="sb17" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                    </div>
                 </div>
                 <div id="kbDraftsList"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
             </div>
@@ -641,6 +654,9 @@
                         <p data-i18n="knowledgeGaps.subtitle">Repeated work that lacks a proven runbook or complete resolution evidence.</p>
                     </div>
                     <div class="response-header-actions">
+                        <label class="sr-only" for="knowledgeGapSearch" data-i18n="knowledgeGaps.searchLabel">Search gaps</label>
+                        <input id="knowledgeGapSearch" type="search" class="filter-input" style="width: 180px;"
+                               data-i18n-placeholder="knowledgeGaps.searchPlaceholder" placeholder="Search gaps…" data-sb="sb39">
                         <select id="knowledgeGapWindow" class="filter-input">
                             <option value="7" data-i18n="knowledgeGaps.window.7d">7 days</option>
                             <option value="30" selected data-i18n="knowledgeGaps.window.30d">30 days</option>
@@ -666,12 +682,12 @@
                         <div class="section-title" data-i18n="delivery.title">Delivery queue</div>
                         <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="delivery.subtitle">Every outbound intent and its fate — filter the outbox, inspect the last error, replay dead letters.</p>
                     </div>
-                    <button data-sb="sb21" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
+                    <button data-sb="sb35" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                 </div>
                 <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin:8px 0;">
                     <div class="section-title" style="font-size: var(--fs-md);" data-i18n="delivery.outbox.title">Forwarding outbox</div>
                     <label class="sr-only" for="deliveryOutboxStatus" data-i18n="delivery.outbox.statusLabel">Status filter</label>
-                    <select id="deliveryOutboxStatus" class="form-input" style="width: auto;" data-sb="sb22">
+                    <select id="deliveryOutboxStatus" class="form-input" style="width: auto;" data-sb="sb36">
                         <option value="" data-i18n="delivery.status.all">All statuses</option>
                         <option value="pending" data-i18n="delivery.status.pending">Pending</option>
                         <option value="processing" data-i18n="delivery.status.processing">Processing</option>

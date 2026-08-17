@@ -892,3 +892,90 @@ async def test_analyze_with_openclaw_retry_degrade_raise_and_parse_error_paths(
                 circuit_breaker=PassBreaker(),
             ),
         )
+
+
+@pytest.mark.asyncio
+async def test_request_gateway_analysis_carries_evidence_pack(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With a webhook_event_id the gateway message gains the system-context
+    section (trace/recurrence/KB), clearly fenced as data; without an id the
+    section is absent and the message is unchanged."""
+    from services.analysis import deep_analysis_trigger as gateway
+
+    async def fake_prompt() -> str:
+        return "prompt-template"
+
+    class PassBreaker:
+        async def call_async(self, fn: Any, *args: object, **kwargs: object) -> object:
+            return await fn(*args, **kwargs)
+
+    captured: list[tuple[int, str]] = []
+
+    async def fake_evidence(event_id: int, hint: str = "") -> dict[str, Any]:
+        captured.append((event_id, hint))
+        return {"recurrence": {"count_7d": 9}, "decision": {"outcome": "forwarded"}}
+
+    monkeypatch.setattr(gateway, "load_deep_analysis_prompt_template", fake_prompt)
+    monkeypatch.setattr(gateway, "get_prompt_source", lambda _kind: "test-source")
+    monkeypatch.setattr(gateway, "get_current_trace_id", lambda: None)
+    monkeypatch.setattr(gateway, "build_evidence_pack", fake_evidence)
+
+    client = _PostClient([_PostResponse({"runId": "run-1"}), _PostResponse({"runId": "run-2"})])
+    deps = DeepAnalysisForwardDependencies(http_client=client, circuit_breaker=PassBreaker())
+
+    with_id = await gateway.request_gateway_analysis(
+        webhook_data_from_mapping({"source": "grafana", "parsed_data": {"RuleName": "A"}}),
+        policy=_trigger_policy(),
+        dependencies=deps,
+        webhook_event_id=42,
+        evidence_summary_hint="disk full",
+    )
+    assert with_id["_gateway_run_id"] == "run-1"
+    assert captured == [(42, "disk full")]
+    body = json.loads(client.calls[0][1]["content"])
+    assert "系统侧上下文" in body["message"]
+    assert '"count_7d":9' in body["message"] or '"count_7d": 9' in body["message"]
+
+    without_id = await gateway.request_gateway_analysis(
+        webhook_data_from_mapping({"source": "grafana", "parsed_data": {"RuleName": "A"}}),
+        policy=_trigger_policy(),
+        dependencies=deps,
+    )
+    assert without_id["_gateway_run_id"] == "run-2"
+    body2 = json.loads(client.calls[1][1]["content"])
+    assert "系统侧上下文" not in body2["message"]
+
+
+@pytest.mark.asyncio
+async def test_forward_to_deep_analysis_threads_event_id_into_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.analysis import deep_analysis_trigger as gateway
+
+    async def fake_prompt() -> str:
+        return "prompt-template"
+
+    class PassBreaker:
+        async def call_async(self, fn: Any, *args: object, **kwargs: object) -> object:
+            return await fn(*args, **kwargs)
+
+    captured: list[tuple[int, str]] = []
+
+    async def fake_evidence(event_id: int, hint: str = "") -> dict[str, Any]:
+        captured.append((event_id, hint))
+        return {}
+
+    monkeypatch.setattr(gateway, "load_deep_analysis_prompt_template", fake_prompt)
+    monkeypatch.setattr(gateway, "get_prompt_source", lambda _kind: "test-source")
+    monkeypatch.setattr(gateway, "get_current_trace_id", lambda: None)
+    monkeypatch.setattr(gateway, "build_evidence_pack", fake_evidence)
+
+    client = _PostClient([_PostResponse({"runId": "run-3"})])
+    result = await gateway.forward_to_deep_analysis(
+        webhook_data_from_mapping({"source": "grafana", "parsed_data": {"RuleName": "A"}}),
+        {"summary": "GPU 显存超限"},
+        policy=_trigger_policy(),
+        dependencies=DeepAnalysisForwardDependencies(http_client=client, circuit_breaker=PassBreaker()),
+        webhook_event_id=7,
+    )
+    assert result["_gateway_run_id"] == "run-3"
+    assert captured == [(7, "GPU 显存超限")]

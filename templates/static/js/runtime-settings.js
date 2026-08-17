@@ -19,11 +19,23 @@ const RuntimeSettingsModule = (function () {
     let editingKey = null;    // key currently in inline edit mode (one at a time)
     let editingValue = null;  // preserves the typed value across a failed-save re-render
     let rowError = null;      // { key, message } — backend message shown verbatim in the row
+    let query = '';           // live filter over key + description
 
     function domainLabel(domain) {
         const key = 'rs.domain.' + domain;
         const label = t(key);
         return label === key ? domain : label;
+    }
+
+    /**
+     * Localized description with the backend's English text as fallback —
+     * the reflection payload is English by contract, the zh dictionary
+     * overlays it per key ('rs.desc.<KEY>').
+     */
+    function descText(setting) {
+        const key = 'rs.desc.' + setting.key;
+        const label = t(key);
+        return label === key ? String(setting.description || '') : label;
     }
 
     /**
@@ -92,58 +104,73 @@ const RuntimeSettingsModule = (function () {
             '</div></div>';
     }
 
+    /**
+     * One setting = one row, three columns. The old six-column layout let a
+     * long env default (the keyword CSV lists) blow the table past the
+     * viewport, shoving the override/effective/actions columns — including
+     * the ONLY edit affordance — behind a horizontal scroll nobody notices.
+     * Now: identity | value (wraps, with provenance underneath) | actions.
+     */
     function renderRow(setting) {
-        const td = 'padding: 0.55rem 0.75rem; border-top: 1px solid var(--border); vertical-align: top;';
         const overridden = hasOverride(setting);
         const errorHtml = rowError && rowError.key === setting.key
-            ? '<div style="color: var(--danger); font-size: 0.78rem; margin-top: 4px; overflow-wrap: anywhere;">' + escapeHtml(rowError.message) + '</div>'
+            ? '<div class="rs-error">' + escapeHtml(rowError.message) + '</div>'
             : '';
 
-        let overrideCell;
+        let valueCell;
         if (editingKey === setting.key) {
-            overrideCell = renderEditor(setting) + errorHtml;
+            valueCell = renderEditor(setting) + errorHtml;
         } else {
-            overrideCell = '<span style="' + MONO + '">' + (overridden ? escapeHtml(String(setting.override)) : '—') + '</span>' +
-                '<button type="button" class="btn btn-sm" data-rs-edit="' + escapeHtml(setting.key) + '" style="margin-left: 6px;">' + wwIcon('pencil') + ' ' + t('rs.action.edit') + '</button>' +
+            const meta = [];
+            if (overridden) {
+                meta.push('<span class="badge badge-medium rs-badge">' + t('rs.badge.override') + '</span>');
+                meta.push('<span>' + escapeHtml(t('rs.meta.envDefault', { value: displayValue(setting.env_value) })) + '</span>');
+                const by = setting.updated_by ? String(setting.updated_by) : '';
+                const at = setting.updated_at ? formatSettingTime(setting.updated_at) : '';
+                if (by || at) meta.push('<span>' + escapeHtml((by + ' ' + at).trim()) + '</span>');
+            }
+            valueCell = '<div class="rs-value">' + escapeHtml(displayValue(setting.effective)) + '</div>' +
+                (meta.length ? '<div class="rs-meta">' + meta.join(' · ') + '</div>' : '') +
                 errorHtml;
         }
 
-        const updatedBy = setting.updated_by ? escapeHtml(String(setting.updated_by)) : '';
-        const updatedAt = setting.updated_at ? escapeHtml(formatSettingTime(setting.updated_at)) : '';
-        const updatedCell = (updatedBy || updatedAt)
-            ? updatedBy + (updatedBy && updatedAt ? '<br>' : '') +
-                '<span style="color: var(--text-muted); white-space: nowrap;">' + updatedAt + '</span>'
-            : '—';
+        return '<tr' + (overridden ? ' class="rs-row-override"' : '') + '>' +
+            // The key keeps nowrap: it is an identifier, and overflow-wrap
+            // "anywhere" once crushed this column into vertical letter-soup.
+            // The description below it wraps freely.
+            '<td class="rs-cell"><div class="rs-key">' + escapeHtml(setting.key) + '</div>' +
+                '<div class="rs-desc">' + escapeHtml(descText(setting)) + '</div></td>' +
+            '<td class="rs-cell">' + valueCell + '</td>' +
+            '<td class="rs-cell rs-actions">' +
+                (editingKey === setting.key
+                    ? ''
+                    : '<button type="button" class="btn btn-sm" data-rs-edit="' + escapeHtml(setting.key) + '">' + wwIcon('pencil') + ' ' + t('rs.action.edit') + '</button>') +
+            '</td></tr>';
+    }
 
-        return '<tr' + (overridden ? ' style="background: var(--warning-bg);"' : '') + '>' +
-            // nowrap, never overflow-wrap:anywhere: a KEY is an identifier.
-            // "anywhere" made the column's min-content one character wide, so
-            // under width pressure the browser crushed it into a vertical
-            // letter-soup instead of letting the wrapper scroll horizontally.
-            '<td style="' + td + ' ' + MONO + ' white-space: nowrap; font-weight: 600;">' + escapeHtml(setting.key) + '</td>' +
-            '<td style="' + td + ' color: var(--text-secondary); min-width: 220px;">' + escapeHtml(setting.description || '') + '</td>' +
-            '<td style="' + td + ' ' + MONO + '">' + escapeHtml(displayValue(setting.env_value)) + '</td>' +
-            '<td style="' + td + '">' + overrideCell + '</td>' +
-            '<td style="' + td + '"><strong style="' + MONO + '">' + escapeHtml(displayValue(setting.effective)) + '</strong>' +
-                (overridden ? ' <span class="badge badge-medium" style="font-size: 0.65rem;">' + t('rs.badge.override') + '</span>' : '') + '</td>' +
-            '<td style="' + td + ' font-size: 0.8rem;">' + updatedCell + '</td>' +
-            '</tr>';
+    function matches(setting) {
+        if (!query) return true;
+        const q = query.toLowerCase();
+        return String(setting.key).toLowerCase().indexOf(q) >= 0 ||
+            String(setting.description || '').toLowerCase().indexOf(q) >= 0 ||
+            descText(setting).toLowerCase().indexOf(q) >= 0;
     }
 
     function render() {
-        const container = document.getElementById('runtimeSettingsList');
-        if (!container) return;
+        const host = document.getElementById('rsTableHost');
+        if (!host) return;
 
         if (!settings.length) {
-            container.innerHTML = '<div class="empty-state" style="text-align: center; padding: 60px; color: var(--text-secondary);">' +
+            host.innerHTML = '<div class="empty-state" style="text-align: center; padding: 60px; color: var(--text-secondary);">' +
                 '<div style="font-size: 48px; margin-bottom: 16px;">' + wwIcon('sliders') + '</div>' +
                 '<div class="empty-title">' + escapeHtml(t('rs.empty.title')) + '</div>' +
                 '<div class="empty-text">' + escapeHtml(t('rs.empty.text')) + '</div></div>';
             return;
         }
 
+        const visible = settings.filter(matches);
         const groups = {};
-        settings.forEach(function (setting) {
+        visible.forEach(function (setting) {
             const domain = String(setting.domain || 'other');
             (groups[domain] = groups[domain] || []).push(setting);
         });
@@ -152,20 +179,18 @@ const RuntimeSettingsModule = (function () {
             if (domains.indexOf(domain) < 0) domains.push(domain);
         });
 
-        const th = 'padding: 0.55rem 0.75rem; font-weight: 600;';
-        let html = '<div style="overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-surface);">';
-        html += '<table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">';
-        html += '<thead><tr style="color: var(--text-muted); text-align: left;">' +
-            '<th style="' + th + '">' + t('rs.col.key') + '</th>' +
-            '<th style="' + th + '">' + t('rs.col.description') + '</th>' +
-            '<th style="' + th + '">' + t('rs.col.envDefault') + '</th>' +
-            '<th style="' + th + '">' + t('rs.col.override') + '</th>' +
-            '<th style="' + th + '">' + t('rs.col.effective') + '</th>' +
-            '<th style="' + th + '">' + t('rs.col.updated') + '</th>' +
+        let html = '<div class="rs-wrap"><table class="rs-table">';
+        html += '<thead><tr>' +
+            '<th>' + t('rs.col.key') + '</th>' +
+            '<th>' + t('rs.col.value') + '</th>' +
+            '<th></th>' +
             '</tr></thead><tbody>';
+        if (!visible.length) {
+            html += '<tr><td colspan="3" class="rs-cell" style="color: var(--text-secondary);">' +
+                escapeHtml(t('rs.search.noMatch')) + '</td></tr>';
+        }
         domains.forEach(function (domain) {
-            html += '<tr><td colspan="6" style="padding: 0.6rem 0.75rem; border-top: 1px solid var(--border); background: var(--bg-subtle); font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">' +
-                escapeHtml(domainLabel(domain)) + '</td></tr>';
+            html += '<tr class="rs-group"><td colspan="3">' + escapeHtml(domainLabel(domain)) + '</td></tr>';
             groups[domain].slice().sort(function (a, b) {
                 return String(a.key).localeCompare(String(b.key));
             }).forEach(function (setting) {
@@ -173,8 +198,8 @@ const RuntimeSettingsModule = (function () {
             });
         });
         html += '</tbody></table></div>';
-        container.innerHTML = html;
-        bindRowActions(container);
+        host.innerHTML = html;
+        bindRowActions(host);
     }
 
     function bindRowActions(container) {
@@ -286,10 +311,24 @@ const RuntimeSettingsModule = (function () {
         editingKey = null;
         editingValue = null;
         rowError = null;
+        query = '';
         container.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('common.loading') + '</p></div>';
         try {
             const result = await API.getRuntimeSettings();
             settings = (result && result.data && result.data.settings) || [];
+            // The search box lives OUTSIDE the re-rendered table host so
+            // typing never rebuilds (and un-focuses) the input itself.
+            container.innerHTML =
+                '<div class="rs-toolbar"><input id="rsSearch" class="filter-input" type="search" ' +
+                'placeholder="' + escapeHtml(t('rs.search.placeholder')) + '" autocomplete="off"></div>' +
+                '<div id="rsTableHost"></div>';
+            const search = document.getElementById('rsSearch');
+            if (search) {
+                search.addEventListener('input', function () {
+                    query = String(search.value || '').trim();
+                    render();
+                });
+            }
             render();
         } catch (error) {
             container.innerHTML = '<div class="empty-state" style="text-align: center; padding: 40px; color: var(--text-secondary);">' +

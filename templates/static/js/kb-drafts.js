@@ -7,12 +7,15 @@
  * Mirrors the action-center / noise-center Operations sub-view pattern.
  */
 const KbDraftsModule = (function () {
+    let kbQuery = '';
+    let kbPage = 1;
+    let kbDrafts = [];
     function render(drafts) {
         const listEl = document.getElementById('kbDraftsList');
         if (!listEl) return;
 
-        const items = Array.isArray(drafts) ? drafts : [];
-        if (!items.length) {
+        kbDrafts = Array.isArray(drafts) ? drafts : [];
+        if (!kbDrafts.length) {
             listEl.innerHTML = '<div class="empty-state">' +
                 '<div class="empty-icon">' + wwIcon('book-open') + '</div>' +
                 '<div class="empty-title">' + escapeHtml(t('kb.empty.title')) + '</div>' +
@@ -20,17 +23,33 @@ const KbDraftsModule = (function () {
             return;
         }
 
-        listEl.innerHTML = '<div style="display:flex; flex-direction:column; gap:12px;">' + items.map(function (draft, i) {
+        const paged = wwFilterPage(kbDrafts, kbQuery, kbPage, 20, function (draft) {
+            return [draft.title, draft.source_ref].filter(Boolean).join(' ');
+        });
+        kbPage = paged.page;
+        if (!paged.rows.length) {
+            listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('filter') + '</div>' +
+                '<div class="empty-title">' + t('common.noMatches') + '</div></div>';
+            return;
+        }
+        const bulkBar = '<div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">' +
+            '<button type="button" class="btn btn-sm" data-kb-pick-all>' + escapeHtml(t('kb.bulk.selectPage')) + '</button>' +
+            '<button type="button" class="btn btn-sm btn-quiet-primary" data-kb-bulk-publish>' + wwIcon('check') + ' ' + escapeHtml(t('kb.bulk.publish')) + '</button>' +
+            '<button type="button" class="btn btn-sm" data-kb-bulk-discard>' + wwIcon('trash') + ' ' + escapeHtml(t('kb.bulk.discard')) + '</button>' +
+            '<span data-kb-pick-count style="color:var(--text-muted); font-size:var(--fs-sm);"></span></div>';
+        listEl.innerHTML = bulkBar + '<div style="display:flex; flex-direction:column; gap:12px;">' + paged.rows.map(function (draft, i) {
             const ref = draft.source_ref || '';
             const when = draft.updated_at && typeof formatTime === 'function' ? formatTime(draft.updated_at) : '';
             const chunks = escapeHtml(String(draft.chunks != null ? draft.chunks : 0));
             return '<div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px;">' +
                 '<div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start;">' +
-                '<div style="min-width:0;">' +
+                '<label style="display:flex; align-items:flex-start; gap:10px; min-width:0; cursor:pointer;">' +
+                '<input type="checkbox" data-kb-pick="' + escapeHtml(ref) + '" style="margin-top:4px;">' +
+                '<span style="min-width:0; display:block;">' +
                 '<div style="font-weight:700; margin-bottom:6px; overflow-wrap:anywhere;">' + wwIcon('file-text') + ' ' + escapeHtml(draft.title || ref) + '</div>' +
                 '<div style="font-size:0.8rem; color:var(--text-muted);">' +
                 '<span class="badge badge-outline" style="font-size:0.65rem;">' + escapeHtml(ref) + '</span> · ' +
-                escapeHtml(t('kb.chunks', { n: chunks })) + '</div></div>' +
+                escapeHtml(t('kb.chunks', { n: chunks })) + '</div></span></label>' +
                 '<span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">' + escapeHtml(when) + '</span></div>' +
                 '<div style="display:flex; gap:8px; margin-top:12px;">' +
                 '<button type="button" class="btn btn-sm" data-kb-detail="' + escapeHtml(ref) + '" data-kb-panel="kbDraftDetail' + i + '">' + wwIcon('eye') + ' ' + escapeHtml(t('kb.detail')) + '</button>' +
@@ -39,7 +58,7 @@ const KbDraftsModule = (function () {
                 '</div>' +
                 '<div id="kbDraftDetail' + i + '" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-light);"></div>' +
                 '</div>';
-        }).join('') + '</div>';
+        }).join('') + '</div>' + wwPagerHtml(paged, 'KbDraftsModule.page');
 
         listEl.querySelectorAll('[data-kb-detail]').forEach(function (button) {
             button.addEventListener('click', function () {
@@ -52,6 +71,7 @@ const KbDraftsModule = (function () {
         listEl.querySelectorAll('[data-kb-discard]').forEach(function (button) {
             button.addEventListener('click', function () { discard(button.getAttribute('data-kb-discard'), button); });
         });
+        bindBulkActions(listEl);
     }
 
     // Full text per open panel, for the edit textarea (chunks joined; the
@@ -163,6 +183,77 @@ const KbDraftsModule = (function () {
         }
     }
 
+    function pickedRefs() {
+        const listEl = document.getElementById('kbDraftsList');
+        if (!listEl) return [];
+        return Array.prototype.map.call(
+            listEl.querySelectorAll('[data-kb-pick]:checked'),
+            function (box) { return box.getAttribute('data-kb-pick'); }
+        ).filter(Boolean);
+    }
+
+    function updatePickCount() {
+        const el = document.querySelector('[data-kb-pick-count]');
+        if (el) {
+            const n = pickedRefs().length;
+            el.textContent = n ? t('kb.bulk.picked', { n: n }) : '';
+        }
+    }
+
+    /**
+     * Sequential on purpose: publish re-embeds server-side, and 60 parallel
+     * embedding calls is a rate-limit incident, not a feature.
+     */
+    async function bulkRun(refs, actionFn, doneKey) {
+        let ok = 0;
+        let failed = 0;
+        for (const ref of refs) {
+            try {
+                await actionFn(ref);
+                ok += 1;
+            } catch (error) {
+                failed += 1;
+            }
+        }
+        showToast(t(doneKey, { ok: ok, failed: failed }), failed ? 'warning' : 'success');
+        await load();
+    }
+
+    function bindBulkActions(listEl) {
+        listEl.querySelectorAll('[data-kb-pick]').forEach(function (box) {
+            box.addEventListener('change', updatePickCount);
+        });
+        const pickAll = listEl.querySelector('[data-kb-pick-all]');
+        if (pickAll) {
+            pickAll.addEventListener('click', function () {
+                const boxes = listEl.querySelectorAll('[data-kb-pick]');
+                const allOn = Array.prototype.every.call(boxes, function (b) { return b.checked; });
+                boxes.forEach(function (b) { b.checked = !allOn; });
+                updatePickCount();
+            });
+        }
+        const bulkPublish = listEl.querySelector('[data-kb-bulk-publish]');
+        if (bulkPublish) {
+            bulkPublish.addEventListener('click', async function () {
+                const refs = pickedRefs();
+                if (!refs.length) { showToast(t('kb.bulk.none'), 'info'); return; }
+                if (!(await wwConfirm(t('kb.bulk.confirmPublish', { n: refs.length })))) return;
+                bulkPublish.disabled = true;
+                await bulkRun(refs, function (ref) { return API.publishKbDraft(ref); }, 'kb.bulk.publishDone');
+            });
+        }
+        const bulkDiscard = listEl.querySelector('[data-kb-bulk-discard]');
+        if (bulkDiscard) {
+            bulkDiscard.addEventListener('click', async function () {
+                const refs = pickedRefs();
+                if (!refs.length) { showToast(t('kb.bulk.none'), 'info'); return; }
+                if (!(await wwConfirm(t('kb.bulk.confirmDiscard', { n: refs.length })))) return;
+                bulkDiscard.disabled = true;
+                await bulkRun(refs, function (ref) { return API.discardKbDraft(ref); }, 'kb.bulk.discardDone');
+            });
+        }
+    }
+
     async function load() {
         const listEl = document.getElementById('kbDraftsList');
         if (listEl) listEl.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('common.loading') + '</p></div>';
@@ -177,7 +268,18 @@ const KbDraftsModule = (function () {
         }
     }
 
-    return { load: load };
+    return {
+        load: load,
+        search: function (value) {
+            kbQuery = String(value || '');
+            kbPage = 1;
+            render(kbDrafts);
+        },
+        page: function (page) {
+            kbPage = Number(page) || 1;
+            render(kbDrafts);
+        }
+    };
 })();
 
 // Join the delegated-action registry: const bindings never reach window,

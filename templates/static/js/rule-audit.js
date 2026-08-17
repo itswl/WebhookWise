@@ -32,12 +32,15 @@ const RuleAuditModule = (function () {
             var resp = await API.authenticatedFetch('/v1/forward-rules/audit?window_days=' + windowDays + '&min_events=3');
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             var result = await resp.json();
-            var rows = result.data || [];
-            render(container, rows);
+            auditRows = result.data || [];
+            render(container, auditRows);
         } catch (e) {
             container.innerHTML = '<div style="text-align:center; padding:30px; color:var(--danger);">' + t('common.loadFailed') + ': ' + escapeHtml(String(e && e.message || e)) + '</div>';
         }
     }
+
+    var auditRows = [];
+    var auditQuery = '';
 
     function render(container, rows) {
         if (!rows.length) {
@@ -75,8 +78,13 @@ const RuleAuditModule = (function () {
         html += '<th style="padding:0.5rem 0.75rem;">' + t('audit.col.flags') + '</th>';
         html += '</tr></thead><tbody>';
 
-        for (var i = 0; i < rows.length; i++) {
-            var r = rows[i];
+        // The summary cards stay estate-wide; the query narrows the table only.
+        var q = auditQuery.trim().toLowerCase();
+        var visible = q ? rows.filter(function (r) {
+            return (String(r.rule_name || '') + ' ' + String(r.source || '')).toLowerCase().indexOf(q) >= 0;
+        }) : rows;
+        for (var i = 0; i < visible.length; i++) {
+            var r = visible[i];
             var lastSeen = r.last_seen ? timeAgo(r.last_seen) : '—';
             var flagsHtml = (r.flags || []).map(flagBadge).join('');
             var rowStyle = (r.flags && r.flags.indexOf('zombie') >= 0) ? 'background:var(--warning-bg);' : '';
@@ -91,9 +99,19 @@ const RuleAuditModule = (function () {
             html += '<td style="padding:0.5rem 0.75rem;">' + (flagsHtml || '—') + '</td>';
             html += '</tr>';
         }
+        if (!visible.length) {
+            html += '<tr><td colspan="7" style="padding:0.75rem; color:var(--text-secondary);">' + t('common.noMatches') + '</td></tr>';
+        }
         html += '</tbody></table></div>';
         container.innerHTML = html;
     }
 
-    return { load: load };
+    return {
+        load: load,
+        search: function (value) {
+            auditQuery = String(value || '');
+            var container = document.getElementById('ruleAuditResult');
+            if (container && auditRows.length) render(container, auditRows);
+        }
+    };
 })();

@@ -356,18 +356,32 @@ const ResponseCenterModule = (function () {
     // Rendered gap items, index-addressed by the create-runbook buttons
     // (patterns carry Chinese/quotes; attributes are the wrong transport).
     let lastGapItems = [];
+    let gapAllItems = [];
+    let gapQuery = '';
+    let gapPage = 1;
 
     function renderKnowledgeGaps(items) {
         const container = document.getElementById('knowledgeGapsList');
         if (!container) return;
-        lastGapItems = items;
+        gapAllItems = items;
         if (!items.length) {
             container.innerHTML = '<div class="empty-state response-empty"><div class="empty-icon">' + wwIcon('book-open') + '</div>' +
                 '<div class="empty-title">' + escapeHtml(t('knowledgeGaps.emptyTitle')) + '</div>' +
                 '<div class="empty-text">' + escapeHtml(t('knowledgeGaps.emptyText')) + '</div></div>';
             return;
         }
-        container.innerHTML = '<div class="knowledge-gap-list">' + items.map(function (item, gapIndex) {
+        const paged = wwFilterPage(items, gapQuery, gapPage, 20, function (item) {
+            return [item.alert_pattern, item.service, item.source, item.summary, item.reason].filter(Boolean).join(' ');
+        });
+        gapPage = paged.page;
+        // Index-addressed buttons must index the VISIBLE list.
+        lastGapItems = paged.rows;
+        if (!paged.rows.length) {
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('filter') + '</div>' +
+                '<div class="empty-title">' + t('common.noMatches') + '</div></div>';
+            return;
+        }
+        container.innerHTML = '<div class="knowledge-gap-list">' + paged.rows.map(function (item, gapIndex) {
             const priority = gapPriority(item);
             const reasons = gapReasons(item);
             const occurrences = item.incident_count || item.occurrences || item.recurrence_count;
@@ -425,7 +439,7 @@ const ResponseCenterModule = (function () {
                 wwIcon('bell') + ' ' + escapeHtml(t('knowledgeGaps.drill.alerts')) + '</button>' +
                 '</div>' +
                 '</article>';
-        }).join('') + '</div>';
+        }).join('') + '</div>' + wwPagerHtml(paged, 'ResponseCenterModule.gapPage');
 
         container.querySelectorAll('[data-gap-create]').forEach(function (button) {
             button.addEventListener('click', function () {
@@ -544,7 +558,16 @@ const ResponseCenterModule = (function () {
         init: init,
         loadWorkQueue: loadWorkQueue,
         loadKnowledgeGaps: loadKnowledgeGaps,
-        setBucket: setBucket
+        setBucket: setBucket,
+        gapSearch: function (value) {
+            gapQuery = String(value || '');
+            gapPage = 1;
+            renderKnowledgeGaps(gapAllItems);
+        },
+        gapPage: function (page) {
+            gapPage = Number(page) || 1;
+            renderKnowledgeGaps(gapAllItems);
+        }
     };
 })();
 

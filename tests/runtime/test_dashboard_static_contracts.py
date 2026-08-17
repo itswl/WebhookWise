@@ -1150,7 +1150,6 @@ _GHOST_CLASS_ALLOWLIST = frozenset(
         "ai-value",
         "alert-more-trigger",
         "badge-drill",
-        "data-table",
         "decision-trace-section",
         "detail-section",
         "dt-list-filters",
@@ -1541,3 +1540,16 @@ def test_every_data_act_the_dashboard_renders_can_be_dispatched() -> None:
     unroutable = sorted(name for name in used if not _dispatchable(name))
 
     assert unroutable == [], f"data-act names that cannot be dispatched: {unroutable}"
+
+
+def test_static_binding_ids_are_unique() -> None:
+    """Every data-sb id must belong to exactly one element: the bind helper
+    attaches to ALL matches, so a reused id cross-wires handlers (a reused
+    sb23 once made clicking the rules search box clear the auth keys)."""
+    import collections
+    import re
+
+    html = _dashboard_html()
+    counts = collections.Counter(re.findall(r'data-sb="(sb\d+)"', html))
+    duplicated = {sb: n for sb, n in counts.items() if n > 1}
+    assert duplicated == {}, f"data-sb ids used by more than one element: {duplicated}"

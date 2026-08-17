@@ -628,7 +628,7 @@ var WW_ACTION_ROOTS = [
     'SilencesModule', 'RuntimeSettingsModule', 'IncidentsModule', 'ForwardRulesModule',
     'RoutingModule', 'ResponseCenterModule', 'KbDraftsModule', 'NoiseCenterModule',
     'ActionCenterModule', 'SandboxModule', 'IngressSetupModule', 'CommandPalette',
-    'DeliveryQueueModule'
+    'DeliveryQueueModule', 'InboundRulesModule'
 ];
 
 // const-declared modules create global LEXICAL bindings with no window

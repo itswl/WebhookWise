@@ -4470,3 +4470,123 @@ body.sidebar-collapsed .sidebar-collapse .sidebar-icon { transform: rotate(180de
 }
 
 .guide-card .code-block { margin: 0; }
+
+/* ===== Runtime settings table (#/settings) =====
+   Three columns on purpose: a long env default (keyword CSVs) once blew a
+   six-column table past the viewport and hid the edit button entirely. */
+
+.rs-toolbar { margin-bottom: 0.75rem; max-width: 380px; }
+
+.rs-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.rs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  table-layout: fixed;
+}
+
+.rs-table th {
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.rs-table th:first-child { width: 38%; }
+.rs-table th:last-child { width: 110px; }
+
+.rs-cell {
+  padding: 0.55rem 1rem;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.rs-group td {
+  padding: 0.4rem 1rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg-subtle);
+  font-weight: 700;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.rs-key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rs-desc {
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
+.rs-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.rs-meta {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  margin-top: 3px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  align-items: center;
+}
+
+.rs-badge { font-size: 0.65rem; }
+
+.rs-error {
+  color: var(--danger);
+  font-size: var(--fs-xs);
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.rs-row-override { background: var(--warning-bg); }
+
+.rs-actions { text-align: right; white-space: nowrap; }
+
+/* ===== Shared data table (noise sources, rule audit) =====
+   Was a ghost class: with no definition the browser centered every <th>
+   over left-aligned cells. Numeric columns opt into .num for right-align. */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.data-table th {
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.data-table td {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.data-table th.num,
+.data-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

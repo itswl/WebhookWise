@@ -6,6 +6,18 @@ This project follows SemVer release headings.
 ## Unreleased
 
 ### Added
+- **Evidence pack for investigations**: every deep-analysis trigger now ships
+  the investigator system-side context — decision trace, 7-day repeat count,
+  the prior verdict on the same alert hash, incident membership, and top KB
+  hits — fenced as untrusted data in the gateway message. Saves hookprobe a
+  round of MCP calls per run; best-effort, never blocks the trigger.
+- **KB bulk review**: the drafts view gained per-card checkboxes with
+  select-page / publish-selected / discard-selected (sequential on purpose —
+  publishing re-embeds server-side). Sixty-six stacked drafts no longer cost
+  sixty-six confirm dialogs.
+- **Search/filter on four more views**: inbound rules, KB drafts, knowledge
+  gaps (paged too), and the rule audit table (summary cards stay
+  estate-wide). Runtime settings gained a live filter as well.
 - **Operator guide** (`#/guide`, Operations → More): a six-step tour of the
   pipeline — connect a source, route with rules, read the decision trace,
   silence and de-noise, work incidents and handoffs, hook up an AI agent via
@@ -18,14 +30,6 @@ This project follows SemVer release headings.
   orchestrate the existing read-only tools and defer field semantics to the
   `agent-guide` MCP resource. `.gitignore` now carves `.claude/skills/` out
   of the ignored `.claude/` state.
-
-### Changed
-- **MCP single-lookup envelopes unified**: `get_alert_decision_trace` returns
-  `{trace: {...} | null}` and `get_dead_letter_alert` returns
-  `{alert: {...} | null}` instead of the SDK-generated `{result: ...}`
-  wrapper their `dict | None` annotations used to trigger — every tool now
-  answers with a plain object envelope. A test ratchet bans union-`None`
-  tool returns so the split shape cannot come back.
 - **Triage verdict on every analysis**: the LLM (and the rule fallback) now
   emit `triage_verdict` (`act_now` / `monitor` / `defer`) plus a 0-1
   `triage_confidence` — the act-now-vs-defer answer importance alone does not
@@ -83,7 +87,61 @@ This project follows SemVer release headings.
   Analyses returned by the existing tools now carry
   `triage_verdict`/`triage_confidence`. Docs updated (18 tools).
 
+### Changed
+- **Runtime settings table rebuilt**: three columns (key+description, value
+  with provenance, edit) instead of six — a long keyword CSV used to shove
+  the override/effective/edit columns, including the only edit affordance,
+  behind an unnoticed horizontal scroll. Long values wrap; overrides show a
+  badge, the env default and who changed it; 81 setting descriptions are
+  now localized via zh-dictionary overlays (English payload stays the
+  contract).
+- **Server-copy localization**: action-center items carry `title_key` +
+  `title_params` so the dashboard renders localized titles/buttons (English
+  payload unchanged); incident cards no longer stack CLOSED + RESOLVED
+  badges for the same fact and their labels are localized; the postmortem
+  export and KB sediment drafts use Chinese scaffolding (title prefix
+  事故复盘, section headings) since both are read by Chinese-language
+  operations and retrieved by Chinese queries.
+- **Sandbox header** matches the standard title/subtitle/action layout, and
+  the terminology is 沙箱 everywhere.
+- OpenAPI metadata is finally the product's: title `WebhookWise`, version from
+  `core/version.py` (was `Webhook AI Assistant` v0.1.0), and every operation
+  (~120) is grouped by tags instead of one flat list.
+- The integration catalog covers every delivery channel — DingTalk, WeCom, and
+  Feishu relay gained guided entries (test-before-enable included; the bot
+  tests post real markdown payloads, not raw JSON the bots reject) — and
+  catalog icons moved from server-supplied emoji to sprite names.
+- Production startup now warns (non-fatally) when ingress rate limiting is
+  fully disabled, when replay protection is off, and when `KB_ENABLED` runs
+  on placeholder embeddings.
+- The emoji contract widened (entity decoding, wider Unicode blocks) and
+  caught four documented escapes plus two undocumented ones (⌛, 🆕) — all six
+  replaced with sprite icons or dropped; a retired-palette contract bans the
+  five pre-retheme rgba() triplets.
+- The alerts stat cards that count only loaded rows now say so (`(loaded)`);
+  untranslated strings in action-center/silences/integrations/overview moved
+  into the dictionaries; number/time formatting follows the UI language
+  instead of hardcoded `zh-CN`; the legacy OpenClaw engine filter option is
+  labelled as legacy.
+- README capability tables (EN/中文) now list the runtime-settings plane, the
+  read-only MCP server, and WebhookWise Lite.
+
 ### Fixed
+- **Reused static-binding ids cross-wired handlers**: the bind helper
+  attaches to every match, and sb21–sb24 each belonged to two elements —
+  clicking the forward-rules search box invoked clearAuthKeys (instant
+  credential wipe, no confirm), and the delivery refresh button also closed
+  the incident-resolution modal. Renumbered, plus a contract test banning
+  duplicate data-sb ids.
+- **`.data-table` was a ghost class** (no CSS definition), leaving the noise
+  and rule-audit tables with browser-default centered headers over
+  left-aligned cells. Defined, with right-aligned numeric columns.
+- **MCP single-lookup envelopes unified**: `get_alert_decision_trace` returns
+  `{trace: {...} | null}` and `get_dead_letter_alert` returns
+  `{alert: {...} | null}` instead of the SDK-generated `{result: ...}`
+  wrapper their `dict | None` annotations used to trigger — every tool now
+  answers with a plain object envelope. A test ratchet bans union-`None`
+  tool returns so the split shape cannot come back.
 - The handoff copy button copied nothing: it handed a STRING to the
   code-block button helper, which walked `.closest()` on it — a silent
   TypeError. A dedicated `wwCopyText` with toast feedback does the job, and
@@ -181,29 +239,6 @@ This project follows SemVer release headings.
 - `feishu-app://` targets pass rule validation (the channel existed but no
   rule could be saved to it through the API); `SET LOCAL statement_timeout`
   interpolation replaced with a bound `set_config()` call.
-
-### Changed
-- OpenAPI metadata is finally the product's: title `WebhookWise`, version from
-  `core/version.py` (was `Webhook AI Assistant` v0.1.0), and every operation
-  (~120) is grouped by tags instead of one flat list.
-- The integration catalog covers every delivery channel — DingTalk, WeCom, and
-  Feishu relay gained guided entries (test-before-enable included; the bot
-  tests post real markdown payloads, not raw JSON the bots reject) — and
-  catalog icons moved from server-supplied emoji to sprite names.
-- Production startup now warns (non-fatally) when ingress rate limiting is
-  fully disabled, when replay protection is off, and when `KB_ENABLED` runs
-  on placeholder embeddings.
-- The emoji contract widened (entity decoding, wider Unicode blocks) and
-  caught four documented escapes plus two undocumented ones (⌛, 🆕) — all six
-  replaced with sprite icons or dropped; a retired-palette contract bans the
-  five pre-retheme rgba() triplets.
-- The alerts stat cards that count only loaded rows now say so (`(loaded)`);
-  untranslated strings in action-center/silences/integrations/overview moved
-  into the dictionaries; number/time formatting follows the UI language
-  instead of hardcoded `zh-CN`; the legacy OpenClaw engine filter option is
-  labelled as legacy.
-- README capability tables (EN/中文) now list the runtime-settings plane, the
-  read-only MCP server, and WebhookWise Lite.
 
 ### Removed
 - Four dead sub-view switcher mechanisms (`.nav-tab`, `[data-inbox-view]`,

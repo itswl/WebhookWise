@@ -48,7 +48,12 @@ class _DeepAnalysisChannel:
         forward_data = cast(WebhookData, dict(record.forward_data or {}))
         analysis = cast(AnalysisResult, dict(record.analysis_result or {}))
         return await deep_analysis_trigger.forward_to_deep_analysis(
-            forward_data, analysis, gateway_name=str(getattr(record, "target_gateway", "") or "")
+            forward_data,
+            analysis,
+            gateway_name=str(getattr(record, "target_gateway", "") or ""),
+            # forward_data carries only the alert payload; the event id lives
+            # on the outbox row and feeds the investigator's evidence pack.
+            webhook_event_id=record.webhook_event_id,
         )
 
     def needs_followup_on_success(self, record: ForwardOutbox, result: ForwardResult) -> bool:

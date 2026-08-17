@@ -50,6 +50,9 @@ function _inboundCriteria(rule) {
     return parts.length ? parts.join(' · ') : t('inbound.noCriteria');
 }
 
+let inboundQuery = '';
+let inboundPage = 1;
+
 function renderInboundRules(rules) {
     const container = document.getElementById('inboundRulesList');
     if (!container) return;
@@ -60,7 +63,18 @@ function renderInboundRules(rules) {
             </div>`;
         return;
     }
-    container.innerHTML = rules.map(function (rule) {
+    const paged = wwFilterPage(rules, inboundQuery, inboundPage, 20, function (rule) {
+        return [rule.name, rule.action, rule.match_rule_name, rule.match_source, rule.match_event_type,
+            rule.match_importance, rule.match_project, rule.match_region, rule.match_environment,
+            rule.match_payload].filter(Boolean).join(' ');
+    });
+    inboundPage = paged.page;
+    if (!paged.rows.length) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">' + wwIcon('filter') + '</div>' +
+            '<div class="empty-title">' + t('common.noMatches') + '</div></div>';
+        return;
+    }
+    container.innerHTML = paged.rows.map(function (rule) {
         const actionLabel = t('inbound.action.' + rule.action) || rule.action;
         const state = rule.enabled
             ? `<span class="badge badge-success">${t('inbound.status.enabled')}</span>`
@@ -86,7 +100,7 @@ function renderInboundRules(rules) {
                     </div>
                 </div>
             </div>`;
-    }).join('');
+    }).join('') + wwPagerHtml(paged, 'InboundRulesModule.page');
 }
 
 function showInboundRuleForm(id) {
@@ -191,8 +205,18 @@ async function deleteInboundRule(id) {
 }
 
 const InboundRulesModule = {
-    load: loadInboundRules
+    load: loadInboundRules,
+    search: function (value) {
+        inboundQuery = String(value || '');
+        inboundPage = 1;
+        renderInboundRules(inboundRules);
+    },
+    page: function (page) {
+        inboundPage = Number(page) || 1;
+        renderInboundRules(inboundRules);
+    }
 };
+if (typeof wwRegisterActionRoot === 'function') wwRegisterActionRoot('InboundRulesModule', InboundRulesModule);
 
 
 // Matching is exact, so a name that is off by one character excludes nothing
