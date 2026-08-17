@@ -184,7 +184,11 @@ async def test_get_ai_analysis(patch_session_scope: None, session_factory: async
     assert light["analysis_level"] == "lightweight"
     assert light["items"][0]["summary"] == "light: brief blip"
     # An unknown event → "none", empty items (not an error).
-    assert await server.get_ai_analysis(webhook_event_id=999) == {"analysis_level": "none", "items": []}
+    assert await server.get_ai_analysis(webhook_event_id=999) == {
+        "analysis_level": "none",
+        "quick_analysis": None,
+        "items": [],
+    }
 
 
 @pytest.mark.asyncio

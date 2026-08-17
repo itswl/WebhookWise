@@ -60,6 +60,10 @@ _SUMMARY_COLUMNS = [
     # blob per row just to read one string (works on PostgreSQL JSONB and the
     # SQLite-JSON test shim alike).
     WebhookEvent.ai_analysis["summary"].astext.label("summary"),
+    # Act-now-vs-defer verdict rides list rows too: it existed only inside the
+    # full analysis JSON, so the MCP list tools and the alert list never saw it.
+    WebhookEvent.ai_analysis["triage_verdict"].astext.label("triage_verdict"),
+    WebhookEvent.ai_analysis["triage_confidence"].astext.label("triage_confidence"),
     WebhookEvent.created_at,
     WebhookEvent.prev_alert_id,
     _prev_ts_subq,
@@ -94,6 +98,8 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
         "duplicate_type": "within_window" if is_duplicate else "new",
         "forward_status": row.forward_status,
         "summary": row.summary,
+        "triage_verdict": row.triage_verdict,
+        "triage_confidence": float(row.triage_confidence) if row.triage_confidence is not None else None,
         "created_at": utc_isoformat(row.created_at) if row.created_at is not None else None,
         "prev_alert_id": row.prev_alert_id,
         "prev_alert_timestamp": (

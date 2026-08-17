@@ -522,6 +522,13 @@ const AlertsModule = {
             html += '</div></div>';
             html += '<div class="alert-status">';
             html += '<span class="badge badge-' + importance + '">' + getImportanceText(importance) + '</span>';
+            // Act-now-vs-defer verdict, now projected onto list rows; absent
+            // on pre-verdict analyses, in which case no badge is invented.
+            var triageDot = { act_now: 'ww-dot-danger', monitor: 'ww-dot-warning', defer: 'ww-dot-muted' }[webhook.triage_verdict];
+            if (triageDot) {
+                html += '<span class="badge badge-outline"><span class="ww-dot ' + triageDot + '"></span>' +
+                    escapeHtml(t('alerts.ai.triage.' + webhook.triage_verdict)) + '</span>';
+            }
             if (isDuplicate) {
                 html += '<span class="badge badge-duplicate" title="' + t('alerts.badge.duplicate') + '">' + t('alerts.badge.duplicate') + '</span>';
             } else {

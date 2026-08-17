@@ -243,20 +243,38 @@ async def get_dead_letter_alert(event_id: int) -> dict[str, Any] | None:
 )
 async def get_ai_analysis(webhook_event_id: int, limit: int = 10) -> dict[str, Any]:
     async with session_scope() as session:
+        event = await session.get(WebhookEvent, webhook_event_id)
+        light = dict(event.ai_analysis) if event is not None and event.ai_analysis else {}
+        # The quick verdict (triage_verdict/confidence, importance, summary)
+        # travels at the TOP LEVEL always: deep reports used to shadow it
+        # completely, so an agent asking about a deeply-analyzed alert never
+        # saw the act-now-vs-defer call.
+        quick = (
+            {
+                "importance": light.get("importance") or (event.importance if event is not None else None),
+                "summary": light.get("summary"),
+                "triage_verdict": light.get("triage_verdict"),
+                "triage_confidence": light.get("triage_confidence"),
+            }
+            if light
+            else None
+        )
+
         records = await get_deep_analyses_for_webhook(session, webhook_event_id, limit=min(max(limit, 1), 50))
         if records:
-            return {"analysis_level": "deep", "items": [deep_analysis_to_dict(r) for r in records]}
+            return {
+                "analysis_level": "deep",
+                "quick_analysis": quick,
+                "items": [deep_analysis_to_dict(r) for r in records],
+            }
 
-        # No deep analysis → fall back to the event's lightweight AI verdict so a
-        # single lookup is never empty for an event that exists.
-        event = await session.get(WebhookEvent, webhook_event_id)
         if event is None:
-            return {"analysis_level": "none", "items": []}
-        light = dict(event.ai_analysis) if event.ai_analysis else {}
+            return {"analysis_level": "none", "quick_analysis": None, "items": []}
         if not light:
-            return {"analysis_level": "none", "items": []}
+            return {"analysis_level": "none", "quick_analysis": None, "items": []}
         return {
             "analysis_level": "lightweight",
+            "quick_analysis": quick,
             "items": [
                 {
                     "webhook_event_id": webhook_event_id,

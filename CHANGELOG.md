@@ -42,6 +42,13 @@ This project follows SemVer release headings.
   cache now execute against a real Redis in `tests/real_infra/` (env-gated,
   as before) — the mocked `eval` in the main suite returns 1 unconditionally
   and can never exercise them.
+- **A live tour of all 22 MCP capabilities against production** (every tool,
+  resource, and prompt) found the triage verdict invisible from the read
+  side: list rows never projected it, and `get_ai_analysis` let deep reports
+  shadow the quick verdict entirely. List rows now carry
+  `triage_verdict`/`triage_confidence`, `get_ai_analysis` returns a
+  top-level `quick_analysis` alongside deep reports, and the alert list
+  cards show the verdict as a dot badge.
 - **An agent usage guide ships as an MCP resource**
   (`webhookwise://reference/agent-guide`): which tool answers which question,
   investigation recipes, field semantics, and the read-only boundary — the

@@ -33,6 +33,8 @@ class WebhookEventSummary(BaseModel):
     duplicate_type: DuplicateType = "new"
     forward_status: str | None = None
     summary: str | None = None
+    triage_verdict: str | None = None
+    triage_confidence: float | None = None
     created_at: str | None = None
     prev_alert_id: int | None = None
     prev_alert_timestamp: str | None = None
