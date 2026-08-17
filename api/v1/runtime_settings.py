@@ -43,10 +43,12 @@ class RuntimeSettingWriteRequest(BaseModel):
 
 # Keys whose env default is a computed fallback chain rather than one field.
 _ENV_VALUE_SPECIAL: dict[str, Any] = {
-    "WEBHOOK_INGRESS_STORM_THRESHOLD": lambda cfg: cfg.mq.WEBHOOK_INGRESS_STORM_THRESHOLD
-    or cfg.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD,
-    "WEBHOOK_INGRESS_STORM_WINDOW_SECONDS": lambda cfg: cfg.mq.WEBHOOK_INGRESS_STORM_WINDOW_SECONDS
-    or cfg.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS,
+    "WEBHOOK_INGRESS_STORM_THRESHOLD": lambda cfg: (
+        cfg.mq.WEBHOOK_INGRESS_STORM_THRESHOLD or cfg.retry.PROCESSING_LOCK_FAILFAST_THRESHOLD
+    ),
+    "WEBHOOK_INGRESS_STORM_WINDOW_SECONDS": lambda cfg: (
+        cfg.mq.WEBHOOK_INGRESS_STORM_WINDOW_SECONDS or cfg.retry.PROCESSING_LOCK_FAILFAST_WINDOW_SECONDS
+    ),
 }
 
 _CONFIG_GROUPS = (
