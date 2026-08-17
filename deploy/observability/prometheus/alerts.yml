@@ -459,7 +459,9 @@ groups:
           runbook: Check db-pool, db-latency-p95, slow requests, and worker concurrency.
 
       - alert: WebhookWiseDbUnhealthy
-        expr: (max(db_health_state{db_state="unhealthy"}) or vector(0)) > 0
+# _ratio is the exporter's suffix for a unitless gauge, and db_health_state
+        # without it has never existed — this rule could not fire.
+        expr: (max(db_health_state_ratio{db_state="unhealthy"}) or vector(0)) > 0
         for: 1m
         labels:
           severity: critical

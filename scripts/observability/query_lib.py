@@ -1046,7 +1046,7 @@ def _runbook_promql_queries(alert_name: str) -> dict[str, str]:
         }
     if "db" in lowered:
         return {
-            "db-health": 'max(db_health_state{db_state="unhealthy"}) or vector(0)',
+            "db-health": 'max(db_health_state_ratio{db_state="unhealthy"}) or vector(0)',
             "db-pool-utilization": "webhookwise:db_pool_utilization_ratio",
             "db-latency-p95": PROMQL_PRESETS["db-latency-p95"],
         }
