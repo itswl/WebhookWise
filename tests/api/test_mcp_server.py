@@ -84,6 +84,12 @@ async def test_tools_are_registered() -> None:
         "get_ai_cost_stats",
         "get_decision_quality_stats",
         "test_alert_payload",
+        # 2026-08 feature catch-up: the product grew incidents-first surfaces
+        # (recap, response metrics, delivery queue) and the MCP face follows.
+        "list_incidents",
+        "get_handoff_brief",
+        "get_response_metrics",
+        "list_forward_outbox",
     }
 
 

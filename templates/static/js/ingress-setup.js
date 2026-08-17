@@ -104,11 +104,20 @@ const IngressSetupModule = (function () {
         }).join('') + '</div>';
     }
 
+    function _isRevoked(item) {
+        return Boolean(item && (item.credential_state === 'revoked' || item.revoked_at || item.enabled === false));
+    }
+
     function existingSourceCards() {
-        if (!existingSources.length) return '';
+        // Revoked connections stay out of the list: revoking IS the end of
+        // that credential's story (the audit log keeps the history), and
+        // re-entering one only led back into a dead step-4 flow. Reconnecting
+        // is creating a new credential.
+        const live = existingSources.filter(function (item) { return !_isRevoked(item); });
+        if (!live.length) return '';
         return '<details class="ingress-existing"><summary>' +
-            escapeHtml(t('ingress.existing.title', { value: existingSources.length })) +
-            '</summary><div>' + existingSources.map(function (item) {
+            escapeHtml(t('ingress.existing.title', { value: live.length })) +
+            '</summary><div>' + live.map(function (item) {
                 const status = item.onboarding_status || (item.first_event_at ? 'connected' : 'waiting_for_event');
                 const credentialState = item.credential_state ||
                     (item.enabled === false ? 'disabled' : 'active');
@@ -361,7 +370,15 @@ const IngressSetupModule = (function () {
     async function selectExisting(id) {
         clearPoll();
         const payload = await API.getInboundSource(id);
-        connection = responseConnection(payload);
+        const picked = responseConnection(payload);
+        // A revoked credential has no live flow to re-enter — the list already
+        // filters them, this guards the direct path (stale tab, deep link).
+        if (_isRevoked(picked)) {
+            showToast(t('ingress.manage.revokedGone'), 'warning');
+            reset();
+            return;
+        }
+        connection = picked;
         selectedType = connection.source_type || '';
         setup = null;
         sourceToken = '';

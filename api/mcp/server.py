@@ -24,7 +24,11 @@ from models import DeepAnalysis, WebhookEvent
 from schemas.analysis import deep_analysis_to_dict, deep_analysis_to_summary_dict
 from schemas.silences import silence_to_dict
 from services.analysis.analysis_queries import get_ai_usage_stats, get_deep_analyses_for_webhook
+from services.forwarding.outbox_queries import list_outbox_records as query_outbox_records
+from services.incidents.queries import list_incidents as query_incidents
+from services.incidents.service_profiles import global_response_metrics
 from services.kb.retrieval import retrieve as kb_retrieve
+from services.operations.handoff import get_handoff_summary
 from services.silences.store import list_silences
 from services.webhooks.decision_trace_queries import (
     get_decision_trace_for_event,
@@ -348,6 +352,56 @@ async def test_alert_payload(source: str, payload: dict[str, Any]) -> dict[str, 
 
 
 # ── Resources: stable reference material an agent can read like a document ────
+
+
+@mcp_server.tool(
+    title="List incidents",
+    description="List incidents (grouped alerts) newest first, each with status, workflow state "
+    "(open/acknowledged/resolved/ignored), assignee, alert count, top importance, and timing. Optional "
+    "status filter: 'active' | 'quiet' | 'closed'. THE tool for \"what is going on / what happened\" "
+    "questions; follow up per alert with get_alert_decision_trace or get_ai_analysis.",
+)
+async def list_incidents(status: str = "", page_size: int = 20) -> dict[str, Any]:
+    async with session_scope() as session:
+        rows, has_more, _cursor = await query_incidents(
+            session, status=status.strip().lower(), page_size=_clamp_page_size(page_size)
+        )
+    return {"items": rows, "has_more": has_more}
+
+
+@mcp_server.tool(
+    title="Get on-call handoff brief",
+    description="One-screen shift-handoff digest over the last N hours (default 8, max 168): alert counts, "
+    "high-priority share, top sources, active/quieted incidents, and a ready-to-paste markdown brief "
+    '(summary_text). The fastest way for an agent to answer "what happened while I was away".',
+)
+async def get_handoff_brief(hours: int = 8) -> dict[str, Any]:
+    async with session_scope() as session:
+        return await get_handoff_summary(session, hours=max(1, min(int(hours), 168)))
+
+
+@mcp_server.tool(
+    title="Get response metrics",
+    description="Global MTTA / MTTR / acknowledgement rate over recent incidents (window_days, default 30, "
+    "max 365) — the same arithmetic as the per-service profiles, ungrouped. Values are null when nothing "
+    "in the window was acknowledged/resolved; that is an honest answer, not an error.",
+)
+async def get_response_metrics(window_days: int = 30) -> dict[str, Any]:
+    async with session_scope() as session:
+        return await global_response_metrics(session, window_days=max(1, min(int(window_days), 365)))
+
+
+@mcp_server.tool(
+    title="List forwarding outbox records",
+    description="List outbound delivery intents (the transactional outbox) newest first: target, status "
+    "(pending | processing | retrying | sent | exhausted | expired), attempts, last error, timestamps. "
+    'Optional status filter. Answers "did the notification for alert X actually go out, and why not" — '
+    "dead-lettered ALERTS (processing failures) are list_dead_letter_alerts instead.",
+)
+async def list_forward_outbox(status: str = "", page_size: int = 20) -> dict[str, Any]:
+    data = await query_outbox_records(page_size=_clamp_page_size(page_size), status=status.strip().lower())
+    return {"items": data.get("items", []), "total": data.get("total"), "has_more": data.get("has_more")}
+
 
 _DECISION_TRACE_FIELD_GUIDE = """\
 # WebhookWise decision-trace fields

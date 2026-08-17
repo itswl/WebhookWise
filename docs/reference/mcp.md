@@ -49,7 +49,7 @@ A `200` with a `result.serverInfo` means you are connected.
 
 ---
 
-## Tools (14)
+## Tools (18)
 
 All list tools cap `page_size` at 200. Time-window `period` accepts
 `day` | `week` | `month` | `year` (invalid values fall back to `day`).
@@ -83,9 +83,37 @@ Decision-quality meta-stats (routing / overrides / degradation).
 - **Input**: `period?`
 - **Returns**: `{ period, total, ai_total, route_breakdown, override_count, override_rate, degraded_total, degraded_rate, degraded_reasons, ... }`
 
+### Incidents & response
+
+#### `list_incidents`
+Incidents (grouped alerts) newest first: status, workflow state
+(open/acknowledged/resolved/ignored), assignee, alert count, top importance,
+timing. Optional `status` filter (`active` | `quiet` | `closed`). The tool for
+"what is going on / what happened" questions.
+
+#### `get_handoff_brief`
+Shift-handoff digest over the last `hours` (default 8, max 168): counts, top
+sources, active/quieted incidents, and a ready-to-paste markdown brief in
+`summary_text`.
+
+#### `get_response_metrics`
+Global MTTA / MTTR / acknowledgement rate over `window_days` (default 30).
+Nulls mean nothing in the window was acknowledged/resolved — an honest
+answer, not an error.
+
+### Delivery
+
+#### `list_forward_outbox`
+Outbound delivery intents (the transactional outbox) newest first: target,
+status (`pending`…`sent`/`exhausted`/`expired`), attempts, last error.
+Answers "did the notification actually go out"; dead-lettered *alerts*
+(processing failures) are `list_dead_letter_alerts`.
+
 ### AI
 
 #### `get_ai_analysis`
+Analyses now carry `triage_verdict` (`act_now` | `monitor` | `defer`) and
+`triage_confidence` (0-1) alongside importance.
 The AI analysis for one alert. Prefers the full deep-analysis reports; falls
 back to the lightweight per-alert AI when there is no deep analysis, so a single
 lookup is never empty for an event that exists.

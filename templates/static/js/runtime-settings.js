@@ -116,8 +116,12 @@ const RuntimeSettingsModule = (function () {
             : '—';
 
         return '<tr' + (overridden ? ' style="background: var(--warning-bg);"' : '') + '>' +
-            '<td style="' + td + ' ' + MONO + ' overflow-wrap: anywhere; font-weight: 600;">' + escapeHtml(setting.key) + '</td>' +
-            '<td style="' + td + ' color: var(--text-secondary);">' + escapeHtml(setting.description || '') + '</td>' +
+            // nowrap, never overflow-wrap:anywhere: a KEY is an identifier.
+            // "anywhere" made the column's min-content one character wide, so
+            // under width pressure the browser crushed it into a vertical
+            // letter-soup instead of letting the wrapper scroll horizontally.
+            '<td style="' + td + ' ' + MONO + ' white-space: nowrap; font-weight: 600;">' + escapeHtml(setting.key) + '</td>' +
+            '<td style="' + td + ' color: var(--text-secondary); min-width: 220px;">' + escapeHtml(setting.description || '') + '</td>' +
             '<td style="' + td + ' ' + MONO + '">' + escapeHtml(displayValue(setting.env_value)) + '</td>' +
             '<td style="' + td + '">' + overrideCell + '</td>' +
             '<td style="' + td + '"><strong style="' + MONO + '">' + escapeHtml(displayValue(setting.effective)) + '</strong>' +

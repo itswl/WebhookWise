@@ -1041,6 +1041,7 @@
             'handoff.subtitle': 'What happened on the last shift, and who changed what. The brief is markdown, ready to paste where the next shift reads.',
             'handoff.windowLabel': 'Handoff window',
             'handoff.copied': 'Brief copied',
+            'ingress.manage.revokedGone': 'That credential was revoked; create a new source connection instead.',
             'common.actionError': 'Action failed',
             'handoff.hours': 'Last {n}h',
             'handoff.stat.alerts': 'Alerts',

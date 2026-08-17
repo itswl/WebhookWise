@@ -42,8 +42,29 @@ This project follows SemVer release headings.
   cache now execute against a real Redis in `tests/real_infra/` (env-gated,
   as before) — the mocked `eval` in the main suite returns 1 unconditionally
   and can never exercise them.
+- The MCP face caught up with the month's features — four new read-only
+  tools: `list_incidents` (grouped alerts with workflow state), 
+  `get_handoff_brief` (the shift digest with its paste-ready markdown),
+  `get_response_metrics` (global MTTA/MTTR/ack-rate), and
+  `list_forward_outbox` (delivery intents with status and last error).
+  Analyses returned by the existing tools now carry
+  `triage_verdict`/`triage_confidence`. Docs updated (18 tools).
 
 ### Fixed
+- The handoff copy button copied nothing: it handed a STRING to the
+  code-block button helper, which walked `.closest()` on it — a silent
+  TypeError. A dedicated `wwCopyText` with toast feedback does the job, and
+  the delegated-action dispatcher now wraps every handler in try/catch and
+  surfaces failures as an error toast — a throwing handler must never
+  degrade to a button that does nothing.
+- Revoked source connections no longer appear in the wizard's "existing
+  connections" list (revoking is the end of that credential's story; the
+  audit log keeps the history), and a direct entry to a revoked connection
+  resets to the picker instead of re-entering the dead step-4 flow.
+- The runtime-settings key column crushed into vertical letter-soup under
+  width pressure: `overflow-wrap: anywhere` made its min-content one
+  character wide, so the horizontal-scroll wrapper never engaged. Keys are
+  nowrap identifiers now; the description column keeps a readable minimum.
 - A full 22-destination screenshot sweep against production data, plus a
   ghost-class audit, turned up and fixed: the tonal button classes the
   renderers had used all along (`btn-danger`/`btn-warn`/`btn-ghost` —
