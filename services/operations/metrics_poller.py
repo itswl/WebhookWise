@@ -34,6 +34,7 @@ async def refresh_all_metrics(*, mq_queue: str | None = None, mq_consumer_group:
     await _refresh_mq_stats(mq_queue=mq_queue, mq_consumer_group=mq_consumer_group)
     await _refresh_db_event_count()
     await _refresh_action_center()
+    await _refresh_db_health()
 
 
 async def _refresh_db_event_count() -> None:
@@ -124,3 +125,19 @@ async def _refresh_action_center() -> None:
     for key, count in counts.items():
         ACTION_CENTER_ACTIVE.labels(*key).set(count)
     _published_action_labels = set(counts)
+
+
+async def _refresh_db_health() -> None:
+    """Keep db_health_state alive, so the alert written against it can fire.
+
+    The gauge is set inside test_db_connection(), which runs at startup and on
+    the deep health endpoint — neither of which repeats. The series was
+    therefore absent from Prometheus entirely, and WebhookWiseDbUnhealthy has
+    been loaded, healthy and unable to fire since it was written.
+    """
+    try:
+        from db.engine import test_db_connection
+
+        await test_db_connection()
+    except Exception as e:  # noqa: BLE001 - a probe must not break the poller
+        logger.debug("[Metrics] DB health probe failed: %s", e)

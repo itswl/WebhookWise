@@ -90,10 +90,6 @@ _cache: TtlPubSubCache[list[InboundRuleSnapshot]] = TtlPubSubCache(
 )
 
 
-def invalidate_inbound_rules_cache() -> None:
-    _cache.invalidate()
-
-
 async def publish_inbound_rules_invalidation() -> None:
     await _cache.publish_invalidation()
 

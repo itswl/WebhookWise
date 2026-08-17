@@ -31,13 +31,6 @@ def _incident_dimensions(incident: Incident) -> dict[str, str]:
     }
 
 
-def _matches_service(incident: Incident, service: str, environment: str) -> bool:
-    dimensions = _incident_dimensions(incident)
-    if dimensions.get("service") != service:
-        return False
-    return not environment or dimensions.get("environment") == environment
-
-
 def _duration_minutes(end: datetime | None, start: datetime) -> float | None:
     if end is None or end < start:
         return None
