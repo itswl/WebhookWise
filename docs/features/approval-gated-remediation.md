@@ -111,6 +111,19 @@ The MCP transport authenticates with the **read** API key, so proposing over MCP
 needs only read access. Approving always needs admin-write. That split is the
 security boundary; the inertness of a proposal is what makes it a safe one.
 
+## Deciding from the dashboard
+
+**Operations → Action Center** renders the pending queue above the fault list:
+the localized action name with its exact command beside it, the proposer, the
+reason, the expiry, and Approve / Reject. Approve confirms first — it runs a real
+command — and Reject does not. The block renders **nothing** when the queue is
+empty, so it costs no space on a quiet board.
+
+The three outcomes are reported differently, because they are different: a
+success toast for an executed approval, a warning when the command ran and
+changed nothing, and an error naming the failure when the execution raised
+(HTTP 502 — approved, did not run).
+
 ## Not built yet
 
 - **A Feishu approval button.** The card-action path is HMAC-signed and

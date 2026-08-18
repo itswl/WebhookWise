@@ -140,6 +140,137 @@ const ActionCenterModule = (function () {
         });
     }
 
+    // ── Proposed commands awaiting a human decision ───────────────────────
+    //
+    // An agent can propose one of the Action Center's own commands
+    // (propose_remediation over MCP, or the admin API). A proposal executes
+    // NOTHING until somebody approves it here, and approving runs the same
+    // endpoint the buttons above run. This block is that decision surface --
+    // without it the feature exists only for whoever is willing to write curl.
+
+    function proposalRow(item) {
+        const resource = item.resource_id
+            ? escapeHtml(String(item.resource_type || '') + '#' + String(item.resource_id))
+            : '';
+        const expires = item.expires_at && typeof formatTime === 'function' ? formatTime(item.expires_at) : '';
+        // The reason is prose written by the proposer and stored verbatim, so it
+        // is escaped like any untrusted string -- an agent that read it off an
+        // alert payload must not be able to inject markup through it.
+        // The same action names are already localized for the buttons below
+        // (action.btn.*); showing a raw enum here would make one page speak two
+        // languages about the same command. The identifier stays, muted, because
+        // whoever audits the decision needs the exact command that ran.
+        const actionKey = 'action.btn.' + String(item.action || '');
+        const actionLabel = t(actionKey) !== actionKey ? t(actionKey) : String(item.action || '');
+        return '<div class="action-center-item" data-proposal-id="' + escapeHtml(String(item.id)) +
+            '" style="text-align:left; width:100%; background:var(--bg-surface);' +
+            ' border:1px solid var(--border); border-left:3px solid var(--primary);' +
+            ' border-radius:var(--radius-lg); padding:16px; color:inherit;">' +
+            '<div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start;">' +
+            '<div><div style="font-weight:700; margin-bottom:6px;">' +
+            wwIcon('lightbulb') + ' ' + escapeHtml(actionLabel) +
+            ' <code style="font-weight:400; font-size:0.75rem; color:var(--text-muted);">' +
+            escapeHtml(String(item.action || '')) + '</code>' +
+            (resource ? ' <span class="badge">' + resource + '</span>' : '') +
+            '</div><div style="font-size:0.85rem; color:var(--text-secondary); overflow-wrap:anywhere;">' +
+            escapeHtml(String(item.reason || '')) + '</div></div>' +
+            '<span style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap;">' +
+            escapeHtml(String(item.proposed_by || '')) + '</span></div>' +
+            '<div style="display:flex; gap:8px; margin-top:12px; align-items:center;">' +
+            '<button type="button" class="btn btn-sm btn-primary" data-proposal-decision="approve">' +
+            wwIcon('check', 'icon-sm') + ' ' + escapeHtml(t('action.proposals.approve')) + '</button>' +
+            '<button type="button" class="btn btn-sm" data-proposal-decision="reject">' +
+            wwIcon('x', 'icon-sm') + ' ' + escapeHtml(t('action.proposals.reject')) + '</button>' +
+            (expires
+                ? '<span style="font-size:0.75rem; color:var(--text-muted); margin-left:auto;">' +
+                  wwIcon('clock', 'icon-sm') + ' ' + escapeHtml(t('action.proposals.expiresAt')) + ' ' +
+                  escapeHtml(expires) + '</span>'
+                : '') +
+            '</div></div>';
+    }
+
+    function renderProposals(items) {
+        const el = document.getElementById('actionCenterProposals');
+        if (!el) return;
+        const pending = (Array.isArray(items) ? items : []).filter(function (item) {
+            // The server marks an expired-but-undecided row as expired on read;
+            // trust that rather than re-deriving the deadline in the browser.
+            return item && item.status === 'pending';
+        });
+        if (!pending.length) {
+            el.innerHTML = '';
+            return;
+        }
+        el.innerHTML = '<div class="section-title" style="font-size:var(--fs-sm); margin-bottom:4px;">' +
+            escapeHtml(t('action.proposals.title')) + ' <span class="badge">' + escapeHtml(String(pending.length)) +
+            '</span></div>' +
+            // Said before the click, not only in the confirm dialog: nothing here
+            // has run yet, and approving is what runs it.
+            '<p style="margin:0 0 12px; color:var(--text-secondary); font-size:var(--fs-sm);">' +
+            escapeHtml(t('action.proposals.subtitle')) + '</p>' +
+            '<div style="display:flex; flex-direction:column; gap:12px; margin-bottom:24px;">' +
+            pending.map(proposalRow).join('') + '</div>';
+
+        el.querySelectorAll('[data-proposal-decision]').forEach(function (button) {
+            button.addEventListener('click', async function () {
+                await decideProposal(button);
+            });
+        });
+    }
+
+    async function decideProposal(button) {
+        const decision = button.getAttribute('data-proposal-decision');
+        const row = button.closest('[data-proposal-id]');
+        if (!row) return;
+        const id = row.getAttribute('data-proposal-id');
+        // Approving runs a real command against production, so it asks first.
+        // Rejecting only closes the row and needs no ceremony.
+        if (decision === 'approve' && !(await wwConfirm(t('action.proposals.confirmApprove')))) return;
+
+        row.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+        try {
+            const response = await API.authenticatedFetch(
+                '/v1/action-center/proposals/' + encodeURIComponent(id) + '/' + decision,
+                { method: 'POST' }
+            );
+            const result = await response.json();
+            if (response.status === 502) {
+                // Approved, and the execution failed. Not a rejection and not a
+                // refusal to approve -- the operator has to learn the difference.
+                showToast(t('action.proposals.executionFailed') + ': ' + (result.error || ''), 'error');
+            } else if (!response.ok || !result.success) {
+                throw new Error(result.error || 'HTTP ' + response.status);
+            } else if (decision === 'reject') {
+                showToast(t('action.proposals.rejected'), 'success');
+            } else if (result.data && result.data.result && result.data.result.changed === false) {
+                showToast(t('action.proposals.ranNothing'), 'warning');
+            } else {
+                showToast(t('action.proposals.approved'), 'success');
+            }
+            await load();
+        } catch (error) {
+            showToast(t('action.proposals.decideFailed') + ': ' + (error.message || String(error)), 'error');
+            row.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+        }
+    }
+
+    async function loadProposals() {
+        const el = document.getElementById('actionCenterProposals');
+        if (!el) return;
+        try {
+            const response = await API.authenticatedFetch('/v1/action-center/proposals?status=pending');
+            const payload = await response.json();
+            if (!response.ok || !payload.success) throw new Error(payload.error || 'HTTP ' + response.status);
+            renderProposals((payload.data || {}).items);
+        } catch (error) {
+            // Supplementary to the board: a failure here must not take the
+            // Action Center down with it, but it must not be silent either.
+            el.innerHTML = '<div style="color:var(--danger); font-size:var(--fs-sm); margin-bottom:16px;">' +
+                escapeHtml(t('action.proposals.loadFailed')) + ': ' +
+                escapeHtml(error.message || String(error)) + '</div>';
+        }
+    }
+
     async function remediate(button) {
         const payload = {
             action: button.getAttribute('data-remediation'),
@@ -177,6 +308,7 @@ const ActionCenterModule = (function () {
             const payload = await response.json();
             if (!response.ok || !payload.success) throw new Error(payload.error || 'HTTP ' + response.status);
             render(payload.data || {});
+            await loadProposals();
         } catch (error) {
             if (listEl) {
                 listEl.innerHTML = '<div class="empty-state" style="color:var(--danger); padding:40px;">' +
@@ -185,7 +317,10 @@ const ActionCenterModule = (function () {
         }
     }
 
-    return { load: load };
+    // _decideProposal is exposed for the headless harness: approving executes a
+    // real command, so the confirm-first / 502-is-not-success behaviour has to be
+    // testable without a browser.
+    return { load: load, _decideProposal: decideProposal };
 })();
 
 // Join the delegated-action registry: const bindings never reach window,

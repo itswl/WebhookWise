@@ -1402,6 +1402,43 @@ def test_icon_splices_match_their_string_context() -> None:
     assert offenders == [], offenders
 
 
+def test_pending_proposals_are_decidable_from_the_action_center() -> None:
+    """A proposed command needs a human, and a human needs a button.
+
+    The approval loop shipped API- and MCP-only, which meant the one person the
+    design depends on had to write curl to use it. This pins the decision
+    surface: the container exists, the module reads the pending queue, approving
+    confirms first (it executes a real command), rejecting does not, and the
+    proposer's prose is escaped — it is untrusted text the moment a proposal is
+    derived from an alert payload.
+    """
+    html = _dashboard_html()
+    action_center = _static_js("action-center.js")
+
+    assert 'id="actionCenterProposals"' in html, "no container for the proposal queue"
+    assert "'/v1/action-center/proposals?status=pending'" in action_center
+    assert "'/v1/action-center/proposals/' + encodeURIComponent(id) + '/' + decision" in action_center
+    assert "wwConfirm(t('action.proposals.confirmApprove'))" in action_center, "approve must ask first"
+    assert "escapeHtml(String(item.reason || ''))" in action_center, "the reason must be escaped"
+    # An approved-but-failed execution is a third outcome; it must not be
+    # reported as a success or swallowed as a rejection.
+    assert "response.status === 502" in action_center
+    assert "action.proposals.executionFailed" in action_center
+    # Nothing to decide must cost nothing: the block sits above the board.
+    assert "el.innerHTML = '';" in action_center
+
+    for dictionary in ("i18n.en.js", "i18n.zh.js"):
+        text = _static_js(dictionary)
+        for key in (
+            "action.proposals.title",
+            "action.proposals.approve",
+            "action.proposals.reject",
+            "action.proposals.confirmApprove",
+            "action.proposals.executionFailed",
+        ):
+            assert f"'{key}':" in text, f"{dictionary} is missing {key}"
+
+
 def test_open_details_carries_context_and_names_its_destination() -> None:
     """\"Open details\" teleported to an unfiltered page: a dead-letter item
     landed on the plain alert inbox with nothing connecting the landing to

@@ -621,6 +621,10 @@
                     <button data-sb="sb16" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> <span data-i18n="common.refresh">Refresh</span></button>
                 </div>
                 <div id="actionCenterSummary" class="stats-grid" style="margin-bottom:20px;"></div>
+                <!-- Proposed commands awaiting a human decision. Renders nothing
+                     when the queue is empty: space is earned by a non-zero count,
+                     the same rule the summary cards follow for colour. -->
+                <div id="actionCenterProposals"></div>
                 <div id="actionCenterList"><div class="loading"><div class="spinner"></div><p data-i18n="common.loading">Loading...</p></div></div>
             </div>
         </div>

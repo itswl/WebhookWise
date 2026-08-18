@@ -68,11 +68,14 @@ decided for it and it broke".
   `Incident`. Widening that grammar to a second resource type is a
   security-sensitive change and belongs in its own reviewable diff. Approval goes
   through the API until then, which is the same loop with a worse doorway.
-- **No dashboard view.** The queue is API- and MCP-readable only. A dashboard
-  panel is the natural home and brings the design-language contracts with it.
+- **The dashboard view landed in the Action Center** rather than as a 24th
+  destination: a queue that is empty most of the time does not earn a sidebar
+  entry, and the Action Center is already the page that lists what needs doing.
+  It renders nothing at all when there is nothing to decide.
 - **The reason field is agent-written prose stored verbatim** (capped at 2000
-  chars) and rendered nowhere yet. Whatever renders it must escape it: it is
-  attacker-influenceable text if a proposal is ever created from alert content.
+  chars) and is now rendered, escaped, in that view — it is attacker-influenceable
+  text the moment a proposal is derived from alert content, and a static contract
+  pins the escaping.
 - `proposed_by` is self-reported and unauthenticated — it identifies, it does not
   attest. The audit row records it as the actor, which is honest only because the
   proposal itself is powerless.
