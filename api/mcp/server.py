@@ -1,9 +1,16 @@
-"""MCP server definition and its read-only WebhookWise tools.
+"""MCP server definition and its WebhookWise tools.
 
-Each tool is a thin wrapper over an existing service-layer query function; it
-opens a ``session_scope()`` transaction, calls the query, and returns the same
-dict the REST API returns. No business logic lives here — the goal is to expose
-the read side, not reimplement it.
+Each tool is a thin wrapper over an existing service-layer function; it opens a
+``session_scope()`` transaction, calls the service, and returns the same dict the
+REST API returns. No business logic lives here — the goal is to expose the
+existing surface, not reimplement it.
+
+The surface is read-only with one deliberate exception: ``propose_remediation``
+writes a row. It cannot execute anything. A proposal is inert until an operator
+approves it through the admin-write API, and approval runs the same
+``run_remediation`` path the dashboard button runs. This transport authenticates
+with the read API key, so the boundary that matters is that one: an agent can ask
+for an action; only a person with write credentials can allow it.
 """
 
 from __future__ import annotations
@@ -30,6 +37,14 @@ from services.incidents.queries import list_incidents as query_incidents
 from services.incidents.service_profiles import global_response_metrics
 from services.kb.retrieval import retrieve as kb_retrieve
 from services.operations.handoff import get_handoff_summary
+from services.operations.remediation_proposals import (
+    ALLOWED_ACTIONS,
+    ProposalError,
+    list_proposals,
+)
+from services.operations.remediation_proposals import (
+    propose_remediation as create_proposal,
+)
 from services.silences.store import list_silences
 from services.webhooks.decision_trace_queries import (
     get_decision_trace_for_event,
@@ -372,6 +387,67 @@ async def get_decision_quality_stats(period: str = "day") -> dict[str, Any]:
 async def test_alert_payload(source: str, payload: dict[str, Any]) -> dict[str, Any]:
     async with session_scope() as session:
         return await test_webhook_payload(session, source=source, payload=payload)
+
+
+# ── The one write: proposing an action a person still has to allow ────────────
+
+
+@mcp_server.tool(
+    title="Propose a remediation action (requires human approval)",
+    description="Propose that one of WebhookWise's Action Center commands should run. This does NOT run "
+    "anything: it records an inert proposal that an operator must approve through the admin API before "
+    "anything happens. Use it instead of asking a human to relay a fix by hand. `action` must be one of "
+    "retry_outbox, retry_dead_letters, retry_stuck_events, retry_incident_summaries, test_enable_rule, "
+    "disable_rule, acknowledge. retry_outbox / test_enable_rule / disable_rule / acknowledge need a "
+    "resource_id, and acknowledge also needs resource_type ('webhook_event' | 'incident'). `reason` is "
+    "required and is what the reviewer reads, so state the evidence, not the intention. Proposals expire "
+    "(default 24h), one pending proposal per action+resource, and the queue is capped — a rejection with "
+    "409 means the same thing is already awaiting review.",
+)
+async def propose_remediation(
+    action: str,
+    reason: str,
+    resource_id: int | None = None,
+    resource_type: str = "",
+    batch_size: int = 50,
+    proposed_by: str = "agent",
+    ttl_hours: int = 24,
+) -> dict[str, Any]:
+    try:
+        async with session_scope() as session:
+            proposal = await create_proposal(
+                session,
+                action=action,
+                reason=reason,
+                resource_id=resource_id,
+                resource_type=resource_type.strip() or None,
+                batch_size=batch_size,
+                proposed_by=proposed_by,
+                ttl_hours=ttl_hours,
+            )
+        return {"proposal": proposal, "executed": False, "next_step": "An operator must approve this proposal."}
+    except ProposalError as error:
+        # Returned rather than raised: an agent needs to read the reason and fix
+        # its request, not receive a transport-level failure.
+        return {
+            "proposal": None,
+            "executed": False,
+            "error": str(error),
+            "allowed_actions": sorted(ALLOWED_ACTIONS),
+        }
+
+
+@mcp_server.tool(
+    title="List remediation proposals",
+    description="List proposed Action Center commands newest first with their status: pending (awaiting a "
+    "human), approved (allowed and executed — see result.changed), rejected, expired, or failed (allowed "
+    "but the execution errored). Optional status filter. Use it to check whether a proposal you made has "
+    "been decided before proposing the same thing again.",
+)
+async def list_remediation_proposals(status: str = "", limit: int = 20) -> dict[str, Any]:
+    async with session_scope() as session:
+        items = await list_proposals(session, status=status.strip().lower(), limit=_clamp_page_size(limit))
+    return {"items": items}
 
 
 # ── Resources: stable reference material an agent can read like a document ────

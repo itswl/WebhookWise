@@ -13,8 +13,13 @@ WebhookWise is a self-hosted alert gateway: it ingests monitoring webhooks,
 deduplicates and denoises them, runs AI + rule triage, groups alerts into
 incidents, and forwards what matters to chat (Feishu/DingTalk/WeCom/webhook).
 Everything it decides is recorded and queryable. This MCP surface is
-**read-only by design**: you can see everything, you can change nothing.
-Acknowledge/resolve/silence/replay happen in the human dashboard.
+**read-only apart from asking**: you can see everything, and you cannot change
+anything. Acknowledge/resolve/silence/replay happen in the human dashboard.
+
+When you conclude that one of the Action Center's commands should run, do not
+ask a human to relay it — call `propose_remediation`. That records an inert
+proposal; an operator approves it and the system runs it. You will never see it
+execute from here, so say what you proposed and stop, rather than waiting.
 
 ## Which tool answers which question
 
@@ -57,6 +62,16 @@ Dry run:
   zero side effects: which adapter parses it, the identity extracted, which
   forward rules/silences would match.
 
+Asking for an action (the only write, and it executes nothing):
+- `propose_remediation` — record an inert proposal that an operator approves.
+  Actions: retry_outbox, retry_dead_letters, retry_stuck_events,
+  retry_incident_summaries, test_enable_rule, disable_rule, acknowledge.
+  `reason` is what the reviewer reads: state the evidence you found, not your
+  intention. A 409-style error means the same thing is already awaiting review.
+- `list_remediation_proposals` — check what happened to what you asked for
+  before asking again. `approved` = allowed and ran; `failed` = allowed and the
+  execution errored; those are different.
+
 ## Recipes
 
 Investigate one alert (also available as the `investigate_alert` prompt):
@@ -86,8 +101,10 @@ long-expired intentions; `get_forward_rule_roi` for zombie forward rules.
 
 ## Limits
 
-- Read-only; there is no tool that mutates state. Recommend actions, name
-  the dashboard destination (e.g. "lift silence #12 under 静默"), and stop.
+- Nothing here executes. For anything the Action Center covers, call
+  `propose_remediation` and stop; for everything else, recommend the action and
+  name the dashboard destination (e.g. "lift silence #12 under 静默"). Do not
+  wait for a proposal to be approved — the operator decides on their own time.
 - `page_size` caps at 200; periods are day|week|month|year; handoff hours
   cap at 168; response-metrics window caps at 365 days.
 - The resource `webhookwise://reference/decision-trace-fields` documents the

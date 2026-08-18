@@ -20,12 +20,20 @@ from schemas.operations import (
     NoiseActionUndoRequest,
     NoiseSuggestionApplyRequest,
     NoteCreateRequest,
+    RemediationProposalCreateRequest,
     RemediationRequest,
     WorkflowUpdateRequest,
 )
 from services.operations.integration_catalog import install_integration, integration_catalog, test_integration
 from services.operations.noise_center import apply_noise_suggestion, get_noise_center, undo_noise_action
 from services.operations.remediation import run_remediation
+from services.operations.remediation_proposals import (
+    ProposalConflict,
+    ProposalError,
+    decide_proposal,
+    list_proposals,
+    propose_remediation,
+)
 from services.operations.workflow import (
     add_feedback,
     add_note,
@@ -304,6 +312,70 @@ async def split_incident_endpoint(
         return ok_response(data=data, message="Incident split", http_status=201)
     except _OPERATION_ERRORS as error:
         logger.error("Failed to split incident id=%s: %s", incident_id, error, exc_info=True)
+        return internal_error_response()
+
+
+@operations_router.get("/action-center/proposals")
+async def list_remediation_proposals_endpoint(
+    status: str = Query(default="", max_length=20),
+    limit: int = Query(default=50, ge=1, le=200),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Proposed Action Center commands awaiting (or past) a human decision."""
+    try:
+        items = await list_proposals(session, status=status, limit=limit)
+        return ok_response(data={"items": items})
+    except _OPERATION_ERRORS as error:
+        logger.error("Failed to list remediation proposals: %s", error, exc_info=True)
+        return internal_error_response()
+
+
+@operations_router.post(
+    "/action-center/proposals",
+    dependencies=[Depends(verify_admin_write)],
+)
+async def propose_remediation_endpoint(
+    payload: RemediationProposalCreateRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Record an inert proposal. Nothing runs until it is approved."""
+    try:
+        data = await propose_remediation(session, **payload.model_dump())
+        return ok_response(data=data, message="Proposal recorded and awaiting approval", http_status=201)
+    except ProposalConflict as error:
+        return fail_response(str(error), 409)
+    except ProposalError as error:
+        return fail_response(str(error), 400)
+    except _OPERATION_ERRORS as error:
+        logger.error("Failed to record a remediation proposal: %s", error, exc_info=True)
+        return internal_error_response()
+
+
+@operations_router.post(
+    "/action-center/proposals/{proposal_id}/{decision}",
+    dependencies=[Depends(verify_admin_write)],
+)
+async def decide_remediation_proposal_endpoint(
+    proposal_id: int,
+    decision: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Approve (executing it through the Action Center path) or reject a proposal."""
+    if decision not in ("approve", "reject"):
+        return fail_response("Decision must be approve or reject", 404)
+    try:
+        data = await decide_proposal(session, proposal_id=proposal_id, approve=decision == "approve", actor="dashboard")
+        # A failed execution is reported as such rather than as a 200: the
+        # approval was recorded, but the operator has to know it did not run.
+        if data["status"] == "failed":
+            return fail_response(str(data["result"].get("error") or "Execution failed"), 502)
+        return ok_response(data=data, message=f"Proposal {data['status']}")
+    except ProposalConflict as error:
+        return fail_response(str(error), 409)
+    except ProposalError as error:
+        return fail_response(str(error), 404)
+    except _OPERATION_ERRORS as error:
+        logger.error("Failed to decide remediation proposal id=%s: %s", proposal_id, error, exc_info=True)
         return internal_error_response()
 
 

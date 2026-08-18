@@ -90,6 +90,10 @@ async def test_tools_are_registered() -> None:
         "get_handoff_brief",
         "get_response_metrics",
         "list_forward_outbox",
+        # The one write: inert until an operator approves it, and it lists back
+        # so an agent can see what happened to what it asked for.
+        "propose_remediation",
+        "list_remediation_proposals",
     }
 
 

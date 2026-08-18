@@ -3,9 +3,15 @@
 WebhookWise exposes its **read side** over the Model Context Protocol (MCP) so
 any MCP-compatible agent (OpenOcta / Claude / Cursor / a custom client) can query
 it directly. Every tool is a thin wrapper over the existing query layer — no
-business logic, and, by design, **read-only** (no create-silence / requeue /
-reanalyze). Write/action tools are intentionally not exposed; they require an
-approval gate first.
+business logic, and effectively **read-only**: no create-silence, no requeue, no
+reanalyze, nothing an agent calls here changes what this deployment does.
+
+The one exception is `propose_remediation`, which writes a row and executes
+nothing. It records an inert proposal that an operator must approve through the
+admin-write API before anything runs, and approval executes the same
+`run_remediation` path the dashboard button does. Since this transport
+authenticates with the read API key, that approval is the boundary that matters:
+an agent can ask, only a person with write credentials can allow.
 
 ## Connecting
 
@@ -49,7 +55,7 @@ A `200` with a `result.serverInfo` means you are connected.
 
 ---
 
-## Tools (18)
+## Tools (20)
 
 All list tools cap `page_size` at 200. Time-window `period` accepts
 `day` | `week` | `month` | `year` (invalid values fall back to `day`).
@@ -166,6 +172,22 @@ Semantic search over WebhookWise's internal KB / runbooks.
 - **Input**: `query` (str)
 - **Returns**: `{ items: [ { title, content, source_ref, score } ] }` (empty when KB is disabled or nothing clears the similarity floor)
 
+### Remediation proposals
+
+#### `propose_remediation`
+Propose that one Action Center command should run. **Executes nothing**: it
+records an inert proposal for a human to approve.
+- **Input**: `action` (`retry_outbox` | `retry_dead_letters` | `retry_stuck_events` | `retry_incident_summaries` | `test_enable_rule` | `disable_rule` | `acknowledge`), `reason` (required — what the reviewer reads), `resource_id?`, `resource_type?` (`webhook_event` | `incident`), `batch_size?`, `proposed_by?`, `ttl_hours?` (default 24, max 168)
+- **Returns**: `{ proposal: {...} | null, executed: false, next_step }`, or `{ error, allowed_actions }` when the request is not runnable — returned rather than raised, so the agent can read the reason and fix it.
+- `retry_outbox` / `test_enable_rule` / `disable_rule` / `acknowledge` need a `resource_id`; `acknowledge` also needs a `resource_type`. Arguments are validated against the executor's own request model, so a proposal that could not run cannot be created.
+- Bounded: one pending proposal per action+resource (409 on a repeat), a capped pending queue, and an expiry — a stale suggestion cannot be approved.
+
+#### `list_remediation_proposals`
+Proposals newest first with their status.
+- **Input**: `status?` (`pending` | `approved` | `rejected` | `expired` | `failed`), `limit?`
+- **Returns**: `{ items: [{ id, action, resource_type, resource_id, reason, proposed_by, status, expires_at, decided_by, decided_at, result, created_at }] }`
+- `approved` means a person allowed it **and** it ran (see `result.changed`); `failed` means it was allowed and the execution errored. Those are deliberately different states.
+
 ### Sandbox
 
 #### `test_alert_payload`
@@ -181,7 +203,7 @@ enqueue, no AI call, no persistence).
 #### `webhookwise://reference/agent-guide`
 **Read this first from an agent.** The usage guide for LLMs: which tool
 answers which question, investigation recipes, field semantics
-(`triage_verdict`, `skip_code`, `route`), and the read-only boundary. The
+(`triage_verdict`, `skip_code`, `route`), and where the write boundary is. The
 authoritative copy lives in `api/mcp/agent_guide.py` (docs/ does not ship in
 the image).
 

@@ -2963,6 +2963,106 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/action-center/proposals:
+    get:
+      tags:
+      - Operations
+      summary: List Remediation Proposals Endpoint
+      description: Proposed Action Center commands awaiting (or past) a human decision.
+      operationId: list_remediation_proposals_endpoint_v1_action_center_proposals_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 20
+          default: ''
+          title: Status
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Operations
+      summary: Propose Remediation Endpoint
+      description: Record an inert proposal. Nothing runs until it is approved.
+      operationId: propose_remediation_endpoint_v1_action_center_proposals_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemediationProposalCreateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/action-center/proposals/{proposal_id}/{decision}:
+    post:
+      tags:
+      - Operations
+      summary: Decide Remediation Proposal Endpoint
+      description: Approve (executing it through the Action Center path) or reject
+        a proposal.
+      operationId: decide_remediation_proposal_endpoint_v1_action_center_proposals__proposal_id___decision__post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: proposal_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Proposal Id
+      - name: decision
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Decision
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/action-center/actions:
     post:
       tags:
@@ -6363,6 +6463,70 @@ components:
       - success
       title: ReanalysisResponse
       description: Re-analysis response
+    RemediationProposalCreateRequest:
+      properties:
+        action:
+          type: string
+          enum:
+          - retry_outbox
+          - retry_dead_letters
+          - retry_stuck_events
+          - retry_incident_summaries
+          - test_enable_rule
+          - disable_rule
+          - acknowledge
+          title: Action
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+        resource_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Resource Id
+        resource_type:
+          anyOf:
+          - type: string
+            enum:
+            - webhook_event
+            - incident
+          - type: 'null'
+          title: Resource Type
+        batch_size:
+          type: integer
+          maximum: 100.0
+          minimum: 1.0
+          title: Batch Size
+          default: 50
+        proposed_by:
+          type: string
+          maxLength: 100
+          title: Proposed By
+          default: agent
+        ttl_hours:
+          type: integer
+          maximum: 168.0
+          minimum: 1.0
+          title: Ttl Hours
+          default: 24
+      additionalProperties: false
+      type: object
+      required:
+      - action
+      - reason
+      title: RemediationProposalCreateRequest
+      description: 'An inert suggestion that an Action Center command should run.
+
+
+        Same fields as RemediationRequest plus the two things a reviewer needs — who
+
+        is asking and why — and the window the suggestion stays valid for. The
+
+        service re-validates through RemediationRequest, so an unrunnable proposal
+
+        cannot be created here either.'
     RemediationRequest:
       properties:
         action:

@@ -109,6 +109,26 @@ class RemediationRequest(BaseModel):
         return self
 
 
+class RemediationProposalCreateRequest(BaseModel):
+    """An inert suggestion that an Action Center command should run.
+
+    Same fields as RemediationRequest plus the two things a reviewer needs — who
+    is asking and why — and the window the suggestion stays valid for. The
+    service re-validates through RemediationRequest, so an unrunnable proposal
+    cannot be created here either.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: RemediationAction
+    reason: str = Field(min_length=1, max_length=2000)
+    resource_id: int | None = None
+    resource_type: Literal["webhook_event", "incident"] | None = None
+    batch_size: int = Field(default=50, ge=1, le=100)
+    proposed_by: str = Field(default="agent", max_length=100)
+    ttl_hours: int = Field(default=24, ge=1, le=168)
+
+
 class NoiseSuggestionApplyRequest(BaseModel):
     """Apply a currently valid noise-reduction recommendation."""
 

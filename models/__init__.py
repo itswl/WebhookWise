@@ -22,6 +22,7 @@ from models.operations import (
     ImportanceOverride,
     NoiseReductionAction,
     OperationalNote,
+    RemediationProposal,
     RuntimeSetting,
     WorkflowTransition,
 )
@@ -51,6 +52,7 @@ __all__ = [
     "MaintenanceWindow",
     "NoiseReductionAction",
     "OperationalNote",
+    "RemediationProposal",
     "RunbookExecution",
     "RuntimeSetting",
     "Silence",
