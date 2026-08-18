@@ -56,6 +56,7 @@ def load_patterns() -> tuple[tuple[str, str], ...] | None:
         rules.append((pattern, reason.strip()))
     return tuple(rules)
 
+
 # The list is external now, so this file no longer needs exempting from itself.
 EXEMPT: set[str] = {".estate-identifiers.example"}
 
