@@ -62,6 +62,12 @@ fi
 step "observability contract"
 python scripts/observability/webhookwise_observe.py contract
 
+step "analysis eval"
+# Replays evals/analysis_cases.jsonl through the rule engine and holds the
+# importance verdict to evals/baseline.json. Deterministic and offline: the
+# keyword policy comes from the committed defaults, not from the environment.
+python scripts/eval_analysis.py run
+
 step "OpenAPI contract"
 # Config validation needs a DATABASE_URL; no connection is made. CI provides
 # one via env — mirror that with a placeholder when unset.

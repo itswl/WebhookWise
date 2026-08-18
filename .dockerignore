@@ -40,6 +40,14 @@ coverage.xml
 htmlcov/
 .claude/
 .codex/
+# The offline eval corpus is a CI artifact: the gate replays it, nothing at
+# runtime reads it. Excluded deliberately rather than incidentally — an
+# exported corpus carries verbatim alert payloads (hostnames, identifiers),
+# and the image is distributed. `scripts/eval_analysis.py` therefore reports
+# a missing corpus if run inside a container; it is a CI/dev tool.
+evals/
+# The agent-notes practice is a development record, not a runtime asset.
+.agents/
 # Server-side data dirs must never enter the build context (a root-owned
 # backups/ dir in the deploy checkout broke the context walk once).
 backups/

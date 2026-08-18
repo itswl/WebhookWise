@@ -84,6 +84,10 @@ jobs:
       - run: bandit -r core api services models adapters db scripts contracts -x tests -q -s B106
       - run: pip-audit -r requirements.lock -r requirements-dev.lock
       - run: python scripts/observability/webhookwise_observe.py contract
+      # The importance verdict is what routes and silences alerts, so a change
+      # that lowers it must fail here rather than in somebody's pager gap.
+      # Deterministic and offline: rule engine, committed keyword defaults.
+      - run: python scripts/eval_analysis.py run
       # The committed OpenAPI export must match the live route table — new
       # endpoints regenerate build/openapi via scripts/export_openapi.py.
       - run: python scripts/export_openapi.py --check

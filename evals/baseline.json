@@ -1,0 +1,37 @@
+{
+  "engines": {
+    "rules": {
+      "note": "Thresholds are the contract, not a snapshot: recorded/ moves with every re-record, thresholds/ only move when somebody decides they should. min_high_recall and max_miss_rate are deliberately exact - an alert the engine used to call high and now calls lower reaches nobody. Growing the corpus is a baseline event: re-record and review the delta.",
+      "recorded": {
+        "engine": "rules",
+        "policy": "default",
+        "total": 18,
+        "labeled": 17,
+        "unlabeled": 1,
+        "errors": 0,
+        "exact": 17,
+        "exact_rate": 1.0,
+        "misses": 0,
+        "miss_rate": 0.0,
+        "overcalls": 0,
+        "over_rate": 0.0,
+        "high_labeled": 8,
+        "high_recall": 1.0,
+        "triage_labeled": 17,
+        "triage_exact_rate": 1.0,
+        "prior_shown": 0,
+        "prior_followed": 0,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cost_usd": 0.0
+      },
+      "thresholds": {
+        "min_labeled": 17,
+        "min_exact_rate": 0.95,
+        "min_high_recall": 1.0,
+        "max_over_rate": 0.05,
+        "max_miss_rate": 0.0
+      }
+    }
+  }
+}
