@@ -84,22 +84,32 @@ From an agent, over MCP:
                "proposed_by": "hookprobe"}}
 ```
 
-Reading and deciding, with an admin-write credential:
+Reading and deciding over HTTP. Two headers, not one: the `/v1` router is behind
+the read-key guard, and the write endpoints add an admin-write dependency on top
+of it. An admin-write key alone fails the read guard (401), and a read key alone
+fails the write dependency (403, saying so).
 
 ```bash
-curl -s -H "X-Admin-Key: $ADMIN_KEY" \
-  'https://<host>/v1/operations/action-center/proposals?status=pending'
+# Read the queue — read key only.
+curl -s -H "X-API-Key: $API_KEY" \
+  'https://<host>/v1/action-center/proposals?status=pending'
 
-curl -s -X POST -H "X-Admin-Key: $ADMIN_KEY" \
-  'https://<host>/v1/operations/action-center/proposals/12/approve'
+# Propose / approve / reject — both keys.
+curl -s -X POST -H "X-API-Key: $API_KEY" -H "X-Admin-Write-Key: $ADMIN_WRITE_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"retry_outbox","resource_id":4182,"reason":"..."}' \
+  'https://<host>/v1/action-center/proposals'
 
-curl -s -X POST -H "X-Admin-Key: $ADMIN_KEY" \
-  'https://<host>/v1/operations/action-center/proposals/12/reject'
+curl -s -X POST -H "X-API-Key: $API_KEY" -H "X-Admin-Write-Key: $ADMIN_WRITE_KEY" \
+  'https://<host>/v1/action-center/proposals/12/approve'
+
+curl -s -X POST -H "X-API-Key: $API_KEY" -H "X-Admin-Write-Key: $ADMIN_WRITE_KEY" \
+  'https://<host>/v1/action-center/proposals/12/reject'
 ```
 
-The MCP transport authenticates with the **read** API key, so proposing needs
-only read access. Approving needs admin-write. That split is the security
-boundary; the inertness of a proposal is what makes it a safe one.
+The MCP transport authenticates with the **read** API key, so proposing over MCP
+needs only read access. Approving always needs admin-write. That split is the
+security boundary; the inertness of a proposal is what makes it a safe one.
 
 ## Not built yet
 

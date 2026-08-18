@@ -9,7 +9,7 @@ scope: services
 
 `remediation_proposals` records an inert Action Center command: the action, its
 arguments, who asked, why, and an expiry. Nothing runs on creation. Approving one
-(`POST /v1/operations/action-center/proposals/{id}/approve`, admin-write) calls
+(`POST /v1/action-center/proposals/{id}/approve`, admin-write) calls
 `run_remediation` — the same function the dashboard button calls.
 
 MCP gains its first write tool, `propose_remediation`, plus
