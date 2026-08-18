@@ -827,6 +827,22 @@ async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None 
     card = _build_card(stats, period.title, str(notif.DASHBOARD_PUBLIC_URL or "").strip())
 
     result = await _send_report_with_retry(webhook_url, card, period.key)
+    if result.get("status") != "success":
+        # No marker on failure — the marker means "this occurrence reached the
+        # group", and stamping a failed send made the loss invisible twice
+        # over: nothing retried it (catch-up saw the marker and stood down)
+        # and nothing said so (the completion line logged at INFO). A dead
+        # fallback token silently ate weeks of weekly/monthly reports this
+        # way. Leaving the marker unset lets the startup catch-up re-send the
+        # missed occurrence once the target is fixed.
+        logger.error(
+            "[PeriodicReport] %s send FAILED status=%s message=%s — no sent-marker recorded; "
+            "startup catch-up will retry this occurrence",
+            period.key,
+            result.get("status"),
+            result.get("message") or result.get("reason") or "",
+        )
+        return {"failed": str(result.get("status") or "failed"), **stats}
     # Record a tz-aware UTC marker (matches _most_recent_fire's basis so catch-up
     # comparisons never mix naive/aware datetimes).
     await _record_report_sent(period_key, fire_ts or utcnow().replace(tzinfo=UTC))

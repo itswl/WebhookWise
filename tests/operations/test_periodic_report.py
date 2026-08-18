@@ -1018,3 +1018,56 @@ async def test_value_stats_new_alert_types_and_interruptions(session: AsyncSessi
     summary = _build_summary(stats)
     assert "Interruptions avoided (estimate): 3" in summary
     assert "New alert types this window: 1" in summary
+
+
+@pytest.mark.asyncio
+async def test_failed_send_records_no_marker_so_catchup_can_retry(temp_config, monkeypatch) -> None:
+    """The sent-marker means "this occurrence reached the group". Stamping it
+    on a FAILED send made the loss invisible twice over — catch-up saw the
+    marker and stood down, and the completion line logged at INFO. A dead
+    fallback token silently ate weeks of weekly/monthly reports this way."""
+    import services.operations.periodic_report as wr
+    from services.operations.periodic_report import REPORT_PERIODS, generate_and_send_report
+
+    notif = temp_config.notifications
+    setattr(notif, REPORT_PERIODS["daily"].enabled_attr, True)
+    setattr(notif, REPORT_PERIODS["daily"].webhook_attr, "https://example.com/hook")
+
+    async def fake_collect(_session, window_days):
+        return {
+            "window_days": window_days,
+            "total_events": 3,
+            "duplicate_events": 0,
+            "noise_pct": 0.0,
+            "importance_breakdown": {},
+            "top_sources": [],
+            "top_rules": [],
+            "ai_cost_usd": 0.0,
+            "ai_calls": 1,
+            "cache_hit_pct": 0.0,
+        }
+
+    async def dead_token_send(url, card):
+        return {"status": "invalid_target", "message": "code=19001 token invalid", "retryable": False}
+
+    markers: list[str] = []
+
+    async def record(period_key, fire_ts):
+        markers.append(period_key)
+
+    monkeypatch.setattr(wr, "session_scope", _noop_session_scope)
+    monkeypatch.setattr(wr, "collect_report_stats", fake_collect)
+    monkeypatch.setattr("services.notifications.feishu.send_to_feishu", dead_token_send)
+    monkeypatch.setattr(wr, "_record_report_sent", record)
+
+    result = await generate_and_send_report("daily")
+    assert result.get("failed") == "invalid_target"
+    assert markers == []  # the occurrence stays unsent; startup catch-up retries it
+
+    # And a successful send still records exactly one marker.
+    async def ok_send(url, card):
+        return {"status": "success"}
+
+    monkeypatch.setattr("services.notifications.feishu.send_to_feishu", ok_send)
+    await generate_and_send_report("daily")
+    assert markers == ["daily"]

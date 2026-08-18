@@ -131,6 +131,12 @@ This project follows SemVer release headings.
   read-only MCP server, and WebhookWise Lite.
 
 ### Fixed
+- **A failed periodic report stamped the sent-marker anyway**, making the
+  loss invisible twice over: startup catch-up saw the marker and stood
+  down, and the completion line logged at INFO. A dead fallback webhook
+  token silently ate weeks of weekly/monthly reports this way. The marker
+  is now recorded only on success (failure logs at ERROR and leaves the
+  occurrence for catch-up to retry).
 - **Reused recovery analyses kept the firing's red glyph**: a recovery that
   joins its firing's thread inherits the whole analysis, so its summary
   opened with 🔴 on the card body, the dashboard list, the relay envelope
