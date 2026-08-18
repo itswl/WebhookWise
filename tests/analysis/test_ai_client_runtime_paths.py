@@ -202,7 +202,11 @@ async def test_call_ai_with_retry_records_success_and_non_retryable_error(
 ) -> None:
     ai_llm_client, metric_calls = ai_runtime
 
-    async def build_prompt(_data: dict[str, object], source: str, _policy: object) -> str:
+    async def build_prompt(
+        _data: dict[str, object], source: str, _policy: object, *, correction_prior: object = None
+    ) -> str:
+        # The prior is off by default, so this path must not have built one.
+        assert correction_prior is None
         return f"prompt-for:{source}"
 
     monkeypatch.setattr(ai_llm_client, "_build_user_prompt", build_prompt)

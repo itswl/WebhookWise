@@ -31,9 +31,10 @@ from services.analysis.ai_errors import is_ai_provider_retryable_error, is_ai_pr
 from services.analysis.ai_prompt import get_prompt_source, load_user_prompt_template
 from services.analysis.alert_identity_context import build_alert_identity_context
 from services.analysis.analysis_policies import AIProviderPolicy
+from services.analysis.correction_prior import CorrectionPrior, build_correction_prior
 from services.analysis.prompt_safety import neutralize_untrusted_text
 from services.webhooks.payload_sanitizer import sanitize_for_ai_async
-from services.webhooks.types import AnalysisResult
+from services.webhooks.types import AnalysisResult, set_analysis_correction_prior
 
 logger = get_logger("analysis.ai_llm_client")
 
@@ -270,7 +271,13 @@ async def _retrieve_kb_context(source: str, identity_context: dict[str, Any], cl
         return ""
 
 
-async def _build_user_prompt(data: dict[str, Any], source: str, policy: AIProviderPolicy) -> str:
+async def _build_user_prompt(
+    data: dict[str, Any],
+    source: str,
+    policy: AIProviderPolicy,
+    *,
+    correction_prior: CorrectionPrior | None = None,
+) -> str:
     """Assemble the full user prompt for one alert (sanitize → identity → YAML → KB → template).
 
     Deterministic for a given alert, and not free: the YAML dumps are CPU-bound
@@ -286,12 +293,17 @@ async def _build_user_prompt(data: dict[str, Any], source: str, policy: AIProvid
     # Payload values are attacker-controlled and the model's verdict drives
     # forwarding/silencing, so defang fences the same way deep analysis does:
     # a value must not be able to close its code block and speak as the prompt.
-    # KB context is operator-published content and stays as written.
+    # KB context is operator-published content and stays as written; the
+    # correction prior is built from our own columns, but it interpolates the
+    # sender's rule name, so that side goes through the same defanging.
     user_prompt = (await load_user_prompt_template()).format(
         source=neutralize_untrusted_text(str(source)),
         identity_json=neutralize_untrusted_text(identity_yaml),
         data_json=neutralize_untrusted_text(data_yaml),
         kb_context=kb_context,
+        correction_prior=(
+            neutralize_untrusted_text(correction_prior.prompt_block()) if correction_prior is not None else ""
+        ),
     )
     logger.info(
         "[AI] Starting LLM analysis source=%s model=%s sanitized_fields=%s identity_fields=%s prompt_bytes=%s prompt_source=%s",
@@ -370,8 +382,21 @@ async def _call_ai_with_retry(
     # provider error the retries below reuse the same prompt instead of paying
     # the sanitize/YAML/KB-embedding cost again for identical input.
     policy = AIProviderPolicy.from_config()
-    user_prompt = await _build_user_prompt(parsed_data, source, policy)
-    return await _invoke_ai_with_retry(user_prompt, source, policy=policy, http_client=http_client)
+    prior = await build_correction_prior(source, parsed_data)
+    user_prompt = await _build_user_prompt(parsed_data, source, policy, correction_prior=prior)
+    result, tokens_in, tokens_out = await _invoke_ai_with_retry(
+        user_prompt, source, policy=policy, http_client=http_client
+    )
+    if prior is not None:
+        # Stamped here, not inside the prompt builder: the interesting fact is
+        # not that a prior was shown but whether the verdict came back agreeing
+        # with it, and only this side has the verdict.
+        set_analysis_correction_prior(result, prior=prior, followed=_verdict_follows(result, prior))
+    return result, tokens_in, tokens_out
+
+
+def _verdict_follows(result: AnalysisResult, prior: CorrectionPrior) -> bool:
+    return str(result.get("importance", "")).lower().rsplit(".", 1)[-1] == prior.importance
 
 
 @retry(

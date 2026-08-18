@@ -3,9 +3,20 @@
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Final, Literal, NotRequired, Required, TypedDict, cast
+from typing import Any, Final, Literal, NotRequired, Protocol, Required, TypedDict, cast
 
 from contracts.webhook_payload import JsonObject, WebhookData
+
+
+class CorrectionPriorLike(Protocol):
+    """The shape set_analysis_correction_prior needs.
+
+    A Protocol rather than the class itself: this module is the low-level
+    contract every layer imports, and importing an analysis service back into
+    it would invert the dependency (and cycle through models).
+    """
+
+    def to_metadata(self, *, followed: bool) -> JsonObject: ...
 
 
 class AnalysisMetaKey(StrEnum):
@@ -19,6 +30,7 @@ class AnalysisMetaKey(StrEnum):
     USAGE = "_usage"
     PROMPT_KIND = "_prompt_kind"
     PROMPT_VERSION = "_prompt_version"
+    CORRECTION_PRIOR = "_correction_prior"
 
 
 class ForwardMetaKey(StrEnum):
@@ -45,6 +57,7 @@ ANALYSIS_EMBEDDING: Final = AnalysisMetaKey.EMBEDDING.value
 ANALYSIS_USAGE: Final = AnalysisMetaKey.USAGE.value
 ANALYSIS_PROMPT_KIND: Final = AnalysisMetaKey.PROMPT_KIND.value
 ANALYSIS_PROMPT_VERSION: Final = AnalysisMetaKey.PROMPT_VERSION.value
+ANALYSIS_CORRECTION_PRIOR: Final = AnalysisMetaKey.CORRECTION_PRIOR.value
 FORWARD_PENDING: Final = ForwardMetaKey.PENDING.value
 GATEWAY_RUN_ID: Final = ForwardMetaKey.GATEWAY_RUN_ID.value
 GATEWAY_SESSION_KEY: Final = ForwardMetaKey.GATEWAY_SESSION_KEY.value
@@ -127,6 +140,7 @@ class AnalysisResult(TypedDict):
     _usage: NotRequired[JsonObject]
     _importance_override: NotRequired[str]
     _importance_override_reason: NotRequired[str]
+    _correction_prior: NotRequired[JsonObject]
 
 
 class ForwardResult(TypedDict):
@@ -206,6 +220,27 @@ def set_analysis_usage(
         "tokens_out": int(tokens_out),
         "cost_usd": round(float(cost_usd), 6),
     }
+    return result
+
+
+def set_analysis_correction_prior(
+    result: AnalysisResult, *, prior: CorrectionPriorLike, followed: bool
+) -> AnalysisResult:
+    """Record which operator history was put in front of the model, and whether it took it.
+
+    A prior that steers a verdict without leaving a record is the thing the
+    override docstring refused to build: a judgement nobody can trace back to a
+    person. Attached here it travels into persistence with the analysis, so the
+    stored answer to "why was this high" can name the corrections behind it.
+
+    `followed` is the honest half. A prior nothing ever follows is noise in the
+    prompt and should be turned off; a prior everything follows is a hard
+    override in disguise and should be one. Neither is visible without it.
+
+    Underscore-prefixed, so save_to_cache strips it: a cache hit must not claim
+    a prior that was computed for an earlier call.
+    """
+    result[ANALYSIS_CORRECTION_PRIOR] = prior.to_metadata(followed=followed)
     return result
 
 

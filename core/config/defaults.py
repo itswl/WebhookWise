@@ -285,6 +285,16 @@ class AIConfig(StaticSettings):
     # naming the replacement.
     AI_EXCLUDED_RULES: str = Field(default="")
 
+    # Correction prior: state to the model what operators decided about OTHER
+    # instances of the same alert rule. An importance override generalizes to
+    # nothing — a rule firing on a new host is a new hash and a fresh judgement.
+    # OFF by default → behavior unchanged. MIN_CORRECTIONS is the floor below
+    # which the prompt says nothing (one correction is not a pattern), and the
+    # lookback keeps a decision somebody made last year from steering today's.
+    AI_CORRECTION_PRIOR_ENABLED: bool = Field(default=False)
+    AI_CORRECTION_PRIOR_MIN_CORRECTIONS: int = Field(default=2, ge=1)
+    AI_CORRECTION_PRIOR_LOOKBACK_DAYS: int = Field(default=90, ge=1)
+
     ENABLE_AI_DEGRADATION: bool = Field(default=True)
     OPENAI_TEMPERATURE: float = Field(default=0.2, ge=0.0, le=2.0)
     AI_USER_PROMPT_FILE: str = Field(default="prompts/webhook_analysis_detailed.txt")

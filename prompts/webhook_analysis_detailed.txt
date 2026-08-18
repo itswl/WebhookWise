@@ -17,7 +17,7 @@
 ```json
 {data_json}
 ```
-{kb_context}
+{kb_context}{correction_prior}
 ## 分析要求
 
 请作为资深 DevOps 专家，对此事件进行全面分析。

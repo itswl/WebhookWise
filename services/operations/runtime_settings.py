@@ -157,6 +157,24 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
         'Importances the rule pass may answer alone, e.g. "low"',
     ),
     SettingSpec(
+        "AI_CORRECTION_PRIOR_ENABLED",
+        "ai",
+        _cast_bool,
+        "Tell the model what operators corrected on other instances of the same alert rule (opt-in)",
+    ),
+    SettingSpec(
+        "AI_CORRECTION_PRIOR_MIN_CORRECTIONS",
+        "ai",
+        _cast_int(1, 100),
+        "Agreeing corrections on a rule before the prior is stated at all",
+    ),
+    SettingSpec(
+        "AI_CORRECTION_PRIOR_LOOKBACK_DAYS",
+        "ai",
+        _cast_int(1, 3650),
+        "How far back a correction still counts as current",
+    ),
+    SettingSpec(
         "AI_COST_MONTHLY_BUDGET_USD", "ai", _cast_float(0.0), "Month-to-date AI spend ceiling in USD; 0 disables"
     ),
     SettingSpec(
