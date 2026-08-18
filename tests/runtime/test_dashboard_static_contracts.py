@@ -1553,3 +1553,19 @@ def test_static_binding_ids_are_unique() -> None:
     counts = collections.Counter(re.findall(r'data-sb="(sb\d+)"', html))
     duplicated = {sb: n for sb, n in counts.items() if n > 1}
     assert duplicated == {}, f"data-sb ids used by more than one element: {duplicated}"
+
+
+def test_every_runtime_setting_has_a_zh_description_overlay() -> None:
+    """The settings table renders zh descriptions from 'rs.desc.<KEY>' overlay
+    keys (the backend payload stays English by contract). The overlay is
+    dynamic lookup, so the both-dicts key contract cannot see it — without
+    this ratchet a new tunable ships with an English-only description and
+    nobody notices until an operator does."""
+    import re
+
+    from services.operations.runtime_settings import _SPEC_LIST
+
+    zh = _static_js("i18n.zh.js")
+    covered = set(re.findall(r"'rs\.desc\.([A-Z0-9_]+)':", zh))
+    missing = [spec.key for spec in _SPEC_LIST if spec.key not in covered]
+    assert missing == [], f"tunables missing a zh 'rs.desc.<KEY>' overlay: {missing}"

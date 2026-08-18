@@ -26,6 +26,15 @@ scrape_configs:
     static_configs:
       - targets: ["hookprobe:8088"]
 
-  # The hookrelay scrape job was removed on 2026-08-07 when the relay was taken
-  # out of the alert path and stopped. Restore it, and the hookrelay-alerts group
-  # in alerts.yml, from git history if the relay goes back in front.
+  # The shadow pair (hookstack_net). The relay left the alert path on
+  # 2026-08-07; it came BACK on 2026-08-17 as the shadow run — real traffic,
+  # ledger-only, accumulating judge-vs-platform agreement data. A dead shadow
+  # costs no notifications, but it silently stops the comparison ledger, so it
+  # gets the same scrape as everything else.
+  - job_name: hookrelay-shadow
+    static_configs:
+      - targets: ["hookrelay:8100"]
+
+  - job_name: hookjudge-shadow
+    static_configs:
+      - targets: ["hookjudge:8200"]
