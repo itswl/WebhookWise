@@ -46,6 +46,11 @@ python scripts/check_requirements_locks.py
 step "agent notes"
 python scripts/assert_agent_notes.py
 
+step "estate identifiers"
+# This repository is public: no real project, bucket, service, team handle,
+# hostname or webhook token may appear in it.
+python scripts/assert_no_estate_identifiers.py
+
 step "mypy"
 mypy
 

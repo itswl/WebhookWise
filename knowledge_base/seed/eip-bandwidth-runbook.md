@@ -3,7 +3,7 @@ title: 公网 IP 带宽利用率超阈值告警处置预案
 service: 公网 IP / 弹性公网 EIP
 tags: [eip, bandwidth, network, public-ip, runbook]
 owner: 网络与基础设施团队
-source_ref: 内部文档 / 网络运维预案
+source_ref: 运维预案（示例内容，请替换为你自己的内部文档引用）
 ---
 
 # 公网 IP 带宽利用率超阈值告警处置预案

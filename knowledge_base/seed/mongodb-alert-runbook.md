@@ -3,7 +3,7 @@ title: MongoDB 告警排查预案
 service: MongoDB
 tags: [mongodb, database, connections, replication, runbook]
 owner: 数据库团队
-source_ref: 内部文档 / MongoDB 运维手册
+source_ref: 运维预案（示例内容，请替换为你自己的内部文档引用）
 ---
 
 # MongoDB 告警排查预案

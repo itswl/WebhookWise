@@ -80,6 +80,9 @@ jobs:
       - run: python scripts/check_requirements_locks.py
       # Decision records keep their shape, or the practice decays into a folder.
       - run: python scripts/assert_agent_notes.py
+      # Public repository: a real project/bucket/service/team-handle/hostname
+      # or webhook token must fail here, not be found in an audit later.
+      - run: python scripts/assert_no_estate_identifiers.py
       - run: mypy
       - run: bandit -r core api services models adapters db scripts contracts -x tests -q -s B106
       - run: pip-audit -r requirements.lock -r requirements-dev.lock

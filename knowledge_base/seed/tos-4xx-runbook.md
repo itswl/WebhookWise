@@ -3,7 +3,7 @@ title: 对象存储桶 4xx 错误占比告警处置预案
 service: 对象存储 TOS
 tags: [tos, oss, bucket, 4xx, storage, runbook]
 owner: 存储与中间件团队
-source_ref: 内部文档 / 对象存储运维预案
+source_ref: 运维预案（示例内容，请替换为你自己的内部文档引用）
 ---
 
 # 对象存储桶 4xx 错误占比告警处置预案
@@ -25,7 +25,7 @@ source_ref: 内部文档 / 对象存储运维预案
 
 ## 负责人与升级路径
 - 一线：存储与中间件团队
-- 调用方问题：转对应业务负责人（sample → 业务后端组；flink-meta → 实时计算团队）
+- 调用方问题：转对应业务负责人（sample → 业务后端团队；flink-meta → 实时计算团队）
 - 升级：prod 业务桶持续 100% 4xx 且影响在线读写 → P0；dev/元数据桶 → 工作时间内处理。
 
 ## 备注

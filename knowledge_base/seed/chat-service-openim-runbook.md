@@ -3,7 +3,7 @@ title: chat-service 发送 OpenIM 消息失败告警处置预案
 service: chat-service
 tags: [chat-service, openim, im, message, runbook]
 owner: 业务后端团队
-source_ref: 内部文档 / chat-service 运维
+source_ref: 运维预案（示例内容，请替换为你自己的内部文档引用）
 ---
 
 # chat-service 发送 OpenIM 消息失败告警处置预案

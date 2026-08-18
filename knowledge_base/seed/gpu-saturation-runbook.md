@@ -3,7 +3,7 @@ title: GPU 资源饱和告警处置预案
 service: GPU计算服务
 tags: [gpu, inference, saturation, runbook]
 owner: 算力平台团队
-source_ref: 内部文档 / GPU 算力运维预案
+source_ref: 运维预案（示例内容，请替换为你自己的内部文档引用）
 ---
 
 # GPU 资源饱和告警处置预案

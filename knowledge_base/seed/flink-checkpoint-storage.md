@@ -4,7 +4,7 @@ service: Flink
 project: shared-infra
 tags: [flink, checkpoint, oss, bucket, storage, runbook]
 owner: 实时计算团队
-source_ref: 内部文档 / Flink 作业运维
+source_ref: 运维预案（示例内容，请替换为你自己的内部文档引用）
 ---
 
 # Flink 元数据存储桶告警与影响说明

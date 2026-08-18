@@ -3,7 +3,7 @@ title: VikingDB 限流（429）告警处置预案
 service: VikingDB
 tags: [vikingdb, ratelimit, 429, vector-db, runbook]
 owner: 数据平台团队
-source_ref: 内部文档 / VikingDB 接入规范
+source_ref: 运维预案（示例内容，请替换为你自己的内部文档引用）
 ---
 
 # VikingDB 限流（429）告警处置预案
