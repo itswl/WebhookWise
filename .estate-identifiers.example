@@ -1,0 +1,8 @@
+# 复制成 .estate-identifiers 再填真值。这个 .example 里全是假的。
+# 格式: <正则><TAB><为什么不能出现>
+#
+# 每次把一个真名字擦掉，就在这里补一条，否则下一次粘贴又会把它带回来。
+\bacme-prod\b	real project codename — use demo-cn
+\bacme-corp\.com\b	real company domain — use example.com
+\b203\.0\.113\.\d+\b	production server IP
+@(?:team-a|team-b)\b	internal chat handle — name a role, not a reachable handle

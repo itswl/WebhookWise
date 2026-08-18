@@ -82,7 +82,17 @@ jobs:
       - run: python scripts/assert_agent_notes.py
       # Public repository: a real project/bucket/service/team-handle/hostname
       # or webhook token must fail here, not be found in an audit later.
-      - run: python scripts/assert_no_estate_identifiers.py
+      # The pattern list is deliberately not in the repo -- it would be the last
+      # public copy of the words the scrub removed, plus their replacements.
+      # ESTATE_GUARD_REQUIRED makes a missing list a failure: without it the
+      # guard would exit 0 and the protection would vanish without a trace.
+      - name: estate identifiers
+        env:
+          ESTATE_IDENTIFIERS: ${{ secrets.ESTATE_IDENTIFIERS }}
+          ESTATE_GUARD_REQUIRED: "1"
+        run: |
+          printf '%s' "$ESTATE_IDENTIFIERS" > .estate-identifiers
+          python scripts/assert_no_estate_identifiers.py
       - run: mypy
       - run: bandit -r core api services models adapters db scripts contracts -x tests -q -s B106
       - run: pip-audit -r requirements.lock -r requirements-dev.lock
