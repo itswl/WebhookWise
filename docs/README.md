@@ -33,6 +33,7 @@ These documents are layered by use case to avoid mixing architecture, operations
 | [integrations/change-events.md](integrations/change-events.md) | Change-event contract and CI/CD integration examples. |
 | [integrations/inbound-source-onboarding.md](integrations/inbound-source-onboarding.md) | Source-scoped inbound credentials, first-event verification, rotation, and revocation. |
 | [integrations/feishu-interactive-cards.md](integrations/feishu-interactive-cards.md) | Optional Feishu custom-app cards with signed, idempotent incident actions. |
+| [integrations/deep-analysis-engine.md](integrations/deep-analysis-engine.md) | The two-endpoint investigator contract, the gateway dialects, why this leg has its own outbound client, and how to verify a round trip. |
 | [../deploy/k8s/README.md](../deploy/k8s/README.md) | Kubernetes manifest usage notes. |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Development and submission process. |
 | [../CHANGELOG.md](../CHANGELOG.md) | Version change records. |

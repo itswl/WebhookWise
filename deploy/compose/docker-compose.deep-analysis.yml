@@ -1,0 +1,43 @@
+# Reaching a deep-analysis gateway that runs in its own compose project.
+#
+# The gateway is an independent service with its own lifecycle; WebhookWise is
+# one of its callers. So the attachment belongs here, on the caller: this file
+# joins the processes that talk to the gateway to the network it already lives
+# on, and nothing about that service has to know WebhookWise exists.
+#
+# DEEP_ANALYSIS_NETWORK names that network (`docker network ls`), and the
+# gateway's compose service name is what DEEP_ANALYSIS_GATEWAY_URL then resolves
+# to — e.g. `http://hookprobe:8088` on a network named by that variable.
+#
+# Nothing further is needed for the private address: the deep-analysis leg uses
+# its own outbound client that skips the public-address rule, because its URL is
+# process configuration rather than payload-derived. See
+# docs/integrations/deep-analysis-engine.md.
+#
+#   docker compose -p webhookwise --env-file .env \
+#     -f deploy/compose/docker-compose.yml \
+#     -f deploy/compose/docker-compose.infra.yml \
+#     -f deploy/compose/docker-compose.deep-analysis.yml up -d
+#
+# Listing `webhook_net` again is required: naming any network for a service
+# opts it out of every network it is not listed on.
+services:
+  webhook-service:
+    networks:
+      - webhook_net
+      - deep_analysis
+
+  worker:
+    networks:
+      - webhook_net
+      - deep_analysis
+
+  scheduler:
+    networks:
+      - webhook_net
+      - deep_analysis
+
+networks:
+  deep_analysis:
+    name: ${DEEP_ANALYSIS_NETWORK:?set DEEP_ANALYSIS_NETWORK to the gateway's docker network}
+    external: true
