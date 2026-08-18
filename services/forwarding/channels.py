@@ -401,6 +401,13 @@ class _FeishuRelayChannel:
                     "event_type": str(analysis.get("event_type") or ""),
                     "impact_scope": str(analysis.get("impact_scope") or ""),
                     "importance": str(analysis.get("importance") or ""),
+                    # Three-way comparison data for shadow consumers (platform
+                    # importance / platform triage / judge importance); empty
+                    # strings vanish in the relay's field extraction.
+                    "triage_verdict": str(analysis.get("triage_verdict") or ""),
+                    "triage_confidence": (
+                        str(analysis.get("triage_confidence")) if analysis.get("triage_confidence") is not None else ""
+                    ),
                 },
                 "identity": _relay_identity(parsed),
                 "links": [

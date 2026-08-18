@@ -147,6 +147,8 @@ async def test_processed_mode_sends_judgement_not_presentation(relay_env: None) 
             "importance": "high",
             "event_type": "business",
             "impact_scope": "未观察到服务影响",
+            "triage_verdict": "act_now",
+            "triage_confidence": 0.9,
         },
     )
     result = await _FeishuRelayChannel().deliver(record)
@@ -155,6 +157,10 @@ async def test_processed_mode_sends_judgement_not_presentation(relay_env: None) 
     body = json.loads(_FakeClient.sent[0]["content"].decode())
     assert body["analysis"]["summary"] == "9 分钟内 3 次大额充值"
     assert body["analysis"]["impact_scope"] == "未观察到服务影响"
+    # Three-way shadow comparison data; absent verdicts travel as "" and the
+    # relay's field extraction drops empty strings.
+    assert body["analysis"]["triage_verdict"] == "act_now"
+    assert body["analysis"]["triage_confidence"] == "0.9"
     # Identity as DATA, not a pre-rendered breadcrumb: separators and order are
     # formatting, and formatting moved to the pipe.
     assert body["identity"] == {"project": "demo-alarm", "environment": "prod", "rule": "示例充值超限告警"}

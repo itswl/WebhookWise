@@ -538,3 +538,56 @@ async def test_handle_webhook_ingest_and_raw_ingest_outcomes(
         if name == "WEBHOOK_PROCESSING_DURATION_SECONDS" and action == "observe"
     ]
     assert {"suppressed", "completed", "failed"} <= set(outcomes)
+
+
+def test_reused_recovery_summary_swaps_the_firing_glyph() -> None:
+    """A recovery inherits its firing's analysis wholesale, so the summary
+    opened with the firing's 🔴 — a green recovery quoting a red glyph
+    contradicted itself on the card body, the dashboard list, the relay
+    envelope, and the judge's shadow ledger. Only the glyph changes; the
+    wording and importance stay, and the cached firing dict is not mutated."""
+    from services.webhooks.pipeline_stages import _recovery_recolour
+
+    req_ctx = WebhookRequestContext(
+        client_ip="127.0.0.1",
+        source="grafana",
+        payload=b"{}",
+        parsed_data=webhook_data_from_mapping({"RuleName": "topup", "status": "resolved"}),
+        webhook_full_data=webhook_data_from_mapping({"source": "grafana", "parsed_data": {}}),
+        headers={},
+    )
+    ctx = WebhookProcessContext(
+        event_id=1,
+        request_id="r",
+        metric_source="grafana",
+        req_ctx=req_ctx,
+        alert_hash="h",
+        dedup_key="d",
+    )
+    cached = {"summary": "🔴 示例充值超限告警", "importance": "high"}
+    out = _recovery_recolour(ctx, cached)
+    assert out["summary"] == "🟢 示例充值超限告警"
+    assert out["importance"] == "high"  # routing input untouched
+    assert cached["summary"].startswith("🔴")  # copy-on-write, cache intact
+
+    # A firing payload (no recovery marker) keeps its glyph.
+    firing_ctx = WebhookProcessContext(
+        event_id=2,
+        request_id="r2",
+        metric_source="grafana",
+        req_ctx=WebhookRequestContext(
+            client_ip="127.0.0.1",
+            source="grafana",
+            payload=b"{}",
+            parsed_data=webhook_data_from_mapping({"RuleName": "topup", "status": "firing"}),
+            webhook_full_data=webhook_data_from_mapping({"source": "grafana", "parsed_data": {}}),
+            headers={},
+        ),
+        alert_hash="h2",
+        dedup_key="d2",
+    )
+    assert _recovery_recolour(firing_ctx, cached) is cached
+
+    # No glyph prefix: nothing to swap, even for a recovery.
+    plain = {"summary": "充值恢复正常", "importance": "low"}
+    assert _recovery_recolour(ctx, plain) is plain

@@ -6,6 +6,10 @@ This project follows SemVer release headings.
 ## Unreleased
 
 ### Added
+- **Triage verdict rides the relay envelope**: the `feishu_relay` processed
+  envelope's analysis block carries `triage_verdict`/`triage_confidence`, so
+  a shadow consumer (hookjudge) can accumulate three-way comparison data —
+  platform importance / platform triage / judge importance.
 - **Evidence pack for investigations**: every deep-analysis trigger now ships
   the investigator system-side context — decision trace, 7-day repeat count,
   the prior verdict on the same alert hash, incident membership, and top KB
@@ -127,6 +131,12 @@ This project follows SemVer release headings.
   read-only MCP server, and WebhookWise Lite.
 
 ### Fixed
+- **Reused recovery analyses kept the firing's red glyph**: a recovery that
+  joins its firing's thread inherits the whole analysis, so its summary
+  opened with 🔴 on the card body, the dashboard list, the relay envelope
+  and the shadow ledger — a green recovery quoting a red glyph. The reuse
+  path now swaps the leading status glyph to 🟢 (copy-on-write; wording and
+  importance untouched, so routing is unaffected).
 - **Reused static-binding ids cross-wired handlers**: the bind helper
   attaches to every match, and sb21–sb24 each belonged to two elements —
   clicking the forward-rules search box invoked clearAuthKeys (instant

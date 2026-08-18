@@ -47,6 +47,35 @@ from services.webhooks.types import (
 logger = get_logger("webhooks.pipeline")
 
 
+# The firing's status glyph, when a recovery inherits the whole analysis.
+_FIRING_GLYPHS = ("\U0001f534", "\U0001f7e0", "\U0001f7e1", "\u26a0\ufe0f", "\u2757", "\U0001f6a8")
+
+
+def _recovery_recolour(ctx: WebhookProcessContext, analysis: AnalysisResult) -> AnalysisResult:
+    """A recovery reuses its firing's analysis wholesale, which leaves the
+    summary opening with the firing's status glyph — a green recovery card
+    quoting "🔴 …" contradicts itself everywhere the summary travels (card
+    body, dashboard list, relay envelope, the judge's shadow ledger). Swap
+    the glyph only: the wording still names the condition that ended, and
+    importance still drives routing untouched. Copy-on-write, because the
+    reused dict may be shared with the cached firing analysis."""
+    from services.incidents.grouping import is_recovery_payload
+
+    summary = str(analysis.get("summary") or "")
+    glyph = next((g for g in _FIRING_GLYPHS if summary.startswith(g)), None)
+    if glyph is None:
+        return analysis
+    try:
+        parsed = ctx.req_ctx.parsed_data if isinstance(ctx.req_ctx.parsed_data, dict) else {}
+        if not is_recovery_payload(parsed, analysis):
+            return analysis
+    except (KeyError, TypeError, ValueError):
+        return analysis
+    recoloured = cast(AnalysisResult, dict(analysis))
+    recoloured["summary"] = "\U0001f7e2" + summary[len(glyph) :]
+    return recoloured
+
+
 async def _handle_reused_analysis(
     ctx: WebhookProcessContext,
     dedup_result: DedupResult,
@@ -54,6 +83,7 @@ async def _handle_reused_analysis(
     analysis: AnalysisResult = cast(AnalysisResult, dedup_result.analysis or {})
     route_type = dedup_result.route_type or "redis_reuse"
     set_analysis_route(analysis, route_type)
+    analysis = _recovery_recolour(ctx, analysis)
     importance = normalize_importance(analysis.get("importance", "unknown"))
     set_log_context(webhook_route=route_type)
     await log_ai_usage(route_type, ctx.alert_hash, ctx.req_ctx.source, cache_hit=True)
