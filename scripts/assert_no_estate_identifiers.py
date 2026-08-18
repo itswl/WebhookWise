@@ -72,14 +72,19 @@ def tracked_files() -> list[str]:
 
 def main() -> int:
     rules = load_patterns()
-    if rules is None:
+    # An EMPTY list is as useless as a missing one, and far easier to end up with:
+    # CI writes the file from a secret, so an unset secret produces a zero-byte
+    # file, zero rules, and a cheerful "clean" over every file in the repository.
+    # Both cases take the same branch.
+    if not rules:
         required = os.environ.get("ESTATE_GUARD_REQUIRED") == "1"
-        where = PATTERN_FILE
+        state = "no pattern list at" if rules is None else "an empty pattern list at"
         if required:
-            print(f"  FAIL  no pattern list at {where} and ESTATE_GUARD_REQUIRED=1")
-            print("        CI must write the list from its secret before this runs.")
+            print(f"  FAIL  {state} {PATTERN_FILE} and ESTATE_GUARD_REQUIRED=1")
+            print("        CI must write the list from its secret before this runs;")
+            print("        an unset secret writes an empty file, which is this failure.")
             return 1
-        print(f"  SKIP  no pattern list at {where}")
+        print(f"  SKIP  {state} {PATTERN_FILE}")
         print("        copy .estate-identifiers.example and fill in the real names.")
         return 0
     compiled = [(re.compile(pattern, re.I), reason) for pattern, reason in rules]
