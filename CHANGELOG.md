@@ -6,6 +6,54 @@ This project follows SemVer release headings.
 ## Unreleased
 
 ### Added
+- **Offline eval for the importance verdict** (`evals/`,
+  `scripts/eval_analysis.py`): a frozen corpus of labelled alerts is replayed
+  through the analysis engine and held to recorded thresholds in
+  `evals/baseline.json`, wired into `scripts/gate.sh` and ci.yml's test job.
+  Importance selects forward rules, decides what a silence swallows, and gates
+  deep analysis, so a keyword or prompt edit that lowers it used to ship on
+  judgement alone. Only one combination gates — the rule engine on the whole
+  committed corpus with the keyword policy built from the **committed field
+  defaults**, deliberately ignoring `.env`, so CI and a laptop agree and no
+  local export can move the gate. `--policy env` and `--engine ai` score and
+  report without gating, and say why. Errors are counted by direction:
+  `high_recall` is the headline and `max_miss_rate` is pinned at zero, because
+  an under-called alert reaches nobody while an over-called one costs
+  attention. `export` mines labels from the corrections operators already made
+  (`importance_overrides`, `analysis_feedback.corrected_importance`).
+- **Corrections generalize to sibling instances**
+  (`AI_CORRECTION_PRIOR_ENABLED`, runtime-policy, default off): an importance
+  override applies only to the exact condition it was made on, so the same rule
+  firing on a new host is a fresh judgement even after operators corrected five
+  siblings the same way. When enabled, the prompt states that history as a
+  prior — scoped to the same rule and source, only when the corrections agree,
+  only above a floor of agreeing corrections, and within a lookback window. The
+  analysis records which corrections were shown and whether the model followed
+  them (`_correction_prior.followed`); the eval reports `prior_shown` /
+  `prior_followed`. It is a prior, not a decision: the model may disagree with
+  the payload in front of it, and the exact-hash override still wins afterwards.
+- **Approval-gated remediation** (`remediation_proposals`, migration 0033): an
+  agent can propose one of the Action Center's commands and nothing happens
+  until an operator approves it, at which point it executes through the same
+  `run_remediation` path the dashboard button uses — so adding a proposer did
+  not widen the set of things that can happen to a deployment. Arguments are
+  validated by constructing the executor's own request model, so a proposal
+  that could not run cannot be created. Bounded: a required reason, one pending
+  proposal per action+resource, a capped queue, and an expiry enforced on read
+  and on decision rather than by a sweeper. `approved` (allowed and ran) and
+  `failed` (allowed, execution raised) are separate states, and the approve
+  endpoint returns 502 for the latter.
+- **MCP gains its first write**: `propose_remediation` records a proposal and
+  executes nothing; `list_remediation_proposals` reads the queue back. The
+  transport authenticates with the read API key, so proposing needs only read
+  access while approval needs admin-write — that split is the boundary. The
+  agent guide and `docs/reference/mcp.md` no longer claim the surface is
+  strictly read-only, because it is not.
+- **AI engineering map** (`docs/architecture/ai-engineering.md`): every
+  mechanism around the model — cheap-pass routing, structured output, prompt
+  injection defence, retrieval, memory, both correction loops, cost governance,
+  failure isolation, provenance, the decision trace, the agent surface — with
+  the one question asked of each: what consumes it.
 - **Triage verdict rides the relay envelope**: the `feishu_relay` processed
   envelope's analysis block carries `triage_verdict`/`triage_confidence`, so
   a shadow consumer (hookjudge) can accumulate three-way comparison data —

@@ -8,6 +8,7 @@ These documents are layered by use case to avoid mixing architecture, operations
 | --- | --- |
 | [architecture/system-overview.md](architecture/system-overview.md) | Runtime topology, processing sequence, product loop, durable data map, scheduler, observability, and deployment profiles. |
 | [architecture/boundaries.md](architecture/boundaries.md) | Module ownership, process boundaries, and the runtime contract. |
+| [architecture/ai-engineering.md](architecture/ai-engineering.md) | What runs around the model: routing, guardrails, retrieval, corrections, cost, provenance, the agent surface, and what proves a change. |
 
 ## Operations
 
@@ -28,6 +29,7 @@ These documents are layered by use case to avoid mixing architecture, operations
 | [features/incident-response-loop.md](features/incident-response-loop.md) | Change impact, service profiles, command summary, manual runbooks, and value reporting. |
 | [features/incident-learning-workspace.md](features/incident-learning-workspace.md) | Work queue, structured resolution, recurrence review, knowledge gaps, and recommendation calibration. |
 | [features/alert-quality-center.md](features/alert-quality-center.md) | Read-only source scoring, field coverage, recovery matching, identity stability, and schema drift diagnostics. |
+| [features/approval-gated-remediation.md](features/approval-gated-remediation.md) | Proposed Action Center commands: the inert proposal, the human approval, the bounds, and the states. |
 | [integrations/change-events.md](integrations/change-events.md) | Change-event contract and CI/CD integration examples. |
 | [integrations/inbound-source-onboarding.md](integrations/inbound-source-onboarding.md) | Source-scoped inbound credentials, first-event verification, rotation, and revocation. |
 | [integrations/feishu-interactive-cards.md](integrations/feishu-interactive-cards.md) | Optional Feishu custom-app cards with signed, idempotent incident actions. |

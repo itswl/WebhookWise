@@ -57,8 +57,10 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 | Transactional Outbox | Processing results and forwarding intent are written to the database in the same transaction, then delivered and retried asynchronously by the Worker. |
 | OTel-first observability | The application emits telemetry over OTLP; Alloy routes metrics, logs, and traces to Prometheus, Loki, and Tempo, while Pyroscope, Beyla, Alertmanager, and Grafana complete the diagnostic loop. |
 | Runtime settings plane | Keys tagged `[runtime-policy]` accept DB-backed live overrides from the dashboard/API, propagate to every process within ~60s, and fail open — see [Runtime Settings](#runtime-settings--live-operator-policy). |
-| Read-only MCP server | Opt-in (`MCP_ENABLED`) Streamable-HTTP MCP endpoint at `/mcp` exposing the query layer to any agent (Claude / Cursor / custom); deliberately read-only — see [docs/reference/mcp.md](docs/reference/mcp.md). |
+| MCP server for agents | Opt-in (`MCP_ENABLED`) Streamable-HTTP MCP endpoint at `/mcp` exposing the query layer to any agent (Claude / Cursor / custom). Read-only except `propose_remediation`, which executes nothing and only records a proposal for a human — see [docs/reference/mcp.md](docs/reference/mcp.md). |
 | Agent skills + operator guide | Three workflow skills in [`.claude/skills/`](.claude/skills) (investigate an alert, shift review, noise tuning) orchestrate the MCP tools for any agent — Claude Code picks them up in-repo, hookprobe mounts them as its user layer. The dashboard ships a bilingual six-step guide at `#/guide`. |
+| Approval-gated remediation | An agent can propose one of the Action Center's commands; nothing runs until an operator approves it, and approval executes the same audited path the dashboard button does — see [docs/features/approval-gated-remediation.md](docs/features/approval-gated-remediation.md). |
+| Offline analysis eval | A frozen corpus of labelled alerts is replayed through the analysis engine on every change and held to recorded thresholds in CI, so a prompt or keyword edit cannot quietly lower the importance verdict that routes alerts — see [evals/README.md](evals/README.md). |
 | WebhookWise Lite | A one-process edition of the same thesis: SQLite, no Redis, ~800 lines, four suppression gates — see [lite/README.md](lite/README.md). |
 
 ## System Flow
@@ -364,7 +366,7 @@ For the complete documentation entry point, see [docs/README.md](docs/README.md)
 
 | Category | Documents |
 | --- | --- |
-| Architecture | [System Architecture](docs/architecture/system-overview.md), [Module Boundaries](docs/architecture/boundaries.md) |
+| Architecture | [System Architecture](docs/architecture/system-overview.md), [Module Boundaries](docs/architecture/boundaries.md), [AI Engineering Surface](docs/architecture/ai-engineering.md) |
 | Operations | [Observability](docs/operations/observability/overview.md), [Grafana Dashboards](docs/operations/observability/dashboards.md), [Query Tools](docs/operations/observability/query-tools.md), [Troubleshooting](docs/operations/troubleshooting.md) |
 | Reference | [API Docs](docs/reference/api.md), [Kubernetes](deploy/k8s/README.md), [Contributing Guide](CONTRIBUTING.md), [Changelog](CHANGELOG.md) |
 

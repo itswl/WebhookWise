@@ -46,8 +46,10 @@ WebhookWise 位于执行类平台的上游:它决定哪些告警值得关注并�
 | 事务性 Outbox | 处理结果与转发意图在同一事务落库,由 Worker 异步投递与重试。 |
 | OTel 优先可观测性 | 应用只经 OTLP 发出遥测;Alloy 路由指标/日志/追踪到 Prometheus、Loki、Tempo,Pyroscope、Beyla、Alertmanager、Grafana 组成诊断闭环。 |
 | 运行时策略平面 | 标记 `[runtime-policy]` 的配置支持数据库级实时覆写(仪表盘/API 均可修改),约 60 秒内在所有进程生效,故障时向可用侧降级。 |
-| 只读 MCP 服务 | 可选开启(`MCP_ENABLED`)的 Streamable-HTTP MCP 端点(`/mcp`),把查询层暴露给任意 Agent(Claude / Cursor / 自定义客户端);刻意只读——见 [docs/reference/mcp.md](docs/reference/mcp.md)。 |
+| 面向 Agent 的 MCP 服务 | 可选开启(`MCP_ENABLED`)的 Streamable-HTTP MCP 端点(`/mcp`),把查询层暴露给任意 Agent(Claude / Cursor / 自定义客户端)。除 `propose_remediation` 外全部只读,而该工具本身不执行任何动作,只登记一条待人工审批的提议——见 [docs/reference/mcp.md](docs/reference/mcp.md)。 |
 | Agent 技能 + 使用教程 | [`.claude/skills/`](.claude/skills) 内置三个工作流技能（单条告警调查、交接班回顾、降噪审计），编排 MCP 工具供任意 Agent 使用——Claude Code 在仓库内自动识别，hookprobe 以只读 user 层挂载。仪表盘另有双语六步教程页（`#/guide`）。 |
+| 审批式自愈 | Agent 可以提议一条 Action Center 命令,但在运维批准前什么都不会发生;批准后走的是仪表盘按钮同一条带审计的执行路径——见 [docs/features/approval-gated-remediation.md](docs/features/approval-gated-remediation.md)(英文)。 |
+| 离线分析评测 | 每次改动都把一批带标注的真实告警重放进分析引擎,并对照已记录的阈值在 CI 里把关,避免一次 prompt 或关键词改动悄悄压低决定路由的重要性判定——见 [evals/README.md](evals/README.md)(英文)。 |
 | WebhookWise Lite | 同一产品思路的单进程版:SQLite、无 Redis、约 800 行、四道抑制闸门——见 [lite/README.md](lite/README.md)。 |
 
 ## 系统流程
@@ -77,7 +79,7 @@ flowchart LR
     learning -->|"bounded evidence and ranking feedback"| response
 ```
 
-进程拓扑、持久化关系、调度器职责、安全边界与完整可观测性链路见[系统架构](docs/architecture/system-overview.md)(英文)。
+进程拓扑、持久化关系、调度器职责、安全边界与完整可观测性链路见[系统架构](docs/architecture/system-overview.md)(英文);模型周边那一层(路由、护栏、检索、人工修正、成本、可追溯性、Agent 接口,以及一次改动靠什么证明)见[AI 工程面](docs/architecture/ai-engineering.md)(英文)。
 
 ## 五分钟上手
 
