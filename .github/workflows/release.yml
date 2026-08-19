@@ -218,3 +218,52 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # The Releases page is the front door a tag never opened: images shipped on
+  # every release while the page said "There aren't any releases here". Notes
+  # are extracted from the CHANGELOG section verify already proved exists.
+  github-release:
+    needs:
+      - verify
+      - image
+    if: needs.verify.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Extract this version's changelog section
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os, re
+          version = os.environ["VERSION"]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          match = re.search(
+              rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}\n(.*?)(?=^## |\Z)",
+              text, re.M | re.S,
+          )
+          assert match, f"CHANGELOG.md has no section for {version}"
+          body = match.group(1).strip() + (
+              f"\n\n---\n\nImages: `ghcr.io/itswl/webhookwise:{version}` (linux/amd64, linux/arm64)."
+          )
+          open("release-notes.md", "w", encoding="utf-8").write(body)
+          print(f"extracted {len(body)} chars for {version}")
+          PY
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title "$tag" --notes-file release-notes.md --latest
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title "$tag" --notes-file release-notes.md --latest --verify-tag
+          fi
