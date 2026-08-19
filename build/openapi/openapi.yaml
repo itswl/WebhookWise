@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: WebhookWise
-  version: 3.8.0
+  version: 5.0.0
 paths:
   /live:
     get:

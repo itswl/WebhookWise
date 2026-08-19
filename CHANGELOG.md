@@ -3,7 +3,18 @@
 All notable project changes should be summarized here after merge or release.
 This project follows SemVer release headings.
 
-## Unreleased
+## [5.0.0] - 2026-08-19
+
+A major bump, not a feature list: the repository this code was published from is
+gone. A public-repository audit found an internal architecture in plain sight — a
+platform org chart with @-mentionable handles, object-storage bucket names for
+prod and dev, internal service names, a company domain, and two credentials that
+were still live in production, every one of them reachable in the git history
+since the first commit. The history was rewritten, the repository was recreated to
+purge the pull-request refs a rewrite cannot touch, and CI now fails on any of
+those names returning.
+
+4.x is deliberately unused, so the break is visible in the version itself.
 
 ### Added
 - **Offline eval for the importance verdict** (`evals/`,
