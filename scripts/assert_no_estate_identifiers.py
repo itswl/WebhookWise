@@ -110,7 +110,12 @@ def main() -> int:
     if problems:
         print(f"\n{len(problems)} estate identifier(s) in a public repository")
         return 1
-    print(f"no estate identifiers: {len(tracked_files())} tracked file(s) clean")
+    # The rule count is the only evidence the list arrived intact. It is read
+    # from a TAB-separated file, and CI writes that file from a secret somebody
+    # pasted: a paste that loses tabs drops those rules silently, because a line
+    # without a tab cannot say why it is forbidden and is skipped. Printing the
+    # count turns "I hope the secret is right" into something a log can answer.
+    print(f"no estate identifiers: {len(tracked_files())} tracked file(s) clean against {len(rules)} rule(s)")
     return 0
 
 
