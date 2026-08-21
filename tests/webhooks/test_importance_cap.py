@@ -129,8 +129,6 @@ def test_the_write_path_refuses_a_verb_and_value_that_disagree(action: str, valu
     something else."""
     from services.webhooks.inbound_rules import validate
 
-    problem = validate(
-        {"name": "r", "action": action, "action_value": value, "match_rule_name": "示例充值超限告警"}
-    )
+    problem = validate({"name": "r", "action": action, "action_value": value, "match_rule_name": "示例充值超限告警"})
 
     assert (problem is None) is expected_ok, problem

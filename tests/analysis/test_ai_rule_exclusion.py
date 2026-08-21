@@ -76,7 +76,7 @@ async def test_matching_is_exact_not_substring(monkeypatch, temp_config) -> None
     monkeypatch.setattr(temp_config.ai, "AI_EXCLUDED_RULES", EXCLUDED)
 
     near = _topup_alert()
-    near["parsed_data"]["RuleName"] = "示例充值超限告警-示例账户"  # type: ignore[index]
+    near["parsed_data"]["RuleName"] = "示例充值超限告警-核心账户"  # type: ignore[index]
 
     await ai_analyzer.analyze_webhook_with_ai(near, alert_hash="h-near", skip_cache=True)
 
