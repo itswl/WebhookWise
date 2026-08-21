@@ -23,3 +23,8 @@ fakeredis>=2.37.0
 # Transitive (pip-audit -> cachecontrol -> msgpack); floored to clear
 # GHSA-6v7p-g79w-8964. Dev/CI-only; not in the production lock.
 msgpack>=1.2.1
+
+# Transitive (pip-audit -> pip-api -> pip); floored to clear PYSEC-2026-3721.
+# Dev/CI-only: pip is not in the production lock, and pip-audit is the only
+# reason it is pinned here at all.
+pip>=26.2
