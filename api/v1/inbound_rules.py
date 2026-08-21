@@ -24,6 +24,7 @@ from core.logger import get_logger
 from db.session import get_db_session
 from models import InboundRule
 from services.webhooks import inbound_rules as store
+from services.webhooks.types import INBOUND_ACTIONS, INBOUND_ACTIONS_WITH_VALUE
 
 logger = get_logger("api.v1.inbound_rules")
 
@@ -47,7 +48,9 @@ async def list_inbound_rules(
     return {
         "success": True,
         "data": [store.to_dict(rule) for rule in rows],
-        "actions": sorted(store.INBOUND_ACTIONS),
+        "actions": sorted(INBOUND_ACTIONS),
+        # Which verbs need action_value, so the form knows when to ask for one.
+        "actions_with_value": sorted(INBOUND_ACTIONS_WITH_VALUE),
     }
 
 

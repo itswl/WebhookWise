@@ -11,6 +11,7 @@ from core.datetime_utils import utcnow
 from core.text import split_csv_lower
 from services.forwarding.types import ForwardRuleSnapshot
 from services.webhooks.types import (
+    CAP_IMPORTANCE,
     AnalysisResult,
     NoiseReductionContext,
     WebhookProcessContext,
@@ -60,6 +61,8 @@ class InboundRuleSnapshot:
     id: int | None
     name: str = ""
     action: str = ""
+    # The verb's target, when it needs one: cap_importance stores its ceiling.
+    action_value: str = ""
     priority: int = 0
     match_event_type: str = ""
     match_importance: str = ""
@@ -616,6 +619,62 @@ def forwarding_policy_from_config() -> ForwardingPolicy:
         enable_periodic_reminder=rt.override_or("ENABLE_PERIODIC_REMINDER", bool(cfg.retry.ENABLE_PERIODIC_REMINDER)),
         reminder_interval_hours=rt.override_or("REMINDER_INTERVAL_HOURS", int(cfg.retry.REMINDER_INTERVAL_HOURS)),
     )
+
+
+def matching_inbound_importance_cap(
+    rules: list[InboundRuleSnapshot],
+    *,
+    event_type: str = "",
+    importance: str = "",
+    source: str = "",
+    is_duplicate: bool = False,
+    parsed_data: dict[str, Any] | None = None,
+    rule_name: str = "",
+) -> tuple[str, str]:
+    """The importance ceiling an operator has set for this alert, or ("", "").
+
+    Returns (ceiling, rule name) so the caller can say WHERE the cap came from;
+    a severity nobody can trace is the thing this feature exists to stop.
+
+    Unlike `matching_inbound_actions` this respects priority and returns the
+    FIRST match rather than a set. A cap carries a value, so two matching rules
+    would otherwise disagree and the answer would depend on iteration order —
+    and the table already has a priority column for exactly this. Rules arrive
+    priority-descending from list_enabled_inbound_rules.
+    """
+    identity = extract_forward_match_fields(parsed_data)
+    for rule in rules:
+        if rule.action != CAP_IMPORTANCE or not rule.action_value:
+            continue
+        if rule.match_rule_name and not _csv_value_matches(rule.match_rule_name, rule_name):
+            continue
+        probe = ForwardRuleSnapshot(
+            id=rule.id,
+            name=rule.name or "inbound",
+            match_event_type=rule.match_event_type,
+            match_importance=rule.match_importance,
+            match_source=rule.match_source,
+            match_duplicate=rule.match_duplicate or "all",
+            match_payload=rule.match_payload,
+            match_project=rule.match_project,
+            match_region=rule.match_region,
+            match_environment=rule.match_environment,
+            target_type="inbound",
+            target_url="",
+            stop_on_match=False,
+            target_name="",
+        )
+        if _rule_matches(
+            probe,
+            event_type=event_type,
+            importance=importance,
+            source=source,
+            is_duplicate=is_duplicate,
+            parsed_data=parsed_data,
+            identity=identity,
+        ):
+            return rule.action_value.strip().lower(), rule.name or ""
+    return "", ""
 
 
 def matching_inbound_actions(

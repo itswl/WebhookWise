@@ -14,13 +14,10 @@ from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
 from models import ForwardOutbox
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.forwarding.types import ForwardRuleSnapshot
-from services.webhooks.inbound_rules import (
+from services.webhooks.inbound_rules import alert_rule_name, inbound_actions_for
+from services.webhooks.types import (
     SKIP_AI,
     SKIP_DEEP_ANALYSIS,
-    alert_rule_name,
-    inbound_actions_for,
-)
-from services.webhooks.types import (
     AnalysisResult,
     ForwardOutboxStatus,
     ForwardResult,

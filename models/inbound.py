@@ -47,6 +47,9 @@ class InboundRule(Base):
     # that is never stored cannot be investigated afterwards, and muting already
     # has a home in silences, with expiry semantics this table does not have.
     action: Mapped[str] = mapped_column(String(40), nullable=False)
+    # What the verb acts ON, when it needs a target: cap_importance stores the
+    # ceiling here. Empty for verbs that need none (skip_ai, skip_deep_analysis).
+    action_value: Mapped[str] = mapped_column(String(20), default="", server_default="")
 
     comment: Mapped[str] = mapped_column(String(500), default="")
     created_by: Mapped[str] = mapped_column(String(100), default="")

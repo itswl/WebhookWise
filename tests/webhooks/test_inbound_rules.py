@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from services.webhooks.decisioning import InboundRuleSnapshot, matching_inbound_actions
-from services.webhooks.inbound_rules import SKIP_AI, SKIP_DEEP_ANALYSIS, validate
+from services.webhooks.inbound_rules import validate
+from services.webhooks.types import SKIP_AI, SKIP_DEEP_ANALYSIS
 
 TOPUP = {
     "RuleName": "示例充值超限告警",

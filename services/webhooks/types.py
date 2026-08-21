@@ -67,6 +67,32 @@ GATEWAY_TEXT: Final = GatewayMetaKey.TEXT.value
 GATEWAY_NEED_SUCCESS_NOTIFY: Final = GatewayMetaKey.NEED_SUCCESS_NOTIFY.value
 MANUAL_RETRY_STARTED_AT: Final = GatewayMetaKey.MANUAL_RETRY_STARTED_AT.value
 
+# ── Inbound actions ──────────────────────────────────────────────────────────
+# The verbs an inbound rule can carry. Declared here rather than in
+# inbound_rules because the MATCHER lives in decisioning, which inbound_rules
+# imports from — putting the vocabulary in either would make a cycle, and
+# spelling it in both would break the one-declaration contract.
+SKIP_AI: Final = "skip_ai"
+SKIP_DEEP_ANALYSIS: Final = "skip_deep_analysis"
+# Ceiling an operator sets for a named alert rule, applied AFTER judgement to
+# whatever route answered. Needs InboundRule.action_value to say "at what".
+CAP_IMPORTANCE: Final = "cap_importance"
+# Deliberately short. "drop" would make an alert unfindable afterwards, and
+# "mute" already exists as a silence, with expiry semantics this table lacks.
+INBOUND_ACTIONS: Final = frozenset({SKIP_AI, SKIP_DEEP_ANALYSIS, CAP_IMPORTANCE})
+# Only these verbs take a value; the others must leave action_value empty.
+INBOUND_ACTIONS_WITH_VALUE: Final = frozenset({CAP_IMPORTANCE})
+
+# A capped severity must never look like the judgement that produced it. Same
+# doctrine as _importance_override: an importance nobody can trace back to a
+# decision is how you end up arguing with a model that never said it.
+ANALYSIS_IMPORTANCE_CAP: Final = "_importance_cap"
+# Ordered so a cap can be compared against a judgement. Unknown values are
+# treated as `high` when capping, so a severity this table does not recognise
+# is never left ABOVE the ceiling an operator set.
+_IMPORTANCE_RANK: Final = {"low": 0, "medium": 1, "high": 2}
+
+
 # "rule" = degraded to rules (AI unavailable/failed). "rule_routed" = tiered
 # routing intentionally skipped the LLM for a low-value alert (not a degradation).
 AnalysisRouteType = Literal[
@@ -141,6 +167,7 @@ class AnalysisResult(TypedDict):
     _importance_override: NotRequired[str]
     _importance_override_reason: NotRequired[str]
     _correction_prior: NotRequired[JsonObject]
+    _importance_cap: NotRequired[JsonObject]
 
 
 class ForwardResult(TypedDict):
@@ -363,3 +390,25 @@ class NoiseReductionContext:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "related_alert_ids", tuple(int(item) for item in self.related_alert_ids))
+
+
+def apply_importance_cap(result: AnalysisResult, *, cap: str, rule_name: str) -> AnalysisResult:
+    """Lower this analysis's importance to `cap`, visibly, if it is above it.
+
+    A ceiling, never a floor: an alert the judgement already called `low` is not
+    raised to a `medium` cap. So the operator is saying "never MORE than this",
+    which is the only direction that is safe to state once and forget.
+
+    Marked like every other importance the model did not choose. Without the
+    marker a capped severity is indistinguishable from a judged one, and the
+    first question when a report reads wrong — "who decided this?" — has no
+    answer.
+    """
+    if not cap or cap not in _IMPORTANCE_RANK:
+        return result
+    current = str(result.get("importance") or "")
+    if _IMPORTANCE_RANK.get(current, _IMPORTANCE_RANK["high"]) <= _IMPORTANCE_RANK[cap]:
+        return result
+    result["importance"] = cap
+    result[ANALYSIS_IMPORTANCE_CAP] = {"capped_to": cap, "judged": current, "rule": rule_name}
+    return result

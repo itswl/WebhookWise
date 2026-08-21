@@ -18,20 +18,27 @@ from core.logger import get_logger
 from core.pubsub_cache import TtlPubSubCache
 from db.session import session_scope
 from models import InboundRule
-from services.webhooks.decisioning import InboundRuleSnapshot, matching_inbound_actions
+from services.webhooks.decisioning import (
+    InboundRuleSnapshot,
+    matching_inbound_actions,
+    matching_inbound_importance_cap,
+)
+from services.webhooks.types import (
+    INBOUND_ACTIONS,
+    INBOUND_ACTIONS_WITH_VALUE,
+    SKIP_AI,
+)
 
 logger = get_logger("webhooks.inbound_rules")
 
-SKIP_AI: Final = "skip_ai"
-SKIP_DEEP_ANALYSIS: Final = "skip_deep_analysis"
-# Deliberately short. "drop" would make an alert unfindable afterwards, and
-# "mute" already exists as a silence, with expiry semantics this table lacks.
-INBOUND_ACTIONS: Final = frozenset({SKIP_AI, SKIP_DEEP_ANALYSIS})
 
 # Criteria that are only known AFTER an alert has been judged. A skip_ai rule
 # runs before that, so one filtering on importance could never match — the kind
 # of rule that looks configured and does nothing.
 POST_JUDGEMENT_FIELDS: Final = ("match_importance",)
+
+# A cap may only name a severity WebhookWise actually stores.
+VALID_IMPORTANCE_CAPS: Final = frozenset({"high", "medium", "low"})
 
 _INVALIDATION_CHANNEL: Final = "webhookwise:inbound_rules:invalidate"
 
@@ -67,6 +74,7 @@ def snapshot(rule: InboundRule) -> InboundRuleSnapshot:
         match_region=rule.match_region or "",
         match_environment=rule.match_environment or "",
         match_payload=rule.match_payload or "",
+        action_value=rule.action_value or "",
         match_rule_name=rule.match_rule_name or "",
         comment=rule.comment or "",
     )
@@ -133,6 +141,14 @@ def validate(payload: dict[str, Any]) -> str | None:
         return f"action must be one of {', '.join(sorted(INBOUND_ACTIONS))}"
     if not str(payload.get("name") or "").strip():
         return "name is required"
+    value = str(payload.get("action_value") or "").strip().lower()
+    if action in INBOUND_ACTIONS_WITH_VALUE:
+        if value not in VALID_IMPORTANCE_CAPS:
+            return f"{action} needs action_value to be one of {', '.join(sorted(VALID_IMPORTANCE_CAPS))}"
+    elif value:
+        # Storing a value a verb never reads is how a rule comes to look
+        # configured while doing something else.
+        return f"{action} takes no action_value"
     if action == SKIP_AI:
         stated = [field for field in POST_JUDGEMENT_FIELDS if str(payload.get(field) or "").strip()]
         if stated:
@@ -174,6 +190,7 @@ async def create_inbound_rule(session: AsyncSession, payload: dict[str, Any], *,
         match_payload=str(payload.get("match_payload") or ""),
         match_rule_name=str(payload.get("match_rule_name") or ""),
         action=str(payload.get("action") or "").strip(),
+        action_value=str(payload.get("action_value") or "").strip().lower(),
         comment=str(payload.get("comment") or ""),
         created_by=actor,
     )
@@ -200,6 +217,7 @@ async def update_inbound_rule(session: AsyncSession, rule_id: int, payload: dict
         "match_payload",
         "match_rule_name",
         "action",
+        "action_value",
         "comment",
     ):
         if field in payload:
@@ -225,6 +243,7 @@ def to_dict(rule: InboundRule) -> dict[str, Any]:
         "enabled": rule.enabled,
         "priority": rule.priority,
         "action": rule.action,
+        "action_value": rule.action_value,
         "match_event_type": rule.match_event_type,
         "match_importance": rule.match_importance,
         "match_duplicate": rule.match_duplicate,
@@ -237,3 +256,31 @@ def to_dict(rule: InboundRule) -> dict[str, Any]:
         "comment": rule.comment,
         "created_by": rule.created_by,
     }
+
+
+async def inbound_importance_cap_for(
+    *,
+    parsed_data: dict[str, Any] | None,
+    source: str = "",
+    event_type: str = "",
+    importance: str = "",
+    is_duplicate: bool = False,
+    rule_name: str = "",
+) -> tuple[str, str]:
+    """The ceiling an operator has set for this alert: (importance, rule name).
+
+    ("", "") when none applies. Fails open like `inbound_actions_for` — a rules
+    outage must not silently rewrite severities.
+    """
+    rules = await cached_inbound_rules()
+    if not rules:
+        return "", ""
+    return matching_inbound_importance_cap(
+        rules,
+        event_type=event_type,
+        importance=importance,
+        source=source,
+        is_duplicate=is_duplicate,
+        parsed_data=parsed_data,
+        rule_name=rule_name,
+    )

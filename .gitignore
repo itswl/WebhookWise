@@ -52,3 +52,7 @@ deploy/observability/prometheus/hookrelay.token
 
 # 真实资产标识符清单：只在本地与 CI secret 里
 .estate-identifiers
+# A .bak of that list is the same leak with a different name, and `git add -A`
+# will stage one. assert_no_estate_identifiers.py reads `git ls-files`, which
+# includes STAGED files — that is how it caught exactly this once.
+.estate-identifiers.bak*

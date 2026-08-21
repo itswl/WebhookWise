@@ -425,7 +425,7 @@ async def test_a_cache_hit_cannot_smuggle_an_excluded_alert_to_the_investigator(
     from services.forwarding import outbox_records
     from services.forwarding.policies import ForwardDeliveryPolicy
     from services.forwarding.types import ForwardRuleSnapshot
-    from services.webhooks.inbound_rules import SKIP_AI
+    from services.webhooks.types import SKIP_AI
 
     class _Session:
         def add(self, obj: object) -> None:
