@@ -190,10 +190,14 @@ docker compose exec webhook-service env | sort
 
 **Troubleshooting:**
 
-1. Check `DUPLICATE_ALERT_TIME_WINDOW` (default 24 hours). To shorten the deduplication window, change the configuration file and then restart or perform a rolling release:
+1. Check `DEDUP_WINDOW_SECONDS` (default 14400, i.e. four hours). To shorten the
+   deduplication window, change it and restart or roll:
    ```bash
-   DUPLICATE_ALERT_TIME_WINDOW=1
+   DEDUP_WINDOW_SECONDS=3600
    ```
+   `ANALYSIS_REUSE_WINDOW_SECONDS` must stay at least as large — startup
+   validation refuses a configuration where an analysis can be reused for
+   longer than an alert counts as a duplicate.
 
 2. The alert hash is preferentially generated from the `_alert_identity` produced by the adapter. If two alerts have the same hash but differ in content, first check whether the corresponding adapter wrote the key identity fields into `_alert_identity`; when an unknown source lacks an identity, it falls back to the full payload hash and logs a warning.
 

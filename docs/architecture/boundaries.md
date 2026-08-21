@@ -49,7 +49,8 @@ Allowed examples:
 - `api/mcp/`: read-only MCP server (Streamable HTTP) mounted at `/mcp`; thin tool wrappers over the existing query layer, no business logic.
 - `core/web/`: web middleware and startup checks.
 - `core/config/`: static settings and read-only process configuration access.
-- `core/metrics.py` and `core/otel.py`: instrumentation setup.
+- `core/observability/`: instrumentation setup — `metrics.py`, `tracing.py`,
+  `logging.py`, `exporters.py`.
 - `core/taskiq_broker.py`: broker construction.
 - `core/http_client.py` and `core/redis_client.py`: shared client lifecycle.
 

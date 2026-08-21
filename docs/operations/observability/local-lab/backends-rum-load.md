@@ -48,52 +48,22 @@ curl -fsS http://localhost:4040
 
 To bring their own runtime metrics into the same Prometheus, you need to add a scrape job in `deploy/observability/prometheus/prometheus.yml` and confirm each component's metrics endpoint and network address.
 
-## Inspecting Faro Frontend RUM
+## Frontend RUM (removed)
 
-Faro is frontend browser data. It only reports after the business Dashboard is opened:
+There is no frontend RUM pipeline any more. The Faro receiver is gone from
+`deploy/observability/alloy/config.alloy` and `templates/static/js/faro.js` no
+longer exists, so `faro_receiver_*` metrics and the
+`{app="webhookwise-dashboard"}` Loki stream will never return data — a query
+against them reads as "quiet", which is the most misleading possible answer.
 
-```text
-http://localhost:8000
-```
+It was removed with the `loki.process "faro"` stage during the 2026-08 Alloy
+work, when the collector was refusing every batch and the whole log pipeline
+was empty for four days. Browser telemetry was the one signal nothing
+consumed: no dashboard panel, no alert, no SLO read it.
 
-The local page loads `templates/static/js/faro.js`, which by default sends data to:
-
-```text
-http://localhost:12347/collect
-```
-
-View the Faro receive volume in Prometheus:
-
-```promql
-faro_receiver_events_total
-or faro_receiver_measurements_total
-or faro_receiver_exceptions_total
-or faro_receiver_logs_total
-```
-
-View the specific Faro events in Loki:
-
-```logql
-{app="webhookwise-dashboard"} | json
-```
-
-View by type:
-
-```logql
-{app="webhookwise-dashboard", kind="event"} | json
-{app="webhookwise-dashboard", kind="measurement"} | json
-```
-
-In the screenshot you can see `session_start`, `faro.performance.navigation`, `faro.performance.resource`, and Web Vitals measurements.
-
-![Faro events in Loki](assets/faro-loki.jpg)
-
-If `faro_receiver_*` stays at 0, check first:
-
-- Whether `http://localhost:8000` has been opened
-- Whether the browser can reach `https://unpkg.com/@grafana/faro-web-sdk...`
-- Whether Alloy exposes `12347`
-- Whether `http://localhost:12345/graph` contains `faro.receiver "dashboard"`
+If frontend errors become worth collecting again, add the receiver AND the
+panel that reads it in the same change — the instrument rule in CLAUDE.md
+exists because this section is what the alternative looks like.
 
 ## Inspecting Beyla Auto-instrumentation
 

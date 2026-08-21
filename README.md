@@ -44,6 +44,7 @@ It is not a simple Webhook relay, but a small AIOps control plane:
 | Multi-source normalization | Adapters normalize payloads from different ecosystems into a unified internal structure. |
 | AI + rule dual analysis | Structured LLM analysis is preferred; it automatically falls back to rule-based analysis when the external service has problems. |
 | Deep analysis | Optionally hand an alert to an external investigator gateway (OpenClaw / hookprobe / Hermes dialects) and poll for the report via TaskIQ delayed tasks. |
+| Inbound rule policy | Per alert rule: skip the model, skip the investigation, or cap its severity — the ceiling chosen from the investigator's own verdicts rather than by feel. |
 | Deduplication and noise reduction | Identifies duplicate and derived alerts based on alert hash, time window, similarity, and optional semantic signals. |
 | Rule-based forwarding | Supports generic Webhook, Feishu card, DingTalk/WeCom bot (URL auto-detected), and deep-analysis targets. |
 | Silencing and maintenance windows | One-off silences (with backtest + suppression debt report) plus recurring maintenance windows materialized into expiring silences by the scheduler. |
