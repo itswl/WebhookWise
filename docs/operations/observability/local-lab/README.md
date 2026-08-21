@@ -1,5 +1,11 @@
 # Local Observability Lab Handbook
 
+> **Reference material — not meant to be read in order.** This handbook is
+> ~1700 lines across six pages describing a LOCAL development aid. Come here
+> with a question ("which PromQL shows dropped Loki entries?"), use the
+> section that answers it, and leave. Nothing here is required to run or
+> operate WebhookWise.
+
 This handbook records a complete local observability verification flow: start Grafana Alloy / Prometheus / Loki / Tempo / Pyroscope / Beyla, trigger Faro frontend RUM, run a k6 load test, and then find the corresponding data in Grafana.
 
 ## Booklet Navigation

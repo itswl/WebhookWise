@@ -10,77 +10,35 @@
 
 > 本文是英文 [README](README.md) 的精简中文版;完整文档(架构、运维、参考)以英文版为准。
 
-## 定位
+WebhookWise 站在你的监控系统和聊天工具之间。它把 Prometheus、Grafana、
+Alertmanager、飞书、或任何能 POST JSON 的东西归一化,逐条判断,决定告诉谁——
+并记录为什么,所以「我怎么没被叫到」有一个不靠猜的答案。
 
-WebhookWise 是一个面向生产运维的智能 Webhook 接收、分析与转发服务。它把来自 Prometheus、Grafana、Alertmanager、飞书或任意第三方系统的事件归一为统一结构,异步写入队列与数据库,再通过 AI 分析、降噪去重、事务性转发与可观测性,把告警变成可跟踪、可审计、可行动的运维事件。
+自托管、MIT、一条 `docker compose up`。
 
-> 想先花五分钟理解这套思路?[WebhookWise Lite](lite/README.md) 是它的提纯版:单容器、SQLite、无 Redis、约 800 行,保留了四道具名闸门和决策链这个内核。
+## 它自己暴露出来的那个问题
 
-它不是简单的 Webhook 中继,而是一个小型 AIOps 控制平面:
+每个告警工具都说自己降噪。这个能拿出证据说明降没降。
 
-- API 在请求入队后立即返回 `200 OK`,耗时处理移入 TaskIQ / Redis Stream;入队是持久性边界,见[交付语义](#交付语义)。
-- Worker 流水线负责归一化、持久化、去重、AI/规则分析、降噪与转发决策。
-- 转发 Outbox 将业务状态与外部 HTTP/飞书/深度分析副作用解耦。
-- OTel 优先的可观测性贯通指标、追踪、日志、事件、信号与性能剖析。
+一个 agent 化的调查员会去读那些值得读的告警——检索、关联、推理数分钟——
+然后给出一份带自己判定的严重度报告。这就构成了一份**没人标注过的标注集**,
+而第一次拿它打分,结果并不好看:
 
-WebhookWise 位于执行类平台的上游:它决定哪些告警值得关注并附带上下文交接,下游的自动排查平台(例如 Ongrid)可以接手处理放行的告警。
-
-## 核心能力
-
-| 能力 | 说明 |
+| | |
 | --- | --- |
-| 异步 Webhook 接收 | API 只做鉴权、限流、入队与基础持久化,快速释放上游请求。 |
-| 多源归一化 | 适配器把不同生态的载荷归一为统一内部结构。 |
-| AI + 规则双路分析 | 优先结构化 LLM 分析,外部服务异常时自动回退规则分析。 |
-| 深度分析 | 可选接入外部调查网关(OpenClaw / hookprobe / Hermes 方言),经 TaskIQ 延迟任务轮询报告。 |
-| 入站规则策略 | 按告警规则决定:跳过模型、跳过深度调查、或给严重度设上限——上限由调查员自己的判定推出,不靠感觉。 |
-| 去重与降噪 | 基于告警哈希、时间窗、相似度及可选语义信号识别重复与衍生告警。 |
-| 规则化转发 | 支持通用 Webhook、飞书卡片、钉钉/企业微信机器人(URL 自动识别)与深度分析目标。 |
-| 静默与维护窗口 | 一次性静默(含回测与压制债务报告),周期维护窗口由调度器物化为到期静默。 |
-| 轻量升级(Escalation-lite) | 按重要度可选自动 SLA,未确认事件触发 SLA 违约升级卡片(@所有人 / 专用 Webhook);振荡身份可在震荡期间静音。 |
-| 学习闭环 | 已解决事件沉淀为知识库草稿;已发布条目附加到外发飞书告警卡片,一键事件复盘草稿(Markdown)闭合回顾环。 |
-| 事件情报 | 事件详情给出相似历史事件、疑似近期变更与已发布 Runbook 排序,附显式证据与操作员反馈。 |
-| 事件响应闭环 | 命令摘要、变更影响、派生服务画像、手动 Runbook 进度、可选签名飞书动作与产品价值报告,连接检测与可复用知识。 |
-| 响应与学习工作台 | 优先级工作队列、结构化解决证据、复发回顾、知识缺口发现与有界反馈校准。 |
-| 引导式来源接入 | 源级可撤销凭据 + 首事件向导,新发送方无需共享全局 Webhook 密钥。 |
-| 只读告警质量中心 | 为源载荷完整性打分,标记不稳定身份、未匹配恢复、时间戳异常、schema 漂移与响应缺口,不改动源配置。 |
-| 事务性 Outbox | 处理结果与转发意图在同一事务落库,由 Worker 异步投递与重试。 |
-| OTel 优先可观测性 | 应用只经 OTLP 发出遥测;Alloy 路由指标/日志/追踪到 Prometheus、Loki、Tempo,Pyroscope、Beyla、Alertmanager、Grafana 组成诊断闭环。 |
-| 运行时策略平面 | 标记 `[runtime-policy]` 的配置支持数据库级实时覆写(仪表盘/API 均可修改),约 60 秒内在所有进程生效,故障时向可用侧降级。 |
-| 面向 Agent 的 MCP 服务 | 可选开启(`MCP_ENABLED`)的 Streamable-HTTP MCP 端点(`/mcp`),把查询层暴露给任意 Agent(Claude / Cursor / 自定义客户端)。除 `propose_remediation` 外全部只读,而该工具本身不执行任何动作,只登记一条待人工审批的提议——见 [docs/reference/mcp.md](docs/reference/mcp.md)。 |
-| Agent 技能 + 使用教程 | [`.claude/skills/`](.claude/skills) 内置三个工作流技能（单条告警调查、交接班回顾、降噪审计），编排 MCP 工具供任意 Agent 使用——Claude Code 在仓库内自动识别，hookprobe 以只读 user 层挂载。仪表盘另有双语六步教程页（`#/guide`）。 |
-| 审批式自愈 | Agent 可以提议一条 Action Center 命令,但在运维批准前什么都不会发生;批准后走的是仪表盘按钮同一条带审计的执行路径——见 [docs/features/approval-gated-remediation.md](docs/features/approval-gated-remediation.md)(英文)。 |
-| 离线分析评测 | 每次改动都把一批带标注的真实告警重放进分析引擎,并对照已记录的阈值在 CI 里把关,避免一次 prompt 或关键词改动悄悄压低决定路由的重要性判定——见 [evals/README.md](evals/README.md)(英文)。 |
-| WebhookWise Lite | 同一产品思路的单进程版:SQLite、无 Redis、约 800 行、四道抑制闸门——见 [lite/README.md](lite/README.md)。 |
+| WebhookWise 判为 `high` 的告警 | **一周 330 / 367(90%)** |
+| 其中被真正调查过、调查员也认同的 | **21 / 80(26%)** |
 
-## 系统流程
+`high` 已经退化成「有条告警」的意思。而调查员是对的、廉价的关键词判定是错的——
+它把 SES 退信规则判为 critical(AWS 真会停发),把业务信号类金额告警判为 medium。
 
-```mermaid
-flowchart LR
-    sources["Alert sources<br/>global or source-scoped credentials"]
-    api["FastAPI ingress<br/>authenticate, rate limit, enqueue"]
-    queue["Redis Stream / TaskIQ"]
-    worker["Worker pipeline"]
-    process["Normalize -> identify -> deduplicate<br/>analyze -> reduce noise"]
-    db["PostgreSQL<br/>events, incidents, knowledge"]
-    outbox["Transactional outbox"]
-    targets["Webhook / Feishu / DingTalk<br/>WeCom / 深度分析"]
-    response["Response center<br/>investigation and resolution"]
-    learning["Recurrence, postmortem,<br/>KB drafts, calibration"]
+于是闭环形成:[`scripts/ops/severity_calibration.py`](scripts/ops/severity_calibration.py)
+按告警规则给廉价判定打分并提出上限建议,由人决定是否采纳;结果每周 **59% 的告警量**
+不再是 `high`。**护栏比机制更重要**——如果调查员有超过三分之一的次数说它确实是
+high,脚本就拒绝建议降级,因为那种噪音必须靠把告警做得更具体来解决,而不是靠静音。
 
-    sources --> api
-    api -->|"200 after queue acceptance"| queue
-    queue --> worker
-    worker --> process
-    process --> db
-    process --> outbox
-    outbox --> targets
-    db --> response
-    response --> learning
-    learning -->|"bounded evidence and ranking feedback"| response
-```
-
-进程拓扑、持久化关系、调度器职责、安全边界与完整可观测性链路见[系统架构](docs/architecture/system-overview.md)(英文);模型周边那一层(路由、护栏、检索、人工修正、成本、可追溯性、Agent 接口,以及一次改动靠什么证明)见[AI 工程面](docs/architecture/ai-engineering.md)(英文)。
+这就是整个项目的形状:一个决定、一份「为什么」的记录、以及一条事后发现这个决定
+错了的路径。
 
 ## 五分钟上手
 
@@ -124,26 +82,21 @@ python scripts/seed_demo_data.py --base-url http://localhost:8000
 | ReDoc | `http://localhost:8000/redoc` |
 | 健康检查 | `http://localhost:8000/live` / `http://localhost:8000/ready` |
 
-## 运行时设置 — 免重启的运维策略
+## 接下来看哪里
 
-大部分配置是静态进程配置(env 是它的家,改动 = 重新部署)。例外是**运维策略**——运行中需要随手调的旋钮(抖动抑制、自动 SLA、背压水位、降噪权重、通知节奏、KB 卡片、追踪保留)。[.env.example.all](.env.example.all) 中标 `[runtime-policy]` 的每个键都由 DB 覆盖平面托管:
+完整文档以英文为准。
 
-- **解析顺序**:DB 覆盖 → env 值 → 代码默认。env 仍是引导默认值,覆盖只是叠在其上的稀疏行。
-- **入口**:仪表盘 *Operations → Settings*,或 API —— `GET /v1/runtime-settings`(逐键列出 env/覆盖/生效值)、`PUT` / `DELETE /v1/runtime-settings/{KEY}`(需管理写密钥)。写入经类型注册表校验并留审计。
-- **传播**:api / worker / scheduler 全进程 ~60 秒内生效(Redis pub/sub 推动 + 定时刷新),无需重启、无需改文件。
-- **故障姿态**:fail-open。DB 或 Redis 异常时沿用最后快照(或纯 env 配置),热路径永不依赖此平面。
-
-## 交付语义
-
-理解这条链路的持久性边界,才能正确评估丢失与重复的风险(完整版见英文 [Delivery Semantics](README.md#delivery-semantics)):
-
-- **接收 → 入队:accepted,不是持久化承诺。** 请求写入 Redis Stream(`XADD`)后 API 即返回 `200 OK`,数据库持久化发生在 Worker 侧;`XADD` 失败时返回 5xx,上游应重试。
-- **`WEBHOOK_MQ_STREAM_MAXLEN` 是数据丢失旋钮,不只是内存旋钮。** 持续突发超过 Worker 消费速率、积压越过上限时,最旧的*未确认*条目会被裁剪,对应的已返回 `200` 的 Webhook 被静默丢失。按峰值积压做容量规划,并配合队列积压告警。
-- **让积压可见,并可选在裁剪前拒绝。** 仪表盘展示实时队列深度;未消费积压越过 `WEBHOOK_MQ_BACKLOG_WARN_FRACTION`(默认 `0.8`)时,行动中心在静默裁剪*之前*给出严重告警。设置 `WEBHOOK_MQ_INGRESS_HIGH_WATER_FRACTION`(默认 `0`,关闭)后,API 在越过该水位时以 `503 Retry-After` 拒绝新 Webhook,把静默丢失变成可见背压(失败开放:探测出错绝不阻塞入口)。
-- **Redis 持久化决定崩溃边界。** 自带 Redis 以 AOF(`everysec`)运行在持久卷上,崩溃最多丢约 1 秒写入;更严格可用 `--appendfsync always` 或带同步复制的托管 Redis。
-- **入队之后:at-least-once。** 处理失败带退避重试、耗尽进死信;转发经事务性 Outbox 投递,重试可能产生重复,下游应按 `Idempotency-Key` 请求头去重。
-
-需要"入口零丢失"时,应在上游增加重试/确认,或在 API 前放置持久队列;当前实现以此换取低入口延迟。
+| | |
+| --- | --- |
+| 用一个容器试试这个想法 | [WebhookWise Lite](lite/README.md) — SQLite、无 Redis、约 800 行 |
+| 它能做什么、有哪些旋钮 | [docs/capabilities.md](docs/capabilities.md) |
+| 内部怎么运转 | [docs/architecture/system-overview.md](docs/architecture/system-overview.md) |
+| 模型周围跑着什么 | [docs/architecture/ai-engineering.md](docs/architecture/ai-engineering.md) |
+| 为什么这样设计——**包括被否掉的方案** | [.agents/notes/](.agents/notes/) |
+| 其余全部 | [docs/README.md](docs/README.md) |
+| 看 API | 启动后访问 `http://localhost:8000/docs`;导出说明见 [docs/reference/api.md](docs/reference/api.md) |
+| 部署 | [Compose](deploy/compose/README.md) · [Kubernetes](deploy/k8s/README.md) |
+| 参与开发 | [CONTRIBUTING.md](CONTRIBUTING.md) · [CHANGELOG.md](CHANGELOG.md) |
 
 ## 社区
 

@@ -6,6 +6,7 @@ These documents are layered by use case to avoid mixing architecture, operations
 
 | Document | Purpose |
 | --- | --- |
+| [capabilities.md](capabilities.md) | The operator's surface: what it does, the suppression stack, runtime settings, and delivery semantics. Moved out of the README when that stopped being a front door. |
 | [architecture/system-overview.md](architecture/system-overview.md) | Runtime topology, processing sequence, product loop, durable data map, scheduler, observability, and deployment profiles. |
 | [architecture/boundaries.md](architecture/boundaries.md) | Module ownership, process boundaries, and the runtime contract. |
 | [architecture/ai-engineering.md](architecture/ai-engineering.md) | What runs around the model: routing, guardrails, retrieval, corrections, cost, provenance, the agent surface, and what proves a change. |

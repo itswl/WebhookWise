@@ -172,3 +172,56 @@ Prompt text is a product asset. The current control plane is:
 Prompt experiments should be represented as explicit config changes or versioned
 prompt files with tests. Avoid editing prompt text without a way to identify the
 active source in logs and API responses.
+
+## Project Layout
+
+```text
+.
+├── api/                  # FastAPI routes, request/response binding, and auth dependencies
+├── adapters/             # External Webhook payload normalization and plugin registration
+├── alembic/              # Database migrations
+├── contracts/            # Stable normalized payload and cross-module contracts
+├── core/                 # Runtime infrastructure such as config, logging, auth, Redis, OTel, and HTTP client
+├── db/                   # SQLAlchemy engine/session lifecycle
+├── deploy/               # Compose, Kubernetes, and observability deployment resources
+├── docs/                 # Architecture, operations, and reference docs
+├── models/               # SQLAlchemy ORM models
+├── prompts/              # AI and deep-analysis prompt templates
+├── schemas/              # Pydantic API schema
+├── scripts/              # Operations, export, and observability query scripts
+├── services/
+│   ├── analysis/         # AI/rule/gateway analysis, caching, and usage
+│   ├── forwarding/       # Forwarding rules, Outbox, remote delivery, and retries
+│   ├── incidents/        # Grouping, response, intelligence, recurrence, runbooks, and postmortems
+│   ├── kb/               # Knowledge ingestion, retrieval, and incident sedimentation
+│   ├── notifications/    # Notification channels and message formatting
+│   ├── operations/       # TaskIQ tasks, scheduling, recovery, and maintenance
+│   ├── silences/         # Silence and maintenance-window policies
+│   └── webhooks/         # Webhook ingest, pipeline, queries, and commands
+├── templates/            # Dashboard HTML and static assets
+└── tests/
+    ├── adapters/         # External payload adapter tests
+    ├── analysis/         # AI, deep analysis, noise reduction, and analysis strategy tests
+    ├── api/              # FastAPI routes and API contract tests
+    ├── forwarding/       # Forwarding rules, Outbox, retries, and URL safety tests
+    ├── integration/      # In-process business path integration tests
+    ├── observability/    # Observability, documentation, and operations contract tests
+    ├── runtime/          # Config, logging, Redis, migration, and runtime infrastructure tests
+    ├── webhooks/         # Webhook parsing, pipeline, deduplication, and suppression tests
+    ├── e2e/              # Docker E2E
+    ├── helpers/          # pytest helpers
+    └── k6/               # Load-testing scripts
+```
+
+For stricter ownership rules, see [docs/architecture/boundaries.md](boundaries.md).
+
+## Runtime Contract
+
+- The API receive layer does not do long-running analysis and does not directly execute external forwarding side effects.
+- The receive layer is at-most-once-until-consumed: `200 OK` means accepted (enqueued), not persisted; `WEBHOOK_MQ_STREAM_MAXLEN` and Redis's AOF fsync cadence together determine the loss boundary (see [Delivery Semantics](../capabilities.md#delivery-semantics)).
+- The Worker is the main execution surface of the business pipeline; the Scheduler only dispatches periodic tasks.
+- The Forward Outbox is the audit boundary for external delivery; retries and expired states must be persisted to the database.
+- Configuration is static process configuration, with one deliberate exception: keys tagged `[runtime-policy]` accept DB-backed live overrides through the runtime-settings plane (see [Runtime Settings](../capabilities.md#runtime-settings)); everything else changes only with a redeploy.
+- The application emits telemetry only over OTLP and does not directly expose `/metrics`.
+- For a new Webhook source, prefer adding an adapter and tests first, then reusing the existing pipeline.
+- For a new business capability, prefer placing it in the nearest `services/*` domain package and avoid stuffing business logic into `core/`.
