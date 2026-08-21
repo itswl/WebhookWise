@@ -10,6 +10,36 @@ Ported from the hookstack family, which took it from
 (`.agents/notes`). `docs/` already explains how WebhookWise works; this holds the
 decisions behind it, including the ones that left no code.
 
+## The three agent directories
+
+They look redundant and are not. One is documentation; two are vendor plug-in
+folders that now point at the same place.
+
+| Path | What it is | Who reads it |
+| --- | --- | --- |
+| `.agents/` | This — decision records, including the rejected ones. Prose, no tool reads it to change behaviour. | People, and any agent you point at it |
+| `.claude/` | Claude Code's plug-in folder: `skills/` (the four repo workflows) and `prompts/`. | Claude Code |
+| `.codex/` | Codex's plug-in folder. `skills` is a **symlink** to `../.claude/skills`. | Codex |
+
+`AGENTS.md` is the single instruction file and `CLAUDE.md` is a symlink to it.
+
+Both symlinks exist because both pairs had already drifted:
+
+- `AGENTS.md` and `CLAUDE.md` were two copies, and the older one still told an
+  agent to hand-pick a few local checks instead of running the gate — the exact
+  habit that let bandit, pip-audit and the OpenAPI contract each go red in CI
+  while local was green.
+- The two `skills/` folders held **four skills with zero overlap**: three ops
+  workflows visible only to Claude Code, one observability skill visible only to
+  Codex, and different naming conventions. Nobody decided that; it was an
+  accident of which tool was open when each was written. Skills are knowledge
+  about operating *this* system, so both tools get all of them.
+
+`scripts/assert_agent_notes.py` asserts AGENTS.md and CLAUDE.md have identical
+CONTENT rather than checking that a link exists — a checkout without symlink
+support materialises a link as a text file holding the target's path, which
+reads as "fine" to anything that only tests for existence.
+
 ## Buckets
 
 | Directory | Holds |

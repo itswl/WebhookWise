@@ -1,11 +1,11 @@
 ---
-name: webhookwise-observability
-description: Query WebhookWise project data from the local observability stack. Use for WebhookWise metrics, logs, Grafana dashboard checks, Prometheus PromQL, Loki LogQL, Faro RUM, Beyla, k6, Pyroscope-related triage, and Chinese requests like "查项目数据", "看可观测", "为什么 No data", "查日志/指标/大盘".
+name: ww-observability
+description: Query WebhookWise project data from the local observability stack. Use for WebhookWise metrics, logs, Grafana dashboard checks, Prometheus PromQL, Loki LogQL, Beyla, k6, Pyroscope-related triage, and Chinese requests like "查项目数据", "看可观测", "为什么 No data", "查日志/指标/大盘".
 ---
 
 # WebhookWise Observability
 
-Use this skill when the user asks to inspect WebhookWise runtime data, observability signals, Grafana panels, Prometheus metrics, Loki logs, Faro RUM, Beyla eBPF data, k6 results, or local stack health.
+Use this skill when the user asks to inspect WebhookWise runtime data, observability signals, Grafana panels, Prometheus metrics, Loki logs, Beyla eBPF data, k6 results, or local stack health.
 
 ## Tooling
 
@@ -108,7 +108,7 @@ Never commit Grafana tokens or passwords.
 2. Use `dashboard --validate` when Grafana panels show `No data` or after editing `deploy/observability/grafana/dashboards/dashboard.json`.
 3. Use `preset --list` then `preset <name>` for common metrics. Prefer presets over rewriting PromQL.
 4. Use `promql` for custom metric questions.
-5. Use `logs` for concrete events, errors, trace IDs, or frontend Faro records.
+5. Use `logs` for concrete events, errors, or trace IDs.
 6. Use `tempo --service-name <service>` when the user asks whether trace data exists or needs trace examples.
 7. Use `profiles --service-name <service>` when CPU, latency, or worker backlog needs Pyroscope investigation.
 8. Use `runbook <alert_name>` when an alert is firing or the user asks for incident context.
@@ -125,7 +125,7 @@ Never commit Grafana tokens or passwords.
 - SLO: `slo-api-success`, `slo-ingress-success`, `slo-processing-success`, `slo-forward-success`, `slo-ai-degradation`, `slo-db-utilization`, `slo-queue-backlog`
 - AI/forwarding: `ai-latency-p95`, `ai-cost`, `ai-tokens`, `ai-cache-rate`, `deep-analysis-rate`, `forward-rate`, `forward-outbox-rate`, `forward-outbox-backlog-age`, `circuit-breaker-state`
 - Deep diagnostics: `webhook-status`, `webhook-stuck`, `pipeline-step-latency-p95`, `queue-operation-latency-p95`, `webhook-payload-p95`, `noise-evaluations`
-- Frontend/eBPF/load/collector: `faro-rum`, `beyla-calls`, `k6-smoke`, `collector-health`, `environment-services`, `process-memory`, `service-graph-rate`, `service-graph-failures`, `loki-write-latency-p95`, `loki-write-retries`
+- eBPF/load/collector: `beyla-calls`, `k6-smoke`, `collector-health`, `environment-services`, `process-memory`, `service-graph-rate`, `service-graph-failures`, `loki-write-latency-p95`, `loki-write-retries`
 
 ## Interpretation Notes
 

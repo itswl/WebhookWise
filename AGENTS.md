@@ -1,4 +1,9 @@
-# WebhookWise Development Guide
+# Agent Guide
+
+This is the single agent-facing instruction file. `CLAUDE.md` is a symlink to it,
+because two copies drifted: the older one still told an agent to hand-pick a few
+local checks, which is exactly the habit that let bandit, pip-audit and the
+OpenAPI contract each go red in CI while local was green.
 
 ## Project Shape
 
@@ -17,23 +22,23 @@ Run focused checks before broad ones:
 ```bash
 ruff check .
 mypy
-python -m compileall -q .
 pytest -q
 ```
 
-Run the CI-equivalent quality gate when touching runtime behavior:
+Before EVERY push, run the full gate — it is an exact replica of the CI test
+job (bandit, pip-audit, and the OpenAPI contract have each gone red in CI
+while a hand-picked local list passed; do not hand-pick):
 
 ```bash
-python scripts/check_requirements_locks.py
-python scripts/observability/webhookwise_observe.py contract
-pytest -q --cov=core --cov=api --cov=services --cov=models --cov=adapters --cov=db --cov=contracts --cov-branch --cov-report=term --cov-report=xml --cov-fail-under=85
+bash scripts/gate.sh          # full gate
+bash scripts/gate.sh --fast   # skips pip-audit for tight loops
 ```
 
-Run shell checks when editing container entrypoints:
+When a check is added to ci.yml's test job, add it to scripts/gate.sh in the
+same change (and vice versa).
 
-```bash
-shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh
-```
+- Editing a container entrypoint or an e2e shell script? `bash scripts/gate.sh`
+  runs shellcheck over them; CI does too.
 
 ## Working Rules
 
@@ -52,3 +57,10 @@ shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh
 - Keep metrics labels stable and machine-readable; do not derive metric dimensions by parsing log text or localized strings.
 - Add targeted tests for core delivery channels, especially Feishu, deep analysis, forwarding, persistence, and dashboard static contracts.
 - Do not introduce new observability instruments unless a dashboard, alert, SLO, or automated decision consumes them.
+- Decisions that outlive their diff go in `.agents/notes/` — especially the
+  rejected ones, which a commit log never keeps. `scripts/assert_agent_notes.py`
+  enforces the shape and the gate runs it; see `.agents/README.md`.
+- Dashboard UI work follows `docs/design-language.md` (dark-first tokens,
+  colour-in-points, the icon sprite, the type scale). The contract tests in
+  `tests/runtime/test_dashboard_static_contracts.py` enforce it; a red
+  contract is the design system talking, not an obstacle to delete.
