@@ -49,6 +49,7 @@ openclaw-main/
 
 # hookrelay scrape credential (per host)
 deploy/observability/prometheus/hookrelay.token
+deploy/observability/prometheus/hookjudge.token
 
 # 真实资产标识符清单：只在本地与 CI secret 里
 .estate-identifiers

@@ -31,10 +31,17 @@ scrape_configs:
   # ledger-only, accumulating judge-vs-platform agreement data. A dead shadow
   # costs no notifications, but it silently stops the comparison ledger, so it
   # gets the same scrape as everything else.
+  # Both /metrics endpoints require the service's read token since the
+  # 2026-08-17 hardening. The credential is a mounted file, never inline: this
+  # file is in a public repository. A missing file fails only its own scrape.
   - job_name: hookrelay-shadow
+    authorization:
+      credentials_file: /etc/prometheus/hookrelay.token
     static_configs:
       - targets: ["hookrelay:8100"]
 
   - job_name: hookjudge-shadow
+    authorization:
+      credentials_file: /etc/prometheus/hookjudge.token
     static_configs:
       - targets: ["hookjudge:8200"]

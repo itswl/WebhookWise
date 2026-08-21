@@ -55,6 +55,7 @@ services:
       # hookrelay scrape credential: gitignored, written per host. Absent on a
       # stack without a relay — Prometheus then fails only that one scrape.
       - ../../deploy/observability/prometheus/hookrelay.token:/etc/prometheus/hookrelay.token:ro
+      - ../../deploy/observability/prometheus/hookjudge.token:/etc/prometheus/hookjudge.token:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
