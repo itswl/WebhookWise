@@ -13,6 +13,8 @@ So the ceiling is per alert RULE, and these are the properties that make it safe
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from services.webhooks.decisioning import InboundRuleSnapshot, matching_inbound_importance_cap
@@ -132,3 +134,55 @@ def test_the_write_path_refuses_a_verb_and_value_that_disagree(action: str, valu
     problem = validate({"name": "r", "action": action, "action_value": value, "match_rule_name": "示例充值超限告警"})
 
     assert (problem is None) is expected_ok, problem
+
+
+@pytest.mark.asyncio
+async def test_a_reused_analysis_is_capped_too() -> None:
+    """The route the first attempt missed, found only in production.
+
+    A ceiling was set on an alert rule and three days later that rule was still
+    arriving `high` — and still earning a paid investigation each time. The cap
+    had been applied inside `analyze_webhook_with_ai`, which covers the eight
+    routes decided INSIDE it and none of the ones decided before it: a reused
+    analysis (`reuse` / `rechain`) is lifted from an earlier event and a silenced
+    one is a placeholder, so both left that function uncalled and the importance
+    untouched.
+
+    It now sits at the layer where all three exits converge, so this test drives
+    the reuse path specifically.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from services.webhooks import pipeline_stages
+
+    reused = AnalysisResult(importance="high", summary="lifted from an earlier event")
+    reused["_route_type"] = "rechain"  # type: ignore[typeddict-unknown-key]
+
+    ctx = SimpleNamespace(
+        event_id=1,
+        req_ctx=SimpleNamespace(parsed_data={"RuleName": "示例充值超限告警"}, source="grafana"),
+    )
+
+    with (
+        patch.object(
+            pipeline_stages,
+            "_resolve_noise_context",
+            new=AsyncMock(return_value=(reused, object(), object())),
+        ),
+        patch.object(
+            pipeline_stages,
+            "inbound_importance_cap_for",
+            create=True,
+        ),
+    ):
+        from services.webhooks.inbound_rules import inbound_importance_cap_for as real
+
+        assert real is not None  # the wrapper resolves it lazily; patch the source instead
+        with patch(
+            "services.webhooks.inbound_rules.inbound_importance_cap_for",
+            new=AsyncMock(return_value=("medium", "cap: deposits")),
+        ):
+            analysis, _, _ = await pipeline_stages.resolve_noise_context(ctx, object())  # type: ignore[arg-type]
+
+    assert analysis["importance"] == "medium", "a reused analysis must honour the ceiling too"
+    assert analysis[ANALYSIS_IMPORTANCE_CAP]["judged"] == "high"

@@ -242,6 +242,58 @@ def _record_analysis_completed(ctx: WebhookProcessContext, analysis_result: Anal
 async def resolve_noise_context(
     ctx: WebhookProcessContext, dependencies: pipeline_runtime.WebhookPipelineDependencies
 ) -> tuple[AnalysisResult, NoiseReductionContext, DedupResult]:
+    """Decide this alert's analysis, then honour any ceiling set for its rule.
+
+    The cap lives HERE and not in analyze_webhook_with_ai, which was the first
+    attempt and was measurably wrong: two of the three ways out of this function
+    never reach that call at all. A reused analysis (`reuse` / `rechain`) is
+    lifted from an earlier event, and a silenced one is a placeholder, so both
+    returned an uncapped importance — observed in production as DatasourceNoData
+    still arriving `high` via `rechain`, three days after the ceiling was set,
+    and still earning a paid investigation each time.
+
+    This is the layer where all three exits converge. Capping at each exit would
+    be three places to forget the next time a fourth is added.
+    """
+    analysis, noise, dedup = await _resolve_noise_context(ctx, dependencies)
+    return await _apply_rule_importance_cap(ctx, analysis), noise, dedup
+
+
+async def _apply_rule_importance_cap(ctx: WebhookProcessContext, analysis: AnalysisResult) -> AnalysisResult:
+    """Lower this analysis to the ceiling an operator set for its alert rule."""
+    from services.webhooks.inbound_rules import alert_rule_name, inbound_importance_cap_for
+    from services.webhooks.types import (
+        ANALYSIS_IMPORTANCE_CAP,
+        ANALYSIS_ROUTE_TYPE,
+        apply_importance_cap,
+    )
+
+    raw = getattr(ctx.req_ctx, "parsed_data", None)
+    parsed: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
+    cap, cap_rule = await inbound_importance_cap_for(
+        parsed_data=parsed,
+        source=str(getattr(ctx.req_ctx, "source", "") or ""),
+        importance=str(analysis.get("importance") or ""),
+        rule_name=alert_rule_name(parsed),
+    )
+    if not cap:
+        return analysis
+    capped = apply_importance_cap(analysis, cap=cap, rule_name=cap_rule)
+    if ANALYSIS_IMPORTANCE_CAP in capped:
+        logger.info(
+            "[Pipeline] Inbound rule capped importance event_id=%s route=%s judged=%s capped_to=%s by=%s",
+            ctx.event_id,
+            capped.get(ANALYSIS_ROUTE_TYPE),
+            capped[ANALYSIS_IMPORTANCE_CAP]["judged"],
+            cap,
+            cap_rule,
+        )
+    return capped
+
+
+async def _resolve_noise_context(
+    ctx: WebhookProcessContext, dependencies: pipeline_runtime.WebhookPipelineDependencies
+) -> tuple[AnalysisResult, NoiseReductionContext, DedupResult]:
     dedup_action = "error"
     async with pipeline_runtime.pipeline_step(ctx, "dedup") as (dedup_span, _outcome):
         try:

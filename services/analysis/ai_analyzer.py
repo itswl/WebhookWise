@@ -47,13 +47,10 @@ from services.operations import runtime_settings
 from services.webhooks.inbound_rules import (
     alert_rule_name,
     inbound_actions_for,
-    inbound_importance_cap_for,
 )
 from services.webhooks.types import (
-    ANALYSIS_IMPORTANCE_CAP,
     SKIP_AI,
     AnalysisResult,
-    apply_importance_cap,
     cache_hit_count,
     is_analysis_degraded,
     mark_analysis_degraded,
@@ -328,43 +325,6 @@ async def _maybe_route_to_rules(
 
 
 async def analyze_webhook_with_ai(
-    webhook_data: WebhookData,
-    alert_hash: str | None = None,
-    skip_cache: bool = False,
-    *,
-    http_client: httpx.AsyncClient | None = None,
-) -> AnalysisResult:
-    """Judge one alert, then honour any ceiling an operator set for its rule.
-
-    The cap is applied HERE rather than inside the routes because this function
-    answers through eight of them — cache, rule_excluded, rule_routed, ai,
-    budget-exhausted, three degradations — and an operator saying "this rule is
-    never high" means it regardless of which one answered. Applying it per route
-    would have been eight places to forget.
-    """
-    result = await _analyze_webhook_with_ai(webhook_data, alert_hash, skip_cache, http_client=http_client)
-    parsed = webhook_data.get("parsed_data") or {}
-    cap, cap_rule = await inbound_importance_cap_for(
-        parsed_data=parsed if isinstance(parsed, dict) else {},
-        source=str(webhook_data.get("source") or ""),
-        importance=str(result.get("importance") or ""),
-        rule_name=alert_rule_name(parsed if isinstance(parsed, dict) else {}),
-    )
-    if not cap:
-        return result
-    capped = apply_importance_cap(result, cap=cap, rule_name=cap_rule)
-    if ANALYSIS_IMPORTANCE_CAP in capped:
-        logger.info(
-            "[AI] Inbound rule capped importance rule=%s judged=%s capped_to=%s by=%s",
-            alert_rule_name(parsed if isinstance(parsed, dict) else {}),
-            capped[ANALYSIS_IMPORTANCE_CAP]["judged"],
-            cap,
-            cap_rule,
-        )
-    return capped
-
-
-async def _analyze_webhook_with_ai(
     webhook_data: WebhookData,
     alert_hash: str | None = None,
     skip_cache: bool = False,
