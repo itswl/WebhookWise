@@ -32,13 +32,31 @@ _AI_PROVIDER_RUNTIME_TYPES = (
 
 
 def iter_exception_chain(root: BaseException) -> list[BaseException]:
+    """Every exception behind `root`, following __cause__/__context__ AND the
+    attempts a wrapping retry library gives up on.
+
+    The second half is not theoretical. instructor raises
+    InstructorRetryException, which carries the real errors in `failed_attempts`
+    and chains none of them — so a provider rate limit, which every other layer
+    here treats as retryable, arrived as an exception with no status_code, no
+    "rate" in its name and an empty chain. It was classified terminal, the
+    analysis fell back to rules, and the only trace was one log line. Measured
+    live: six of eighteen eval cases died that way against a rate-limited
+    account.
+    """
     visited: set[int] = set()
     out: list[BaseException] = []
-    curr: BaseException | None = root
-    while curr is not None and id(curr) not in visited:
-        visited.add(id(curr))
-        out.append(curr)
-        curr = curr.__cause__ or curr.__context__
+    pending: list[BaseException] = [root]
+    while pending:
+        curr: BaseException | None = pending.pop()
+        while curr is not None and id(curr) not in visited:
+            visited.add(id(curr))
+            out.append(curr)
+            for attempt in getattr(curr, "failed_attempts", None) or ():
+                inner = getattr(attempt, "exception", None)
+                if isinstance(inner, BaseException) and id(inner) not in visited:
+                    pending.append(inner)
+            curr = curr.__cause__ or curr.__context__
     return out
 
 

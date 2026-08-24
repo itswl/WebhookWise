@@ -101,6 +101,13 @@ jobs:
       # that lowers it must fail here rather than in somebody's pager gap.
       # Deterministic and offline: rule engine, committed keyword defaults.
       - run: python scripts/eval_analysis.py run
+      # And the OTHER engine. The ai score cannot gate — it spends money and does
+      # not repeat — but what the model is TOLD is committed, and nothing forced a
+      # re-measurement when it changed. A code change faces the whole suite; a
+      # prompt rewrite faced nothing. Same shape as the OpenAPI and lockfile
+      # checks below: not "is the answer right" but "was it recomputed after the
+      # input moved".
+      - run: python scripts/eval_analysis.py assert-fresh
       # The committed OpenAPI export must match the live route table — new
       # endpoints regenerate build/openapi via scripts/export_openapi.py.
       - run: python scripts/export_openapi.py --check

@@ -223,10 +223,47 @@ def _rate(numerator: int, denominator: int) -> float:
     return round(numerator / denominator, 4) if denominator else 0.0
 
 
+# The committed material that steers the model. Not the deployed model name —
+# that is an env var, and a gate that runs offline in CI cannot see it (the
+# runtime drift is what scripts/ops/engine_quality_compare.py is for). What CAN
+# be gated is this: nobody edits a prompt, or the declared default model, and
+# leaves the recorded ai score describing the previous one.
+STEERING_SOURCES = (
+    "prompts/webhook_analysis_detailed.txt",
+    "prompts/deep_analysis.txt",
+)
+STEERING_DEFAULTS = ("AI_SYSTEM_PROMPT", "OPENAI_MODEL", "AI_USER_PROMPT_FILE")
+
+
+def steering_fingerprint() -> str:
+    """A digest of everything committed that decides what the model is told.
+
+    Offline and deterministic: reads files and the declared defaults, never the
+    environment. Truncated to 16 hex chars — this identifies a revision, it does
+    not defend against anyone forging one.
+    """
+    import hashlib
+
+    from core.config import defaults as config_defaults
+
+    digest = hashlib.sha256()
+    for rel in STEERING_SOURCES:
+        path = ROOT / rel
+        digest.update(rel.encode("utf-8"))
+        digest.update(path.read_bytes() if path.exists() else b"<absent>")
+    fields = config_defaults.AppConfig.model_fields
+    for name in STEERING_DEFAULTS:
+        field = fields.get(name)
+        digest.update(name.encode("utf-8"))
+        digest.update(str(field.default if field is not None else "<absent>").encode("utf-8"))
+    return digest.hexdigest()[:16]
+
+
 @dataclass(slots=True)
 class Report:
     engine: str
     policy: str
+    model: str = ""
     outcomes: list[CaseOutcome] = field(default_factory=list)
 
     @property
@@ -265,6 +302,11 @@ class Report:
             "tokens_in": sum(o.tokens_in for o in self.outcomes),
             "tokens_out": sum(o.tokens_out for o in self.outcomes),
             "cost_usd": round(sum(o.cost_usd for o in self.outcomes), 6),
+            # WHICH model produced this score. The fingerprint gate can only see
+            # committed material, so a swap done by editing an env var slips past
+            # it — recording the model here is what lets anyone reading the
+            # baseline notice that it describes a provider production left behind.
+            "model": self.model,
         }
 
     def disagreements(self) -> list[CaseOutcome]:
@@ -341,7 +383,7 @@ def run_rules(cases: Sequence[EvalCase], policy_name: str) -> Report:
     from services.analysis.ai_analyzer import analyze_with_rules
 
     policy = build_rule_policy(policy_name)
-    report = Report(engine="rules", policy=policy_name)
+    report = Report(engine="rules", policy=policy_name, model="")
     for case in cases:
         result = analyze_with_rules(case.parsed_data, case.source, policy=policy)
         report.outcomes.append(_outcome(case, dict(result)))
@@ -361,7 +403,7 @@ async def run_ai(cases: Sequence[EvalCase], concurrency: int) -> Report:
             "or score the rule engine instead"
         )
 
-    report = Report(engine="ai", policy="env")
+    report = Report(engine="ai", policy="env", model=getattr(provider, "model", "") or "")
     semaphore = asyncio.Semaphore(max(1, concurrency))
     ordered: list[CaseOutcome | None] = [None] * len(cases)
 
@@ -568,6 +610,56 @@ def _ungated_reason(args: argparse.Namespace) -> str:
     return "a corpus other than the committed one"
 
 
+def cmd_assert_fresh(args: argparse.Namespace) -> int:
+    """Fail when the prompts moved and the recorded ai score did not follow.
+
+    The ai engine cannot gate directly: it spends money and does not repeat
+    exactly, so it must not sit in CI. But the thing it measures — what the model
+    is told — IS committed, and nothing forced a re-measurement when it changed.
+    A code change here faces 1465 tests; a prompt rewrite faced nothing.
+
+    So this is the same shape as the generated-reference check and the lockfile
+    check: not "is the answer right" but "was the answer recomputed after the
+    input moved". Offline, free, deterministic, safe in CI.
+    """
+    path = Path(args.baseline)
+    baseline = load_baseline(path) if path.exists() else {"engines": {}}
+    entry = baseline.get("engines", {}).get("ai") or {}
+    recorded = str(entry.get("steering_fingerprint") or "")
+    current = steering_fingerprint()
+
+    if not recorded:
+        # Deliberately a FAILURE and not a skip. A gate that reports "not
+        # applicable" while the thing it guards is unguarded is how the ai path
+        # stayed unmeasured in the first place; the fix is one command, and the
+        # message says which.
+        print("  FAIL  no ai baseline recorded, so nothing holds the prompts to a score")
+        print(f"        steering fingerprint is now {current}")
+        print("        record one:  python3 scripts/eval_analysis.py baseline --engine ai --write")
+        print(
+            f"        (needs a provider key and spends money — {len(STEERING_SOURCES)} prompt file(s) are being gated)"
+        )
+        return 1
+
+    if recorded != current:
+        print("  FAIL  the model's instructions changed after the ai score was recorded")
+        print(f"        recorded against {recorded}, now {current}")
+        print("        Something in the committed steering moved:")
+        for rel in STEERING_SOURCES:
+            print(f"          - {rel}")
+        for name in STEERING_DEFAULTS:
+            print(f"          - defaults.{name}")
+        print("        Re-score and re-record:")
+        print("          python3 scripts/eval_analysis.py run --engine ai --report")
+        print("          python3 scripts/eval_analysis.py baseline --engine ai --write")
+        return 1
+
+    rec = entry.get("recorded") or {}
+    model = rec.get("model") or "(model not recorded)"
+    print(f"ai eval: recorded against the current prompts ({current}), on {model}")
+    return 0
+
+
 def cmd_baseline(args: argparse.Namespace) -> int:
     report = _score(args)
     metrics = report.metrics()
@@ -581,6 +673,10 @@ def cmd_baseline(args: argparse.Namespace) -> int:
     # Keep whatever else the entry carries (the note explaining its thresholds):
     # re-recording a measurement must not delete the reasoning around it.
     entry.update({"recorded": metrics, "thresholds": thresholds})
+    # Only the ai engine is steered by prompts; stamping the rules engine with a
+    # prompt digest would make an unrelated prompt edit look like a stale score.
+    if args.engine == "ai":
+        entry["steering_fingerprint"] = steering_fingerprint()
     baseline["engines"][args.engine] = entry
 
     if not args.write:
@@ -588,7 +684,18 @@ def cmd_baseline(args: argparse.Namespace) -> int:
         print("\n(dry run; pass --write to record)")
         return 0
 
-    path.write_text(json.dumps(baseline, indent=True) + "\n", encoding="utf-8")
+    try:
+        path.write_text(json.dumps(baseline, indent=True) + "\n", encoding="utf-8")
+    except OSError as error:
+        # A paid measurement must not be lost to a write error. The ai engine
+        # takes ten minutes and real money, and this failed once for the dullest
+        # possible reason — recorded inside a container whose uid cannot write the
+        # mounted evals/ directory, after every model call had already been made.
+        # Print what was measured so the run is salvageable by hand.
+        print(f"scored {args.engine}, but could not write {path}: {error}")
+        print("The measurement is below — save it yourself rather than paying for it twice.\n")
+        print(json.dumps(baseline, indent=True))
+        return 1
     print(f"recorded {args.engine} into {path}")
     print(format_metrics(metrics))
     print(f"\nthresholds: {json.dumps(thresholds)}")
@@ -728,6 +835,13 @@ def build_parser() -> argparse.ArgumentParser:
     add_scoring_args(baseline_parser)
     baseline_parser.add_argument("--write", action="store_true", help="write the file (default is a dry run)")
     baseline_parser.set_defaults(func=cmd_baseline)
+
+    fresh_parser = sub.add_parser(
+        "assert-fresh",
+        help="Fail if the committed prompts moved without the ai score being re-recorded",
+    )
+    fresh_parser.add_argument("--baseline", default=str(DEFAULT_BASELINE))
+    fresh_parser.set_defaults(func=cmd_assert_fresh)
 
     export_parser = sub.add_parser("export", help="Mine cases out of the database into a corpus")
     export_parser.add_argument("--corpus", default=str(DEFAULT_CORPUS))

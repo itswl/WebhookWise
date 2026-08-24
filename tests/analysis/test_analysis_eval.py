@@ -314,3 +314,118 @@ class TestCommandLine:
         payload = stdlib_json.loads(capsys.readouterr().out)
         assert payload["failures"] == []
         assert payload["metrics"]["engine"] == "rules"
+
+
+def test_the_fingerprint_moves_with_every_committed_thing_that_steers_the_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each source in the digest has to actually change it, or the gate above is
+    a gate over a subset and the rest of the steering is unguarded.
+
+    The list is deliberately committed material only. The deployed model name is
+    an env var, so an offline gate cannot see it — that hole is named in the note
+    and covered by recording the model into the baseline instead.
+    """
+    from scripts import eval_analysis
+
+    baseline = eval_analysis.steering_fingerprint()
+    assert baseline == eval_analysis.steering_fingerprint(), "the digest must be deterministic"
+
+    for relative in eval_analysis.STEERING_SOURCES:
+        original = (eval_analysis.ROOT / relative).read_bytes()
+        try:
+            (eval_analysis.ROOT / relative).write_bytes(original + b"\n# nudge\n")
+            assert eval_analysis.steering_fingerprint() != baseline, f"editing {relative} must move the digest"
+        finally:
+            (eval_analysis.ROOT / relative).write_bytes(original)
+
+    assert eval_analysis.steering_fingerprint() == baseline, "and restoring it must move it back"
+
+
+def _ai_entry(fingerprint: str, **recorded: object) -> dict[str, object]:
+    """A schema-valid ai entry. load_baseline validates the whole file on the way
+    in, which is right — a malformed baseline is a real problem — so a fixture
+    that skips thresholds tests the validator, not the gate."""
+    return {
+        "steering_fingerprint": fingerprint,
+        "recorded": dict(recorded),
+        "thresholds": {
+            "min_labeled": 16,
+            "min_exact_rate": 0.95,
+            "min_high_recall": 1.0,
+            "max_over_rate": 0.05,
+            "max_miss_rate": 0.0,
+        },
+    }
+
+
+def test_a_moved_prompt_with_a_stale_ai_score_fails_the_gate(tmp_path: Path) -> None:
+    """The whole point. A prompt rewrite used to face nothing at all."""
+    from scripts.eval_analysis import main
+
+    path = tmp_path / "baseline.json"
+    path.write_text(
+        stdlib_json.dumps({"engines": {"ai": _ai_entry("0000deadbeef0000")}}),
+        encoding="utf-8",
+    )
+
+    assert main(["assert-fresh", "--baseline", str(path)]) == 1
+
+
+def test_no_recorded_ai_score_is_a_failure_and_not_a_skip(tmp_path: Path) -> None:
+    """A gate that reports "not applicable" while the thing it guards is
+    unguarded is how the ai path stayed unmeasured for months. The message names
+    the one command that fixes it."""
+    from scripts.eval_analysis import main
+
+    empty = tmp_path / "baseline.json"
+    empty.write_text(
+        stdlib_json.dumps({"engines": {"rules": _ai_entry("irrelevant")}}),
+        encoding="utf-8",
+    )
+
+    assert main(["assert-fresh", "--baseline", str(empty)]) == 1
+    assert main(["assert-fresh", "--baseline", str(tmp_path / "absent.json")]) == 1
+
+
+def test_a_matching_fingerprint_passes(tmp_path: Path) -> None:
+    """And it must actually pass when the score is current, or the gate gets
+    disabled by whoever is trying to ship."""
+    from scripts.eval_analysis import main, steering_fingerprint
+
+    path = tmp_path / "baseline.json"
+    path.write_text(
+        stdlib_json.dumps({"engines": {"ai": _ai_entry(steering_fingerprint(), model="glm-5.3")}}),
+        encoding="utf-8",
+    )
+
+    assert main(["assert-fresh", "--baseline", str(path)]) == 0
+
+
+def test_an_unwritable_baseline_still_prints_what_it_measured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A paid measurement must survive a write error.
+
+    This failed once for the dullest possible reason: recorded inside a container
+    whose uid could not write the mounted evals/ directory, after ten minutes and
+    every model call had already been paid for. The traceback threw the numbers
+    away. Now the run exits non-zero AND prints them, so the answer can be saved
+    by hand instead of bought twice.
+    """
+    from scripts import eval_analysis
+
+    target = tmp_path / "nowhere" / "baseline.json"
+
+    def _explode(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "write_text", _explode)
+    monkeypatch.setattr(eval_analysis, "_score", lambda _args: eval_analysis.Report(engine="ai", policy="env"))
+
+    code = eval_analysis.main(["baseline", "--engine", "ai", "--baseline", str(target), "--write"])
+    out = capsys.readouterr().out
+
+    assert code == 1, "a failed record is a failure"
+    assert "could not write" in out
+    assert '"engines"' in out, "the measurement itself has to be in the output"

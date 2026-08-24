@@ -1,37 +1,72 @@
 {
-  "engines": {
-    "rules": {
-      "note": "Thresholds are the contract, not a snapshot: recorded/ moves with every re-record, thresholds/ only move when somebody decides they should. min_high_recall and max_miss_rate are deliberately exact - an alert the engine used to call high and now calls lower reaches nobody. Growing the corpus is a baseline event: re-record and review the delta.",
-      "recorded": {
-        "engine": "rules",
-        "policy": "default",
-        "total": 18,
-        "labeled": 17,
-        "unlabeled": 1,
-        "errors": 0,
-        "exact": 17,
-        "exact_rate": 1.0,
-        "misses": 0,
-        "miss_rate": 0.0,
-        "overcalls": 0,
-        "over_rate": 0.0,
-        "high_labeled": 8,
-        "high_recall": 1.0,
-        "triage_labeled": 17,
-        "triage_exact_rate": 1.0,
-        "prior_shown": 0,
-        "prior_followed": 0,
-        "tokens_in": 0,
-        "tokens_out": 0,
-        "cost_usd": 0.0
-      },
-      "thresholds": {
-        "min_labeled": 17,
-        "min_exact_rate": 0.95,
-        "min_high_recall": 1.0,
-        "max_over_rate": 0.05,
-        "max_miss_rate": 0.0
-      }
-    }
+ "engines": {
+  "rules": {
+   "note": "Thresholds are the contract, not a snapshot: recorded/ moves with every re-record, thresholds/ only move when somebody decides they should. min_high_recall and max_miss_rate are deliberately exact - an alert the engine used to call high and now calls lower reaches nobody. Growing the corpus is a baseline event: re-record and review the delta.",
+   "recorded": {
+    "engine": "rules",
+    "policy": "default",
+    "total": 18,
+    "labeled": 17,
+    "unlabeled": 1,
+    "errors": 0,
+    "exact": 17,
+    "exact_rate": 1.0,
+    "misses": 0,
+    "miss_rate": 0.0,
+    "overcalls": 0,
+    "over_rate": 0.0,
+    "high_labeled": 8,
+    "high_recall": 1.0,
+    "triage_labeled": 17,
+    "triage_exact_rate": 1.0,
+    "prior_shown": 0,
+    "prior_followed": 0,
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "cost_usd": 0.0
+   },
+   "thresholds": {
+    "min_labeled": 17,
+    "min_exact_rate": 0.95,
+    "min_high_recall": 1.0,
+    "max_over_rate": 0.05,
+    "max_miss_rate": 0.0
+   }
+  },
+  "ai": {
+   "note": "Thresholds are the same exacting contract as the rules engine, and this recording FAILS them: 13/17 exact, 3 under-calls, high recall 0.75. That is deliberate. Deriving thresholds from the score would have written down 'missing a high is acceptable here' one key away from the rules entry saying the opposite. Nothing gates on them today - the ai engine spends money and does not repeat, so it must not sit in CI - but they say what the number would have to reach. What IS gated is steering_fingerprint: assert-fresh fails when the committed prompts move and this score is not re-recorded. The model field says which provider produced it, because an offline gate cannot see a swap made by editing an env var.",
+   "steering_fingerprint": "d2768823154e25c3",
+   "recorded": {
+    "engine": "ai",
+    "policy": "env",
+    "total": 18,
+    "labeled": 17,
+    "unlabeled": 1,
+    "errors": 0,
+    "exact": 13,
+    "exact_rate": 0.7647,
+    "misses": 3,
+    "miss_rate": 0.1765,
+    "overcalls": 1,
+    "over_rate": 0.0588,
+    "high_labeled": 8,
+    "high_recall": 0.75,
+    "triage_labeled": 17,
+    "triage_exact_rate": 0.7647,
+    "prior_shown": 0,
+    "prior_followed": 0,
+    "tokens_in": 49819,
+    "tokens_out": 43477,
+    "cost_usd": 0.801612,
+    "model": "glm-5.3"
+   },
+   "thresholds": {
+    "min_labeled": 17,
+    "min_exact_rate": 0.95,
+    "min_high_recall": 1.0,
+    "max_over_rate": 0.05,
+    "max_miss_rate": 0.0
+   }
   }
+ }
 }

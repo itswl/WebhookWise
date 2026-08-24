@@ -76,6 +76,12 @@ step "analysis eval"
 # keyword policy comes from the committed defaults, not from the environment.
 python scripts/eval_analysis.py run
 
+step "ai eval freshness"
+# The ai score cannot gate (it spends money and does not repeat), but the
+# prompts that produce it are committed. This fails when they moved and the
+# recorded score did not follow — same shape as the OpenAPI check.
+python scripts/eval_analysis.py assert-fresh
+
 step "OpenAPI contract"
 # Config validation needs a DATABASE_URL; no connection is made. CI provides
 # one via env — mirror that with a placeholder when unset.
