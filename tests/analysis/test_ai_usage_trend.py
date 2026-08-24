@@ -93,3 +93,42 @@ async def test_cost_figures_declare_the_rates_they_were_computed_from(
         basis = (await get_ai_usage_stats(session, period="week"))["cost"]["basis"]
     assert basis["rates_are_defaults"] is False
     assert basis["reconciled_with_provider"] is True
+
+
+def test_the_response_model_does_not_drop_the_cost_basis() -> None:
+    """The service adding a field is not enough: FastAPI filters the payload
+    through the response model, so an undeclared field reaches the client as
+    null. That is how the first version of this shipped — verified against
+    production, `basis` was null while the service was computing it."""
+    from schemas.ai_usage import AIUsageData
+
+    payload = {
+        "total_calls": 1,
+        "route_breakdown": {"ai": 1},
+        "percentages": {"ai": 100.0},
+        "tokens": {"total": 3, "input": 2, "output": 1},
+        "cost": {
+            "total": 0.01,
+            "saved_estimate": 0.0,
+            "basis": {
+                "model": "deepseek-v4-pro",
+                "input_per_1k_usd": 0.003,
+                "output_per_1k_usd": 0.015,
+                "rates_are_defaults": True,
+                "reconciled_with_provider": False,
+            },
+        },
+        "cache_statistics": {
+            "total_cache_entries": 0,
+            "total_hits": 0,
+            "avg_hits_per_entry": 0.0,
+            "cache_hit_rate": 0.0,
+            "saved_calls": 0,
+        },
+        "trend": [],
+    }
+
+    serialized = AIUsageData.model_validate(payload).model_dump()
+
+    assert serialized["cost"]["basis"]["model"] == "deepseek-v4-pro"
+    assert serialized["cost"]["basis"]["reconciled_with_provider"] is False

@@ -4602,6 +4602,39 @@ components:
       - content
       title: ConfigImportRequest
       description: Request to import a previously exported YAML config bundle.
+    CostBasis:
+      properties:
+        model:
+          type: string
+          title: Model
+        input_per_1k_usd:
+          type: number
+          title: Input Per 1K Usd
+        output_per_1k_usd:
+          type: number
+          title: Output Per 1K Usd
+        rates_are_defaults:
+          type: boolean
+          title: Rates Are Defaults
+        reconciled_with_provider:
+          type: boolean
+          title: Reconciled With Provider
+      type: object
+      required:
+      - model
+      - input_per_1k_usd
+      - output_per_1k_usd
+      - rates_are_defaults
+      - reconciled_with_provider
+      title: CostBasis
+      description: 'What the cost figures were computed FROM.
+
+
+        Declared here because a field the service adds and the response model does
+
+        not know about is silently dropped — which is exactly how the first version
+
+        of this shipped: the payload carried the basis and the client got null.'
     CostStats:
       properties:
         total:
@@ -4610,6 +4643,10 @@ components:
         saved_estimate:
           type: number
           title: Saved Estimate
+        basis:
+          anyOf:
+          - $ref: '#/components/schemas/CostBasis'
+          - type: 'null'
       type: object
       required:
       - total

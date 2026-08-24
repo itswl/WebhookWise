@@ -11,9 +11,25 @@ class TokenStats(BaseModel):
     output: int
 
 
+class CostBasis(BaseModel):
+    """What the cost figures were computed FROM.
+
+    Declared here because a field the service adds and the response model does
+    not know about is silently dropped — which is exactly how the first version
+    of this shipped: the payload carried the basis and the client got null.
+    """
+
+    model: str
+    input_per_1k_usd: float
+    output_per_1k_usd: float
+    rates_are_defaults: bool
+    reconciled_with_provider: bool
+
+
 class CostStats(BaseModel):
     total: float
     saved_estimate: float
+    basis: CostBasis | None = None
 
 
 class CacheStatistics(BaseModel):
