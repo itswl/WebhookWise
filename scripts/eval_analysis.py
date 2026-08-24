@@ -38,7 +38,7 @@ import asyncio
 import os
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -264,6 +264,7 @@ class Report:
     engine: str
     policy: str
     model: str = ""
+    samples: int = 1
     outcomes: list[CaseOutcome] = field(default_factory=list)
 
     @property
@@ -307,6 +308,9 @@ class Report:
             # it — recording the model here is what lets anyone reading the
             # baseline notice that it describes a provider production left behind.
             "model": self.model,
+            # How many draws per case produced this. 1 means the number cannot
+            # tell a regression from a resample; see run_ai's docstring.
+            "samples": self.samples,
         }
 
     def disagreements(self) -> list[CaseOutcome]:
@@ -390,8 +394,16 @@ def run_rules(cases: Sequence[EvalCase], policy_name: str) -> Report:
     return report
 
 
-async def run_ai(cases: Sequence[EvalCase], concurrency: int) -> Report:
-    """Replay through the real model. Costs money; never gates."""
+async def run_ai(cases: Sequence[EvalCase], concurrency: int, votes: int = 1) -> Report:
+    """Replay through the real model. Costs money; never gates.
+
+    `votes` draws each case N times and keeps the MODAL importance, because one
+    draw is not a measurement. Measured on the sibling judge the same afternoon,
+    same model and same input: 11 of 32 cases changed answer across three draws.
+    A baseline recorded from a single draw therefore cannot tell a real regression
+    from a resample, which is precisely what the freshness gate above sends people
+    to compare against.
+    """
     _bootstrap_runtime()
     from services.analysis import ai_llm_client
     from services.analysis.analysis_policies import AIProviderPolicy
@@ -403,35 +415,46 @@ async def run_ai(cases: Sequence[EvalCase], concurrency: int) -> Report:
             "or score the rule engine instead"
         )
 
-    report = Report(engine="ai", policy="env", model=getattr(provider, "model", "") or "")
+    report = Report(engine="ai", policy="env", model=getattr(provider, "model", "") or "", samples=max(1, votes))
     semaphore = asyncio.Semaphore(max(1, concurrency))
     ordered: list[CaseOutcome | None] = [None] * len(cases)
 
     async def one(index: int, case: EvalCase) -> None:
-        async with semaphore:
-            try:
-                analysis, tokens_in, tokens_out = await ai_llm_client.call_ai_with_breaker(
-                    case.parsed_data, case.source
-                )
-            except Exception as e:  # noqa: BLE001 - one bad case must not lose the run
-                ordered[index] = CaseOutcome(
-                    case_id=case.id,
-                    origin=case.origin,
-                    expected_importance=case.expected_importance,
-                    predicted_importance="",
-                    expected_triage=case.expected_triage,
-                    predicted_triage="",
-                    verdict="error",
-                    error=f"{type(e).__name__}: {e}",
-                )
-                return
-            ordered[index] = _outcome(
-                case,
-                dict(analysis),
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
-                cost_usd=provider.cost_for_tokens(tokens_in, tokens_out),
-            )
+        draws: list[CaseOutcome] = []
+        spend = 0.0
+        tin = tout = 0
+        for _ in range(max(1, votes)):
+            async with semaphore:
+                try:
+                    analysis, tokens_in, tokens_out = await ai_llm_client.call_ai_with_breaker(
+                        case.parsed_data, case.source
+                    )
+                except Exception as e:  # noqa: BLE001 - one bad case must not lose the run
+                    ordered[index] = CaseOutcome(
+                        case_id=case.id,
+                        origin=case.origin,
+                        expected_importance=case.expected_importance,
+                        predicted_importance="",
+                        expected_triage=case.expected_triage,
+                        predicted_triage="",
+                        verdict="error",
+                        error=f"{type(e).__name__}: {e}",
+                    )
+                    return
+            tin += tokens_in
+            tout += tokens_out
+            spend += provider.cost_for_tokens(tokens_in, tokens_out)
+            draws.append(_outcome(case, dict(analysis), tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=0.0))
+        if len(draws) == 1:
+            ordered[index] = replace(draws[0], cost_usd=spend, tokens_in=tin, tokens_out=tout)
+            return
+        # The mode, and re-derive the verdict from it rather than trusting any one
+        # draw's: a majority answer with a minority's verdict attached would be a
+        # number nobody could reproduce.
+        seen = [d.predicted_importance for d in draws]
+        modal = max(set(seen), key=seen.count)
+        winner = next(d for d in draws if d.predicted_importance == modal)
+        ordered[index] = replace(winner, cost_usd=spend, tokens_in=tin, tokens_out=tout)
 
     await asyncio.gather(*(one(i, case) for i, case in enumerate(cases)))
     report.outcomes = [o for o in ordered if o is not None]
@@ -554,7 +577,7 @@ def _score(args: argparse.Namespace) -> Report:
     if args.limit:
         cases = cases[: args.limit]
     if args.engine == "ai":
-        return asyncio.run(run_ai(cases, args.concurrency))
+        return asyncio.run(run_ai(cases, args.concurrency, getattr(args, "votes", 1)))
     return run_rules(cases, args.policy)
 
 
@@ -656,7 +679,9 @@ def cmd_assert_fresh(args: argparse.Namespace) -> int:
 
     rec = entry.get("recorded") or {}
     model = rec.get("model") or "(model not recorded)"
-    print(f"ai eval: recorded against the current prompts ({current}), on {model}")
+    samples = int(rec.get("samples") or 1)
+    note = "" if samples > 1 else "  — from ONE draw, so a comparison cannot separate a regression from a resample"
+    print(f"ai eval: recorded against the current prompts ({current}), on {model}, {samples} draw(s){note}")
     return 0
 
 
@@ -823,6 +848,12 @@ def build_parser() -> argparse.ArgumentParser:
         target.add_argument("--policy", choices=POLICIES, default="default", help="keyword policy for the rule engine")
         target.add_argument("--limit", type=int, default=0, help="score only the first N cases (never gates)")
         target.add_argument("--concurrency", type=int, default=4, help="parallel model calls for --engine ai")
+        target.add_argument(
+            "--votes",
+            type=int,
+            default=1,
+            help="draws per case for --engine ai; the modal answer wins (one draw is not a measurement)",
+        )
 
     run_parser = sub.add_parser("run", help="Score the corpus and check it against the baseline")
     add_scoring_args(run_parser)

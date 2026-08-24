@@ -429,3 +429,40 @@ def test_an_unwritable_baseline_still_prints_what_it_measured(
     assert code == 1, "a failed record is a failure"
     assert "could not write" in out
     assert '"engines"' in out, "the measurement itself has to be in the output"
+
+
+def test_the_gate_says_when_its_baseline_is_a_single_draw(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A one-draw baseline is a number, not a measurement, and the gate that
+    sends people to compare against it has to say which it is.
+
+    Measured on the sibling judge the same afternoon, same model and same input:
+    11 of 32 cases changed answer across three draws. So a "regression" against a
+    single-draw baseline can be a resample, and somebody would spend a morning
+    bisecting a prompt that never moved.
+    """
+    from scripts.eval_analysis import main, steering_fingerprint
+
+    single = tmp_path / "one.json"
+    single.write_text(
+        stdlib_json.dumps({"engines": {"ai": _ai_entry(steering_fingerprint(), model="glm-5.3", samples=1)}}),
+        encoding="utf-8",
+    )
+    assert main(["assert-fresh", "--baseline", str(single)]) == 0
+    assert "ONE draw" in capsys.readouterr().out
+
+    majority = tmp_path / "three.json"
+    majority.write_text(
+        stdlib_json.dumps({"engines": {"ai": _ai_entry(steering_fingerprint(), model="glm-5.3", samples=3)}}),
+        encoding="utf-8",
+    )
+    assert main(["assert-fresh", "--baseline", str(majority)]) == 0
+    out = capsys.readouterr().out
+    assert "3 draw(s)" in out and "ONE draw" not in out
+
+
+def test_a_missing_sample_count_reads_as_one() -> None:
+    """Every baseline recorded before --votes existed has no sample count, and
+    treating that as "unknown" would hide the weaker case rather than name it."""
+    from scripts.eval_analysis import Report
+
+    assert Report(engine="ai", policy="env").metrics()["samples"] == 1

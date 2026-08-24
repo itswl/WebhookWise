@@ -114,6 +114,26 @@ GLM tokens and so an overstatement of several times over. The cost of not having
 it was demonstrated the same afternoon: nobody would have known the model
 under-calls a `high` on a case kept in the corpus BECAUSE it had bitten before.
 
+## The same afternoon found the hole in this
+
+The recorded score is ONE draw per case, and a few hours after committing it the
+sibling judge was measured on the same question: same model, same input, three
+draws — **11 of 32 cases changed answer**, and 59% of rows flipped for at least
+one of two judges. So a single-draw baseline cannot separate a real regression
+from a resample, and the gate above sends people to compare against exactly that.
+
+Half-fixed, deliberately. `--votes N` now draws each case N times and keeps the
+modal answer, and the baseline records `samples`, which `assert-fresh` prints —
+saying "from ONE draw" when it is, rather than letting the number pass as a
+measurement. The existing recording was NOT redone: nobody compares against it
+yet, the gate forces a re-record on the next prompt change anyway, and buying
+thirty minutes and three times the tokens to restate a number already labelled as
+weak is worse value than the label.
+
+The number to watch on that re-record is whether 13/17 holds. If it moves by two
+cases on identical prompts, the corpus is too small for this engine to be gated on
+at all, and the honest response is more cases rather than looser thresholds.
+
 ## What would change the answer
 
 - The corpus growing past the point where an ai run is cheap. 17 cases at

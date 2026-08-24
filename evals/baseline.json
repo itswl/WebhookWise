@@ -34,7 +34,7 @@
    }
   },
   "ai": {
-   "note": "Thresholds are the same exacting contract as the rules engine, and this recording FAILS them: 13/17 exact, 3 under-calls, high recall 0.75. That is deliberate. Deriving thresholds from the score would have written down 'missing a high is acceptable here' one key away from the rules entry saying the opposite. Nothing gates on them today - the ai engine spends money and does not repeat, so it must not sit in CI - but they say what the number would have to reach. What IS gated is steering_fingerprint: assert-fresh fails when the committed prompts move and this score is not re-recorded. The model field says which provider produced it, because an offline gate cannot see a swap made by editing an env var.",
+   "note": "Thresholds are the same exacting contract as the rules engine, and this recording FAILS them: 13/17 exact, 3 under-calls, high recall 0.75. That is deliberate. Deriving thresholds from the score would have written down 'missing a high is acceptable here' one key away from the rules entry saying the opposite. Nothing gates on them today - the ai engine spends money and does not repeat, so it must not sit in CI - but they say what the number would have to reach. What IS gated is steering_fingerprint: assert-fresh fails when the committed prompts move and this score is not re-recorded. The model field says which provider produced it, because an offline gate cannot see a swap made by editing an env var. RECORDED FROM ONE DRAW per case. The sibling judge, same model and same input, changed answer on 11 of 32 cases across three draws \u2014 so this number cannot separate a real regression from a resample. run --engine ai --votes 3 on the next re-record, which the freshness gate forces on any prompt change.",
    "steering_fingerprint": "d2768823154e25c3",
    "recorded": {
     "engine": "ai",
@@ -58,7 +58,8 @@
     "tokens_in": 49819,
     "tokens_out": 43477,
     "cost_usd": 0.801612,
-    "model": "glm-5.3"
+    "model": "glm-5.3",
+    "samples": 1
    },
    "thresholds": {
     "min_labeled": 17,
