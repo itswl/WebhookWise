@@ -15,6 +15,29 @@ WebhookWise is a single Python service with FastAPI HTTP entrypoints, TaskIQ wor
 - `models/`, `schemas/`, `db/`: persistence and API data contracts.
 - `templates/`: dashboard HTML/CSS/JS.
 
+Three dot-directories carry agent material, and each one is load-bearing — the
+question "why not merge them" has a different answer in each case, so none of
+them is tidy-up material:
+
+- `.agents/` — decision records, read by people, no tool reads them. Shape
+  enforced by `scripts/assert_agent_notes.py`, which the gate runs.
+- `.claude/skills/` — the ONE real copy of the operator skills. It sits under a
+  vendor name because that path is a deployment contract, not a preference:
+  hookprobe bind-mounts it read-only as `/data/home/.claude/skills`, its user
+  skills layer. `.gitignore` carves it out with `.claude/*` + `!.claude/skills/`
+  so local Claude state stays out while the skills tree ships. Moving it means
+  editing hookprobe's compose in the same change; the reasoning is written up in
+  `.agents/notes/implemented/2026-08-17-skills-live-in-repo-guide-is-a-destination.md`.
+- `.codex/skills` — a symlink to the above, so the installed Codex CLI sees the
+  same skills. A tracked symlink, so a clone with `core.symlinks=false` gets a
+  text file instead of a directory.
+
+Nothing else belongs in `.claude/`. A local prompt file lived in
+`.claude/prompts/` until 2026-08-24 telling an agent to hand-pick four local
+checks and to `git add -A`, both of which this guide forbids, and it carried the
+production IP and path in the working tree where the estate guard cannot see it
+— the guard reads `git ls-files`, so an ignored file is invisible to it.
+
 ## Local Commands
 
 Run focused checks before broad ones:
