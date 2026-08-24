@@ -70,7 +70,17 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict
         "route_breakdown": route_breakdown,
         "percentages": {k: round(v / max(total, 1) * 100, 2) for k, v in route_breakdown.items()},
         "tokens": {"input": tokens_in, "output": tokens_out, "total": tokens_in + tokens_out},
-        "cost": {"total": total_cost, "saved_estimate": saved_estimate},
+        # Every figure above is tokens x a CONFIGURED rate, not an invoice. Ship
+        # the rate and the model with it: the defaults are Claude-era
+        # ($0.003/$0.015 per 1k) and a deployment can be running something else
+        # entirely, in which case the total is confidently wrong and nothing on
+        # the screen says so. Naming the basis is what makes it correctable —
+        # two settings — instead of quietly believed.
+        "cost": {
+            "total": total_cost,
+            "saved_estimate": saved_estimate,
+            "basis": _cost_basis(),
+        },
         "cache_statistics": {
             "total_cache_entries": cache_entries,
             "total_hits": total_hits,
@@ -79,6 +89,32 @@ async def get_ai_usage_stats(session: AsyncSession, period: str = "day") -> dict
             "saved_calls": total_hits,
         },
         "trend": trend,
+    }
+
+
+def _cost_basis() -> dict[str, Any]:
+    """What the cost figures were computed FROM, so a wrong total is legible.
+
+    `matches_model` is the honest part: these rates are global while the model is
+    configurable, so the two can disagree and usually do. False does not mean
+    broken — it means "this total is an estimate at rates nobody has reconciled
+    with this provider's price list".
+    """
+    from core.app_context import get_config_manager
+
+    ai = get_config_manager().ai
+    model = str(ai.OPENAI_MODEL or "")
+    rate_in = float(ai.AI_COST_PER_1K_INPUT_TOKENS)
+    rate_out = float(ai.AI_COST_PER_1K_OUTPUT_TOKENS)
+    # The shipped defaults; a deployment that never touched them is the case
+    # this flag exists to surface.
+    default_rates = (rate_in, rate_out) == (0.003, 0.015)
+    return {
+        "model": model,
+        "input_per_1k_usd": rate_in,
+        "output_per_1k_usd": rate_out,
+        "rates_are_defaults": default_rates,
+        "reconciled_with_provider": not default_rates,
     }
 
 

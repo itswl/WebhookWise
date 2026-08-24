@@ -62,6 +62,27 @@ const AICostModule = {
      * @param {number} amount - The amount
      * @returns {string} The formatted amount
      */
+    /**
+     * The basis line under the spend figure: which model, at what rate.
+     *
+     * Unreconciled rates get a warning dot rather than a hidden asterisk. The
+     * point is that an operator reading "$16.50" can see in the same glance
+     * whether that number was ever checked against a price list — and fix it in
+     * two settings if not.
+     */
+    renderCostBasis(basis) {
+        const rateIn = Number(basis.input_per_1k_usd || 0).toFixed(4);
+        const rateOut = Number(basis.output_per_1k_usd || 0).toFixed(4);
+        const reconciled = !!basis.reconciled_with_provider;
+        const dot = reconciled ? 'ww-dot-success' : 'ww-dot-warning';
+        const label = reconciled ? t('aicost.basis.reconciled') : t('aicost.basis.defaults');
+        return `<div class="ww-meta" style="margin-top: var(--sp-2); font-size: var(--fs-xs);">
+            <span class="ww-dot ${dot}"></span>
+            <span>${escapeHtml(String(basis.model || '-'))} · ${t('aicost.basis.rates', { rateIn: rateIn, rateOut: rateOut })}</span>
+            <span style="color: var(--text-muted);">${label}</span>
+        </div>`;
+    },
+
     formatCurrency(amount) {
         const value = parseFloat(amount) || 0;
         return '$' + value.toFixed(4);
@@ -99,6 +120,11 @@ const AICostModule = {
         const tokensOutput = this.safeGet(data, 'tokens.output', 0);
         const costTotal = this.safeGet(data, 'cost.total', 0);
         const costSaved = this.safeGet(data, 'cost.saved_estimate', 0);
+        // Every currency figure here is tokens x a configured rate, never an
+        // invoice. Say so next to the number: the shipped rates are Claude-era
+        // and the model is configurable, so the total can be confidently wrong
+        // with nothing on screen admitting it.
+        const basis = this.safeGet(data, 'cost.basis', null);
 
         const routeAi = this.routeCount(data, ['ai']);
         const routeRule = this.routeCount(data, ['rule']);
@@ -133,6 +159,7 @@ const AICostModule = {
                         <span>${t('aicost.card.tokensLabel', { n: formatNumber(tokensTotal) })}</span>
                         <span>${t('aicost.card.apiCallLabel', { n: formatNumber(totalCalls) })}</span>
                     </div>
+                    ${basis ? this.renderCostBasis(basis) : ''}
                 </div>
                 <div class="stat-card">
                     <div class="stat-label" style="color: var(--success);">${t('aicost.card.totalSaved')}</div>

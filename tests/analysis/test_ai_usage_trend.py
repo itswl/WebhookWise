@@ -56,3 +56,40 @@ async def test_trend_empty_when_no_usage(session_factory: async_sessionmaker[Asy
     async with session_factory() as session:
         stats = await get_ai_usage_stats(session, "day")
     assert stats["trend"] == []
+
+
+@pytest.mark.asyncio
+async def test_cost_figures_declare_the_rates_they_were_computed_from(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """A currency total nobody can trace is the one that gets believed.
+
+    Measured on production 2026-08-21: $16.50 lifetime, computed at the shipped
+    Claude-era rates ($0.003/$0.015 per 1k) while the configured model was
+    deepseek-v4-pro. The number was confidently wrong and nothing on the screen
+    said so. Rather than substitute another guess at a provider's price list,
+    the payload now carries what it used.
+    """
+    from core.app_context import get_config_manager
+    from services.analysis.analysis_queries import get_ai_usage_stats
+
+    ai = get_config_manager().ai
+    ai.AI_COST_PER_1K_INPUT_TOKENS = 0.003
+    ai.AI_COST_PER_1K_OUTPUT_TOKENS = 0.015
+
+    async with session_factory() as session:
+        basis = (await get_ai_usage_stats(session, period="week"))["cost"]["basis"]
+
+    assert basis["input_per_1k_usd"] == 0.003
+    assert basis["output_per_1k_usd"] == 0.015
+    # Untouched defaults are the case worth flagging: it means nobody has ever
+    # checked these against the provider that is actually being billed.
+    assert basis["rates_are_defaults"] is True
+    assert basis["reconciled_with_provider"] is False
+
+    ai.AI_COST_PER_1K_INPUT_TOKENS = 0.00027
+    ai.AI_COST_PER_1K_OUTPUT_TOKENS = 0.0011
+    async with session_factory() as session:
+        basis = (await get_ai_usage_stats(session, period="week"))["cost"]["basis"]
+    assert basis["rates_are_defaults"] is False
+    assert basis["reconciled_with_provider"] is True
