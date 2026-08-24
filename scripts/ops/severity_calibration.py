@@ -58,6 +58,37 @@ _RANK = {"low": 0, "medium": 1, "high": 2}
 _UNKNOWN = "unknown"
 
 
+async def _existing_caps() -> dict[str, str]:
+    """Ceilings an operator has already set, keyed by the rule name they match.
+
+    Without this the report keeps proposing what is already done: it compares
+    against the importance recorded on HISTORICAL events, which predate the
+    ceiling, so a capped rule looks exactly like an uncapped one forever. A
+    report that repeats itself stops being read.
+    """
+    from sqlalchemy import text
+
+    from db.session import session_scope
+    from services.webhooks.types import CAP_IMPORTANCE
+
+    query = text(
+        """
+        SELECT match_rule_name, action_value
+          FROM inbound_rules
+         WHERE enabled AND action = :action AND match_rule_name <> ''
+        """
+    )
+    async with session_scope() as session:
+        rows = (await session.execute(query, {"action": CAP_IMPORTANCE})).all()
+    caps: dict[str, str] = {}
+    for match_rule_name, value in rows:
+        # match_rule_name is a CSV of names, the same vocabulary forwarding uses.
+        for name in str(match_rule_name or "").split(","):
+            if name.strip():
+                caps[name.strip().lower()] = str(value or "").strip().lower()
+    return caps
+
+
 async def _collect(min_reports: int) -> dict[str, Any]:
     from sqlalchemy import text
 
@@ -99,9 +130,12 @@ async def _collect(min_reports: int) -> dict[str, Any]:
         else:
             bucket["report"][mapped] += 1
 
+    caps = await _existing_caps()
     report: dict[str, Any] = {
         "totals": {"reports": len(rows), "rules": len(per_rule)},
-        "rules": [_score(name, data, min_reports) for name, data in per_rule.items()],
+        "rules": [
+            _score(name, data, min_reports, caps.get(name.strip().lower(), "")) for name, data in per_rule.items()
+        ],
     }
     report["rules"].sort(key=lambda r: (-r["reports"], r["rule"]))
     ww_high = sum(1 for r in rows if r["ww_importance"] == "high")
@@ -111,7 +145,14 @@ async def _collect(min_reports: int) -> dict[str, Any]:
     return report
 
 
-def _propose(ww: str, verdicts: "Counter[str]", unknown: int, reports: int, min_reports: int) -> dict[str, Any]:
+def _propose(
+    ww: str,
+    verdicts: "Counter[str]",
+    unknown: int,
+    reports: int,
+    min_reports: int,
+    existing_cap: str = "",
+) -> dict[str, Any]:
     """A conservative downgrade proposal, or none.
 
     Three guards, each there to stop a specific way this could page nobody:
@@ -126,6 +167,10 @@ def _propose(ww: str, verdicts: "Counter[str]", unknown: int, reports: int, min_
     """
     if reports < min_reports or not verdicts:
         return {"action": "insufficient_evidence", "reports": reports}
+    if existing_cap:
+        # Already decided. Reported so the ceiling stays visible and can be
+        # revisited as evidence accumulates, but never as work to do.
+        return {"action": "already_capped", "to": existing_cap, "reports": reports}
     ranked = sorted(_RANK[v] for v in verdicts.elements())
     median = statistics.median_low(ranked)
     proposed = next(k for k, v in _RANK.items() if v == median)
@@ -155,7 +200,7 @@ def _propose(ww: str, verdicts: "Counter[str]", unknown: int, reports: int, min_
     }
 
 
-def _score(name: str, data: dict[str, Any], min_reports: int) -> dict[str, Any]:
+def _score(name: str, data: dict[str, Any], min_reports: int, existing_cap: str = "") -> dict[str, Any]:
     verdicts: Counter[str] = data["report"]
     reports = sum(verdicts.values())
     ww_modal = data["ww"].most_common(1)[0][0] if data["ww"] else "unknown"
@@ -170,7 +215,8 @@ def _score(name: str, data: dict[str, Any], min_reports: int) -> dict[str, Any]:
         # the report count, alert_hash is per-occurrence and an alert_hash-keyed
         # override cannot generalise — the fix has to key on the rule name.
         "distinct_hashes": len(data["hashes"]),
-        "proposal": _propose(ww_modal, verdicts, data["unknown"], reports, min_reports),
+        "existing_cap": existing_cap,
+        "proposal": _propose(ww_modal, verdicts, data["unknown"], reports, min_reports, existing_cap),
     }
 
 
@@ -196,12 +242,16 @@ def _render(report: dict[str, Any]) -> str:
             verdict = "keep (genuinely severe sometimes)"
         elif proposal["action"] == "unanswerable":
             verdict = "unanswerable — stop investigating it"
+        elif proposal["action"] == "already_capped":
+            verdict = f"capped at {proposal['to']} already"
         elif proposal["action"] == "already_aligned":
             verdict = "aligned"
         else:
             verdict = f"need more data ({proposal['reports']})"
         lines.append(f"  {row['rule'][:34]:<34} {row['reports']:>3} {row['ww_importance']:>7} {verdicts:<26} {verdict}")
 
+    outstanding = sum(1 for r in report["rules"] if r["proposal"]["action"] == "downgrade")
+    lines.insert(4, f"  {outstanding} rule(s) still proposing a downgrade")
     downgrades = [r for r in report["rules"] if r["proposal"]["action"] == "downgrade"]
     if downgrades:
         lines += ["", "  Per-occurrence identity check (does an alert_hash override generalise?)"]
