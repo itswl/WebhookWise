@@ -40,6 +40,19 @@ ROOT = Path(__file__).resolve().parent.parent
 
 PATTERN_FILE = Path(os.environ.get("ESTATE_PATTERNS_FILE", ROOT / ".estate-identifiers"))
 
+# The list is external, so nothing in this repository can tell whether the copy
+# CI just wrote is the CURRENT one. It can tell whether it is implausibly SHORT.
+#
+# That is the failure this catches, and it is not hypothetical: patterns were
+# added locally on 2026-08-21 and the repository secret was not updated, so CI
+# went on passing against a list two rules out of date while local enforcement
+# was strict. A count is not an identifier, so it can live here in the open.
+#
+# A ratchet, like the font-size bound: raise it when patterns are added; never
+# lower it to make a red build green. Forgetting to raise it costs protection,
+# not a false failure.
+MIN_PATTERNS = 28
+
 
 def load_patterns() -> tuple[tuple[str, str], ...] | None:
     """(regex, why it must not appear) from the un-tracked list. None if absent."""
@@ -87,6 +100,13 @@ def main() -> int:
         print(f"  SKIP  {state} {PATTERN_FILE}")
         print("        copy .estate-identifiers.example and fill in the real names.")
         return 0
+    if len(rules) < MIN_PATTERNS:
+        print(f"  FAIL  the pattern list has {len(rules)} rule(s); this repository expects at least {MIN_PATTERNS}")
+        print(f"        {PATTERN_FILE} is stale or truncated. In CI that means the")
+        print("        ESTATE_IDENTIFIERS secret was not updated after patterns were added:")
+        print("        gh secret set ESTATE_IDENTIFIERS --repo <owner>/<repo> < .estate-identifiers")
+        return 1
+
     compiled = [(re.compile(pattern, re.I), reason) for pattern, reason in rules]
     problems: list[str] = []
 
