@@ -194,6 +194,7 @@ async def request_gateway_analysis(
     user_question: str = "",
     thinking_level: str = "high",
     *,
+    operator: bool = False,
     policy: DeepAnalysisTriggerPolicy | None = None,
     http_client: httpx.AsyncClient | None = None,
     dependencies: DeepAnalysisForwardDependencies | None = None,
@@ -283,6 +284,14 @@ async def request_gateway_analysis(
         headers = {"Content-Type": _JSON_UTF8_CONTENT_TYPE, "X-Webhook-Signature": signature}
     else:
         headers = {"Authorization": f"Bearer {hooks_token}", "Content-Type": _JSON_UTF8_CONTENT_TYPE}
+    if operator:
+        # Say a PERSON asked. The gateway's budget breaker guards spending
+        # nobody asked for, and it used to infer that from which door was used —
+        # a proxy that stopped being true the moment a forward RULE started
+        # posting here. Silence means automated and is refused once the window
+        # is spent; that direction is deliberate, because a refused person can
+        # ask again and a spent budget cannot be un-spent.
+        headers["X-Operator"] = "true"
     kwargs: dict[str, Any] = {"content": payload_bytes}
 
     trace_id = get_current_trace_id()
@@ -422,6 +431,10 @@ async def forward_to_deep_analysis(
             dependencies=dependencies,
             webhook_event_id=webhook_event_id,
             evidence_summary_hint=summary_hint,
+            # A forward RULE decided this, not a person, so it says nothing and
+            # is subject to the gateway's budget breaker. Only run_deep_analysis
+            # — the one layer every person-driven request passes through — marks
+            # itself operator=True and is answered even when the window is spent.
         )
         if is_analysis_degraded(result):
             logger.warning("[Forward] Gateway degraded, falling back to local AI: %s", analysis_degraded_reason(result))

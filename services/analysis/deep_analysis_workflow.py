@@ -106,7 +106,13 @@ async def run_deep_analysis(
 
     try:
         result = await request_gateway_analysis(
-            webhook_data, user_question, policy=DeepAnalysisTriggerPolicy.from_config(gateway.name)
+            webhook_data,
+            user_question,
+            policy=DeepAnalysisTriggerPolicy.from_config(gateway.name),
+            # Every person-driven request converges here — the manual POST and
+            # the manual retry both — and the automated forward path does not
+            # call this function at all, so this is the whole exemption.
+            operator=True,
         )
     except (OSError, RuntimeError, TimeoutError, ValueError) as e:
         raise DeepAnalysisExecutionError("Deep-analysis gateway request failed") from e
