@@ -7682,6 +7682,24 @@
             "type": "number",
             "title": "Override Rate"
           },
+          "cap_count": {
+            "type": "integer",
+            "title": "Cap Count"
+          },
+          "cap_rate": {
+            "type": "number",
+            "title": "Cap Rate"
+          },
+          "cap_by_rule": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Cap By Rule"
+          },
           "degraded_total": {
             "type": "integer",
             "title": "Degraded Total"
@@ -7734,6 +7752,9 @@
           "route_breakdown",
           "override_count",
           "override_rate",
+          "cap_count",
+          "cap_rate",
+          "cap_by_rule",
           "degraded_total",
           "degraded_rate",
           "degraded_reasons",

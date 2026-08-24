@@ -364,3 +364,64 @@ async def test_record_swallows_errors_and_never_raises() -> None:
 
     # The error was swallowed; no trace was added.
     session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_capped_importance_reaches_the_trace_row_and_the_step() -> None:
+    """The column and the step must both carry the judgement the ceiling replaced.
+
+    This test exists because removing the write changed nothing: 177 tests passed
+    with `importance_capped_from` never set, which is the same failure this
+    codebase has now hit three times — a field with arithmetic and a panel behind
+    it, and no writer. The row is what the quality query counts; the step is what
+    the per-alert trace narrates, and a reader who sees `medium` with no note
+    cannot tell a ceiling from a judgement.
+    """
+    from services.webhooks.types import ANALYSIS_IMPORTANCE_CAP
+
+    session = MagicMock()
+    session.begin_nested.return_value = AsyncMock()
+    analysis = _analysis(importance="medium", route="redis_reuse")
+    analysis[ANALYSIS_IMPORTANCE_CAP] = {
+        "capped_to": "medium",
+        "judged": "high",
+        "rule": "cap: recharge-over-limit -> medium",
+    }
+
+    await record_decision_trace(
+        session,
+        webhook_event_id=7,
+        source="grafana",
+        alert_name="recharge-over-limit",
+        dedup=_dedup(),
+        final_analysis=analysis,  # type: ignore[arg-type]
+        noise=_noise(),
+        decision=ForwardDecision(True, None, False, matched_rules=[_rule("feishu")]),
+    )
+
+    added = session.add.call_args.args[0]
+    assert added.importance_capped_from == "high", "the replaced judgement is what makes the demotion readable"
+    assert added.importance == "medium"
+    assert added.importance_override is False, "a ceiling is not a raise, and must not be counted as one"
+    assert _step_named(added.steps, "analysis")["importance_capped_from"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_an_uncapped_analysis_leaves_the_column_null() -> None:
+    """NULL has to mean "no ceiling fired", or the partial index and every
+    `IS NOT NULL` count above it are measuring noise."""
+    session = MagicMock()
+    session.begin_nested.return_value = AsyncMock()
+
+    await record_decision_trace(
+        session,
+        webhook_event_id=8,
+        source="grafana",
+        alert_name="DiskUsageHigh",
+        dedup=_dedup(),
+        final_analysis=_analysis(),  # type: ignore[arg-type]
+        noise=_noise(),
+        decision=ForwardDecision(True, None, False, matched_rules=[_rule("feishu")]),
+    )
+
+    assert session.add.call_args.args[0].importance_capped_from is None

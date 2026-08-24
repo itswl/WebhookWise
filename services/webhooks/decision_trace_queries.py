@@ -85,7 +85,14 @@ async def get_decision_trace_quality_stats(session: AsyncSession, period: str = 
     deliberately *proxy* metrics, not a true accuracy score:
     - route_breakdown: how judgments were produced (ai vs cache/reuse/rule/...).
     - override_rate: of fresh ``ai`` judgments, how often a deterministic rule
-      had to correct the AI's importance (the system disagreeing with the AI).
+      had to correct the AI's importance UPWARD (the system disagreeing with the
+      AI). Scoped to the ai route because a promotion only happens there.
+    - cap_rate: how often a per-rule CEILING lowered it, over ALL judgments — a
+      separate figure on purpose. The cap fires one layer above the analyzer so
+      it covers reuse and rechain too, which is why it cannot share
+      override_rate's ai-only denominator without exceeding 100%, and why
+      folding the two into one "the system disagreed" number would describe
+      neither. Production, one week: 89 capped rows, 81 on a non-ai route.
     - degraded / degraded_reasons: how often analysis fell back to rules, and why.
     - ai_importance_breakdown: importance distribution of fresh ``ai`` judgments
       (overall and per source) — surfaces "what is the AI tending to call this".
@@ -114,6 +121,32 @@ async def get_decision_trace_quality_stats(session: AsyncSession, period: str = 
         )
         or 0
     )
+
+    cap_rows = (
+        await session.execute(
+            select(
+                func.coalesce(DecisionTrace.alert_name, DecisionTrace.source),
+                DecisionTrace.importance_capped_from,
+                DecisionTrace.importance,
+                func.count(DecisionTrace.id),
+            )
+            .where(window, DecisionTrace.importance_capped_from.isnot(None))
+            .group_by(
+                func.coalesce(DecisionTrace.alert_name, DecisionTrace.source),
+                DecisionTrace.importance_capped_from,
+                DecisionTrace.importance,
+            )
+        )
+    ).all()
+    cap_total = sum(int(count) for *_, count in cap_rows)
+    # Keyed by rule because that is the unit an operator can act on: a ceiling
+    # that fires on everything is a rule whose severity was simply wrong, and one
+    # that never fires is a ceiling doing nothing.
+    cap_by_rule: dict[str, dict[str, int]] = {}
+    for rule, capped_from, importance, count in cap_rows:
+        transition = f"{capped_from or '?'} -> {importance or '?'}"
+        bucket = cap_by_rule.setdefault(str(rule or "unknown"), {})
+        bucket[transition] = bucket.get(transition, 0) + int(count)
 
     degraded_rows = (
         await session.execute(
@@ -168,6 +201,9 @@ async def get_decision_trace_quality_stats(session: AsyncSession, period: str = 
         "route_breakdown": route_breakdown,
         "override_count": ai_overrides,
         "override_rate": round(ai_overrides / ai_total * 100, 1) if ai_total else 0.0,
+        "cap_count": cap_total,
+        "cap_rate": round(cap_total / total * 100, 1) if total else 0.0,
+        "cap_by_rule": cap_by_rule,
         "degraded_total": degraded_total,
         "degraded_rate": round(degraded_total / total * 100, 1) if total else 0.0,
         "degraded_reasons": degraded_reasons,

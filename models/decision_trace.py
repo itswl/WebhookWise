@@ -52,6 +52,11 @@ class DecisionTrace(Base):
     #   degraded_reason  - why analysis fell back to rules (NULL = not degraded).
     route: Mapped[str | None] = mapped_column(String(20), index=True)
     importance_override: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # The importance the CEILING replaced (NULL unless a cap fired). Its
+    # counterpart above records a promotion; this records a demotion, and the two
+    # must stay separate columns because averaging them yields a number that
+    # describes neither. Read as `importance_capped_from` -> `importance`.
+    importance_capped_from: Mapped[str | None] = mapped_column(String(20))
     degraded_reason: Mapped[str | None] = mapped_column(String(200))
 
     # The silence rule that suppressed this alert (NULL unless skip_code="silenced").

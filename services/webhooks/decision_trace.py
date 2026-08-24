@@ -24,6 +24,7 @@ from models import DecisionTrace
 from services.dedup import DedupResult
 from services.webhooks.decisioning import ForwardDecision, normalize_importance
 from services.webhooks.types import (
+    ANALYSIS_IMPORTANCE_CAP,
     AnalysisResult,
     NoiseReductionContext,
     analysis_degraded_reason,
@@ -39,6 +40,22 @@ _IMPORTANCE_OVERRIDE_KEY = "_importance_override"
 
 def _has_importance_override(final_analysis: AnalysisResult) -> bool:
     return bool(final_analysis.get(_IMPORTANCE_OVERRIDE_KEY))
+
+
+def _importance_capped_from(final_analysis: AnalysisResult) -> str | None:
+    """The judgement a per-rule ceiling replaced, or None if none fired.
+
+    Deliberately NOT folded into _has_importance_override: that flag means the
+    system raised the AI's importance, this means it lowered it, and a panel that
+    reports them as one number reports neither. The cap also fires on routes the
+    override never sees (reuse, rechain), so the two are not even drawn from the
+    same population.
+    """
+    cap = final_analysis.get(ANALYSIS_IMPORTANCE_CAP)
+    if not isinstance(cap, dict):
+        return None
+    judged = str(cap.get("judged") or "").strip()
+    return judged[:20] or None
 
 
 def _degraded_reason_column(final_analysis: AnalysisResult) -> str | None:
@@ -79,6 +96,7 @@ def build_trace_steps(
             "degraded_reason": analysis_degraded_reason(final_analysis) or None,
             "importance_override": _has_importance_override(final_analysis),
             "importance_override_reason": final_analysis.get("_importance_override_reason") or None,
+            "importance_capped_from": _importance_capped_from(final_analysis),
         },
         {
             "step": "noise",
@@ -126,6 +144,7 @@ def build_decision_trace(
         is_periodic_reminder=decision.is_periodic_reminder,
         route=analysis_route(final_analysis, default="ai"),
         importance_override=_has_importance_override(final_analysis),
+        importance_capped_from=_importance_capped_from(final_analysis),
         degraded_reason=_degraded_reason_column(final_analysis),
         # Set only when this alert was silenced, so the per-rule ROI aggregate
         # (which silence suppressed how many) can GROUP BY an indexed column.

@@ -71,3 +71,111 @@ def test_unwrapped_aws_health_event_gets_an_identity() -> None:
     # eventTypeCode, not eventArn: the ARN is per-occurrence and would defeat dedup.
     assert identity["name"] == "aws_ses_enforcement_probation"
     assert identity["service"] == "ses"
+
+
+def test_a_sender_truncated_envelope_still_identifies_its_alert() -> None:
+    """A relay that cuts its own body at a fixed width leaves valid JSON and then
+    stops mid-token, so `json.loads` rejects everything — including the fields
+    that arrived intact. For an EventBridge envelope those are the identifying
+    ones, because they come first.
+
+    Production, four times since 2026-08-05: an AWS Health event listing many
+    affected RDS entities arrived cut to 4000 characters by `aws-sns-bypass/1.0`,
+    landed as source=unknown with an empty rule name, and was rated `low`. An
+    account-level notice, silently demoted, with no rule able to route it.
+    """
+    import json
+
+    from adapters.ecosystem_adapters import _unwrap_json_envelope
+
+    event = {
+        "version": "0",
+        "id": "c71e3229-c505-5939-f447-b5555998e4cb",
+        "detail-type": "AWS Health Event",
+        "source": "aws.health",
+        "account": "000000000000",
+        "region": "ap-southeast-1",
+        "detail": {"eventTypeCode": "AWS_RDS_MAINTENANCE_SCHEDULED", "affectedEntities": [{"entityValue": "arn:x"}]},
+    }
+    full = json.dumps(event)
+    truncated = full[: full.index('"detail"') + 40]
+
+    recovered = _unwrap_json_envelope({"text": truncated})
+
+    assert recovered["detail-type"] == "AWS Health Event", "the identifying fields arrived and must survive"
+    assert recovered["source"] == "aws.health"
+    assert recovered["region"] == "ap-southeast-1"
+    # The incomplete pair is dropped whole rather than half-parsed.
+    assert "detail" not in recovered
+
+
+def test_an_envelope_truncated_beyond_use_is_left_alone() -> None:
+    """A salvage that recovers nothing must leave the wrapper untouched, or a
+    caller cannot tell "truncated beyond use" from a real single-key document."""
+    from adapters.ecosystem_adapters import _unwrap_json_envelope
+
+    wrapper = {"text": '{"detail-type": "AWS Health Ev'}
+
+    assert _unwrap_json_envelope(wrapper) == wrapper
+
+
+def test_salvage_does_not_fire_on_a_document_that_merely_looks_wrapped() -> None:
+    """The three conditions still hold: a real alert with a `message` field keeps
+    its own shape, truncation handling or not."""
+    from adapters.ecosystem_adapters import _unwrap_json_envelope
+
+    alert = {"message": '{"a": 1, "b": 2', "severity": "high", "host": "db-1"}
+
+    assert _unwrap_json_envelope(alert) == alert
+
+
+def test_the_rule_identity_survives_a_cut_inside_the_detail_object() -> None:
+    """Stopping at the top level is not enough, and this is why.
+
+    `detect` on the aws_health adapter needs BOTH `source` and
+    `detail.eventTypeCode`, and `detail` is exactly the object a truncation lands
+    inside — the affected-entity list is what makes these documents long. Top
+    level alone recovers enough to say "an AWS Health event" and not enough to
+    say WHICH, so the adapter still would not match and the alert would still
+    arrive nameless.
+
+    Verified against the real event 1362 (cut to 4000 chars): source=aws_health,
+    RuleName=AWS_RDS_ENGINE_UPGRADE, where production had recorded
+    source=unknown, no rule name, importance low.
+    """
+    import json
+
+    from adapters.ecosystem_adapters import _unwrap_json_envelope
+
+    event = {
+        "version": "0",
+        "source": "aws.health",
+        "region": "ap-southeast-1",
+        "detail": {
+            "eventArn": "arn:aws:health:::event/RDS/x",
+            "service": "RDS",
+            "eventTypeCode": "AWS_RDS_ENGINE_UPGRADE",
+            "affectedEntities": [{"entityValue": "arn:aws:rds:ap-southeast-1:0:db:one"}],
+        },
+    }
+    full = json.dumps(event)
+    truncated = full[: full.index('"affectedEntities"') + 40]
+
+    recovered = _unwrap_json_envelope({"text": truncated})
+
+    assert recovered["source"] == "aws.health"
+    assert recovered["detail"]["eventTypeCode"] == "AWS_RDS_ENGINE_UPGRADE", "the rule identity must survive"
+    assert "affectedEntities" not in recovered["detail"], "the pair the cut fell inside is dropped whole"
+
+
+def test_salvage_recursion_is_bounded() -> None:
+    """A pathological document must not recurse without limit."""
+    from adapters.ecosystem_adapters import _MAX_SALVAGE_DEPTH, _unwrap_json_envelope
+
+    depth = _MAX_SALVAGE_DEPTH + 4
+    nested = '{"a": 1, "b": ' + '{"a": 1, "b": ' * depth + '"cut'
+
+    recovered = _unwrap_json_envelope({"text": nested, "other": "scalar"})
+
+    # It returns *something* without blowing the stack; how deep is the bound's business.
+    assert isinstance(recovered, dict)

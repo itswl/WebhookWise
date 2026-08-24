@@ -5,6 +5,7 @@ Handles normalization of various webhook sources into a standard format.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final, cast
@@ -72,6 +73,90 @@ def initialize_adapters() -> None:
 _ENVELOPE_KEYS: Final = ("text", "message", "body", "payload", "data")
 
 
+_MAX_SALVAGE_DEPTH: Final = 3
+
+
+def _salvage_trailing_object_pair(tail: str, *, depth: int) -> dict[str, Any] | None:
+    """Recover the complete pairs of the ONE incomplete pair a cut leaves behind.
+
+    The pairs before the cut are whole; the pair straddling it is not, and it is
+    often the one that matters. An AWS Health envelope carries its rule identity
+    at `detail.eventTypeCode`, and `detail` is exactly the object the truncation
+    lands inside — so stopping at the top level recovers enough to say "this is
+    an AWS Health event" and not enough to say WHICH, which is what the
+    aws_health adapter needs (`detect` requires both `source` and
+    `detail.eventTypeCode`).
+    """
+    match = re.match(r'\s*"([^"]+)"\s*:\s*(\{.*)\Z', tail, re.S)
+    if match is None:
+        return None
+    inner = _salvage_truncated_object(match.group(2), depth=depth)
+    return {match.group(1): inner} if inner else None
+
+
+def _salvage_truncated_object(text: str, *, depth: int = 0) -> dict[str, Any] | None:
+    """Parse the complete pairs of a JSON object that was cut short.
+
+    A relay that truncates its own body at a fixed width leaves valid JSON and
+    then stops mid-token. `json.loads` rejects the whole document, so every field
+    is lost — including the ones that arrived intact, which for an EventBridge
+    envelope are exactly the identifying ones because they come first.
+
+    Observed: an AWS Health event listing many affected RDS entities arrived cut
+    to 4000 characters by its sender, so it landed as source=unknown with an
+    empty rule name and was rated `low` — an account-level notice, silently
+    demoted, four times since 2026-08-05.
+
+    Walks the text tracking string state and depth, and cuts at the last comma
+    seen at depth 1: everything before it is a whole number of pairs, so closing
+    the brace there parses. The straddling pair is then recovered one level down
+    (bounded by _MAX_SALVAGE_DEPTH), because that is where the rule identity
+    lives. Returns None when nothing survives, which keeps "truncated beyond
+    use" distinguishable from "recovered".
+    """
+    if not text.startswith("{"):
+        return None
+    depth_level = 0
+    in_string = False
+    escaped = False
+    cut = -1
+    for index, char in enumerate(text):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and in_string:
+            escaped = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char in "{[":
+            depth_level += 1
+        elif char in "}]":
+            depth_level -= 1
+        elif char == "," and depth_level == 1:
+            cut = index
+    salvaged: dict[str, Any] = {}
+    if cut >= 0:
+        try:
+            parsed = json.loads(text[:cut] + "}")
+        except ValueError:
+            return None
+        if not isinstance(parsed, dict):
+            return None
+        salvaged = parsed
+        tail = text[cut + 1 :]
+    else:
+        tail = text[1:]
+    if depth < _MAX_SALVAGE_DEPTH:
+        pair = _salvage_trailing_object_pair(tail, depth=depth + 1)
+        if pair:
+            salvaged.update(pair)
+    return salvaged or None
+
+
 def _unwrap_json_envelope(data: dict[str, Any]) -> dict[str, Any]:
     """Unwrap a relay envelope such as SNS's `{"text": "<json>", "subject": …}`.
 
@@ -101,7 +186,27 @@ def _unwrap_json_envelope(data: dict[str, Any]) -> dict[str, Any]:
     try:
         inner = json.loads(value.strip())
     except ValueError:
-        return data
+        # The sender truncated its own body. Salvage the pairs that did arrive
+        # rather than discarding the document whole: the alternative is what
+        # production did for three weeks, which is rate an AWS account-level
+        # notice `low` because nothing could identify it.
+        salvaged = _salvage_truncated_object(value.strip())
+        if salvaged is None or len(salvaged) <= len(data):
+            logger.warning(
+                "[Adapter] %r envelope holds unparseable JSON and nothing complete could be "
+                "salvaged (%d chars); the sender is truncating its body",
+                key,
+                len(value),
+            )
+            return data
+        logger.warning(
+            "[Adapter] %r envelope was TRUNCATED by its sender at %d chars; recovered %d "
+            "complete top-level field(s) so the alert can still be identified",
+            key,
+            len(value),
+            len(salvaged),
+        )
+        return salvaged
     if not isinstance(inner, dict) or len(inner) <= len(data):
         return data
     logger.info("[Adapter] Unwrapped %r relay envelope before adapter matching", key)

@@ -47,6 +47,7 @@ def _trace(event_id: int, outcome: str, skip_code: str, **extra: Any) -> Decisio
         is_periodic_reminder=extra.get("is_periodic_reminder", False),
         route=extra.get("route", "ai"),
         importance_override=extra.get("importance_override", False),
+        importance_capped_from=extra.get("importance_capped_from"),
         degraded_reason=extra.get("degraded_reason"),
         silence_id=extra.get("silence_id"),
         matched_rules=extra.get("matched_rules", []),
@@ -483,3 +484,66 @@ async def test_list_carries_what_the_alert_was(session_factory: async_sessionmak
     row = next(item for item in items if item["webhook_event_id"] == 901)
     assert row["alert_name"] == "示例充值超限告警"
     assert row["alert_summary"] == "用户436293单次充值达500美元"
+
+
+@pytest.mark.asyncio
+async def test_quality_counts_the_ceiling_apart_from_the_raise(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """A ceiling that fires on reuse must be counted, and not as a raise.
+
+    Two bugs, one symptom. `override_count` reads a key the ceiling never writes
+    (`_importance_override` promotes; the cap writes `_importance_cap`), and the
+    query scopes itself to `route == 'ai'` while the cap deliberately sits one
+    layer up so it also covers reuse and rechain. Production, one week: 89 rows
+    capped, 81 of them on a non-ai route, and the panel reported 0.
+
+    So `cap_*` gets its own numerator AND its own denominator — every judgment,
+    not the ai-routed ones, or a cap firing mostly on reuse reads over 100%.
+    """
+    async with session_factory() as session:
+        session.add_all(
+            [
+                _trace(1, "forwarded", "none", route="ai", importance="high"),
+                _trace(2, "forwarded", "none", route="ai", importance_override=True, importance="high"),
+                # The shape the panel was blind to: capped, and not on the ai route.
+                _trace(
+                    3,
+                    "forwarded",
+                    "none",
+                    route="redis_reuse",
+                    importance="medium",
+                    importance_capped_from="high",
+                    alert_name="recharge-over-limit",
+                ),
+                _trace(
+                    4,
+                    "forwarded",
+                    "none",
+                    route="rechain",
+                    importance="medium",
+                    importance_capped_from="high",
+                    alert_name="recharge-over-limit",
+                ),
+                _trace(
+                    5,
+                    "skipped",
+                    "silenced",
+                    route="ai",
+                    importance="low",
+                    importance_capped_from="high",
+                    alert_name="datasource-no-data",
+                ),
+            ]
+        )
+        await session.commit()
+
+        stats = await get_decision_trace_quality_stats(session, period="day")
+
+    assert stats["cap_count"] == 3, "every capped row counts, whatever route produced it"
+    assert stats["cap_rate"] == 60.0, "the denominator is all judgments (3 of 5), not the ai-routed ones"
+    assert stats["override_count"] == 1, "a raise is still only counted on the ai route"
+    assert stats["cap_by_rule"] == {
+        "recharge-over-limit": {"high -> medium": 2},
+        "datasource-no-data": {"high -> low": 1},
+    }, "the transition is the readable unit: what the model said, and what the ceiling made it"

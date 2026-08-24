@@ -31,6 +31,11 @@ class DecisionTraceQualityData(BaseModel):
     route_breakdown: dict[str, int]
     override_count: int
     override_rate: float
+    # The ceiling's own numbers, kept apart from override_*: that pair counts
+    # promotions on the ai route, this counts demotions on every route.
+    cap_count: int
+    cap_rate: float
+    cap_by_rule: dict[str, dict[str, int]]
     degraded_total: int
     degraded_rate: float
     degraded_reasons: dict[str, int]

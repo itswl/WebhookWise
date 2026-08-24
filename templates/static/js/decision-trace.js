@@ -179,6 +179,11 @@ var DecisionTraceModule = (function () {
 
         var aiTotal = data.ai_total || 0;
         var overrideRate = data.override_rate || 0;
+        // The ceiling is a separate axis from the override: one raises what the
+        // model judged, the other lowers it, and its denominator is every
+        // judgment rather than the ai-routed ones — it fires on reuse and
+        // rechain too, so sharing a denominator would let it read over 100%.
+        var capRate = data.cap_rate || 0;
         var degradedRate = data.degraded_rate || 0;
 
         var html = '' +
@@ -192,6 +197,9 @@ var DecisionTraceModule = (function () {
                     '<div class="stat-card"' + (overrideRate > 0 ? ' style="border-left: 3px solid var(--warning);"' : '') + '><div class="stat-label">' + wwIcon('gauge') + ' ' + t('dt.quality.overrideRate') + '</div>' +
                         '<div class="stat-value" style="' + (overrideRate > 0 ? ' color: var(--warning);' : '') + '">' + overrideRate.toFixed(1) + '%</div>' +
                         '<div class="stat-trend">' + t('dt.quality.overrideTrend', { n: formatNumber(data.override_count || 0) }) + '</div></div>' +
+                    '<div class="stat-card"' + (capRate > 0 ? ' style="border-left: 3px solid var(--info);"' : '') + '><div class="stat-label">' + wwIcon('shield') + ' ' + t('dt.quality.capRate') + '</div>' +
+                        '<div class="stat-value" style="' + (capRate > 0 ? ' color: var(--info);' : '') + '">' + capRate.toFixed(1) + '%</div>' +
+                        '<div class="stat-trend">' + t('dt.quality.capTrend', { n: formatNumber(data.cap_count || 0) }) + '</div></div>' +
                     '<div class="stat-card"><div class="stat-label">' + wwIcon('activity') + ' ' + t('dt.quality.degradedRate') + '</div>' +
                         '<div class="stat-value">' + degradedRate.toFixed(1) + '%</div>' +
                         '<div class="stat-trend">' + t('dt.quality.degradedTrend', { n: formatNumber(data.degraded_total || 0) }) + '</div></div>' +
@@ -208,6 +216,25 @@ var DecisionTraceModule = (function () {
             html += '<div style="display:flex; flex-wrap:wrap; gap:0.5rem;">';
             Object.keys(reasons).sort(function (a, b) { return reasons[b] - reasons[a]; }).forEach(function (r) {
                 html += '<span class="badge badge-outline" style="font-size:0.75rem;">' + escapeHtml(r) + ' <strong>' + reasons[r] + '</strong></span>';
+            });
+            html += '</div>';
+        }
+
+        // Where the ceiling fires, as `judged -> capped` transitions. A ceiling
+        // that fires on everything is a rule whose configured severity is simply
+        // wrong; one that never fires is doing nothing.
+        var capByRule = data.cap_by_rule || {};
+        var cappedRules = Object.keys(capByRule);
+        if (cappedRules.length) {
+            html += '<div style="font-size: 0.9rem; font-weight: 600; margin: 1.25rem 0 0.5rem;">' + t('dt.quality.capByRule') + '</div>';
+            html += '<div style="display:flex; flex-wrap:wrap; gap:0.5rem;">';
+            cappedRules.sort();
+            cappedRules.forEach(function (rule) {
+                var transitions = capByRule[rule];
+                Object.keys(transitions).sort().forEach(function (move) {
+                    html += '<span class="badge badge-outline" style="font-size:0.75rem;">' + escapeHtml(rule)
+                        + ' <span class="ww-muted">' + escapeHtml(move) + '</span> <strong>' + transitions[move] + '</strong></span>';
+                });
             });
             html += '</div>';
         }
