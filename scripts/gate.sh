@@ -46,6 +46,13 @@ python scripts/check_requirements_locks.py
 step "agent notes"
 python scripts/assert_agent_notes.py
 
+step "skill pointers"
+# This repo has no .claude/ — Codex and hookprobe read .agents/skills directly,
+# and Claude Code needs a per-machine symlink that no clone inherits. Reports and
+# continues: a missing link in somebody's HOME is not a broken repository, and a
+# gate that blocks a push over it teaches people to skip the gate. Skipped in CI.
+python3 scripts/assert_skill_pointers.py
+
 step "estate identifiers"
 # This repository is public: no real project, bucket, service, team handle,
 # hostname or webhook token may appear in it.

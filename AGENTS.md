@@ -15,53 +15,56 @@ WebhookWise is a single Python service with FastAPI HTTP entrypoints, TaskIQ wor
 - `models/`, `schemas/`, `db/`: persistence and API data contracts.
 - `templates/`: dashboard HTML/CSS/JS.
 
-Agent material lives in ONE place: `.agents/`. It was three directories until
-2026-08-25, and each step of the merge was decided by measurement rather than
-taste.
+Agent material lives in ONE directory: `.agents/`. There is no `.claude/` and no
+`.codex/` in this repository. Getting here took four passes and each one was
+settled by measurement rather than argument; the measurements are kept below
+because the next person will want to undo this.
 
 - `.agents/notes/` — decision records, read by people, shape-checked by
   `scripts/assert_agent_notes.py`, which the gate runs.
-- `.agents/skills/` — the real operator skills.
-- `.claude/skills` — a SYMLINK to the above, and the only vendor path left.
+- `.agents/skills/` — the operator skills, the only copy.
 
-`strings` on both installed CLIs is what settled the shape:
-
-| discovery path | Claude Code | Codex |
-| --- | --- | --- |
-| `.claude/skills` | 104 references | — |
-| `.agents/skills` | none | yes |
-
-Codex reads the neutral path natively — the same binary lists
-`.agents/plugins/marketplace.json` beside `.claude-plugin/` and
+**Codex needs nothing.** It reads `.agents/skills` natively — the binary also
+lists `.agents/plugins/marketplace.json` beside `.claude-plugin/` and
 `.cursor-plugin/`, so `.agents/` is a cross-tool convention now, the way
-AGENTS.md became one. `.codex/` was therefore deleted outright rather than kept
-as a pointer.
+AGENTS.md became one.
 
-Claude Code has no configurable skills path (the binary carries `skillsDirs`
-internally; the exposed settings are `disableBundledSkills` and friends), so
-`.claude/skills` has to exist. That it can be a symlink was PROVED rather than
-assumed: a probe skill in a scratch directory behind a symlinked
-`.claude/skills` showed up in a fresh session's skill list. Before that test this
-guide said the inversion would be "a gamble", and it was right to until somebody
-ran it.
+**Claude Code needs a pointer, and it cannot live here.** Measured on the
+installed binary: 104 references to `.claude/skills`, none to `.agents/skills`;
+every skills-related environment variable is a *disable* switch; and the plugin
+route needs `extraKnownMarketplaces`, which the setting's own description says
+belongs in a repository `.claude/settings.json`. There is no project-level
+discovery path that avoids `.claude/`.
 
-Two details that bite:
+So the pointer is per-machine instead. One symlink per skill:
 
-- **`.gitignore` needs `!.claude/skills` with NO trailing slash.** The old
-  `!.claude/skills/` matched a directory only, so the moment this became a
-  symlink it was silently ignored again and the pointer would not have shipped.
-  Git tracks it as mode 120000; a clone with `core.symlinks=false` gets a text
-  file instead.
-- **hookprobe bind-mounts the skills tree** read-only as its user skills layer,
-  via `HOOKPROBE_USER_SKILLS` in the stack env. That points at `.agents/skills`
-  now. Docker would have resolved the symlink, but a mount that depends on a
-  link resolving is a mount nobody can reason about during an incident.
+```bash
+mkdir -p ~/.claude/skills
+for s in .agents/skills/*/; do ln -sfn "$PWD/$s" ~/.claude/skills/"$(basename "$s")"; done
+```
 
-Nothing else belongs in `.claude/`. A local prompt file lived in
-`.claude/prompts/` until 2026-08-24 telling an agent to hand-pick four local
-checks and to `git add -A`, both of which this guide forbids, and it carried the
-production IP and path in the working tree where the estate guard cannot see it
-— the guard reads `git ls-files`, so an ignored file is invisible to it.
+Verified after doing exactly that: a fresh session in this repository, with no
+`.claude/` in it at all, lists all four `ww-*` skills. The files still version
+with the service they drive, which was the whole point of keeping them in-repo.
+
+A document is read once, so the gate says it too. `scripts/assert_skill_pointers.py`
+runs in `scripts/gate.sh` and reports any skill in `.agents/skills` with no
+pointer, a pointer into a DIFFERENT checkout, or a pointer left aiming at
+nothing after a rename. It prints the loop above and returns 0: a missing symlink
+in one person's home directory is not a broken repository, and a gate that blocks
+a push over somebody else's HOME teaches people to skip the gate. `--strict`
+makes it fail for whoever decides otherwise, and CI is detected and skipped
+because CI has no business owning these links.
+
+The failure it is really there for is not a fresh clone. It is somebody ADDING a
+skill six weeks from now, never linking it, and wondering why the new one is
+invisible while the old four work.
+
+**hookprobe mounts `.agents/skills`** read-only as its user skills layer, via
+`HOOKPROBE_USER_SKILLS` in the stack env — the real directory, not a symlink
+pointing at it. Docker resolves a symlinked source fine, but a mount whose
+correctness depends on a link resolving is one nobody can reason about
+mid-incident.
 
 ## Local Commands
 
