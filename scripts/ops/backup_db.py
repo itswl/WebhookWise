@@ -74,6 +74,40 @@ def resolve_backup_dir() -> Path:
     return base
 
 
+def write_versions(backup_path: Path, target: DatabaseTarget) -> Path:
+    """Record which pg_dump wrote this archive, and which server it came from.
+
+    Custom-format archives are not backward compatible: a 17.x pg_dump writes a
+    header a 15.x pg_restore refuses outright ("unsupported version (1.16) in
+    file header"). Rehearsed on 2026-08-25 against this deployment, where the
+    application image carries client 17 and the server is 15 — the restore
+    everyone reaches for first, from inside the database container, cannot read
+    its own backup.
+
+    So the dump says what produced it, beside the checksum that says it is
+    intact. Intact and readable are different questions and only one of them was
+    being answered.
+    """
+    client = "unknown"
+    try:
+        # B607 partial path: same as the dump call itself a few lines down, which
+        # also invokes bare "pg_dump". Pinning an absolute path here would make the
+        # provenance probe more brittle than the thing it describes.
+        proc = subprocess.run(  # nosec B603 B607 - fixed argv, no shell
+            ["pg_dump", "--version"], capture_output=True, text=True, check=False, timeout=15
+        )
+        client = (proc.stdout or proc.stderr).strip() or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    path = backup_path.with_suffix(backup_path.suffix + ".versions")
+    path.write_text(
+        f"pg_dump: {client}\nserver: {target.host}:{target.port}/{target.database}\n"
+        "restore with the SAME client family or newer; an older pg_restore will refuse the header\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 def retention_days() -> int:
     try:
         return max(1, int(_env("BACKUP_RETENTION_DAYS", "30")))
@@ -214,11 +248,13 @@ def run_backup(*, verbose: bool = False) -> Path:
         raise BackupError("pg_dump completed but did not produce a non-empty backup file")
 
     checksum_path = write_checksum(backup_path)
+    versions_path = write_versions(backup_path, target)
     if verbose:
         elapsed = time.monotonic() - started
         size_mb = backup_path.stat().st_size / (1024 * 1024)
         print(f"Backup completed: {backup_path.name} ({size_mb:.1f} MiB, {elapsed:.1f}s)")
         print(f"Checksum saved to: {checksum_path}")
+        print(f"Versions saved to: {versions_path}")
     return backup_path
 
 

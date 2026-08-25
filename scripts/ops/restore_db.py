@@ -7,6 +7,24 @@ Verifies the .sha256 checksum (unless --no-verify), then runs pg_restore with
 --clean --if-exists into the database named in DATABASE_URL. Because this DROPs
 and recreates objects, it requires an explicit confirmation (--yes or an
 interactive y/N prompt) so it cannot be run by accident.
+
+RUN THIS FROM THE APPLICATION IMAGE, NOT FROM THE DATABASE CONTAINER.
+
+The dump is custom-format, written by whatever pg_dump the application image
+carries. That is currently 17.x while the server is 15.x, and a newer pg_dump
+writes an archive header a 15.x pg_restore refuses outright:
+
+    pg_restore: error: unsupported version (1.16) in file header
+
+Rehearsed on 2026-08-25: `docker exec webhook-postgres pg_restore ...` — the
+command anyone reaches for first, because the database is right there — fails
+completely, while the same dump restores from this image with one ignored
+warning (`SET transaction_timeout`, a parameter 15 does not know). Every table
+matched afterwards.
+
+So the backup is only as restorable as the client you reach for, and the one
+that looks obvious is the one that cannot read it. backup_db.py writes a
+`.versions` file next to each dump saying which client produced it.
 """
 
 from __future__ import annotations
