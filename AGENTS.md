@@ -15,22 +15,47 @@ WebhookWise is a single Python service with FastAPI HTTP entrypoints, TaskIQ wor
 - `models/`, `schemas/`, `db/`: persistence and API data contracts.
 - `templates/`: dashboard HTML/CSS/JS.
 
-Three dot-directories carry agent material, and each one is load-bearing — the
-question "why not merge them" has a different answer in each case, so none of
-them is tidy-up material:
+Agent material lives in ONE place: `.agents/`. It was three directories until
+2026-08-25, and each step of the merge was decided by measurement rather than
+taste.
 
-- `.agents/` — decision records, read by people, no tool reads them. Shape
-  enforced by `scripts/assert_agent_notes.py`, which the gate runs.
-- `.claude/skills/` — the ONE real copy of the operator skills. It sits under a
-  vendor name because that path is a deployment contract, not a preference:
-  hookprobe bind-mounts it read-only as `/data/home/.claude/skills`, its user
-  skills layer. `.gitignore` carves it out with `.claude/*` + `!.claude/skills/`
-  so local Claude state stays out while the skills tree ships. Moving it means
-  editing hookprobe's compose in the same change; the reasoning is written up in
-  `.agents/notes/implemented/2026-08-17-skills-live-in-repo-guide-is-a-destination.md`.
-- `.codex/skills` — a symlink to the above, so the installed Codex CLI sees the
-  same skills. A tracked symlink, so a clone with `core.symlinks=false` gets a
-  text file instead of a directory.
+- `.agents/notes/` — decision records, read by people, shape-checked by
+  `scripts/assert_agent_notes.py`, which the gate runs.
+- `.agents/skills/` — the real operator skills.
+- `.claude/skills` — a SYMLINK to the above, and the only vendor path left.
+
+`strings` on both installed CLIs is what settled the shape:
+
+| discovery path | Claude Code | Codex |
+| --- | --- | --- |
+| `.claude/skills` | 104 references | — |
+| `.agents/skills` | none | yes |
+
+Codex reads the neutral path natively — the same binary lists
+`.agents/plugins/marketplace.json` beside `.claude-plugin/` and
+`.cursor-plugin/`, so `.agents/` is a cross-tool convention now, the way
+AGENTS.md became one. `.codex/` was therefore deleted outright rather than kept
+as a pointer.
+
+Claude Code has no configurable skills path (the binary carries `skillsDirs`
+internally; the exposed settings are `disableBundledSkills` and friends), so
+`.claude/skills` has to exist. That it can be a symlink was PROVED rather than
+assumed: a probe skill in a scratch directory behind a symlinked
+`.claude/skills` showed up in a fresh session's skill list. Before that test this
+guide said the inversion would be "a gamble", and it was right to until somebody
+ran it.
+
+Two details that bite:
+
+- **`.gitignore` needs `!.claude/skills` with NO trailing slash.** The old
+  `!.claude/skills/` matched a directory only, so the moment this became a
+  symlink it was silently ignored again and the pointer would not have shipped.
+  Git tracks it as mode 120000; a clone with `core.symlinks=false` gets a text
+  file instead.
+- **hookprobe bind-mounts the skills tree** read-only as its user skills layer,
+  via `HOOKPROBE_USER_SKILLS` in the stack env. That points at `.agents/skills`
+  now. Docker would have resolved the symlink, but a mount that depends on a
+  link resolving is a mount nobody can reason about during an incident.
 
 Nothing else belongs in `.claude/`. A local prompt file lived in
 `.claude/prompts/` until 2026-08-24 telling an agent to hand-pick four local

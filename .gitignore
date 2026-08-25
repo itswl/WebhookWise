@@ -42,10 +42,15 @@ openclaw-main/
 
 # Local virtualenv
 .venv/
-# Keep local Claude state out, but ship the agent skills library
-# (.claude/skills/) — hookprobe mounts it read-only as its user skills layer.
+# Keep local Claude state out, but ship the skills pointer. The real tree lives
+# in .agents/skills; .claude/skills is a symlink to it, because Claude Code has
+# no configurable skills path.
+#
+# No trailing slash on the negation. `!.claude/skills/` only ever matched a
+# DIRECTORY, so the moment this became a symlink it was silently ignored again
+# and the pointer would not have shipped.
 .claude/*
-!.claude/skills/
+!.claude/skills
 
 # The alertmanager bypass receiver's URL: a chat webhook token, written by the
 # deploy from ALERT_BYPASS_WEBHOOK_URL. Ignored by class, not by exact name — a
