@@ -9,8 +9,24 @@
 
 name: webhookwise-observability
 
+# Container log rotation. Docker's json-file driver has NO default limit, so every
+# container here grows a log file until the disk fills. Measured on the production
+# host: 2.5 GB of container logs, loki at 15 MB/day and pyroscope at 13 MB/day —
+# the log aggregator's own logs were the second-largest log file on the box, and
+# 63% of Grafana's lines were one message repeating every 30 seconds.
+#
+# 10m x 3 caps each service at 30 MB. Kept small deliberately: these files are the
+# copy of last resort. Alloy already ships logs to Loki, so anything worth keeping
+# is kept there, and what remains here is what you read when Loki is what broke.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   alloy:
+    logging: *default-logging
     image: ${ALLOY_IMAGE:-grafana/alloy:v1.16.1}
     restart: unless-stopped
     user: "0:0"
@@ -42,6 +58,7 @@ services:
       - webhook_net
 
   prometheus:
+    logging: *default-logging
     image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.11.3}
     restart: unless-stopped
     command:
@@ -64,6 +81,7 @@ services:
       - hookstack_net
 
   alertmanager:
+    logging: *default-logging
     image: ${ALERTMANAGER_IMAGE:-prom/alertmanager:v0.32.1}
     restart: unless-stopped
     command:
@@ -82,6 +100,7 @@ services:
   # the dead namespace and silently stops observing — restart it:
   #   docker compose --profile diagnostics restart beyla
   beyla:
+    logging: *default-logging
     image: ${BEYLA_IMAGE:-grafana/beyla:3.15.0}
     restart: unless-stopped
     profiles:
@@ -103,6 +122,7 @@ services:
       - webhook_net
 
   k6:
+    logging: *default-logging
     image: ${K6_IMAGE:-grafana/k6:2.0.0}
     profiles:
       - load
@@ -123,6 +143,7 @@ services:
       - webhook_net
 
   pyroscope:
+    logging: *default-logging
     image: ${PYROSCOPE_IMAGE:-grafana/pyroscope:2.0.2}
     restart: unless-stopped
     profiles:
@@ -136,6 +157,7 @@ services:
       - webhook_net
 
   tempo:
+    logging: *default-logging
     image: ${TEMPO_IMAGE:-grafana/tempo:2.10.5}
     restart: unless-stopped
     profiles:
@@ -151,6 +173,7 @@ services:
       - webhook_net
 
   loki:
+    logging: *default-logging
     image: ${LOKI_IMAGE:-grafana/loki:3.7.2}
     restart: unless-stopped
     command: ["-config.file=/etc/loki/local-config.yml"]
@@ -163,6 +186,7 @@ services:
       - webhook_net
 
   grafana:
+    logging: *default-logging
     image: ${GRAFANA_IMAGE:-grafana/grafana:13.0.1}
     restart: unless-stopped
     environment:

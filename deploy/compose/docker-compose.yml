@@ -40,8 +40,24 @@ networks:
   hookstack_net:
     name: hookstack_net
 
+# Container log rotation. Docker's json-file driver has NO default limit, so every
+# container here grows a log file until the disk fills. Measured on the production
+# host: 2.5 GB of container logs, loki at 15 MB/day and pyroscope at 13 MB/day —
+# the log aggregator's own logs were the second-largest log file on the box, and
+# 63% of Grafana's lines were one message repeating every 30 seconds.
+#
+# 10m x 3 caps each service at 30 MB. Kept small deliberately: these files are the
+# copy of last resort. Alloy already ships logs to Loki, so anything worth keeping
+# is kept there, and what remains here is what you read when Loki is what broke.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   migrate:
+    logging: *default-logging
     build:
       context: ../..
     container_name: webhook-migrate
@@ -63,6 +79,7 @@ services:
       - webhook_net
 
   webhook-service:
+    logging: *default-logging
     build:
       context: ../..
     container_name: webhook-receiver
@@ -137,6 +154,7 @@ services:
       - hookstack_net
 
   worker:
+    logging: *default-logging
     build:
       context: ../..
     # No fixed container_name here: this service is intended to scale horizontally.
@@ -196,6 +214,7 @@ services:
       - hookstack_net
 
   scheduler:
+    logging: *default-logging
     build:
       context: ../..
     container_name: webhook-scheduler
@@ -250,6 +269,7 @@ services:
   # a host-mounted directory, then pruning per BACKUP_RETENTION_DAYS. Disabled
   # by default unless started explicitly: `docker compose --profile backup up -d`.
   backup:
+    logging: *default-logging
     build:
       context: ../..
     container_name: webhook-backup

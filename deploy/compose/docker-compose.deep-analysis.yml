@@ -21,18 +21,36 @@
 #
 # Listing `webhook_net` again is required: naming any network for a service
 # opts it out of every network it is not listed on.
+# Container log rotation. Docker's json-file driver has NO default limit, so every
+# container here grows a log file until the disk fills. Measured on the production
+# host: 2.5 GB of container logs, loki at 15 MB/day and pyroscope at 13 MB/day —
+# the log aggregator's own logs were the second-largest log file on the box, and
+# 63% of Grafana's lines were one message repeating every 30 seconds.
+#
+# 10m x 3 caps each service at 30 MB. Kept small deliberately: these files are the
+# copy of last resort. Alloy already ships logs to Loki, so anything worth keeping
+# is kept there, and what remains here is what you read when Loki is what broke.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   webhook-service:
+    logging: *default-logging
     networks:
       - webhook_net
       - deep_analysis
 
   worker:
+    logging: *default-logging
     networks:
       - webhook_net
       - deep_analysis
 
   scheduler:
+    logging: *default-logging
     networks:
       - webhook_net
       - deep_analysis
