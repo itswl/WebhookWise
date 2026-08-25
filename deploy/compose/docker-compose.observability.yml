@@ -3,6 +3,20 @@
 #
 # Then start observability in a separate Compose project:
 #   docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml up -d
+# BEFORE FIRST START, write the alertmanager bypass file. Its chat-direct
+# receiver reads a URL from a FILE, not an env var: alertmanager does not expand
+# dollar-brace references in its config and Compose does not substitute inside a
+# bind-mounted file, so the env form was read literally and it refused to start
+# with `unsupported scheme ""`. It survived three weeks on a config loaded before
+# that change and died the next time it was recreated.
+#
+#   printf '%s' "$ALERT_BYPASS_WEBHOOK_URL" > deploy/observability/alertmanager/bypass-url
+#   chmod 644 deploy/observability/alertmanager/bypass-url
+#
+# Git-ignored: it carries a chat webhook token. Missing, Docker creates a
+# directory there and alertmanager crash-loops — loud, which is the right failure
+# for a bypass route that exists for the outage nobody would notice a quiet one in.
+#
 # Add --profile diagnostics only while investigating traces, profiles, or eBPF signals:
 #   docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile diagnostics up -d
 #   docker compose -p webhookwise-observability --env-file .env -f deploy/compose/docker-compose.observability.yml --profile load run --rm k6
@@ -89,6 +103,11 @@ services:
       - --storage.path=/alertmanager
     volumes:
       - ../../deploy/observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Written by the deploy from ALERT_BYPASS_WEBHOOK_URL; git-ignored because
+      # it carries a chat webhook token. If it is missing Docker creates a
+      # DIRECTORY here and alertmanager refuses to start — loud, which is the
+      # right failure for a bypass path, but create the file before deploying.
+      - ../../deploy/observability/alertmanager/bypass-url:/etc/alertmanager/bypass-url:ro
       - alertmanager_data:/alertmanager
     ports:
       - "9093:9093"

@@ -18,10 +18,21 @@ route:
 
 receivers:
   # Direct to the chat bot: no relay, no brain, nothing that could be the
-  # thing that broke. Set ALERT_BYPASS_WEBHOOK_URL in the stack env.
+  # thing that broke.
+  #
+  # url_file, not a dollar-brace reference. Alertmanager does not expand
+  # environment variables in its config and compose does not substitute inside a
+  # bind-mounted file, so that form was read literally and rejected — "unsupported
+  # scheme" — which meant this container could not start at all. It survived on a
+  # configuration loaded before the change and died the next time it was
+  # recreated, three weeks later. A bypass path is exactly the thing that must
+  # not be discovered broken during the outage it exists for.
+  #
+  # The file holds a chat webhook token, so it is git-ignored and written by the
+  # deploy from ALERT_BYPASS_WEBHOOK_URL. See deploy/observability/README.md.
   - name: chat-direct
     webhook_configs:
-      - url: ${ALERT_BYPASS_WEBHOOK_URL}
+      - url_file: /etc/alertmanager/bypass-url
         send_resolved: true
         max_alerts: 5
 

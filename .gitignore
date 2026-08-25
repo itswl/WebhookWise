@@ -47,6 +47,11 @@ openclaw-main/
 .claude/*
 !.claude/skills/
 
+# The alertmanager bypass receiver's URL: a chat webhook token, written by the
+# deploy from ALERT_BYPASS_WEBHOOK_URL. Ignored by class, not by exact name — a
+# .bak of a credential file is the same credential.
+deploy/observability/alertmanager/bypass-url*
+
 # hookrelay scrape credential (per host)
 deploy/observability/prometheus/hookrelay.token
 deploy/observability/prometheus/hookjudge.token
