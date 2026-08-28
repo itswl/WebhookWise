@@ -16,6 +16,11 @@ Alertmanager、飞书、或任何能 POST JSON 的东西归一化,逐条判断,�
 
 自托管、MIT、一条 `docker compose up`。
 
+它已经先后在**两家公司的生产环境跑了 8 个月**,累计处理上万条真实告警。下面的
+截图和成本数字都取自当前在跑的这套环境,不是 benchmark,也不是 demo 种子数据。
+
+![总览:一屏看健康度](docs/img/01-overview.png)
+
 ## 它自己暴露出来的那个问题
 
 每个告警工具都说自己降噪。这个能拿出证据说明降没降。
@@ -39,6 +44,20 @@ high,脚本就拒绝建议降级,因为那种噪音必须靠把告警做得更�
 
 这就是整个项目的形状:一个决定、一份「为什么」的记录、以及一条事后发现这个决定
 错了的路径。
+
+![决策链:每一次「拦下」都有答案](docs/img/02-decision-trace.png)
+
+## 它花多少钱,又省下多少
+
+八道抑制闸门站在告警和人之间——去重、静默、维护窗、风暴抑制、冷却、预算——
+而**每一次「拦下」都有记录**,所以一条静默规则可以被打分,而不是被信任。降噪中心
+把这些记录读回来算成每条规则的 ROI:拦了多少、省了多少分钟、哪条是僵尸规则
+(90 天零匹配)。新规则上线前先对历史数据回测。
+
+线上环境上周的真实账单:**AI 花费 $5.55,靠缓存复用和「抑制已经答过的告警不再付费」
+省下 $9.95**。廉价通道才是默认路径,AI 是那少数昂贵告警自己挣来的。
+
+![降噪中心:每条静默规则都有 ROI](docs/img/03-noise-center.png)
 
 ## 五分钟上手
 
@@ -97,6 +116,26 @@ python scripts/seed_demo_data.py --base-url http://localhost:8000
 | 看 API | 启动后访问 `http://localhost:8000/docs`;导出说明见 [docs/reference/api.md](docs/reference/api.md) |
 | 部署 | [Compose](deploy/compose/README.md) · [Kubernetes](deploy/k8s/README.md) |
 | 参与开发 | [CONTRIBUTING.md](CONTRIBUTING.md) · [CHANGELOG.md](CHANGELOG.md) |
+
+## 给 Agent 的一等公民接口:只读 MCP Server
+
+读侧通过 Model Context Protocol 暴露——**20 个工具**、一份使用指南资源和调查提示词
+——任何 MCP 客户端(Claude Code、Cursor、你自己的 Agent)都能一条命令直接查询:
+
+```bash
+claude mcp add --transport http webhookwise \
+  https://<your-host>/mcp/ \
+  --header "Authorization: Bearer <API_KEY>"
+```
+
+接上之后可以直接问:「为什么 #923 没通知我?」「这个班发生了什么?」「哪些规则
+可以删了?」——这些正是这套账本被建出来要回答、但没人愿意在仪表盘上一路点开去
+拼凑的问题。仓库里带了四个现成技能([`.agents/skills/`](.agents/skills/)):
+单条告警全链路调查、交接班简报、降噪审计、可观测性排查。
+
+**刻意只读。** Agent 在这里调用的任何东西都不会改变这个部署的行为。唯一的写是
+`propose_remediation`,它只记录一条待批提案、不执行任何东西——由持有写凭据的人
+通过仪表盘同一条有审计的路径批准。完整参考:[docs/reference/mcp.md](docs/reference/mcp.md)。
 
 ## 社区
 
