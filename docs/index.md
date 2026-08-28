@@ -1,3 +1,10 @@
+---
+title: WebhookWise
+description: Self-hosted alert intelligence between your monitoring and your chat — and a decision trace that can explain every notification, or its absence.
+---
+
+**English** · [中文](zh/)
+
 WebhookWise sits between your monitoring and your chat. It normalizes events
 from Prometheus, Grafana, Alertmanager, Feishu or anything that can POST JSON,
 judges each one, decides who to tell — and records why, so *"why didn't I get
