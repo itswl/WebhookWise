@@ -13,7 +13,7 @@ Alertmanager、飞书、或任何能 POST JSON 的东西归一化,逐条判断,�
 自托管、MIT、一条 `docker compose up`。→
 **[github.com/itswl/WebhookWise](https://github.com/itswl/WebhookWise)**
 
-![总览:一屏看健康度](../img/01-overview.png)
+![总览:一屏看健康度](../img/zh/01-overview.png)
 
 ---
 
@@ -37,7 +37,7 @@ Alertmanager、飞书、或任何能 POST JSON 的东西归一化,逐条判断,�
 这就是整个项目的形状:**一个决定、一份「为什么」的记录、以及一条事后发现这个决定
 错了的路径。**
 
-![决策链:每一次「拦下」都有答案](../img/02-decision-trace.png)
+![决策链:每一次「拦下」都有答案](../img/zh/02-decision-trace.png)
 
 ---
 
@@ -48,10 +48,9 @@ Alertmanager、飞书、或任何能 POST JSON 的东西归一化,逐条判断,�
 读回来算成每条规则的 ROI:拦了多少、省了多少分钟、哪条是僵尸规则(90 天零匹配)。
 新规则上线前先对历史数据回测。
 
-线上环境上周的真实账单:**AI 花费 $5.55,靠缓存复用和「抑制已经答过的告警不再付费」
-省下 $9.95**。
+廉价通道才是默认路径,AI 是那少数昂贵告警自己挣来的。
 
-![降噪中心:每条静默规则都有 ROI](../img/03-noise-center.png)
+![降噪中心:每条静默规则都有 ROI](../img/zh/03-noise-center.png)
 
 ---
 
@@ -73,7 +72,7 @@ claude mcp add --transport http webhookwise \
 **刻意只读** —— Agent 在这里调用的任何东西都不会改变这个部署的行为。唯一的写只是
 记录一条待批提案,必须由持有写凭据的人批准。
 
-![事故列表:相关告警自动聚合](../img/04-incidents.png)
+![事故列表:相关告警自动聚合](../img/zh/04-incidents.png)
 
 ---
 
@@ -87,7 +86,7 @@ claude mcp add --transport http webhookwise \
 刻意不做:值班表和状态页。那是 Grafana OnCall 和状态页服务的地盘,把告警的「守门人」
 这一件事做好就够了。
 
-![内置教程页:一条告警的旅程](../img/06-guide.png)
+![内置教程页:一条告警的旅程](../img/zh/06-guide.png)
 
 ---
 
