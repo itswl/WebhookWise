@@ -14,7 +14,7 @@ paged?"* has an answer that is not a guess.
 Self-hosted, MIT, one `docker compose up`. →
 **[github.com/itswl/WebhookWise](https://github.com/itswl/WebhookWise)**
 
-![The dashboard](img/01-overview.png)
+![The dashboard](img/en/01-overview.png)
 
 ---
 
@@ -41,7 +41,7 @@ that noise has to be fixed by making the alert more specific, not by muting it.
 That is the shape of the whole project: **a decision, a record of why, and a way
 to find out afterwards that the decision was wrong.**
 
-![The decision trace](img/02-decision-trace.png)
+![The decision trace](img/en/02-decision-trace.png)
 
 ---
 
@@ -54,10 +54,9 @@ as ROI per rule: what each one caught, how many minutes it bought, and which
 rules are zombies (ninety days, zero matches). New rules are backtested against
 history before they go live.
 
-Last week on the live deployment: **$5.55 of model spend, $9.95 saved** by cache
-reuse and by not paying for alerts suppression had already answered.
+The cheaper path is the default one; AI is what the expensive minority earns.
 
-![The noise centre](img/03-noise-center.png)
+![The noise centre](img/en/03-noise-center.png)
 
 ---
 
@@ -79,7 +78,7 @@ investigation, shift handover, noise audit, observability triage.
 Deliberately read-only — nothing an agent calls changes what the deployment
 does. The one write records an inert proposal that an operator must approve.
 
-![Incidents](img/04-incidents.png)
+![Incidents](img/en/04-incidents.png)
 
 ---
 
@@ -93,7 +92,7 @@ does. The one write records an inert proposal that an operator must approve.
 Deliberately not built: on-call schedules and status pages. That is Grafana
 OnCall's ground and a status-page service's ground. This does the gatekeeping.
 
-![The built-in guide](img/06-guide.png)
+![The built-in guide](img/en/06-guide.png)
 
 ---
 

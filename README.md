@@ -15,7 +15,7 @@ paged?" has an answer that is not a guess.
 Self-hosted, MIT, one `docker compose up`.
 
 
-![The dashboard: how the gateway itself is doing, on one screen](docs/img/01-overview.png)
+![The dashboard: how the gateway itself is doing, on one screen](docs/img/en/01-overview.png)
 
 ## The problem it turned out to have
 
@@ -45,9 +45,9 @@ noise has to be fixed by making the alert more specific, not by muting it.
 That is the shape of the whole project: a decision, a record of why, and a way
 to find out afterwards that the decision was wrong.
 
-![The decision trace: which gate stopped it, and which rule fired](docs/img/02-decision-trace.png)
+![The decision trace: which gate stopped it, and which rule fired](docs/img/en/02-decision-trace.png)
 
-## What it costs, and what it saves
+## Suppression you can audit
 
 Eight suppression gates stand between an alert and a person — dedup, silence,
 maintenance window, storm, cooldown, budget — and **every stop is recorded**, so
@@ -56,11 +56,9 @@ records back as ROI per rule: how much each one caught, how many minutes it
 bought, and which rules are zombies (ninety days, zero matches). A new rule is
 backtested against history before it goes live.
 
-Last week on the live deployment: **$5.55 of model spend, $9.95 saved** by cache
-reuse and by not paying for alerts that suppression had already answered. The
-cheaper path is the default one; AI is what the expensive minority earns.
+The cheaper path is the default one; AI is what the expensive minority earns.
 
-![The noise centre: every silence rule scored, with its ROI](docs/img/03-noise-center.png)
+![The noise centre: every silence rule scored, with its ROI](docs/img/en/03-noise-center.png)
 
 ## Quick start
 
