@@ -284,6 +284,70 @@ function recordDestination(slug) {
     }
 }
 
+/**
+ * A destination that looks like `slug`, or '' — for "did you mean" on a typo.
+ *
+ * Edit distance only, and deliberately not a synonym table: `#/parameters` was a
+ * real miss for Runtime Settings and no string metric would ever have guessed
+ * `settings` from it. Pretending otherwise would put a confident wrong suggestion
+ * in front of somebody who is already lost.
+ */
+function nearestDestination(slug) {
+    // Correct standalone, not just at the one call site that guards it: an empty
+    // slug is two edits from a two-letter destination, so without this it would
+    // confidently suggest `kb` to somebody who typed nothing at all.
+    if (!slug) return '';
+    const distance = (a, b) => {
+        const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+        for (let i = 1; i <= a.length; i += 1) {
+            let corner = prev[0];
+            prev[0] = i;
+            for (let j = 1; j <= b.length; j += 1) {
+                const carry = prev[j];
+                prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, corner + (a[i - 1] === b[j - 1] ? 0 : 1));
+                corner = carry;
+            }
+        }
+        return prev[b.length];
+    };
+    let best = '';
+    let bestScore = Infinity;
+    Object.keys(DESTINATIONS).forEach((name) => {
+        const score = distance(slug, name);
+        if (score < bestScore) {
+            bestScore = score;
+            best = name;
+        }
+    });
+    // Two edits on a short slug is already a stretch; beyond that the
+    // "suggestion" is noise wearing the shape of help.
+    return bestScore <= 2 ? best : '';
+}
+
+/**
+ * Land on the default destination, saying so when the hash named something.
+ *
+ * The silent version of this cost somebody a screenshot: `#/parameters` is not a
+ * route (Runtime Settings is `#/settings`), the router fell through to Overview
+ * without a word, and the page looked like it had simply loaded. A wrong link
+ * that renders a plausible page is worse than an error, because nothing invites
+ * you to check.
+ *
+ * An EMPTY hash is not a mistake — it is every first visit — so it says nothing.
+ */
+function fallBackToDefault(slug) {
+    if (slug && typeof showToast === 'function') {
+        const near = nearestDestination(slug);
+        showToast(
+            near
+                ? t('nav.unknownRouteNear', { slug: slug, near: near })
+                : t('nav.unknownRoute', { slug: slug }),
+            'warning'
+        );
+    }
+    navigateTo(DEFAULT_DESTINATION);
+}
+
 function applyHashRoute() {
     // Shape: #/slug[/focus][?filters] — the query part carries view filters
     // (the alerts list writes its own), and must not confuse slug matching.
@@ -291,7 +355,7 @@ function applyHashRoute() {
     const [path] = raw.split('?');
     const [slug, focus] = path.split('/');
     if (!DESTINATIONS[slug]) {
-        navigateTo(DEFAULT_DESTINATION);
+        fallBackToDefault(slug);
         return;
     }
     if (slug === currentDestination && !focus) return; // already here; don't refetch
@@ -436,7 +500,9 @@ async function initDashboard() {
         // No (usable) hash: enter the landing destination through navigateTo so
         // the entry is recorded — breadcrumb, sidebar highlight and #/overview
         // in the URL — instead of loading data behind an unrecorded location.
-        navigateTo(DEFAULT_DESTINATION);
+        // A hash that named something we do not have says so on the way past;
+        // an empty one is every first visit and stays quiet.
+        fallBackToDefault(slug);
     };
     if (typeof I18N === 'undefined' || i18nReadyAtStart) {
         loadLandingTab();

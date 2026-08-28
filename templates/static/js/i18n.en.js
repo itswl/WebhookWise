@@ -1050,6 +1050,8 @@
             'dt.quality.importanceDist': 'AI Importance Distribution',
             'dt.quality.degradedReasons': 'Degradation Reasons',
             'nav.menu': 'Menu',
+            'nav.unknownRoute': 'No page named “{slug}” — showing Overview.',
+            'nav.unknownRouteNear': 'No page named “{slug}” — showing Overview. Did you mean “{near}”?',
             'nav.notifyOff': 'Desktop notifications (off)',
             'nav.notifyOn': 'Desktop notifications on',
             'nav.notifyDenied': 'The browser denied notification permission',

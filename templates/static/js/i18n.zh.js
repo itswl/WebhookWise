@@ -1135,6 +1135,8 @@
             'dt.quality.importanceDist': 'AI importance 分布',
             'dt.quality.degradedReasons': '降级原因',
             'nav.menu': '菜单',
+            'nav.unknownRoute': '没有名为「{slug}」的页面，已回到总览。',
+            'nav.unknownRouteNear': '没有名为「{slug}」的页面，已回到总览。你是想找「{near}」吗？',
             'nav.notifyOff': '桌面通知（未开启）',
             'nav.notifyOn': '桌面通知已开启',
             'nav.notifyDenied': '浏览器拒绝了通知权限',
