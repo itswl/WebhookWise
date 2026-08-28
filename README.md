@@ -14,6 +14,12 @@ paged?" has an answer that is not a guess.
 
 Self-hosted, MIT, one `docker compose up`.
 
+Running in production at two companies for eight months, across tens of
+thousands of real alerts. Every figure and screenshot here comes from the
+deployment that is running now — not a benchmark, and not a demo seed.
+
+![The dashboard: how the gateway itself is doing, on one screen](docs/img/01-overview.png)
+
 ## The problem it turned out to have
 
 Every alerting tool claims to reduce noise. This one can show whether it did.
@@ -41,6 +47,23 @@ noise has to be fixed by making the alert more specific, not by muting it.
 
 That is the shape of the whole project: a decision, a record of why, and a way
 to find out afterwards that the decision was wrong.
+
+![The decision trace: which gate stopped it, and which rule fired](docs/img/02-decision-trace.png)
+
+## What it costs, and what it saves
+
+Eight suppression gates stand between an alert and a person — dedup, silence,
+maintenance window, storm, cooldown, budget — and **every stop is recorded**, so
+a silence rule can be scored rather than trusted. The noise centre reads those
+records back as ROI per rule: how much each one caught, how many minutes it
+bought, and which rules are zombies (ninety days, zero matches). A new rule is
+backtested against history before it goes live.
+
+Last week on the live deployment: **$5.55 of model spend, $9.95 saved** by cache
+reuse and by not paying for alerts that suppression had already answered. The
+cheaper path is the default one; AI is what the expensive minority earns.
+
+![The noise centre: every silence rule scored, with its ROI](docs/img/03-noise-center.png)
 
 ## Quick start
 
@@ -104,6 +127,31 @@ Out-of-the-box source formats: volcengine, Grafana, Prometheus Alertmanager, Dat
 | Swagger UI | `http://localhost:8000/docs` |
 | ReDoc | `http://localhost:8000/redoc` |
 | Health | `http://localhost:8000/live` / `http://localhost:8000/ready` |
+
+## Ask it questions: a read-only MCP server
+
+The read side is exposed over the Model Context Protocol — **20 tools**, a usage
+guide resource and investigation prompts — so any MCP client (Claude Code,
+Cursor, your own agent) can query the deployment directly:
+
+```bash
+claude mcp add --transport http webhookwise \
+  https://<your-host>/mcp/ \
+  --header "Authorization: Bearer <API_KEY>"
+```
+
+Then ask it *"why didn't #923 page me?"*, *"what happened on this shift?"*, or
+*"which rules can I delete?"* — the questions the ledger was built to answer but
+which nobody wants to click through a dashboard to assemble. Four ready-made
+skills ship in [`.agents/skills/`](.agents/skills/): alert investigation, shift
+handover, noise audit, and observability triage.
+
+**Deliberately read-only.** Nothing an agent calls here changes what the
+deployment does. The one write is `propose_remediation`, which records an inert
+proposal and executes nothing — an operator with write credentials approves it
+through the same audited path as the dashboard button. The transport
+authenticates with the read key, so that approval is the boundary that matters.
+Full reference: [docs/reference/mcp.md](docs/reference/mcp.md).
 
 ## Where to go next
 
