@@ -14,9 +14,6 @@ paged?" has an answer that is not a guess.
 
 Self-hosted, MIT, one `docker compose up`.
 
-Running in production at two companies for eight months, across tens of
-thousands of real alerts. Every figure and screenshot here comes from the
-deployment that is running now — not a benchmark, and not a demo seed.
 
 ![The dashboard: how the gateway itself is doing, on one screen](docs/img/01-overview.png)
 

@@ -16,8 +16,6 @@ Alertmanager、飞书、或任何能 POST JSON 的东西归一化,逐条判断,�
 
 自托管、MIT、一条 `docker compose up`。
 
-它已经先后在**两家公司的生产环境跑了 8 个月**,累计处理上万条真实告警。下面的
-截图和成本数字都取自当前在跑的这套环境,不是 benchmark,也不是 demo 种子数据。
 
 ![总览:一屏看健康度](docs/img/01-overview.png)
 

@@ -10,9 +10,6 @@ from Prometheus, Grafana, Alertmanager, Feishu or anything that can POST JSON,
 judges each one, decides who to tell — and records why, so *"why didn't I get
 paged?"* has an answer that is not a guess.
 
-**In production at two companies for eight months**, across tens of thousands of
-real alerts. Every figure and screenshot here comes from the deployment that is
-running now — not a benchmark, and not a demo seed.
 
 Self-hosted, MIT, one `docker compose up`. →
 **[github.com/itswl/WebhookWise](https://github.com/itswl/WebhookWise)**
