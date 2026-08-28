@@ -9,8 +9,6 @@ WebhookWise 站在你的监控系统和聊天工具之间。它把 Prometheus、
 Alertmanager、飞书、或任何能 POST JSON 的东西归一化,逐条判断,决定告诉谁 ——
 并记录为什么,所以*「我怎么没被叫到」*有一个不靠猜的答案。
 
-**已经先后在两家公司的生产环境跑了 8 个月**,累计处理上万条真实告警。下面的截图
-和成本数字都取自当前在跑的这套环境,不是 benchmark,也不是 demo 种子数据。
 
 自托管、MIT、一条 `docker compose up`。→
 **[github.com/itswl/WebhookWise](https://github.com/itswl/WebhookWise)**
