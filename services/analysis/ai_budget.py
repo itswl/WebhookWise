@@ -27,9 +27,11 @@ from sqlalchemy import func, select
 
 from core.app_context import get_config_manager
 from core.logger import get_logger
+from core.observability.events import record_signal
 from db.session import session_scope
 from models.analysis import AIUsageLog
 from services.operations import runtime_settings
+from services.operations.feature_modes import FeatureMode, resolve_feature_mode
 
 logger = get_logger("analysis.ai_budget")
 
@@ -82,17 +84,27 @@ async def month_to_date_spend() -> float:
 async def budget_exhausted() -> tuple[bool, float, float]:
     """(refuse this call, month-to-date spend, budget).
 
-    False whenever enforcement is off or no budget is set, so the default
-    deployment never reaches the database for this.
+    False whenever the brake is off or no budget is set, so the default
+    deployment never reaches the database for this. The brake position comes
+    from the off/shadow/enforce ladder: ``AI_COST_BUDGET_MODE`` when set,
+    otherwise the legacy ``AI_COST_BUDGET_ENFORCE`` boolean (True -> enforce,
+    False -> off). In shadow the refusal is computed and recorded — the ledger
+    an operator reads before trusting enforce — and the call still goes
+    through.
     """
     notif = get_config_manager().notifications
     budget = runtime_settings.override_or(
         "AI_COST_MONTHLY_BUDGET_USD", float(getattr(notif, "AI_COST_MONTHLY_BUDGET_USD", 0.0) or 0.0)
     )
-    enforce = runtime_settings.override_or(
+    legacy_enforce = runtime_settings.override_or(
         "AI_COST_BUDGET_ENFORCE", bool(getattr(notif, "AI_COST_BUDGET_ENFORCE", False))
     )
-    if budget <= 0 or not enforce:
+    mode = resolve_feature_mode(
+        "AI_COST_BUDGET_MODE",
+        str(getattr(notif, "AI_COST_BUDGET_MODE", "") or ""),
+        legacy_enforce=legacy_enforce,
+    )
+    if budget <= 0 or mode is FeatureMode.OFF:
         return False, 0.0, budget
 
     try:
@@ -100,4 +112,18 @@ async def budget_exhausted() -> tuple[bool, float, float]:
     except Exception:  # noqa: BLE001 — a broken meter must not block analysis
         logger.warning("[AIBudget] could not read month-to-date spend; letting the call through", exc_info=True)
         return False, 0.0, budget
-    return spent >= budget, spent, budget
+
+    exhausted = spent >= budget
+    if exhausted and mode is FeatureMode.SHADOW:
+        record_signal(
+            "ai.budget",
+            "shadow_exhausted",
+            {"ai.spend.month_usd": round(spent, 4), "ai.budget.usd": round(budget, 4)},
+        )
+        logger.warning(
+            "[AIBudget] SHADOW: month-to-date spend $%.2f reached the $%.2f budget; letting the call through",
+            spent,
+            budget,
+        )
+        return False, spent, budget
+    return exhausted, spent, budget

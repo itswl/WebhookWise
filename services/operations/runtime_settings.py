@@ -77,6 +77,16 @@ def _cast_float(minimum: float | None = None, maximum: float | None = None) -> C
     return cast
 
 
+def _cast_choice(*choices: str) -> Callable[[str], str]:
+    def cast(raw: str) -> str:
+        value = raw.strip().lower()
+        if value not in choices:
+            raise ValueError(f"expected one of: {', '.join(choices)}")
+        return value
+
+    return cast
+
+
 def _cast_csv_names(raw: str) -> str:
     """A comma-separated list of names, normalised and bounded.
 
@@ -179,6 +189,12 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
     ),
     SettingSpec(
         "AI_COST_BUDGET_ENFORCE", "ai", _cast_bool, "At 100% of the budget, degrade to rules instead of spending"
+    ),
+    SettingSpec(
+        "AI_COST_BUDGET_MODE",
+        "ai",
+        _cast_choice("off", "shadow", "enforce"),
+        "Budget brake ladder: off, shadow (record the refusal, spend anyway), enforce",
     ),
     # Keyword rules. These decide severity before any model sees the alert, and
     # a missing keyword class is invisible: the payment-alert downgrade lived in

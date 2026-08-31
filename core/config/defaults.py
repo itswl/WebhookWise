@@ -423,6 +423,11 @@ class NotificationConfig(StaticSettings):
     # unanalysed alert is a real cost too, and which one matters is a
     # decision for the deployment, not a default.
     AI_COST_BUDGET_ENFORCE: bool = Field(default=False)
+    # Three-position ladder over the same brake: "off", "shadow" (compute the
+    # refusal, record it, let the call through) or "enforce". Empty keeps the
+    # legacy AI_COST_BUDGET_ENFORCE boolean authoritative, so an existing
+    # deployment's behaviour does not move until someone sets this.
+    AI_COST_BUDGET_MODE: str = Field(default="")
     AI_COST_BUDGET_ALERT_THRESHOLD: float = Field(default=0.8, gt=0.0, le=1.0)  # warn at 80% of budget
     AI_COST_BUDGET_FEISHU_WEBHOOK: str = Field(default="")
 
