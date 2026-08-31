@@ -1,0 +1,60 @@
+name: ai-review
+
+# Shadow-mode AI reviewer: posts ONE sticky advisory comment per PR and never
+# fails the build. It reviews behavior (correctness, ingress security, contract
+# drift) and stays out of everything the deterministic gate already owns.
+#
+# Deliberately NOT part of ci.yml's test job: scripts/gate.sh mirrors that job
+# exactly, and this reviewer is not a gate — it has to earn trust in shadow
+# first (sample its comments; promote it only when the hit rate says so).
+#
+# Setup (one secret, two optional repository variables):
+#   gh secret set AI_REVIEW_API_KEY --repo <owner>/<repo>   # OpenAI-dialect key
+#   gh variable set AI_REVIEW_BASE_URL --body <https://.../v4>  # optional
+#   gh variable set AI_REVIEW_MODEL --body <model-id>           # optional
+# Fork PRs skip automatically: GitHub withholds secrets from them.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
+    steps:
+      - name: Check reviewer credentials
+        id: creds
+        env:
+          AI_REVIEW_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+        run: |
+          if [ -z "$AI_REVIEW_API_KEY" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::AI review skipped: AI_REVIEW_API_KEY is not set (expected on fork PRs)."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.creds.outputs.available == 'true'
+
+      - name: Review the diff (advisory, never gates)
+        if: steps.creds.outputs.available == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AI_REVIEW_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+          AI_REVIEW_BASE_URL: ${{ vars.AI_REVIEW_BASE_URL }}
+          AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          REPO: ${{ github.repository }}
+        run: bash scripts/ci/ai_review.sh

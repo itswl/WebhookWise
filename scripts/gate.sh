@@ -38,7 +38,7 @@ step "frontend lint"
 npx --yes eslint@9.39.2 templates/static/js
 
 step "shellcheck"
-shellcheck entrypoint.sh scripts/gate.sh tests/e2e/*.sh
+shellcheck entrypoint.sh scripts/gate.sh tests/e2e/*.sh scripts/ci/*.sh
 
 step "requirements locks"
 python scripts/check_requirements_locks.py
