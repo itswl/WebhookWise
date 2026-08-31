@@ -183,6 +183,27 @@ def test_webhook_signature_and_token_auth_contracts() -> None:
     with pytest.raises(InvalidSignatureError):
         webhook_security.ensure_webhook_auth({"x-webhook-signature": signature}, payload, secret="")
 
+    # Rotation overlap: the outgoing secret still authenticates and names itself,
+    # the active secret wins when both match their own header, and a token that
+    # matches neither is rejected.
+    old_signature = webhook_security.hmac.new(b"old", payload, webhook_security.hashlib.sha256).hexdigest()
+    assert (
+        webhook_security.ensure_webhook_auth({"token": "new"}, payload, secret="new", previous_secret="old")
+        == "current"
+    )
+    assert (
+        webhook_security.ensure_webhook_auth({"token": "old"}, payload, secret="new", previous_secret="old")
+        == "previous"
+    )
+    assert (
+        webhook_security.ensure_webhook_auth(
+            {"x-webhook-signature": old_signature}, payload, secret="new", previous_secret="old"
+        )
+        == "previous"
+    )
+    with pytest.raises(InvalidSignatureError):
+        webhook_security.ensure_webhook_auth({"token": "neither"}, payload, secret="new", previous_secret="old")
+
 
 @pytest.mark.asyncio
 async def test_webhook_auth_dependency_body_size_and_auth_branches(

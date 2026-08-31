@@ -193,6 +193,36 @@ async def test_replay_protection_consumes_nonce_once(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.asyncio
+async def test_replay_protection_accepts_previous_secret_during_rotation(
+    monkeypatch: pytest.MonkeyPatch, temp_config
+) -> None:
+    import core.redis_client as redis_client
+    from core.webhook_security import ReplayError, enforce_replay_protection
+
+    temp_config.security.WEBHOOK_SECRET = "new-secret-after-rotation"
+    temp_config.security.WEBHOOK_SECRET_PREVIOUS = "topsecret-value-1234"
+    temp_config.security.WEBHOOK_REPLAY_MAX_SKEW_SECONDS = 300
+
+    async def fake_set_nx_ex(key: str, value: str, ttl_seconds: int) -> bool:
+        return True
+
+    monkeypatch.setattr(redis_client, "redis_set_nx_ex", fake_set_nx_ex)
+
+    ts = str(int(time.time()))
+    body = b'{"alertname":"X"}'
+    old_sig = hmac.new(b"topsecret-value-1234", ts.encode() + b"." + body, hashlib.sha256).hexdigest()
+    await enforce_replay_protection(
+        {"x-webhook-signature": old_sig, "x-webhook-timestamp": ts}, body, security=temp_config.security
+    )
+
+    forged = hmac.new(b"some-other-secret", ts.encode() + b"." + body, hashlib.sha256).hexdigest()
+    with pytest.raises(ReplayError, match="mismatch"):
+        await enforce_replay_protection(
+            {"x-webhook-signature": forged, "x-webhook-timestamp": ts}, body, security=temp_config.security
+        )
+
+
+@pytest.mark.asyncio
 async def test_replay_protection_noop_without_signature(temp_config) -> None:
     from core.webhook_security import enforce_replay_protection
 

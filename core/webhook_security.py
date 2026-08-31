@@ -98,7 +98,8 @@ async def enforce_replay_protection(headers: Mapping[str, str], raw_body: bytes,
     if abs(now - ts_value) > max_skew:
         raise ReplayError("timestamp outside allowed skew window")
 
-    if not verify_timestamped_signature(timestamp, raw_body, signature, security.WEBHOOK_SECRET):
+    candidates = _candidate_secrets(security.WEBHOOK_SECRET, security.WEBHOOK_SECRET_PREVIOUS)
+    if not any(verify_timestamped_signature(timestamp, raw_body, signature, candidate) for candidate in candidates):
         raise ReplayError("timestamped signature mismatch")
 
     # One-time use: the first request with this signature wins; later replays
@@ -115,6 +116,15 @@ async def enforce_replay_protection(headers: Mapping[str, str], raw_body: bytes,
         raise ReplayError("signature already used (replay)")
 
 
+def _candidate_secrets(*values: str | None) -> list[str]:
+    """Non-empty secrets in priority order (active first, rotation-overlap previous second)."""
+    candidates: list[str] = []
+    for value in values:
+        if value and value not in candidates:
+            candidates.append(value)
+    return candidates
+
+
 def extract_token(headers: Mapping[str, str]) -> str:
     token = headers.get("token", "")
     if token:
@@ -127,23 +137,44 @@ def extract_token(headers: Mapping[str, str]) -> str:
     return token
 
 
-def ensure_webhook_auth(headers: Mapping[str, str], raw_body: bytes, *, secret: str | None = None) -> None:
+def ensure_webhook_auth(
+    headers: Mapping[str, str],
+    raw_body: bytes,
+    *,
+    secret: str | None = None,
+    previous_secret: str | None = None,
+) -> str | None:
+    """Verify webhook auth against the active secret, then the rotation-overlap one.
+
+    Returns "current" or "previous" naming the secret that matched, or None when
+    no secret is configured (auth not enforced at this layer).
+    """
     signature = headers.get("x-webhook-signature", "")
     token = extract_token(headers)
-    resolved_secret = get_config_manager().security.WEBHOOK_SECRET if secret is None else secret
+    if secret is None and previous_secret is None:
+        security = get_config_manager().security
+        candidates = _candidate_secrets(security.WEBHOOK_SECRET, security.WEBHOOK_SECRET_PREVIOUS)
+    else:
+        candidates = _candidate_secrets(secret, previous_secret)
 
     if signature:
-        if not resolved_secret:
+        if not candidates:
             raise InvalidSignatureError()
-        if not verify_signature(raw_body, signature, resolved_secret):
-            raise InvalidSignatureError()
-        return
+        for index, candidate in enumerate(candidates):
+            expected = hmac.new(candidate.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+            if hmac.compare_digest(expected.encode("utf-8"), signature.encode("utf-8")):
+                return "current" if index == 0 else "previous"
+        logger.warning("[Auth] Signature comparison did not match")
+        raise InvalidSignatureError()
 
-    if resolved_secret:
+    if candidates:
         if not token:
             raise InvalidSignatureError()
-        if not hmac.compare_digest(token.encode("utf-8"), resolved_secret.encode("utf-8")):
-            raise InvalidSignatureError()
+        for index, candidate in enumerate(candidates):
+            if hmac.compare_digest(token.encode("utf-8"), candidate.encode("utf-8")):
+                return "current" if index == 0 else "previous"
+        raise InvalidSignatureError()
+    return None
 
 
 @dataclass
@@ -240,8 +271,14 @@ async def verify_webhook_auth_dep(
     raw_body = await request.body()
     request.state.raw_body = raw_body
     headers: dict[str, str] = dict(request.headers)
+    matched_generation: str | None = None
     try:
-        ensure_webhook_auth(headers, raw_body, secret=config.security.WEBHOOK_SECRET)
+        matched_generation = ensure_webhook_auth(
+            headers,
+            raw_body,
+            secret=config.security.WEBHOOK_SECRET,
+            previous_secret=config.security.WEBHOOK_SECRET_PREVIOUS,
+        )
     except InvalidSignatureError:
         SECURITY_CHECKS_TOTAL.labels("webhook_auth", "rejected").inc()
         raise HTTPException(status_code=401, detail="Unauthorized") from None
@@ -262,7 +299,12 @@ async def verify_webhook_auth_dep(
             SECURITY_CHECKS_TOTAL.labels("webhook_replay", "rejected").inc()
             raise HTTPException(status_code=401, detail="Unauthorized") from None
 
-    SECURITY_CHECKS_TOTAL.labels("webhook_auth", "allowed").inc()
+    # "allowed_previous_secret" is the rotation cutover gauge: once it stays at
+    # zero, every sender has moved and WEBHOOK_SECRET_PREVIOUS can be removed.
+    SECURITY_CHECKS_TOTAL.labels(
+        "webhook_auth",
+        "allowed_previous_secret" if matched_generation == "previous" else "allowed",
+    ).inc()
 
 
 async def check_rate_limit_dep(

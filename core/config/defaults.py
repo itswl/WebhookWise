@@ -103,6 +103,10 @@ class SecurityConfig(StaticSettings):
     """Authentication / signing / rate limiting."""
 
     WEBHOOK_SECRET: str = Field(default="")
+    WEBHOOK_SECRET_PREVIOUS: str = Field(
+        default="",
+        description="Rotation overlap: a second webhook secret that is still accepted while senders migrate to a new WEBHOOK_SECRET. Empty disables the overlap. Remove it once the webhook_auth allowed_previous_secret security-check counter stays at zero",
+    )
     API_KEY: str = Field(default="")
     ADMIN_WRITE_KEY: str = Field(default="")
     CHANGE_INGEST_TOKEN: str = Field(default="")

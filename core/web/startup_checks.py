@@ -98,6 +98,18 @@ def validate_startup_security(config: AppConfig, *, app_env: str | None = None) 
                 "WEBHOOK_SECRET is still an example placeholder value; please replace it with a real random key"
             )
         _warn_if_short_secret("WEBHOOK_SECRET", webhook_secret)
+        previous_secret = config.security.WEBHOOK_SECRET_PREVIOUS.strip()
+        if previous_secret:
+            if looks_like_placeholder_secret(previous_secret):
+                raise RuntimeError(
+                    "WEBHOOK_SECRET_PREVIOUS is an example placeholder value; "
+                    "set it to the real outgoing secret or remove it"
+                )
+            _warn_if_short_secret("WEBHOOK_SECRET_PREVIOUS", previous_secret)
+            logger.warning(
+                "Webhook secret rotation overlap is active: WEBHOOK_SECRET_PREVIOUS is still accepted. "
+                "Remove it once the webhook_auth allowed_previous_secret counter stays at zero."
+            )
     if env == "production":
         _warn_on_open_ingress_defaults(config)
 
