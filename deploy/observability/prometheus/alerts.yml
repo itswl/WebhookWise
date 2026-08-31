@@ -100,22 +100,22 @@ groups:
         expr: (1 - webhookwise:webhook_ingress_success_ratio_6h) / 0.01
       - record: webhookwise:webhook_processing_success_ratio_5m
         expr: |
-          (sum(rate(webhook_processed_total{webhook_status="completed"}[5m])) or vector(0))
+          (sum(rate(webhook_processed_total{webhook_status=~"completed|suppressed"}[5m])) or vector(0))
           /
           clamp_min((sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[5m])) or vector(0)), 0.000001)
       - record: webhookwise:webhook_processing_success_ratio_30m
         expr: |
-          (sum(rate(webhook_processed_total{webhook_status="completed"}[30m])) or vector(0))
+          (sum(rate(webhook_processed_total{webhook_status=~"completed|suppressed"}[30m])) or vector(0))
           /
           clamp_min((sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[30m])) or vector(0)), 0.000001)
       - record: webhookwise:webhook_processing_success_ratio_1h
         expr: |
-          (sum(rate(webhook_processed_total{webhook_status="completed"}[1h])) or vector(0))
+          (sum(rate(webhook_processed_total{webhook_status=~"completed|suppressed"}[1h])) or vector(0))
           /
           clamp_min((sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[1h])) or vector(0)), 0.000001)
       - record: webhookwise:webhook_processing_success_ratio_6h
         expr: |
-          (sum(rate(webhook_processed_total{webhook_status="completed"}[6h])) or vector(0))
+          (sum(rate(webhook_processed_total{webhook_status=~"completed|suppressed"}[6h])) or vector(0))
           /
           clamp_min((sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[6h])) or vector(0)), 0.000001)
       - record: webhookwise:webhook_processing_error_budget_burn_5m
@@ -299,9 +299,26 @@ groups:
           summary: Webhook ingress is steadily burning the 99% queueing budget.
           runbook: Compare 30m/6h ingress burn rates with queue latency, rate limiting, and incoming source mix.
 
+      # Volume floor on all three, and suppression counted as success.
+      #
+      # This deployment processes ~2 webhooks per 5-minute window. The old
+      # guard only asked for ANY traffic, so one non-completed event in a
+      # window put the ratio at 0.5 and the burn at 25 — over the 14.4 line —
+      # and the critical FastBurn fired on 2026-08-31 for exactly that. A
+      # ratio computed from two samples is not an SLO, it is a coin. Ten
+      # events is the point at which a single failure (10% error) stays under
+      # the fast-burn threshold, so below ten the window says nothing and the
+      # alert stays quiet.
+      #
+      # `suppressed` moved from the denominator-only side into the numerator:
+      # a webhook the silence rules deliberately quieted was handled exactly
+      # as configured. Counting it as a failure capped the achievable ratio at
+      # 93.5% here (3 of 46 in 24h) — a 98% objective that arithmetic alone
+      # made unreachable whenever silences are in normal use. A suppression
+      # SPIKE is a different question and the silence-ROI surface owns it.
       - alert: WebhookWiseProcessingSuccessSloBurn
         expr: |
-          sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[5m])) > 0
+          sum(increase(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[5m])) >= 10
           and
           webhookwise:webhook_processing_success_ratio_5m < 0.98
         for: 10m
@@ -314,7 +331,7 @@ groups:
 
       - alert: WebhookWiseProcessingSuccessFastBurn
         expr: |
-          sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[5m])) > 0
+          sum(increase(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[5m])) >= 10
           and
           webhookwise:webhook_processing_error_budget_burn_5m > 14.4
           and
@@ -329,7 +346,7 @@ groups:
 
       - alert: WebhookWiseProcessingSuccessSlowBurn
         expr: |
-          sum(rate(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[5m])) > 0
+          sum(increase(webhook_processed_total{webhook_status=~"completed|failed|suppressed"}[30m])) >= 10
           and
           webhookwise:webhook_processing_error_budget_burn_30m > 6
           and
@@ -425,23 +442,39 @@ groups:
           summary: Redis Stream retained depth is growing.
           runbook: Check queue pending/lag first. If pending and lag are normal, tune Redis Stream maxlen/trimming rather than scaling workers.
 
-      - alert: WebhookWiseQueueDepthNearMaxlen
+      - alert: WebhookWiseQueueEvictionRisk
         # The broker XADDs with a capped maxlen (WEBHOOK_MQ_STREAM_MAXLEN, default
         # 100000). Ingress is at-most-once-until-consumed: a webhook becomes
-        # durable only once a worker saves its result. If stream depth approaches
-        # the cap while consumers lag, Redis trims still-unacked pending entries
-        # -> silent webhook loss. Fire at 80% of the default cap so operators
-        # raise maxlen or shed load BEFORE eviction starts. NOTE: if
-        # WEBHOOK_MQ_STREAM_MAXLEN is changed from its 100000 default, update the
-        # 80000 threshold below to match.
-        expr: (max(queue_depth) or vector(0)) > 80000
+        # durable only once a worker saves its result. If stream depth sits at the
+        # cap WHILE consumers lag, Redis trims still-unacked entries -> silent
+        # webhook loss.
+        #
+        # BOTH halves of that sentence are the alert. The rule used to fire on
+        # depth alone, and core/redis_streams.py had already written down why that
+        # can only ever mean one thing: retained XLEN "sits near MAXLEN
+        # permanently on any busy stream once trimming kicks in". It did — this
+        # fired continuously from 2026-08-25 to 2026-08-31 on a stream whose
+        # pending was 1 and whose lag was 0, i.e. with nothing at risk at all. An
+        # alert that cannot return to normal is one an operator learns to ignore,
+        # which is the failure the db-health rule above was already fixed for.
+        #
+        # The second conjunct reuses WebhookWiseQueueBacklogHigh's own threshold
+        # (100), so this is precisely that alert AND the stream being full: the
+        # moment eviction starts costing data rather than discarding entries
+        # every consumer already acked. Hence critical, where depth alone was a
+        # warning. NOTE: if WEBHOOK_MQ_STREAM_MAXLEN moves off its 100000
+        # default, update the 80000 below to match.
+        expr: |
+          ((max(queue_depth) or vector(0)) > 80000)
+          and
+          (((max(queue_pending) or vector(0)) + (max(queue_lag) or vector(0))) > 100)
         for: 5m
         labels:
-          severity: warning
+          severity: critical
           service: webhookwise-worker
         annotations:
-          summary: Redis Stream depth is near the configured maxlen cap.
-          runbook: At-most-once ingress means capped-stream eviction drops unconsumed webhooks. Check queue pending/lag and worker throughput; raise WEBHOOK_MQ_STREAM_MAXLEN or scale workers before depth reaches the cap.
+          summary: Redis Stream is at its cap while consumers are behind — eviction is dropping unconsumed webhooks.
+          runbook: At-most-once ingress means capped-stream eviction drops unconsumed webhooks. Raise WEBHOOK_MQ_STREAM_MAXLEN or scale workers now. Retained depth alone is NOT this condition — see WebhookWiseQueueRetainedDepthGrowing for that.
 
       - alert: WebhookWiseDbPoolNearCapacity
         expr: |
