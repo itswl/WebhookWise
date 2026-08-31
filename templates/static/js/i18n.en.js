@@ -86,6 +86,7 @@
             'routing.view.sandbox': 'Sandbox',
             'action.title': 'Action Center',
             'action.t.rule_disabled': 'Forwarding rule disabled: {name}',
+            'action.t.remediation_unrecovered': 'Approved remediation did not recover: {action}',
             'action.t.delivery_fault_permanent': 'Permanent delivery fault: {name}',
             'action.t.delivery_exhausted': 'Delivery exhausted: {name}',
             'action.t.dead_letters': '{count} dead-letter event(s) need review',

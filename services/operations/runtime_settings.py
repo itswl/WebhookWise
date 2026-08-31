@@ -398,6 +398,12 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
         "NOTIFICATION_COOLDOWN_SECONDS", "cadence", _cast_int(0, 86400), "Re-notify cooldown after a delivery (seconds)"
     ),
     SettingSpec("ENABLE_PERIODIC_REMINDER", "cadence", _cast_bool, "Re-notify persisting duplicates on a schedule"),
+    SettingSpec(
+        "REMEDIATION_VERIFY_DELAY_SECONDS",
+        "cadence",
+        _cast_int(0, 86400),
+        "Seconds after an executed remediation before the target is read back; 0 disables",
+    ),
     SettingSpec("REMINDER_INTERVAL_HOURS", "cadence", _cast_int(1, 720), "Periodic reminder interval (hours)"),
     SettingSpec(
         "SELF_NOTIFY_MIN_INTERVAL_MINUTES",

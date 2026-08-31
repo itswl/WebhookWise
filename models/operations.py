@@ -146,6 +146,13 @@ class RemediationProposal(Base):
     decided_by: Mapped[str | None] = mapped_column(String(100))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime)
     result: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict, nullable=False)
+    # The third question, after allowed and worked: did the TARGET confirm the
+    # fix held? Set by the readback task minutes later, never by the executor —
+    # execution success is an API answering; verification is the world agreeing.
+    # "" (never scheduled) | scheduled | verified | unrecovered | unverifiable.
+    verify_status: Mapped[str] = mapped_column(String(20), default="", server_default="", nullable=False)
+    verify_detail: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow(), nullable=False)
 
     __table_args__ = (

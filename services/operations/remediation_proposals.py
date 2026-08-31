@@ -80,6 +80,9 @@ def proposal_to_dict(row: RemediationProposal) -> dict[str, Any]:
         "decided_by": row.decided_by,
         "decided_at": utc_isoformat(row.decided_at) if row.decided_at else None,
         "result": dict(row.result or {}),
+        "verify_status": str(row.verify_status or ""),
+        "verify_detail": dict(row.verify_detail) if isinstance(row.verify_detail, dict) else None,
+        "verified_at": utc_isoformat(row.verified_at) if row.verified_at else None,
         "created_at": utc_isoformat(row.created_at),
     }
 
@@ -296,6 +299,17 @@ async def decide_proposal(
 
     row.status = APPROVED
     row.result = dict(result)
+    from services.operations.remediation_verification import SCHEDULED, schedule_verification_best_effort
+    from services.operations.remediation_verification import (
+        configured_verify_delay_seconds as _verify_delay,
+    )
+
+    verify_armed = bool(result.get("changed")) and _verify_delay() > 0
+    if verify_armed:
+        # Marked before the commit so a scheduling failure after it stays
+        # visible: a proposal stuck at "scheduled" with no verdict says the
+        # readback never ran, which beats silently never verifying.
+        row.verify_status = SCHEDULED
     add_audit(
         session,
         "remediation",
@@ -306,6 +320,14 @@ async def decide_proposal(
         actor=actor,
     )
     await session.commit()
+    if verify_armed:
+        await schedule_verification_best_effort(
+            action=row.action,
+            resource_id=row.resource_id,
+            resource_type=row.resource_type,
+            proposal_id=row.id,
+            execution_result=dict(result),
+        )
     logger.info(
         "[Proposal] %s approved proposal=%s action=%s changed=%s", actor, row.id, row.action, result.get("changed")
     )

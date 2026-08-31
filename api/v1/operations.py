@@ -395,6 +395,17 @@ async def run_remediation_endpoint(
         status = 200 if data.get("changed") else 409
         if not data.get("changed"):
             return fail_response(str(data.get("reason") or "No eligible resource was changed"), status)
+        # Same-target readback as for approved proposals; verdict lands in the
+        # audit trail (there is no proposal row to carry it here).
+        from services.operations.remediation_verification import schedule_verification_best_effort
+
+        await schedule_verification_best_effort(
+            action=payload.action,
+            resource_id=payload.resource_id,
+            resource_type=payload.resource_type,
+            proposal_id=None,
+            execution_result=dict(data),
+        )
         return ok_response(data=data, message="Action completed", http_status=status)
     except _OPERATION_ERRORS as error:
         logger.error("Action Center command failed action=%s: %s", payload.action, error, exc_info=True)

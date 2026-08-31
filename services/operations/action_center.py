@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.datetime_utils import utc_isoformat, utcnow
 from core.logger import mask_url
 from db.session import count_with_timeout
-from models import AnalysisFeedback, AuditLog, ForwardOutbox, ForwardRule, Incident, WebhookEvent
+from models import AnalysisFeedback, AuditLog, ForwardOutbox, ForwardRule, Incident, RemediationProposal, WebhookEvent
 from services.operations.queue_health import get_queue_health
 from services.webhooks.flapping import list_active_flapping
 from services.webhooks.query_service import STUCK_STATUSES, STUCK_THRESHOLD
@@ -479,6 +479,44 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
             for event in overdue_events
         ]
     )
+
+    # Approved remediations whose readback said the target did NOT recover.
+    # This is the consumer of the verification loop: an approval that failed to
+    # fix is exactly what needs a person, and exactly what used to be invisible.
+    unrecovered_proposals = list(
+        (
+            await session.execute(
+                select(RemediationProposal)
+                .where(
+                    RemediationProposal.verify_status == "unrecovered",
+                    RemediationProposal.verified_at >= now - timedelta(days=14),
+                )
+                .order_by(RemediationProposal.verified_at.desc())
+                .limit(10)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for proposal in unrecovered_proposals:
+        detail_bits = ", ".join(
+            f"{key}={value}" for key, value in sorted((proposal.verify_detail or {}).items())
+        )
+        items.append(
+            _item(
+                item_id=f"remediation-verify:{proposal.id}",
+                kind="remediation_unrecovered",
+                severity="critical",
+                title=f"Approved remediation did not recover: {proposal.action}",
+                title_key="remediation_unrecovered",
+                title_params={"action": proposal.action},
+                detail=_safe_error(f"readback after execution: {detail_bits}" if detail_bits else None),
+                occurred_at=proposal.verified_at,
+                resource_type="remediation",
+                resource_id=proposal.id,
+                view="overview",
+            )
+        )
 
     severity_order = {"critical": 0, "warning": 1, "info": 2}
     items.sort(key=lambda item: str(item["occurred_at"] or ""), reverse=True)

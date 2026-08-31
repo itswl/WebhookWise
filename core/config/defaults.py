@@ -39,6 +39,11 @@ class TaskConfig(StaticSettings):
 
     BACKGROUND_SCAN_INTERVAL_SECONDS: int = Field(default=300, gt=0)
     METRICS_REFRESH_INTERVAL_SECONDS: int = Field(default=60, gt=0)
+    # How long after an executed Action Center command a worker reads the SAME
+    # target back and records verified/unrecovered on the proposal and audit
+    # trail. Long enough for a replayed event to traverse the queue; 0 disables
+    # the readback entirely.
+    REMEDIATION_VERIFY_DELAY_SECONDS: int = Field(default=300, ge=0)
     FORWARD_OUTBOX_STALE_SECONDS: int = Field(
         default=300,
         gt=0,

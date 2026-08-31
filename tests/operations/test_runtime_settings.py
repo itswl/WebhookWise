@@ -225,6 +225,9 @@ def test_every_registered_key_is_actually_read_through_the_plane() -> None:
         read.update(pattern.findall(path.read_text(encoding="utf-8")))
     # The helper in operations/policies.py wraps override_or under its own name.
     wrapper = re.compile(r'_rt_override\(\s*"([A-Z0-9_]+)"')
+    # feature_modes.resolve_feature_mode reads the plane for mode-ladder keys;
+    # call sites name the key literally, so the reader is greppable here too.
+    mode_reader = re.compile(r'resolve_feature_mode\(\s*\n?\s*"([A-Z0-9_]+)"')
     # And a module that resolves keys by attribute name declares them in a
     # RUNTIME_KEYS tuple, because a dynamic lookup is exactly where a dead
     # setting would hide from this check.
@@ -233,6 +236,7 @@ def test_every_registered_key_is_actually_read_through_the_plane() -> None:
     for path in sources:
         text = path.read_text(encoding="utf-8")
         read.update(wrapper.findall(text))
+        read.update(mode_reader.findall(text))
         for block in declared.findall(text):
             read.update(literal.findall(block))
 

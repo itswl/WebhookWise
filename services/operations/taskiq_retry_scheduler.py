@@ -115,6 +115,31 @@ async def schedule_webhook_ingest_retry(
     )
 
 
+async def schedule_remediation_verification(
+    *,
+    delay_seconds: int,
+    action: str,
+    resource_id: int | None,
+    resource_type: str | None,
+    proposal_id: int | None,
+    execution_result: dict[str, Any] | None,
+) -> None:
+    """Arm the same-target readback for one executed remediation."""
+    from services.operations.tasks import remediation_verification_task
+
+    marker = proposal_id if proposal_id is not None else resource_id
+    await _schedule_by_time(
+        f"remediation-verify:{action}:{marker if marker is not None else 'batch'}",
+        delay_seconds,
+        remediation_verification_task,
+        action=action,
+        resource_id=resource_id,
+        resource_type=resource_type,
+        proposal_id=proposal_id,
+        execution_result=execution_result,
+    )
+
+
 async def schedule_forward_outbox(outbox_id: int, delay_seconds: int) -> None:
     from services.operations.tasks import process_forward_outbox_task
 

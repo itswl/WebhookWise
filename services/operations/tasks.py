@@ -504,6 +504,37 @@ async def process_forward_outbox_task(outbox_id: int) -> None:
     await run_forward_outbox_task(outbox_id)
 
 
+@broker.task(task_name="remediation_verification_task")
+async def remediation_verification_task(
+    action: str,
+    resource_id: int | None = None,
+    resource_type: str | None = None,
+    proposal_id: int | None = None,
+    execution_result: dict[str, object] | None = None,
+) -> None:
+    """Read one executed remediation's target back and record the verdict."""
+    from services.operations.remediation_verification import verify_remediation
+
+    start = time.perf_counter()
+    status = "success"
+    try:
+        await verify_remediation(
+            action=action,
+            resource_id=resource_id,
+            resource_type=resource_type,
+            proposal_id=proposal_id,
+            execution_result=dict(execution_result or {}),
+        )
+    except BaseException:
+        status = "error"
+        raise
+    finally:
+        WORKER_TASKS_TOTAL.labels("remediation_verification_task", status).inc()
+        WORKER_TASK_DURATION_SECONDS.labels("remediation_verification_task", status).observe(
+            time.perf_counter() - start
+        )
+
+
 @broker.task(task_name="deep_analysis_poll_task")
 async def poll_deep_analysis_task(analysis_id: int) -> None:
     """Poll one pending deep-analysis record."""
