@@ -3,9 +3,30 @@
 All notable project changes should be summarized here after merge or release.
 This project follows SemVer release headings.
 
-## Unreleased
+## [0.1.1] - 2026-08-31
+
+The version line restarts at 0.1.x. This repository's public history begins at
+the 2026-08-19 recreation, and a 5.0.0 with a single checkable release behind
+it overstated what a reader could verify. The recreation release keeps its
+content below, renumbered 0.1.0; the pre-recreation entries further down keep
+their original 1.x–3.8.0 numbers — they describe a history whose artifacts are
+no longer published.
+
+### Security
+- Webhook secret rotation with an overlap window (`WEBHOOK_SECRET_PREVIOUS`):
+  a second accepted secret across all three auth forms (bearer/token, body
+  HMAC, timestamped HMAC) so senders that only their own operators can edit
+  migrate without a 401 window. Requests it authenticates are counted under
+  the `webhook_auth` / `allowed_previous_secret` security check — the counter
+  that says when the overlap can end; startup warns while it is active and
+  rejects placeholder values.
 
 ### Added
+- Shadow-mode AI review of pull requests (`.github/workflows/ai-review.yml`,
+  `scripts/ci/ai_review.sh`): one sticky advisory comment per PR, scoped to
+  correctness, ingress security, contract drift, and behavioral Chinese
+  strings. `continue-on-error` plus a keyless skip path mean it cannot gate a
+  merge, a fork PR, or a clone; it is inert until `AI_REVIEW_API_KEY` is set.
 - Off/shadow/enforce mode ladder for risky automations
   (`services/operations/feature_modes.py`); first consumers are the AI budget
   brake (`AI_COST_BUDGET_MODE`) and the dedup fingerprint below. Shadow records
@@ -27,18 +48,38 @@ This project follows SemVer release headings.
   the answer is unmasked before anything persists; the deep-analysis round-trip
   carries the map on the DeepAnalysis row and clears it on first use.
 
-## [5.0.0] - 2026-08-19
+### Fixed
+- The AI request timeout sat 1.7s above the p99 of the calls that actually
+  succeeded, so slow-but-fine calls were killed; two alert rules could not
+  return to normal and an SLO arithmetic was unreachable.
+- The alertmanager bypass route could not start (`url_file` vs an env
+  reference the config never expands) and hid it for three weeks; container
+  logs are now capped (the json-file driver has no default limit).
+- The AI-cost basis reached the client as null; the dashboard now says when a
+  hash route is unknown instead of quietly showing Overview.
+- `scripts/eval/score_severity.py --ai` bootstraps an AppContext, so the live
+  provider leg runs in a bare process instead of dying before the first call.
 
-A major bump, not a feature list: the repository this code was published from is
-gone. A public-repository audit found an internal architecture in plain sight — a
-platform org chart with @-mentionable handles, object-storage bucket names for
-prod and dev, internal service names, a company domain, and two credentials that
-were still live in production, every one of them reachable in the git history
-since the first commit. The history was rewritten, the repository was recreated to
-purge the pull-request refs a rewrite cannot touch, and CI now fails on any of
-those names returning.
+### Operations
+- The nightly database backup that had never been scheduled now is
+  (`scripts/ops/backup_ww_db.sh`); dumps record which pg client wrote them,
+  because the database container's own older `pg_restore` refuses these
+  archives — restore from the application image.
+- Agent material consolidated under `.agents/` (operator skills + decision
+  notes), with gate checks for note shape and per-machine skill pointers.
 
-4.x is deliberately unused, so the break is visible in the version itself.
+## [0.1.0] - 2026-08-19
+
+Originally published as 5.0.0 and renumbered to 0.1.0 on 2026-08-31 when the
+project moved to a version line matching its actual public history (see the
+0.1.1 preamble). Not a feature list first: the repository this code was
+published from is gone. A public-repository audit found an internal
+architecture in plain sight — a platform org chart with @-mentionable handles,
+object-storage bucket names for prod and dev, internal service names, a
+company domain, and two credentials that were still live in production, every
+one of them reachable in the git history since the first commit. The history
+was rewritten, the repository was recreated to purge the pull-request refs a
+rewrite cannot touch, and CI now fails on any of those names returning.
 
 ### Added
 - **Offline eval for the importance verdict** (`evals/`,

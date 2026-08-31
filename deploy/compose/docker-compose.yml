@@ -19,7 +19,7 @@ x-app-observability-env: &app-observability-env
   OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
   OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
   OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-webhookwise}
-  OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-5.0.0}
+  OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-0.1.1}
   OTEL_SEMCONV_VERSION: ${OTEL_SEMCONV_VERSION:-1.41.0}
   OTEL_SCHEMA_URL: ${OTEL_SCHEMA_URL:-https://opentelemetry.io/schemas/1.41.0}
   OTEL_METRICS_EXEMPLAR_FILTER: ${OTEL_METRICS_EXEMPLAR_FILTER:-trace_based}
@@ -67,7 +67,7 @@ services:
     environment:
       RUN_MODE: migrate
       APP_ENV: ${COMPOSE_APP_ENV:-development}
-      APP_VERSION: ${APP_VERSION:-5.0.0}
+      APP_VERSION: ${APP_VERSION:-0.1.1}
       PYTHONPATH: /app
       OTEL_ENABLED: "false"
       OTEL_CONSOLE_EXPORTER: "false"
@@ -117,7 +117,7 @@ services:
       RUN_MODE: api
       PORT: ${PORT:-8000}
       APP_ENV: ${COMPOSE_APP_ENV:-development}
-      APP_VERSION: ${APP_VERSION:-5.0.0}
+      APP_VERSION: ${APP_VERSION:-0.1.1}
       API_WORKERS: ${API_WORKERS:-2}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
@@ -174,7 +174,7 @@ services:
       <<: *app-observability-env
       RUN_MODE: worker
       APP_ENV: ${COMPOSE_APP_ENV:-development}
-      APP_VERSION: ${APP_VERSION:-5.0.0}
+      APP_VERSION: ${APP_VERSION:-0.1.1}
       PYTHONPATH: /app
       REDIS_URL: ${REDIS_URL}
       DATABASE_URL: ${DATABASE_URL}
@@ -234,7 +234,7 @@ services:
       <<: *app-observability-env
       RUN_MODE: scheduler
       APP_ENV: ${COMPOSE_APP_ENV:-development}
-      APP_VERSION: ${APP_VERSION:-5.0.0}
+      APP_VERSION: ${APP_VERSION:-0.1.1}
       PYTHONPATH: /app
       REDIS_URL: ${REDIS_URL}
       DATABASE_URL: ${DATABASE_URL}
