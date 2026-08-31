@@ -3,6 +3,30 @@
 All notable project changes should be summarized here after merge or release.
 This project follows SemVer release headings.
 
+## Unreleased
+
+### Added
+- Off/shadow/enforce mode ladder for risky automations
+  (`services/operations/feature_modes.py`); first consumers are the AI budget
+  brake (`AI_COST_BUDGET_MODE`) and the dedup fingerprint below. Shadow records
+  what WOULD have happened; an unknown value degrades to off.
+- Per-source dedup fingerprint fields (`DEDUP_FINGERPRINT_FIELDS` +
+  `DEDUP_FINGERPRINT_MODE`): a noisy source can name the dot-paths that ARE its
+  alert identity; shadow mode counts divergence from the built-in key before
+  anything changes. `alert_hash` never moves.
+- Synthetic severity evaluation suite (`tests/synthetic/severity/`, 18
+  scenarios with ground truth by construction) enforced at 100% in the gate,
+  plus `scripts/eval/score_severity.py` to re-measure the live AI provider
+  against the same fixtures (`--ai`).
+- Same-target readback after every executed Action Center command: a delayed
+  worker re-reads the target and records verified / unrecovered / unverifiable
+  on the proposal and audit trail (`REMEDIATION_VERIFY_DELAY_SECONDS`);
+  unrecovered verdicts surface as a critical Action Center card.
+- Reversible identifier masking for AI-bound prompts
+  (`AI_PSEUDONYMIZE_*`): estate identifiers leave as stable `anon-*` tokens and
+  the answer is unmasked before anything persists; the deep-analysis round-trip
+  carries the map on the DeepAnalysis row and clears it on first use.
+
 ## [5.0.0] - 2026-08-19
 
 A major bump, not a feature list: the repository this code was published from is
