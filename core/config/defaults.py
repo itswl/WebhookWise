@@ -542,6 +542,16 @@ class RetryConfig(StaticSettings):
     """Retries + deduplication + periodic reminders."""
 
     DEDUP_WINDOW_SECONDS: int = Field(default=14400, gt=0)
+    # Per-source dedup identity, absorbed from Keep's provider FINGERPRINT_FIELDS:
+    # a JSON object mapping a source name to the dot-paths that ARE that source's
+    # alert identity, e.g. {"grafana": ["labels.alertname", "labels.instance"]}.
+    # The built-in adapter identity stays the default; this exists for the noisy
+    # source whose payloads bury timestamps/sequence numbers in identity fields
+    # and fragment the dedup thread. Rolled out on the off/shadow/enforce ladder:
+    # shadow counts how often the configured key disagrees with the built-in one
+    # (the dedup.fingerprint signal) without changing behaviour.
+    DEDUP_FINGERPRINT_MODE: str = Field(default="off")
+    DEDUP_FINGERPRINT_FIELDS: str = Field(default="")
     ANALYSIS_REUSE_WINDOW_SECONDS: int = Field(default=43200, gt=0)
     ENABLE_PERIODIC_REMINDER: bool = Field(default=True)
     REMINDER_INTERVAL_HOURS: int = Field(default=6, gt=0)

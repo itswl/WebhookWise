@@ -5,7 +5,8 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, cast
 
 from redis.exceptions import RedisError
 
@@ -20,6 +21,9 @@ from core.redis_lua import DEDUP_REMEMBER as _DEDUP_REMEMBER_LUA
 from db.session import session_scope
 from services.analysis.resource_risk import resource_dedup_bucket
 from services.webhooks.types import is_analysis_degraded, is_pending_result
+
+if TYPE_CHECKING:
+    from services.operations.feature_modes import FeatureMode
 
 logger = get_logger("dedup")
 
@@ -132,13 +136,13 @@ class DedupResult:
         return self.action == DedupAction.RECHAIN
 
 
-def generate_event_keys(
+def _default_event_keys(
     data: Mapping[str, Any],
     source: str,
     *,
     namespace: str | None = None,
 ) -> tuple[str, str]:
-    """Extract identity once and generate both alert_hash and dedup_key."""
+    """Extract adapter identity once and generate both alert_hash and dedup_key."""
     from adapters.normalized import extract_alert_identity
 
     identity = extract_alert_identity(data)
@@ -181,6 +185,128 @@ def generate_event_keys(
         fallback_key_fields["namespace"] = namespace
     fallback_hash = hashlib.sha256(json.dumps_bytes(fallback_key_fields, sort_keys=True)).hexdigest()
     return fallback_hash, fallback_hash
+
+
+# ── Per-source fingerprint fields (Keep's FINGERPRINT_FIELDS, on the mode ladder) ──
+
+
+@lru_cache(maxsize=8)
+def _parse_fingerprint_fields(raw: str) -> dict[str, tuple[str, ...]]:
+    """Parse the JSON {source: [dot.paths]} setting; anything malformed is {}.
+
+    Keyed on the raw string (mirrors url_security._parse_target_allowlist): the
+    parse runs once per distinct setting value, not once per webhook, and a
+    runtime-settings change produces a new key immediately.
+    """
+    text = raw.strip()
+    if not text:
+        return {}
+    try:
+        loaded = json.loads(text)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        logger.warning("[Dedup] DEDUP_FINGERPRINT_FIELDS is not valid JSON; fingerprint config ignored")
+        return {}
+    if not isinstance(loaded, dict):
+        logger.warning("[Dedup] DEDUP_FINGERPRINT_FIELDS must be a JSON object; fingerprint config ignored")
+        return {}
+    parsed: dict[str, tuple[str, ...]] = {}
+    for source, fields in loaded.items():
+        if not isinstance(fields, list):
+            continue
+        cleaned = tuple(str(field).strip() for field in fields if str(field).strip())
+        if cleaned:
+            parsed[str(source).strip().lower()] = cleaned
+    return parsed
+
+
+def _fingerprint_mode() -> "FeatureMode":
+    from services.operations.feature_modes import resolve_feature_mode
+
+    cfg = get_config_manager().retry
+    return resolve_feature_mode("DEDUP_FINGERPRINT_MODE", str(getattr(cfg, "DEDUP_FINGERPRINT_MODE", "off") or "off"))
+
+
+def _fingerprint_fields_for_source(source: str) -> tuple[str, ...]:
+    from services.operations import runtime_settings as rt
+
+    cfg = get_config_manager().retry
+    raw = rt.override_or("DEDUP_FINGERPRINT_FIELDS", str(getattr(cfg, "DEDUP_FINGERPRINT_FIELDS", "") or ""))
+    return _parse_fingerprint_fields(raw).get(source.strip().lower(), ())
+
+
+def _extract_field_path(data: Mapping[str, Any], path: str) -> object | None:
+    """Resolve one dot-path against the payload; None when any hop is missing."""
+    current: Any = data
+    for part in path.split("."):
+        if isinstance(current, Mapping):
+            current = current.get(part)
+        elif isinstance(current, list):
+            try:
+                index = int(part)
+            except ValueError:
+                return None
+            current = current[index] if -len(current) <= index < len(current) else None
+        else:
+            return None
+        if current is None:
+            return None
+    return cast(object, current)
+
+
+def _fingerprint_dedup_key(
+    data: Mapping[str, Any], source: str, fields: tuple[str, ...], namespace: str | None
+) -> str | None:
+    """Dedup key from the operator-configured identity fields; None if nothing matched."""
+    values: dict[str, object] = {}
+    for path in fields:
+        value = _extract_field_path(data, path)
+        if value is not None:
+            values[path] = value
+    if not values:
+        return None
+    key_fields: dict[str, object] = {"source": source.strip().lower(), "fields": values}
+    if namespace:
+        key_fields["namespace"] = namespace
+    return hashlib.sha256(json.dumps_bytes(key_fields, sort_keys=True)).hexdigest()
+
+
+def generate_event_keys(
+    data: Mapping[str, Any],
+    source: str,
+    *,
+    namespace: str | None = None,
+) -> tuple[str, str]:
+    """(alert_hash, dedup_key) for one normalized payload.
+
+    alert_hash always comes from the adapter identity — it names the alert for
+    history and must not move under an operator's fingerprint experiments. The
+    dedup_key (what threads repeats together) can be overridden per source by
+    DEDUP_FINGERPRINT_FIELDS, rolled out on the off/shadow/enforce ladder:
+    shadow computes the configured key and counts disagreement with the
+    built-in one (signal dedup.fingerprint/diverged) while behaviour stays
+    unchanged. A payload the configured paths do not match falls back to the
+    built-in key in every mode — a half-matching config must fragment, not
+    collapse everything into one bucket.
+    """
+    from core.observability.events import record_signal
+    from services.operations.feature_modes import FeatureMode as _Mode
+
+    alert_hash, dedup_key = _default_event_keys(data, source, namespace=namespace)
+    mode = _fingerprint_mode()
+    if mode is _Mode.OFF:
+        return alert_hash, dedup_key
+    fields = _fingerprint_fields_for_source(source)
+    if not fields:
+        return alert_hash, dedup_key
+    configured = _fingerprint_dedup_key(data, source, fields, namespace)
+    if configured is None:
+        record_signal("dedup.fingerprint", "unextractable", {"webhook.source": source})
+        return alert_hash, dedup_key
+    if mode is _Mode.SHADOW:
+        if configured != dedup_key:
+            record_signal("dedup.fingerprint", "diverged", {"webhook.source": source})
+        return alert_hash, dedup_key
+    return alert_hash, configured
 
 
 def generate_alert_hash(

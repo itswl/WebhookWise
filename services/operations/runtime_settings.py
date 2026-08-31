@@ -77,6 +77,22 @@ def _cast_float(minimum: float | None = None, maximum: float | None = None) -> C
     return cast
 
 
+def _cast_fingerprint_fields(raw: str) -> str:
+    """Validate the JSON {source: [dot.paths]} shape without normalizing it."""
+    from core import json
+
+    text = raw.strip()
+    if not text:
+        return ""
+    loaded = json.loads(text)
+    if not isinstance(loaded, dict):
+        raise ValueError("expected a JSON object mapping source -> field list")
+    for source, fields in loaded.items():
+        if not isinstance(fields, list) or not fields or not all(isinstance(f, str) and f.strip() for f in fields):
+            raise ValueError(f"fields for {source!r} must be a non-empty list of dot-paths")
+    return text
+
+
 def _cast_choice(*choices: str) -> Callable[[str], str]:
     def cast(raw: str) -> str:
         value = raw.strip().lower()
@@ -213,6 +229,18 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
     ),
     # Ingest: what counts as the same alert, and how hard to retry one.
     SettingSpec("DEDUP_WINDOW_SECONDS", "ingest", _cast_int(0, 86400), "Repeats within this window join a thread"),
+    SettingSpec(
+        "DEDUP_FINGERPRINT_MODE",
+        "ingest",
+        _cast_choice("off", "shadow", "enforce"),
+        "Per-source dedup fingerprint ladder: off, shadow (count divergence), enforce",
+    ),
+    SettingSpec(
+        "DEDUP_FINGERPRINT_FIELDS",
+        "ingest",
+        _cast_fingerprint_fields,
+        "JSON {source: [dot.paths]} naming the fields that ARE that source's alert identity",
+    ),
     SettingSpec(
         "ANALYSIS_REUSE_WINDOW_SECONDS", "ingest", _cast_int(0, 86400), "How long one analysis answers restatements"
     ),
