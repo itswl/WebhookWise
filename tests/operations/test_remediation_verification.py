@@ -74,9 +74,7 @@ async def test_replayed_events_verify_only_when_all_completed(db_session: AsyncS
     await db_session.commit()
 
     all_done, _ = await rv._readback_replayed_events(db_session, {"scheduled_event_ids": [done.id]})
-    partial, detail = await rv._readback_replayed_events(
-        db_session, {"scheduled_event_ids": [done.id, still_dead.id]}
-    )
+    partial, detail = await rv._readback_replayed_events(db_session, {"scheduled_event_ids": [done.id, still_dead.id]})
 
     assert all_done == rv.VERIFIED
     assert partial == rv.UNRECOVERED
@@ -188,9 +186,12 @@ async def test_unrecovered_verdict_is_recorded_as_such(db_app_context_session_fa
 @pytest.mark.asyncio
 async def test_schedule_is_best_effort_and_reports_disabled(monkeypatch, temp_config) -> None:
     monkeypatch.setattr(temp_config.tasks, "REMEDIATION_VERIFY_DELAY_SECONDS", 0, raising=False)
-    assert await rv.schedule_verification_best_effort(
-        action="retry_outbox", resource_id=1, resource_type=None, proposal_id=None, execution_result={}
-    ) == 0
+    assert (
+        await rv.schedule_verification_best_effort(
+            action="retry_outbox", resource_id=1, resource_type=None, proposal_id=None, execution_result={}
+        )
+        == 0
+    )
 
 
 @pytest.mark.asyncio

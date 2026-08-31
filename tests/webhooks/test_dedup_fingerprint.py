@@ -43,9 +43,7 @@ def test_malformed_fields_config_is_ignored() -> None:
     assert dedup._parse_fingerprint_fields("not json {") == {}
     assert dedup._parse_fingerprint_fields('["a"]') == {}
     assert dedup._parse_fingerprint_fields('{"grafana": "not-a-list"}') == {}
-    assert dedup._parse_fingerprint_fields('{"Grafana": ["labels.alertname"]}') == {
-        "grafana": ("labels.alertname",)
-    }
+    assert dedup._parse_fingerprint_fields('{"Grafana": ["labels.alertname"]}') == {"grafana": ("labels.alertname",)}
 
 
 # ── mode ladder behaviour ─────────────────────────────────────────────────────

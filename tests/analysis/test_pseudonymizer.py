@@ -64,7 +64,9 @@ def test_terms_mask_verbatim_including_cjk() -> None:
 
 def test_longer_term_wins_over_its_substring() -> None:
     policy = PseudonymPolicy(
-        enabled=True, mask_ips=False, host_suffixes=(),
+        enabled=True,
+        mask_ips=False,
+        host_suffixes=(),
         terms=tuple(sorted({"pay-core", "pay-core-shanghai"}, key=len, reverse=True)),
     )
     session = PseudonymSession(policy)
@@ -114,7 +116,9 @@ def test_disabled_or_empty_policy_builds_no_session(monkeypatch, temp_config) ->
 
 def test_policy_from_config_normalizes_suffixes_and_orders_terms(monkeypatch, temp_config) -> None:
     monkeypatch.setattr(temp_config.ai, "AI_PSEUDONYMIZE_ENABLED", True, raising=False)
-    monkeypatch.setattr(temp_config.ai, "AI_PSEUDONYMIZE_HOST_SUFFIXES", ".Corp.Example, internal.example", raising=False)
+    monkeypatch.setattr(
+        temp_config.ai, "AI_PSEUDONYMIZE_HOST_SUFFIXES", ".Corp.Example, internal.example", raising=False
+    )
     monkeypatch.setattr(temp_config.ai, "AI_PSEUDONYMIZE_TERMS", "pay, pay-core-shanghai, pay-core", raising=False)
 
     policy = PseudonymPolicy.from_config()
@@ -161,9 +165,7 @@ async def test_masking_off_leaves_the_path_byte_identical(monkeypatch, temp_conf
 
     monkeypatch.setattr(temp_config.ai, "AI_PSEUDONYMIZE_ENABLED", False, raising=False)
     monkeypatch.setattr(ai_llm_client, "build_correction_prior", AsyncMock(return_value=None))
-    monkeypatch.setattr(
-        ai_llm_client, "_build_user_prompt", AsyncMock(return_value="alert from AtlasPrime")
-    )
+    monkeypatch.setattr(ai_llm_client, "_build_user_prompt", AsyncMock(return_value="alert from AtlasPrime"))
     invoke = AsyncMock(return_value=({"importance": "low", "summary": "s"}, 1, 1))
     monkeypatch.setattr(ai_llm_client, "_invoke_ai_with_retry", invoke)
 

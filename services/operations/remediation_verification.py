@@ -78,9 +78,7 @@ async def _readback_replayed_events(
     if not ids:
         return UNVERIFIABLE, {"reason": "nothing was replayed"}
     rows = (
-        await session.execute(
-            select(WebhookEvent.id, WebhookEvent.processing_status).where(WebhookEvent.id.in_(ids))
-        )
+        await session.execute(select(WebhookEvent.id, WebhookEvent.processing_status).where(WebhookEvent.id.in_(ids)))
     ).all()
     statuses = {int(event_id): str(status or "") for event_id, status in rows}
     completed = [i for i in ids if statuses.get(i) == WebhookProcessingStatus.COMPLETED]
@@ -106,9 +104,7 @@ async def _readback_incident_summaries(
     ids = [int(i) for i in (execution_result or {}).get("incident_ids") or []]
     if not ids:
         return UNVERIFIABLE, {"reason": "no incident summaries were retried"}
-    rows = (
-        await session.execute(select(Incident.id, Incident.summary_status).where(Incident.id.in_(ids)))
-    ).all()
+    rows = (await session.execute(select(Incident.id, Incident.summary_status).where(Incident.id.in_(ids)))).all()
     statuses = {int(incident_id): str(status or "") for incident_id, status in rows}
     completed = [i for i in ids if statuses.get(i) == "completed"]
     detail: dict[str, Any] = {"retried": len(ids), "completed": len(completed)}

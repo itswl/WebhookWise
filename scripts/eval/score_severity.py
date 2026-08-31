@@ -63,9 +63,7 @@ async def _score_ai(scenarios: list[dict[str, Any]], rows: list[dict[str, Any]])
     await initialize_openai_client()
     for scenario, row in zip(scenarios, rows, strict=True):
         try:
-            result, _tokens_in, _tokens_out = await _call_ai_with_retry(
-                dict(scenario["payload"]), scenario["source"]
-            )
+            result, _tokens_in, _tokens_out = await _call_ai_with_retry(dict(scenario["payload"]), scenario["source"])
             ai_importance = str(result.get("importance", "")).lower().rsplit(".", 1)[-1]
         except Exception as error:  # noqa: BLE001 - a scorer records failures, it does not crash on one
             row["ai"] = f"error:{type(error).__name__}"

@@ -499,9 +499,7 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
         .all()
     )
     for proposal in unrecovered_proposals:
-        detail_bits = ", ".join(
-            f"{key}={value}" for key, value in sorted((proposal.verify_detail or {}).items())
-        )
+        detail_bits = ", ".join(f"{key}={value}" for key, value in sorted((proposal.verify_detail or {}).items()))
         items.append(
             _item(
                 item_id=f"remediation-verify:{proposal.id}",

@@ -56,9 +56,7 @@ class PseudonymPolicy:
         from services.operations import runtime_settings as rt
 
         cfg = get_config_manager().ai
-        enabled = bool(
-            rt.override_or("AI_PSEUDONYMIZE_ENABLED", bool(getattr(cfg, "AI_PSEUDONYMIZE_ENABLED", False)))
-        )
+        enabled = bool(rt.override_or("AI_PSEUDONYMIZE_ENABLED", bool(getattr(cfg, "AI_PSEUDONYMIZE_ENABLED", False))))
         mask_ips = bool(rt.override_or("AI_PSEUDONYMIZE_IPS", bool(getattr(cfg, "AI_PSEUDONYMIZE_IPS", True))))
         suffixes_raw = rt.override_or(
             "AI_PSEUDONYMIZE_HOST_SUFFIXES", str(getattr(cfg, "AI_PSEUDONYMIZE_HOST_SUFFIXES", "") or "")
@@ -110,14 +108,12 @@ class PseudonymSession:
             if term in masked:
                 masked = masked.replace(term, self._token_for(_KIND_TERM, term))
         if self._host_re is not None:
-            masked = self._host_re.sub(
-                lambda match: self._token_for(_KIND_HOST, match.group(0)), masked
-            )
+            masked = self._host_re.sub(lambda match: self._token_for(_KIND_HOST, match.group(0)), masked)
         if self._policy.mask_ips:
             masked = _IPV4_RE.sub(
-                lambda match: match.group(0)
-                if match.group(0) in _IP_PASSTHROUGH
-                else self._token_for(_KIND_IP, match.group(0)),
+                lambda match: (
+                    match.group(0) if match.group(0) in _IP_PASSTHROUGH else self._token_for(_KIND_IP, match.group(0))
+                ),
                 masked,
             )
         return masked
