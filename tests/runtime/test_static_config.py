@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from core.config.defaults import AIConfig
 from tests.helpers.paths import PROJECT_ROOT
 
 ROOT = PROJECT_ROOT
@@ -156,7 +157,17 @@ def test_numeric_config_bounds_reject_invalid_runtime_values() -> None:
 @pytest.mark.parametrize(
     ("section", "field", "value", "message"),
     [
-        ("ai", "AI_HTTP_CONNECT_TIMEOUT_SECONDS", 61, "AI_HTTP_CONNECT_TIMEOUT_SECONDS"),
+        # Derived from the default rather than written as a number: the literal
+        # 61 was chosen when the total timeout was 60, and silently became a
+        # VALID value the day that default moved to 120 — the test then failed
+        # for the one reason a test must not, which is that the thing it guards
+        # changed and it was still asserting the old shape.
+        (
+            "ai",
+            "AI_HTTP_CONNECT_TIMEOUT_SECONDS",
+            AIConfig().AI_HTTP_TIMEOUT_SECONDS + 1,
+            "AI_HTTP_CONNECT_TIMEOUT_SECONDS",
+        ),
         ("retry", "ANALYSIS_REUSE_WINDOW_SECONDS", 1, "ANALYSIS_REUSE_WINDOW_SECONDS"),
         ("retry", "WEBHOOK_RETRY_INITIAL_DELAY_SECONDS", 901, "WEBHOOK_RETRY_INITIAL_DELAY_SECONDS"),
         ("retry", "FORWARD_RETRY_INITIAL_DELAY_SECONDS", 3601, "FORWARD_RETRY_INITIAL_DELAY_SECONDS"),
