@@ -36,9 +36,15 @@ layer below exists in the shape it does.
 | **Provenance** — which prompt text produced an analysis, and what it spent | `services/webhooks/types.py` (`set_analysis_prompt`, `set_analysis_usage`) | The question asked when a report reads wrong |
 | **Decision trace** — one queryable record per alert of the ordered gate decisions and the AI-quality signals | `models/decision_trace.py` | The dashboard's quality view, `get_alert_decision_trace`, and every investigation recipe |
 | **Agentic deep analysis** — a multi-step investigator behind a neutral gateway contract, triggered only for alerts that earn it | `services/analysis/deep_analysis_*.py` | The deep-analysis report rendered into the Chinese incident report |
-| **Agent surface (MCP)** — 20 tools, 2 resources, 2 prompt templates over the existing query layer | `api/mcp/` | Any MCP client; the three repo skills in `.claude/skills/` |
+| **Agent surface (MCP)** — 20 tools, 2 resources, 2 prompt templates over the existing query layer | `api/mcp/` | Any MCP client; the four repo skills in `.agents/skills/` |
 | **Approval-gated action** — an agent proposes an Action Center command; a person approves; the existing executor runs it | `services/operations/remediation_proposals.py` | [`docs/features/approval-gated-remediation.md`](../features/approval-gated-remediation.md) |
+| **Remediation readback** — an executed command is not "fixed" until a delayed readback of the TARGET says so; unrecovered raises a critical card | `services/operations/remediation_verification.py` | `verify_status` on the proposal row; the Action Center's unrecovered card |
+| **Mode ladder** — risky automations carry an off/shadow/enforce mode; unknown values fail loudly to off | `services/operations/feature_modes.py` | Every shadow ledger below; the promotion decision in [`.agents/notes/`](../../.agents/notes/implemented/2026-08-31-shadow-first-promotion-needs-a-ladder.md) |
+| **Dedup fingerprint (shadow-able)** — a source can name the payload fields that ARE its alert identity; shadow mode counts where that key disagrees with the built-in one | `services/dedup.py` | `dedup.fingerprint/diverged` signals; the enforce decision |
+| **Synthetic severity evals** — 18 constructed scenarios with ground truth by construction, held at 100% for the rule floor; one flag re-measures the live model | `tests/synthetic/severity/`, `scripts/eval/score_severity.py` | `scripts/gate.sh`; the rules-vs-model gap number |
+| **Reversible pseudonymization** — estate identifiers leave for the model as tokens and come back real; the map is stored, applied, then cleared | `services/analysis/pseudonymizer.py` | What the provider is allowed to see; the stored `pseudonym_map` until unmasking |
 | **Offline eval + gate** — a frozen corpus of labelled alerts, replayed and held to recorded thresholds in CI | `evals/`, `scripts/eval_analysis.py` | `scripts/gate.sh` and ci.yml's test job |
+| **Shadow code review** — a model reviews every PR diff for behavior, in a sticky advisory comment that cannot gate | `.github/workflows/ai-review.yml`, `scripts/ci/ai_review.sh` | The PR author; the sampled hit rate that decides promotion |
 
 ## What proves a change
 
@@ -74,6 +80,35 @@ the thresholds gate the next prompt change.
   verdict. That is a cost decision, not a coverage gap.
 - **The correction prior is off by default and unproven.** `prior_followed` is
   the number that will decide whether it stays; it has no production data yet.
+- **A shadow ledger nobody reads is default-off with extra steps.** Every
+  mechanism in shadow owes a review date; the promotion ladder note records
+  them.
+
+## The vocabulary bridge
+
+The mechanisms above were built need-first, but they land on the same patterns
+the industry is converging on — Anthropic's [AI-native SDLC
+playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) and its
+[SDLC-security account](https://claude.com/blog/how-anthropic-secures-its-ai-native-software-development-lifecycle)
+describe them at the scale of ~80% model-authored merged code. The mapping,
+for anyone arriving with that vocabulary:
+
+| Industry term (those posts) | Here |
+| --- | --- |
+| Shadow mode — a new automation observes real traffic, acts on nothing, until sampled trust is earned | The mode ladder's `shadow`; the relay/judge shadow-run; the shadow code reviewer |
+| Tiered autonomy / response tiers — observe, then read-only diagnosis, then action through pre-approved routes | Alert → hookprobe investigates read-only → Action Center proposal a person approves → executor runs it |
+| Agents cannot deploy their own fixes | Approval-gated remediation: `propose_remediation` executes nothing |
+| Verification loop — done means verified, not executed | Remediation readback: the TARGET confirms recovery or a critical card fires |
+| Deterministic hooks over advisory guidance | The budget brake, the circuit breaker, `scripts/gate.sh` as an exact CI replica |
+| Continuous evals gating configuration changes | The offline eval + `assert-fresh` on prompts; the synthetic severity floor |
+| Versioned org knowledge as skills | `.agents/skills/`, the four operator skills shipping with the service |
+| Artifact chain / decisions as audit trail | `.agents/notes/`, shape-enforced by the gate |
+| Observable secret rotation | `WEBHOOK_SECRET_PREVIOUS` + the `allowed_previous_secret` counter as the cutover gauge |
+
+The discipline is the same one this page opens with: a mechanism exists when
+something consumes it. The posts' numbers (substantive-review share 16%→54%,
+a third of past incidents catchable) are the shape of evidence each mapped
+mechanism still owes here.
 
 ## Reading order
 
