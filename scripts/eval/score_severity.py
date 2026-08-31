@@ -58,8 +58,13 @@ def _score_rules(scenarios: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 async def _score_ai(scenarios: list[dict[str, Any]], rows: list[dict[str, Any]]) -> None:
     """Best-effort live-provider scoring; failures are recorded, not raised."""
+    from core.app_context import AppContext, get_default_app_context, set_default_app_context
+    from core.config import get_settings
     from services.analysis.ai_llm_client import _call_ai_with_retry, initialize_openai_client
 
+    # A bare process has no AppContext; the AI client's http client lives there.
+    if get_default_app_context() is None:
+        set_default_app_context(AppContext(config=get_settings()))
     await initialize_openai_client()
     for scenario, row in zip(scenarios, rows, strict=True):
         try:
