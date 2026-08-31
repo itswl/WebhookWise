@@ -183,6 +183,9 @@ class ForwardResult(TypedDict):
     outbox_id: NotRequired[int]
     outbox_ids: NotRequired[list[int]]
     _pending: NotRequired[bool]
+    # token -> real identifier map when the outbound prompt was pseudonymized;
+    # persisted onto the DeepAnalysis row so the poller can unmask the report.
+    pseudonym_map: NotRequired[dict[str, str]]
     _gateway_run_id: NotRequired[str]
     _gateway_session_key: NotRequired[str]
     _degraded: NotRequired[bool]

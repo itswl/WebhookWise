@@ -267,6 +267,15 @@ class AIConfig(StaticSettings):
     AI_HTTP_CONNECT_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0.0)
     AI_PAYLOAD_MAX_BYTES: int = Field(default=32768, gt=0)
     AI_PAYLOAD_STRIP_KEYS: str = Field(default="images,raw_trace,stacktrace,base64_data,screenshot,binary_data")
+    # Reversible identifier masking for AI-bound prompts (OpenSRE-style): the
+    # listed identifier classes are swapped for stable anon-* tokens before the
+    # prompt leaves the process and swapped back in the answer. This is for
+    # estate names the model may reason about but the provider must not learn;
+    # credential redaction stays one-way and runs first. Off by default.
+    AI_PSEUDONYMIZE_ENABLED: bool = Field(default=False)
+    AI_PSEUDONYMIZE_IPS: bool = Field(default=True)
+    AI_PSEUDONYMIZE_HOST_SUFFIXES: str = Field(default="")
+    AI_PSEUDONYMIZE_TERMS: str = Field(default="")
     RULE_HIGH_KEYWORDS: str = Field(default="error,failure,critical,alert,错误,失败,故障")
     # Matched against the alert's CONTENT (rule name, title, body) rather than
     # its level, and it floors the verdict at high. Money and account security

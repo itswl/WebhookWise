@@ -384,9 +384,20 @@ async def _call_ai_with_retry(
     policy = AIProviderPolicy.from_config()
     prior = await build_correction_prior(source, parsed_data)
     user_prompt = await _build_user_prompt(parsed_data, source, policy, correction_prior=prior)
+    # Reversible masking over the ASSEMBLED prompt: one interception point
+    # covers payload, identity, KB context and the correction prior alike, and
+    # keeps every mention of one identifier the same token. The answer is
+    # unmasked before anything downstream reads it.
+    from services.analysis.pseudonymizer import build_pseudonym_session
+
+    pseudonyms = build_pseudonym_session()
+    if pseudonyms is not None:
+        user_prompt = pseudonyms.mask_text(user_prompt)
     result, tokens_in, tokens_out = await _invoke_ai_with_retry(
         user_prompt, source, policy=policy, http_client=http_client
     )
+    if pseudonyms is not None:
+        result = cast(AnalysisResult, pseudonyms.unmask_obj(dict(result)))
     if prior is not None:
         # Stamped here, not inside the prompt builder: the interesting fact is
         # not that a prior was shown but whether the verdict came back agreeing

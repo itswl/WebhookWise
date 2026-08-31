@@ -67,6 +67,10 @@ class DeepAnalysis(Base):
     # because the answer arrives minutes later and the prompt is editable
     # at runtime; the poller cannot know what was sent.
     prompt_version: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    # token -> real identifier map when the outbound prompt was pseudonymized.
+    # Written at trigger time, consumed exactly once by the poller to unmask
+    # the report, then cleared — a stale map is a mapping nobody re-reads.
+    pseudonym_map: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(20), default="completed", index=True)
     poll_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     next_poll_at: Mapped[datetime | None] = mapped_column(DateTime)

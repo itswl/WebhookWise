@@ -279,6 +279,15 @@ def build_analysis_result_from_gateway_text(text: str, run_id: str = "") -> Json
 
 def _completed_update(rec: JsonObject, text: str, timeout_started_at: datetime | None) -> JsonObject:
     record_id = rec["id"]
+    # The trigger may have masked estate identifiers in the outbound prompt;
+    # the operator gets the report about the real ones. Unmask BEFORE parsing
+    # so structured fields and prose both come back real, and clear the map —
+    # it has served its one purpose.
+    pseudonym_map = rec.get("pseudonym_map")
+    if isinstance(pseudonym_map, dict) and pseudonym_map:
+        from services.analysis.pseudonymizer import unmask_text_with_map
+
+        text = unmask_text_with_map(text, {str(k): str(v) for k, v in pseudonym_map.items()})
     analysis_result = build_analysis_result_from_gateway_text(text, str(rec["gateway_run_id"] or ""))
     duration = _elapsed_since(timeout_started_at)
     DEEP_ANALYSIS_TOTAL.labels(status="completed", engine=str(rec.get("engine") or "unknown")).inc()
@@ -288,6 +297,7 @@ def _completed_update(rec: JsonObject, text: str, timeout_started_at: datetime |
         status=DeepAnalysisStatus.COMPLETED,
         analysis_result=analysis_result,
         duration_seconds=duration,
+        pseudonym_map=None,
     )
 
 
@@ -486,6 +496,7 @@ def _record_to_poll_dict(record: Any) -> JsonObject:
         "duration_seconds": record.duration_seconds,
         "poll_attempts": record.poll_attempts,
         "last_polled_at": record.last_polled_at,
+        "pseudonym_map": getattr(record, "pseudonym_map", None),
     }
 
 
@@ -596,6 +607,8 @@ async def poll_deep_analysis_once(analysis_id: int, *, policy: DeepAnalysisPollP
                 record.analysis_result = poll_result["analysis_result"]
             if "duration_seconds" in poll_result:
                 record.duration_seconds = poll_result["duration_seconds"]
+            if "pseudonym_map" in poll_result:
+                record.pseudonym_map = poll_result["pseudonym_map"]
             record.next_poll_at = None
             await session.flush()
 

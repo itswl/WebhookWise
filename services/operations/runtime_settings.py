@@ -212,6 +212,25 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
         _cast_choice("off", "shadow", "enforce"),
         "Budget brake ladder: off, shadow (record the refusal, spend anyway), enforce",
     ),
+    SettingSpec(
+        "AI_PSEUDONYMIZE_ENABLED",
+        "ai",
+        _cast_bool,
+        "Swap estate identifiers for reversible anon-* tokens in AI-bound prompts",
+    ),
+    SettingSpec("AI_PSEUDONYMIZE_IPS", "ai", _cast_bool, "Mask IPv4 addresses when pseudonymization is on"),
+    SettingSpec(
+        "AI_PSEUDONYMIZE_HOST_SUFFIXES",
+        "ai",
+        _cast_csv_names,
+        "Hostname suffixes whose hosts get masked, e.g. .internal.example",
+    ),
+    SettingSpec(
+        "AI_PSEUDONYMIZE_TERMS",
+        "ai",
+        _cast_csv_names,
+        "Exact estate names to mask wherever they appear in a prompt",
+    ),
     # Keyword rules. These decide severity before any model sees the alert, and
     # a missing keyword class is invisible: the payment-alert downgrade lived in
     # this configuration for weeks because nobody could see it.

@@ -469,7 +469,11 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
         if current is None:
             # Another finalizer already terminalized this record.
             return
-        current.response_data = dict(result)
+        response_snapshot = dict(result)
+        # The pseudonym map's home is the DeepAnalysis row (the poller needs it);
+        # duplicating real identifiers into response_data buys nothing.
+        pseudonym_map = response_snapshot.pop("pseudonym_map", None)
+        current.response_data = response_snapshot
 
         # Ask the channel whether a successful delivery needs a post-commit
         # follow-up record (the gateway spawns a DeepAnalysis poll). The state
@@ -492,6 +496,7 @@ async def _finalize_outbox_success(record: ForwardOutbox, result: ForwardResult)
                 # prompt is editable at runtime, so recording it at poll time
                 # would name whatever it says then, not what produced this.
                 prompt_version=get_prompt_version(DEEP_ANALYSIS_PROMPT_KIND),
+                pseudonym_map=pseudonym_map if isinstance(pseudonym_map, dict) else None,
                 status=DeepAnalysisStatus.PENDING,
                 poll_attempts=0,
                 next_poll_at=now + timedelta(seconds=initial_poll_delay),
