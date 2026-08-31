@@ -1,0 +1,14 @@
+{
+  "id": "006-level-info-neutral",
+  "note": "info with neutral content is low.",
+  "source": "custom-webhook",
+  "payload": {
+    "RuleName": "Nightly report generated",
+    "Level": "info",
+    "message": "report stored to object storage"
+  },
+  "expected": {
+    "importance": "low",
+    "triage_verdict": "defer"
+  }
+}

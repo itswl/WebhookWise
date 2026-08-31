@@ -1,0 +1,14 @@
+{
+  "id": "017-error-in-body-not-severity",
+  "note": "A plain 'error' in the message body is sanitizer vocabulary, not a severity keyword: level/name rules must not see it.",
+  "source": "custom-webhook",
+  "payload": {
+    "RuleName": "Deploy pipeline update",
+    "Level": "P2",
+    "message": "previous run had error logs attached for reference"
+  },
+  "expected": {
+    "importance": "medium",
+    "triage_verdict": "monitor"
+  }
+}

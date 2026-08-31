@@ -1,0 +1,14 @@
+{
+  "id": "003-level-guzhang-zh",
+  "note": "Chinese high level keyword in the Level field.",
+  "source": "n9e",
+  "payload": {
+    "RuleName": "核心服务探活",
+    "Level": "故障",
+    "message": "探测连续超时"
+  },
+  "expected": {
+    "importance": "high",
+    "triage_verdict": "act_now"
+  }
+}

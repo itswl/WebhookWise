@@ -1,0 +1,16 @@
+{
+  "id": "013-metric-between-1x-4x",
+  "note": "Past the threshold but under the multiplier stays medium.",
+  "source": "n9e",
+  "payload": {
+    "RuleName": "Disk usage watermark",
+    "Level": "P2",
+    "CurrentValue": "30",
+    "Threshold": "20",
+    "message": "growth is roughly linear"
+  },
+  "expected": {
+    "importance": "medium",
+    "triage_verdict": "monitor"
+  }
+}

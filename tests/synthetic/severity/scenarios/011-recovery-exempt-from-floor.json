@@ -1,0 +1,15 @@
+{
+  "id": "011-recovery-exempt-from-floor",
+  "note": "A recovery mentioning 支付 stays low: how bad it WAS is no longer the question once the condition is over.",
+  "source": "custom-webhook",
+  "payload": {
+    "RuleName": "业务日志关键字监控",
+    "Level": "info",
+    "status": "resolved",
+    "message": "支付服务恢复正常，回调延迟回落"
+  },
+  "expected": {
+    "importance": "low",
+    "triage_verdict": "defer"
+  }
+}

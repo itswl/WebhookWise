@@ -1,0 +1,14 @@
+{
+  "id": "015-name-cuowu-zh",
+  "note": "Chinese high keyword in the rule NAME (错误) with a neutral level.",
+  "source": "n9e",
+  "payload": {
+    "RuleName": "接口错误率突增",
+    "Level": "P2",
+    "message": "5xx占比抬升"
+  },
+  "expected": {
+    "importance": "high",
+    "triage_verdict": "act_now"
+  }
+}

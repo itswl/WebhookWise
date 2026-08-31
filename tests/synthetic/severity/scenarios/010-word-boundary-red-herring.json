@@ -1,0 +1,14 @@
+{
+  "id": "010-word-boundary-red-herring",
+  "note": "reorder/payments-web must NOT trip the order/payment content floor: ASCII keywords match on word boundaries. This regression shipped once.",
+  "source": "custom-webhook",
+  "payload": {
+    "RuleName": "Deploy receipts",
+    "Level": "info",
+    "message": "reorder queue drained; payments-web deploy receipt archived"
+  },
+  "expected": {
+    "importance": "low",
+    "triage_verdict": "defer"
+  }
+}

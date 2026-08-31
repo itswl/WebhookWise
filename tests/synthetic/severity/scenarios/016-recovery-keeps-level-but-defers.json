@@ -1,0 +1,15 @@
+{
+  "id": "016-recovery-keeps-level-but-defers",
+  "note": "A recovery that reuses the firing level reads high on importance and STILL defers triage — the pin that stops 'critical recovery' paging.",
+  "source": "grafana",
+  "payload": {
+    "RuleName": "Service availability drop",
+    "Level": "critical",
+    "status": "recovered",
+    "message": "probe green again"
+  },
+  "expected": {
+    "importance": "high",
+    "triage_verdict": "defer"
+  }
+}

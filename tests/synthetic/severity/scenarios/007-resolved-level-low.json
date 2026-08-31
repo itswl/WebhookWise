@@ -1,0 +1,15 @@
+{
+  "id": "007-resolved-level-low",
+  "note": "resolved reads as low, and the recovery status defers triage.",
+  "source": "grafana",
+  "payload": {
+    "RuleName": "Service availability drop",
+    "Level": "resolved",
+    "status": "resolved",
+    "message": "probe green again"
+  },
+  "expected": {
+    "importance": "low",
+    "triage_verdict": "defer"
+  }
+}

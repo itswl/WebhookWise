@@ -1,0 +1,14 @@
+{
+  "id": "004-level-warning-en",
+  "note": "warning maps to medium, not high.",
+  "source": "grafana",
+  "payload": {
+    "RuleName": "Certificate expiry approaching",
+    "Level": "warning",
+    "message": "cert expires in 21 days"
+  },
+  "expected": {
+    "importance": "medium",
+    "triage_verdict": "monitor"
+  }
+}

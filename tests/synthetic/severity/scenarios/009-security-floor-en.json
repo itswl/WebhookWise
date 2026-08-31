@@ -1,0 +1,15 @@
+{
+  "id": "009-security-floor-en",
+  "note": "An account-security alert labelled notice is floored to high on a word-boundary content hit (unauthorized).",
+  "source": "custom-webhook",
+  "payload": {
+    "RuleName": "Admin portal audit",
+    "Level": "notice",
+    "title": "unauthorized access attempts to admin portal",
+    "message": "27 attempts from one address in 5 minutes"
+  },
+  "expected": {
+    "importance": "high",
+    "triage_verdict": "act_now"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "id": "012-metric-4x-threshold",
+  "note": "A metric alert 4x past its threshold escalates to high even with a neutral level.",
+  "source": "n9e",
+  "payload": {
+    "RuleName": "CPU usage watch",
+    "Level": "P2",
+    "CurrentValue": "95",
+    "Threshold": "20",
+    "message": "sustained for ten minutes"
+  },
+  "expected": {
+    "importance": "high",
+    "triage_verdict": "act_now"
+  }
+}

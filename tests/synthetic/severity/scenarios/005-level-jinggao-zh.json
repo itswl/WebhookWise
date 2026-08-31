@@ -1,0 +1,14 @@
+{
+  "id": "005-level-jinggao-zh",
+  "note": "Chinese warn keyword maps to medium.",
+  "source": "n9e",
+  "payload": {
+    "RuleName": "连接池使用率",
+    "Level": "警告",
+    "message": "使用率超过七成"
+  },
+  "expected": {
+    "importance": "medium",
+    "triage_verdict": "monitor"
+  }
+}

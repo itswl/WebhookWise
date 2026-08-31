@@ -1,0 +1,14 @@
+{
+  "id": "018-topup-hyphen-floor-en",
+  "note": "The hyphenated money keyword (top-up) and balance floor an info-level wallet alert to high.",
+  "source": "custom-webhook",
+  "payload": {
+    "RuleName": "Wallet sync watch",
+    "Level": "info",
+    "message": "top-up balance sync delayed for merchant wallet"
+  },
+  "expected": {
+    "importance": "high",
+    "triage_verdict": "act_now"
+  }
+}

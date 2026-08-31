@@ -1,0 +1,14 @@
+{
+  "id": "002-name-failure-en",
+  "note": "The level says nothing (P1); the rule NAME carries the high keyword.",
+  "source": "custom-webhook",
+  "payload": {
+    "RuleName": "Database backup failure",
+    "Level": "P1",
+    "message": "nightly dump did not complete"
+  },
+  "expected": {
+    "importance": "high",
+    "triage_verdict": "act_now"
+  }
+}

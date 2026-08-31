@@ -1,0 +1,14 @@
+{
+  "id": "014-unknown-defaults-medium",
+  "note": "No keyword anywhere: the default verdict is medium/monitor, never high.",
+  "source": "custom-webhook",
+  "payload": {
+    "RuleName": "Queue depth watch",
+    "Level": "P3",
+    "message": "depth at 12, consumers healthy"
+  },
+  "expected": {
+    "importance": "medium",
+    "triage_verdict": "monitor"
+  }
+}

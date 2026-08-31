@@ -1,0 +1,14 @@
+{
+  "id": "008-payment-floor-zh",
+  "note": "THE production incident: a payment alert arriving as Level=info must be floored to high by the content rule (支付 in the body), not filed low.",
+  "source": "custom-webhook",
+  "payload": {
+    "RuleName": "业务日志关键字监控",
+    "Level": "info",
+    "message": "支付回调连续5次无响应，商户通道超时"
+  },
+  "expected": {
+    "importance": "high",
+    "triage_verdict": "act_now"
+  }
+}

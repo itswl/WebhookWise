@@ -1,0 +1,14 @@
+{
+  "id": "001-level-critical-en",
+  "note": "A plain critical level is high on the level rule alone.",
+  "source": "grafana",
+  "payload": {
+    "RuleName": "Service availability drop",
+    "Level": "critical",
+    "message": "availability probe went red on two regions"
+  },
+  "expected": {
+    "importance": "high",
+    "triage_verdict": "act_now"
+  }
+}
