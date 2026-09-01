@@ -158,3 +158,39 @@ async def test_a_failing_card_queue_never_loses_the_proposal(
             select(func.count(ForwardOutbox.id)).where(ForwardOutbox.event_type == "remediation_proposed")
         )
     ) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_rule_claiming_a_webhook_target_strips_the_buttons(
+    db_session: AsyncSession,
+    temp_config: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """App fully configured, but a forward rule routes the event to a plain
+    webhook: decision buttons must not ride a channel that cannot call back."""
+    import services.operations.proposal_notifications as notifications
+    from services.notifications.routing import NotificationTarget
+
+    _enable_app_channel(temp_config)
+
+    async def rule_claims_webhook(event_type: str, **_kwargs: Any) -> NotificationTarget:
+        return NotificationTarget(
+            url="https://open.feishu.cn/hook/ops-rule",
+            target_type="feishu",
+            rule_id=5,
+            rule_name="ops-rule",
+        )
+
+    monkeypatch.setattr(notifications, "resolve_notification_target", rule_claims_webhook)
+
+    proposal = await _propose(db_session)
+
+    outbox = (
+        await db_session.execute(
+            select(ForwardOutbox).where(ForwardOutbox.idempotency_key == f"remediation-proposal:{proposal['id']}")
+        )
+    ).scalar_one()
+    assert outbox.target_type == "feishu"
+    assert outbox.forward_rule_id == 5
+    rendered = json.dumps(outbox.formatted_payload)
+    assert "Approve & execute" not in rendered

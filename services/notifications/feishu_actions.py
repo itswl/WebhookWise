@@ -338,6 +338,11 @@ async def process_proposal_card_action(
         raise FeishuActionError(
             "Proposal decisions from Feishu require FEISHU_ALLOWED_OPERATOR_OPEN_IDS to be configured"
         )
+    # verify_callback_policy above already rejects non-members; repeated here so
+    # the execution path stays self-evidently closed even if the shared policy
+    # ever loosens.
+    if context.operator_open_id not in allowed_operators:
+        raise FeishuActionError("Feishu operator is not allowed")
     action, proposal_id = verify_proposal_action_value(context.value)
 
     existing = await _existing_receipt(session, context.event_id)

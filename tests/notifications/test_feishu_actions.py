@@ -509,3 +509,26 @@ async def test_proposal_reject_and_stale_click_answer_with_toasts(
     assert "already rejected" in str(stale["toast"]["content"])
     assert spy.calls == []
     assert await db_session.scalar(select(func.count(IntegrationActionReceipt.id))) == 2
+
+
+@pytest.mark.asyncio
+async def test_proposal_decision_rejects_a_non_member_operator(
+    db_session: AsyncSession,
+    temp_config: Any,
+) -> None:
+    """Membership is enforced twice (shared policy + the execution path's own
+    check); this pins the second so a loosened policy cannot silently open it."""
+    from services.notifications.feishu_actions import build_proposal_action_value, process_proposal_card_action
+
+    temp_config.security.FEISHU_CARD_ACTION_SECRET = "unit-signing-secret"
+    temp_config.security.FEISHU_ALLOWED_TENANT_KEYS = "tenant-a"
+    temp_config.security.FEISHU_ALLOWED_OPERATOR_OPEN_IDS = "ou_boss"
+
+    value = build_proposal_action_value("approve", 1, expires_at=int(time.time()) + 60)
+    with pytest.raises(FeishuActionError, match="not allowed"):
+        await process_proposal_card_action(
+            db_session,
+            _callback(event_id="prop-nonmember-1", value=value, open_id="ou_operator"),
+            payload_sha256="a" * 64,
+        )
+    assert await db_session.scalar(select(func.count(IntegrationActionReceipt.id))) == 0

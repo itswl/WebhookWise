@@ -161,6 +161,12 @@ async def queue_proposal_notification(
     if not target.url and target.target_type != "feishu_app":
         return None
 
+    # Buttons only where a press can come back with a verified identity: the
+    # RESOLVED target must be the app channel, not merely "the app is
+    # configured" — a forward rule may claim this event toward a plain webhook,
+    # and decision buttons on a card that cannot call back are a dead end.
+    interactive = app_enabled and target.target_type == "feishu_app"
+
     key = f"remediation-proposal:{proposal.id}"
     existing = (
         await session.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
@@ -187,7 +193,7 @@ async def queue_proposal_notification(
         next_attempt_at=now,
         formatted_payload=_proposal_card(
             proposal,
-            interactive_actions=app_enabled,
+            interactive_actions=interactive,
             dashboard_url=str(cfg.DASHBOARD_PUBLIC_URL or "").strip(),
         ),
         created_at=now,
