@@ -60,6 +60,31 @@ The cheaper path is the default one; AI is what the expensive minority earns.
 
 ![The noise centre: every silence rule scored, with its ROI](docs/img/en/03-noise-center.png)
 
+## Try it in one command
+
+No checkout, no build, no keys — published images only:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/itswl/WebhookWise/main/docker-compose.quickstart.yml
+docker compose -f docker-compose.quickstart.yml up -d
+docker compose -f docker-compose.quickstart.yml run --rm seed
+```
+
+Then open `http://127.0.0.1:8000`. The seed posts 60 synthetic alerts across
+four source dialects through the real ingest path, so within about thirty
+seconds the dashboard holds grouped incidents, dedup chains, a recovery and a
+flapping identity — not an empty shell.
+
+No model key is required: analysis degrades to the keyword rules, which are the
+floor the AI path is measured against. To light up the model path instead,
+prefix the `up` with `OPENAI_API_KEY=... ENABLE_AI_ANALYSIS=true`.
+
+This is an evaluation stack and it is built so it cannot quietly become a
+deployment: every credential in it starts with `please-change-`, the exact
+prefix the production startup checks reject, so setting `APP_ENV=production`
+without replacing them stops the app with a named error rather than shipping a
+public instance with known keys. For a real install, continue below.
+
 ## Quick start
 
 ### 1. Prepare configuration

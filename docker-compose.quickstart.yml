@@ -1,0 +1,177 @@
+# WebhookWise in one command — published images, no checkout, no build, no keys.
+#
+#   curl -fsSLO https://raw.githubusercontent.com/itswl/WebhookWise/main/docker-compose.quickstart.yml
+#   docker compose -f docker-compose.quickstart.yml up -d
+#   docker compose -f docker-compose.quickstart.yml run --rm seed
+#
+# Then open http://127.0.0.1:8000 — the dashboard, already holding dedup
+# chains, a recovery-resolved incident and a flapping identity.
+#
+# THIS IS AN EVALUATION STACK, NOT A DEPLOYMENT, and it is built so it cannot
+# quietly become one. Every credential below starts with `please-change-`,
+# which is the exact prefix core/web/startup_checks.py rejects once
+# APP_ENV=production: set that env without replacing them and the app refuses
+# to boot with a named error. A real deployment uses deploy/compose/ with a
+# real .env — see deploy/compose/README.md.
+#
+# No model key is needed. Analysis degrades to the keyword rules, which are
+# the floor the AI path is measured against, so the demo is honest about what
+# it is showing. To light up the model path instead:
+#
+#   OPENAI_API_KEY=sk-... ENABLE_AI_ANALYSIS=true \
+#     docker compose -f docker-compose.quickstart.yml up -d
+
+# Docker's json-file driver has no default size limit, so every container here
+# would grow a log file until the disk fills. Measured once on the production
+# host: 2.5 GB of container logs. 10m x 3 caps each service at 30 MB.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# One image, four process modes. RUN_MODE is what the entrypoint dispatches on.
+x-app: &app
+  image: ghcr.io/itswl/webhookwise:${WEBHOOKWISE_TAG:-0.1.1}
+  logging: *logging
+  restart: unless-stopped
+  environment: &app-env
+    APP_ENV: development
+    DATABASE_URL: postgresql://webhook_user:please-change-demo-postgres@postgres:5432/webhooks
+    REDIS_URL: redis://redis:6379/0
+
+    # Demo credentials. The `please-change-` prefix is load-bearing: it is what
+    # makes this file fail closed if APP_ENV is ever flipped to production.
+    WEBHOOK_SECRET: please-change-demo-webhook-secret
+    API_KEY: please-change-demo-api-key
+    ADMIN_WRITE_KEY: please-change-demo-admin-write-key
+
+    # Off unless a key is supplied; see the header for the one-liner.
+    ENABLE_AI_ANALYSIS: ${ENABLE_AI_ANALYSIS:-false}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+    # Incident grouping, noise scoring and the outbox scan are background
+    # sweeps, not inline work. At the production default of 300s a freshly
+    # seeded demo looks empty for five minutes and reads as broken; 30s closes
+    # the loop while someone is still watching. Do not carry this number into
+    # a real deployment — it is a demo pacing choice, not a tuning finding.
+    BACKGROUND_SCAN_INTERVAL_SECONDS: ${BACKGROUND_SCAN_INTERVAL_SECONDS:-30}
+
+    OTEL_ENABLED: "false"
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ww-postgres
+    logging: *logging
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: webhooks
+      POSTGRES_USER: webhook_user
+      POSTGRES_PASSWORD: please-change-demo-postgres
+    volumes:
+      - quickstart_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webhook_user -d webhooks"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    # No host port: nothing outside the stack needs the database, and a demo
+    # that opens 5432 on a laptop is a demo that outlives its evening.
+
+  redis:
+    image: redis:7-alpine
+    container_name: ww-redis
+    logging: *logging
+    restart: unless-stopped
+    command:
+      ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec",
+       "--maxmemory", "192mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - quickstart_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Schema first, as its own job. Everything else waits for it to exit 0, so a
+  # failed migration stops the stack instead of producing three services that
+  # each crash-loop against a database they cannot read.
+  migrate:
+    <<: *app
+    container_name: ww-migrate
+    restart: "no"
+    environment:
+      <<: *app-env
+      RUN_MODE: migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    container_name: ww-api
+    environment:
+      <<: *app-env
+      RUN_MODE: api
+      API_WORKERS: 2
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # No healthcheck here: the image ships its own (scripts.healthcheck, which
+    # branches on RUN_MODE), and compose honours it. Repeating it would be one
+    # more thing to keep in step with the image.
+
+  worker:
+    <<: *app
+    container_name: ww-worker
+    environment:
+      <<: *app-env
+      RUN_MODE: worker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Single instance on purpose: a second scheduler double-dispatches every
+  # scheduled task.
+  scheduler:
+    <<: *app
+    container_name: ww-scheduler
+    environment:
+      <<: *app-env
+      RUN_MODE: scheduler
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # 60 synthetic alerts through the REAL ingest endpoint, so adapters, dedup,
+  # noise reduction, incidents and the dashboard light up exactly as they do on
+  # live traffic. Ships inside the image; `run` enables the profile by itself:
+  #
+  #   docker compose -f docker-compose.quickstart.yml run --rm seed
+  seed:
+    <<: *app
+    profiles: ["seed"]
+    restart: "no"
+    entrypoint: ["python3", "-m", "scripts.seed_demo_data"]
+    command:
+      - --base-url=http://api:8000
+      - --webhook-token=please-change-demo-webhook-secret
+      - --count=60
+      - --fast
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  # Deliberately not the names deploy/compose/docker-compose.infra.yml uses
+  # (webhookwise_postgres_data / webhookwise_redis_data): `down -v` on the demo
+  # must never reach a real local development database.
+  quickstart_postgres:
+  quickstart_redis:

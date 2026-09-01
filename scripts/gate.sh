@@ -46,6 +46,12 @@ python scripts/check_requirements_locks.py
 step "agent notes"
 python scripts/assert_agent_notes.py
 
+step "quickstart compose"
+# The one-command quickstart is a claim about a file: published images, no
+# checkout, no .env, and demo credentials that a production APP_ENV refuses.
+# Each of those decays quietly, and the pinned tag rots at every release.
+python scripts/assert_quickstart_compose.py
+
 step "skill pointers"
 # This repo has no .claude/ — Codex and hookprobe read .agents/skills directly,
 # and Claude Code needs a per-machine symlink that no clone inherits. Reports and

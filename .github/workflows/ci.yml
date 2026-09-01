@@ -80,6 +80,9 @@ jobs:
       - run: python scripts/check_requirements_locks.py
       # Decision records keep their shape, or the practice decays into a folder.
       - run: python scripts/assert_agent_notes.py
+      # The quickstart must stay startable with no checkout, and its pinned
+      # image tag must still be this release's.
+      - run: python scripts/assert_quickstart_compose.py
       # Public repository: a real project/bucket/service/team-handle/hostname
       # or webhook token must fail here, not be found in an audit later.
       # The pattern list is deliberately not in the repo -- it would be the last
