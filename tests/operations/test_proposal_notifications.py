@@ -1,0 +1,128 @@
+"""The proposal card: one idempotent intent, buttons only where identity can return."""
+
+from __future__ import annotations
+
+import json
+import time
+from typing import Any
+
+import pytest
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from models import ForwardOutbox
+from services.operations.remediation_proposals import propose_remediation
+
+
+async def _propose(session: AsyncSession) -> dict[str, Any]:
+    return await propose_remediation(
+        session,
+        action="retry_outbox",
+        resource_id=7,
+        reason="outbox record 7 has been retrying for 40 minutes with the same 503",
+        proposed_by="hookprobe",
+    )
+
+
+def _enable_app_channel(temp_config: Any) -> None:
+    temp_config.notifications.FEISHU_CARD_ACTIONS_ENABLED = True
+    temp_config.notifications.FEISHU_APP_ID = "cli_unit"
+    temp_config.notifications.FEISHU_APP_SECRET = "unit-app-secret"
+    temp_config.notifications.FEISHU_INCIDENT_CHAT_ID = "oc_unit_chat"
+    temp_config.security.FEISHU_CARD_VERIFICATION_TOKEN = "unit-verification-token"
+    temp_config.security.FEISHU_CARD_ACTION_SECRET = "unit-signing-secret"
+
+
+@pytest.mark.asyncio
+async def test_propose_queues_one_card_with_buttons_clamped_to_the_proposal(
+    db_session: AsyncSession,
+    temp_config: Any,
+) -> None:
+    _enable_app_channel(temp_config)
+
+    proposal = await _propose(db_session)
+
+    outbox = (
+        await db_session.execute(
+            select(ForwardOutbox).where(ForwardOutbox.idempotency_key == f"remediation-proposal:{proposal['id']}")
+        )
+    ).scalar_one()
+    assert outbox.event_type == "remediation_proposed"
+    assert outbox.target_type == "feishu_app"
+
+    card = outbox.formatted_payload
+    rendered = json.dumps(card)
+    assert "Approve & execute" in rendered
+    assert "Reject" in rendered
+    # The signing secret must never ride inside the card payload.
+    assert "unit-signing-secret" not in rendered
+
+    buttons = [
+        action
+        for element in card["card"]["elements"]
+        if element.get("tag") == "action"
+        for action in element.get("actions", [])
+        if "value" in action
+    ]
+    assert {button["value"]["action"] for button in buttons} == {"approve", "reject"}
+    for button in buttons:
+        value = button["value"]
+        assert value["resource_type"] == "remediation_proposal"
+        assert value["resource_id"] == proposal["id"]
+        # A decision button must not outlive its proposal: expiry is clamped to
+        # the row's expires_at, not the (days-long) card-action TTL.
+        assert value["expires_at"] <= int(time.time()) + 25 * 3600
+
+    # Re-queueing the same proposal reuses the intent instead of duplicating it.
+    from models import RemediationProposal
+    from services.operations.proposal_notifications import queue_proposal_notification
+
+    row = await db_session.get(RemediationProposal, int(proposal["id"]))
+    assert row is not None
+    again = await queue_proposal_notification(db_session, row)
+    assert again == int(outbox.id)
+    assert (
+        await db_session.scalar(
+            select(func.count(ForwardOutbox.id)).where(ForwardOutbox.event_type == "remediation_proposed")
+        )
+    ) == 1
+
+
+@pytest.mark.asyncio
+async def test_webhook_fallback_gets_a_plain_card_without_buttons(
+    db_session: AsyncSession,
+    temp_config: Any,
+) -> None:
+    temp_config.notifications.FEISHU_CARD_ACTIONS_ENABLED = False
+    temp_config.notifications.DEEP_ANALYSIS_FEISHU_WEBHOOK = "https://open.feishu.cn/hook/unit-fallback"
+
+    proposal = await _propose(db_session)
+
+    outbox = (
+        await db_session.execute(
+            select(ForwardOutbox).where(ForwardOutbox.idempotency_key == f"remediation-proposal:{proposal['id']}")
+        )
+    ).scalar_one()
+    assert outbox.target_type == "feishu"
+    rendered = json.dumps(outbox.formatted_payload)
+    assert "Approve & execute" not in rendered
+    assert "awaits approval" in rendered
+
+
+@pytest.mark.asyncio
+async def test_no_configured_target_keeps_the_proposal_and_skips_the_card(
+    db_session: AsyncSession,
+    temp_config: Any,
+) -> None:
+    temp_config.notifications.FEISHU_CARD_ACTIONS_ENABLED = False
+    temp_config.notifications.DEEP_ANALYSIS_FEISHU_WEBHOOK = ""
+    temp_config.notifications.WEEKLY_REPORT_FEISHU_WEBHOOK = ""
+
+    proposal = await _propose(db_session)
+
+    assert proposal["status"] == "pending"
+    assert (
+        await db_session.scalar(
+            select(func.count(ForwardOutbox.id)).where(ForwardOutbox.event_type == "remediation_proposed")
+        )
+    ) == 0

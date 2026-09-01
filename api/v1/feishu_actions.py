@@ -18,7 +18,7 @@ from services.notifications.feishu_actions import (
     FeishuActionConflict,
     FeishuActionError,
     callback_payload_sha256,
-    process_incident_card_action,
+    process_card_action,
 )
 
 logger = get_logger("api.v1.feishu_actions")
@@ -48,7 +48,7 @@ async def feishu_card_action_callback(
     if challenge not in (None, ""):
         return JSONResponse(status_code=200, content={"challenge": str(challenge)})
     try:
-        result = await process_incident_card_action(
+        result = await process_card_action(
             session,
             payload,
             payload_sha256=callback_payload_sha256(request.state.feishu_card_body),

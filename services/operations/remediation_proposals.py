@@ -182,6 +182,14 @@ async def propose_remediation(
         f"{row.proposed_by} proposed {row.action} (awaiting approval): {cleaned_reason[:200]}",
         actor=row.proposed_by,
     )
+    # Function-level import: the notification module pulls in the whole Feishu
+    # card stack, which proposing must not pay for at import time.
+    from services.operations.proposal_notifications import queue_proposal_notification
+
+    try:
+        await queue_proposal_notification(session, row)
+    except Exception:  # noqa: BLE001 - a card that cannot be queued must not lose the proposal
+        logger.warning("[Proposal] Could not queue the Feishu notification for #%s", row.id, exc_info=True)
     await session.commit()
     logger.info(
         "[Proposal] %s proposed action=%s resource=%s/%s id=%s",

@@ -20,6 +20,10 @@ from services.incidents.summary import queue_summary_if_needed
 from services.operations.audit_logger import add_audit
 
 _ALLOWED_ACTIONS = frozenset({"acknowledge", "resolve", "add_note", "silence_2h"})
+# The proposal grammar is deliberately its own tiny set: approving EXECUTES a
+# command, so nothing about it may be inherited from the incident vocabulary.
+_ALLOWED_PROPOSAL_ACTIONS = frozenset({"approve", "reject"})
+_PROPOSAL_RESOURCE_TYPE = "remediation_proposal"
 _QUICK_SILENCE_HOURS = 2
 _CALLBACK_MAX_SKEW_SECONDS = 600
 _MAX_NOTE_CHARS = 2_000
@@ -115,6 +119,80 @@ def verify_incident_action_value(
     if expires_at < current_epoch:
         raise FeishuActionError("Feishu card action has expired")
     return action, incident_id
+
+
+def build_proposal_action_value(
+    action: str,
+    proposal_id: int,
+    *,
+    expires_at: int,
+    secret: str | None = None,
+) -> dict[str, object]:
+    """Signed approve/reject value for a remediation-proposal card.
+
+    Unlike incident values the expiry is REQUIRED: a decision button must never
+    outlive the proposal it decides, so the card builder clamps it to the row's
+    own expires_at instead of defaulting to the card-action TTL (which is days
+    longer than a proposal lives).
+    """
+    if action not in _ALLOWED_PROPOSAL_ACTIONS:
+        raise ValueError(f"Unsupported Feishu proposal action: {action}")
+    config = get_config_manager()
+    signing_secret = secret if secret is not None else config.security.FEISHU_CARD_ACTION_SECRET
+    if not signing_secret:
+        raise ValueError("FEISHU_CARD_ACTION_SECRET is not configured")
+    value: dict[str, object] = {
+        "version": 1,
+        "action": action,
+        "resource_type": _PROPOSAL_RESOURCE_TYPE,
+        "resource_id": int(proposal_id),
+        "expires_at": int(expires_at),
+    }
+    value["signature"] = hmac.new(signing_secret.encode(), _canonical_action(value), hashlib.sha256).hexdigest()
+    return value
+
+
+def verify_proposal_action_value(
+    value: dict[str, Any],
+    *,
+    secret: str | None = None,
+    now_epoch: int | None = None,
+) -> tuple[str, int]:
+    """The proposal twin of verify_incident_action_value, deliberately separate.
+
+    Two explicit verifiers keep each resource's action allowlist and shape on
+    one screen: the incident verifier still refuses everything that is not an
+    incident, so neither grammar can be widened by accident.
+    """
+    config = get_config_manager()
+    signing_secret = secret if secret is not None else config.security.FEISHU_CARD_ACTION_SECRET
+    if not signing_secret:
+        raise FeishuActionError("Feishu card action signing is not configured")
+    action = str(value.get("action") or "")
+    resource_type = str(value.get("resource_type") or "")
+    if action not in _ALLOWED_PROPOSAL_ACTIONS or resource_type != _PROPOSAL_RESOURCE_TYPE:
+        raise FeishuActionError("Unsupported Feishu card action")
+    try:
+        proposal_id = int(value["resource_id"])
+        expires_at = int(value["expires_at"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise FeishuActionError("Malformed Feishu card action") from error
+    if proposal_id <= 0:
+        raise FeishuActionError("Malformed Feishu proposal id")
+    supplied_signature = str(value.get("signature") or "")
+    expected_signature = hmac.new(
+        signing_secret.encode(),
+        _canonical_action(value),
+        hashlib.sha256,
+    ).hexdigest()
+    if not supplied_signature or not hmac.compare_digest(
+        supplied_signature.encode("utf-8"), expected_signature.encode("utf-8")
+    ):
+        raise FeishuActionError("Invalid Feishu card action signature")
+    current_epoch = int(time.time()) if now_epoch is None else int(now_epoch)
+    if expires_at < current_epoch:
+        raise FeishuActionError("Feishu card action has expired")
+    return action, proposal_id
 
 
 def _nested_mapping(value: object, *keys: str) -> dict[str, Any]:
@@ -222,6 +300,127 @@ def _result_payload(message: str, *, incident: Incident, changed: bool) -> dict[
         "workflow_status": incident.workflow_status,
         "changed": changed,
     }
+
+
+def _proposal_toast(proposal: dict[str, Any]) -> dict[str, object]:
+    """Mirror the dashboard's three outcomes: done / changed nothing / failed."""
+    status = str(proposal.get("status") or "")
+    proposal_id = proposal.get("id")
+    result = proposal.get("result") or {}
+    if status == "rejected":
+        return {"type": "success", "content": f"Proposal #{proposal_id} rejected"}
+    if status == "failed":
+        return {"type": "error", "content": f"Proposal #{proposal_id} was approved but execution failed"}
+    if status == "approved" and not result.get("changed"):
+        return {"type": "warning", "content": f"Proposal #{proposal_id} approved; the command changed nothing"}
+    return {"type": "success", "content": f"Proposal #{proposal_id} approved and executed"}
+
+
+async def process_proposal_card_action(
+    session: AsyncSession,
+    payload: dict[str, Any],
+    *,
+    payload_sha256: str,
+) -> dict[str, object]:
+    """Approve or reject a remediation proposal from its Feishu card.
+
+    Fail-closed on identity: unlike incident actions, approving EXECUTES a
+    command, so an empty FEISHU_ALLOWED_OPERATOR_OPEN_IDS refuses the action
+    instead of quietly meaning "every member of the chat may run remediations".
+    """
+    context = extract_action_context(payload)
+    verify_callback_policy(payload, context)
+    config = get_config_manager()
+    allowed_operators = {
+        item.strip() for item in config.security.FEISHU_ALLOWED_OPERATOR_OPEN_IDS.split(",") if item.strip()
+    }
+    if not allowed_operators:
+        raise FeishuActionError(
+            "Proposal decisions from Feishu require FEISHU_ALLOWED_OPERATOR_OPEN_IDS to be configured"
+        )
+    action, proposal_id = verify_proposal_action_value(context.value)
+
+    existing = await _existing_receipt(session, context.event_id)
+    if existing is not None:
+        if not hmac.compare_digest(existing.payload_sha256, payload_sha256):
+            raise FeishuActionConflict("Feishu event id was reused with different content")
+        return dict(existing.result or {})
+
+    receipt = IntegrationActionReceipt(
+        provider="feishu",
+        event_id=context.event_id,
+        payload_sha256=payload_sha256,
+        action=action,
+        resource_type=_PROPOSAL_RESOURCE_TYPE,
+        resource_id=proposal_id,
+        actor=context.operator_open_id,
+        status="processing",
+        result={},
+        created_at=utcnow(),
+    )
+    session.add(receipt)
+    try:
+        await session.flush()
+    except IntegrityError as error:
+        await session.rollback()
+        existing = await _existing_receipt(session, context.event_id)
+        if existing is None:
+            raise
+        if not hmac.compare_digest(existing.payload_sha256, payload_sha256):
+            raise FeishuActionConflict("Feishu event id was reused with different content") from error
+        return dict(existing.result or {})
+
+    # Function-level import: operations imports this module for the card
+    # values, so a top-level import here would be a cycle.
+    from services.operations.remediation_proposals import ProposalConflict, ProposalError, decide_proposal
+
+    result: dict[str, object]
+    try:
+        proposal = await decide_proposal(
+            session,
+            proposal_id=proposal_id,
+            approve=action == "approve",
+            actor=f"feishu:{context.operator_open_id}"[:100],
+        )
+        result = {
+            "toast": _proposal_toast(proposal),
+            "proposal_id": proposal_id,
+            "status": proposal.get("status"),
+            "changed": bool((proposal.get("result") or {}).get("changed")),
+        }
+        receipt.status = "completed"
+    except (ProposalConflict, ProposalError) as error:
+        # A stale button — proposal already decided, expired, or gone — is a
+        # normal click, not a failure: answer with a toast, keep the receipt.
+        result = {
+            "toast": {"type": "error", "content": str(error)},
+            "proposal_id": proposal_id,
+            "changed": False,
+        }
+        receipt.status = "rejected"
+    receipt.result = result
+    receipt.completed_at = utcnow()
+    await session.commit()
+    return result
+
+
+def _peek_resource_type(payload: dict[str, Any]) -> str:
+    event = _nested_mapping(payload, "event") or payload
+    action_data = _nested_mapping(event, "action") or _nested_mapping(payload, "action")
+    value = action_data.get("value")
+    return str(value.get("resource_type") or "") if isinstance(value, dict) else ""
+
+
+async def process_card_action(
+    session: AsyncSession,
+    payload: dict[str, Any],
+    *,
+    payload_sha256: str,
+) -> dict[str, object]:
+    """Dispatch a verified callback by the resource type its value names."""
+    if _peek_resource_type(payload) == _PROPOSAL_RESOURCE_TYPE:
+        return await process_proposal_card_action(session, payload, payload_sha256=payload_sha256)
+    return await process_incident_card_action(session, payload, payload_sha256=payload_sha256)
 
 
 async def process_incident_card_action(
