@@ -9,6 +9,7 @@ channel where a verified operator identity can come back, plain card elsewhere.
 from __future__ import annotations
 
 import time
+from datetime import UTC
 from typing import Any
 
 from sqlalchemy import select
@@ -55,10 +56,11 @@ def _proposal_card(
     if interactive_actions:
         # A decision button must never outlive the proposal it decides: the
         # signed value's expiry is the EARLIER of the card-action TTL and the
-        # proposal's own expiry.
+        # proposal's own expiry. expires_at is naive UTC (utcnow()), so pin the
+        # zone before .timestamp() or the epoch shifts by the host's offset.
         expiry_epoch = min(
             int(time.time()) + int(get_config_manager().notifications.FEISHU_CARD_ACTION_TTL_SECONDS),
-            int(proposal.expires_at.timestamp()),
+            int(proposal.expires_at.replace(tzinfo=UTC).timestamp()),
         )
         elements.append(
             {
@@ -193,5 +195,8 @@ async def queue_proposal_notification(
     )
     session.add(record)
     await session.flush()
-    FORWARD_OUTBOX_RECORDS_TOTAL.labels("feishu_app" if app_enabled else "feishu", "created").inc()
+    # Label from what was actually written: a forward rule may claim this
+    # event type with any notification target, and the metric must not
+    # attribute that record to a channel it never touched.
+    FORWARD_OUTBOX_RECORDS_TOTAL.labels(target.target_type, "created").inc()
     return int(record.id)

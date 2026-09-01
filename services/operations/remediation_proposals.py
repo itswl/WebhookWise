@@ -187,7 +187,12 @@ async def propose_remediation(
     from services.operations.proposal_notifications import queue_proposal_notification
 
     try:
-        await queue_proposal_notification(session, row)
+        # Savepoint, not bare try: a failed flush inside the queue would leave
+        # the session pending-rollback, and the commit below would then raise
+        # and take the just-inserted proposal with it — the exact loss this
+        # guard exists to prevent. (The shadow reviewer's first catch.)
+        async with session.begin_nested():
+            await queue_proposal_notification(session, row)
     except Exception:  # noqa: BLE001 - a card that cannot be queued must not lose the proposal
         logger.warning("[Proposal] Could not queue the Feishu notification for #%s", row.id, exc_info=True)
     await session.commit()

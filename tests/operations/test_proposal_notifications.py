@@ -126,3 +126,35 @@ async def test_no_configured_target_keeps_the_proposal_and_skips_the_card(
             select(func.count(ForwardOutbox.id)).where(ForwardOutbox.event_type == "remediation_proposed")
         )
     ) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_failing_card_queue_never_loses_the_proposal(
+    db_session: AsyncSession,
+    temp_config: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shadow reviewer's first catch: a failed flush inside the queue used
+    to leave the session pending-rollback, so the commit that followed raised
+    and rolled the just-inserted proposal back. The savepoint contains it."""
+    import services.operations.proposal_notifications as notifications
+
+    async def explode(session: AsyncSession, proposal: Any) -> int:
+        session.add(ForwardOutbox())  # violates NOT NULLs -> failed flush
+        await session.flush()
+        raise AssertionError("unreachable")
+
+    monkeypatch.setattr(notifications, "queue_proposal_notification", explode)
+
+    proposal = await _propose(db_session)
+
+    assert proposal["status"] == "pending"
+    from models import RemediationProposal
+
+    row = await db_session.get(RemediationProposal, int(proposal["id"]))
+    assert row is not None and row.status == "pending"
+    assert (
+        await db_session.scalar(
+            select(func.count(ForwardOutbox.id)).where(ForwardOutbox.event_type == "remediation_proposed")
+        )
+    ) == 0
