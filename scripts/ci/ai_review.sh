@@ -11,7 +11,8 @@ set -euo pipefail
 BASE_URL="${AI_REVIEW_BASE_URL:-https://open.bigmodel.cn/api/coding/paas/v4}"
 MODEL="${AI_REVIEW_MODEL:-glm-5.3}"
 MARKER="<!-- ww-ai-review -->"
-DIFF_CAP=55000
+DIFF_CAP="${AI_REVIEW_DIFF_CAP:-30000}"
+CURL_MAX_TIME="${AI_REVIEW_MAX_SECONDS:-600}"
 
 diff_text="$(gh pr diff "$PR_NUMBER" --repo "$REPO")"
 if [ -z "$diff_text" ]; then
@@ -46,11 +47,13 @@ payload="$(jq -n --arg model "$MODEL" --arg sys "$system_prompt" --arg user "$us
 
 response=""
 for attempt in 1 2; do
-  http_code="$(curl -sS --max-time 300 -o /tmp/ai_review_response.json -w '%{http_code}' \
+  # curl itself prints 000 via -w on transport failure; no fallback echo, or
+  # the two concatenate into a baffling "000000".
+  http_code="$(curl -sS --max-time "$CURL_MAX_TIME" -o /tmp/ai_review_response.json -w '%{http_code}' \
     -H "Authorization: Bearer $AI_REVIEW_API_KEY" \
     -H "Content-Type: application/json" \
     -d "$payload" \
-    "$BASE_URL/chat/completions" || echo 000)"
+    "$BASE_URL/chat/completions" || true)"
   if [ "$http_code" = "200" ]; then
     response="$(cat /tmp/ai_review_response.json)"
     break

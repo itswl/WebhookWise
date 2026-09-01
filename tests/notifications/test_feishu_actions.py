@@ -354,3 +354,181 @@ async def test_feishu_app_transport_uses_fixed_api_and_interactive_content(
     assert len(message_call.kwargs["json"]["uuid"]) <= 50
     assert message_call.kwargs["json"]["receive_id"] == "oc_chat"
     assert '"elements"' in message_call.kwargs["json"]["content"]
+
+
+# ── Remediation-proposal card actions ─────────────────────────────────────────
+
+
+class _ProposalExecutor:
+    """Stand-in for run_remediation, so tests can see whether it ran."""
+
+    def __init__(self, *, result: dict[str, Any] | None = None) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.result = result if result is not None else {"action": "retry_outbox", "changed": True, "resource_id": 7}
+
+    async def __call__(self, _session: AsyncSession, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        return self.result
+
+
+async def _pending_proposal(session: AsyncSession) -> dict[str, Any]:
+    from services.operations.remediation_proposals import propose_remediation
+
+    return await propose_remediation(
+        session,
+        action="retry_outbox",
+        resource_id=7,
+        reason="outbox record 7 has been retrying for 40 minutes with the same 503",
+        proposed_by="hookprobe",
+    )
+
+
+def test_proposal_action_value_grammar_is_disjoint_from_incidents() -> None:
+    from services.notifications.feishu_actions import (
+        build_proposal_action_value,
+        verify_proposal_action_value,
+    )
+
+    value = build_proposal_action_value("approve", 7, expires_at=2_000, secret="unit-signing-secret")
+    assert verify_proposal_action_value(value, secret="unit-signing-secret", now_epoch=1_999) == ("approve", 7)
+
+    # Neither verifier accepts the other grammar, even with a valid signature.
+    with pytest.raises(FeishuActionError, match="Unsupported"):
+        verify_incident_action_value(value, secret="unit-signing-secret", now_epoch=1_999)
+    incident_value = build_incident_action_value("resolve", 7, expires_at=2_000, secret="unit-signing-secret")
+    with pytest.raises(FeishuActionError, match="Unsupported"):
+        verify_proposal_action_value(incident_value, secret="unit-signing-secret", now_epoch=1_999)
+
+    tampered = dict(value)
+    tampered["action"] = "reject"
+    with pytest.raises(FeishuActionError, match="signature"):
+        verify_proposal_action_value(tampered, secret="unit-signing-secret", now_epoch=1_999)
+    with pytest.raises(FeishuActionError, match="expired"):
+        verify_proposal_action_value(value, secret="unit-signing-secret", now_epoch=2_001)
+
+
+@pytest.mark.asyncio
+async def test_proposal_decision_refuses_an_empty_operator_allowlist(
+    db_session: AsyncSession,
+    temp_config: Any,
+) -> None:
+    """Incident actions treat an empty allowlist as allow-all; executing a
+    command from chat must not inherit that."""
+    from services.notifications.feishu_actions import build_proposal_action_value, process_proposal_card_action
+
+    temp_config.security.FEISHU_CARD_ACTION_SECRET = "unit-signing-secret"
+    temp_config.security.FEISHU_ALLOWED_TENANT_KEYS = "tenant-a"
+    temp_config.security.FEISHU_ALLOWED_OPERATOR_OPEN_IDS = ""
+
+    value = build_proposal_action_value("approve", 1, expires_at=int(time.time()) + 60)
+    with pytest.raises(FeishuActionError, match="FEISHU_ALLOWED_OPERATOR_OPEN_IDS"):
+        await process_proposal_card_action(
+            db_session,
+            _callback(event_id="prop-guard-1", value=value),
+            payload_sha256="a" * 64,
+        )
+    assert await db_session.scalar(select(func.count(IntegrationActionReceipt.id))) == 0
+
+
+@pytest.mark.asyncio
+async def test_proposal_approve_from_card_executes_once_and_is_idempotent(
+    db_session: AsyncSession,
+    temp_config: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import services.operations.remediation as remediation
+    from services.notifications.feishu_actions import build_proposal_action_value, process_card_action
+
+    temp_config.security.FEISHU_CARD_ACTION_SECRET = "unit-signing-secret"
+    temp_config.security.FEISHU_ALLOWED_TENANT_KEYS = "tenant-a"
+    temp_config.security.FEISHU_ALLOWED_OPERATOR_OPEN_IDS = "ou_operator"
+    spy = _ProposalExecutor()
+    monkeypatch.setattr(remediation, "run_remediation", spy)
+
+    proposal = await _pending_proposal(db_session)
+    value = build_proposal_action_value("approve", int(proposal["id"]), expires_at=int(time.time()) + 60)
+    payload = _callback(event_id="prop-approve-1", value=value)
+
+    # Dispatch by resource_type: the shared entry point must route this to the
+    # proposal processor, not the incident one.
+    first = await process_card_action(db_session, payload, payload_sha256="a" * 64)
+    second = await process_card_action(db_session, payload, payload_sha256="a" * 64)
+
+    assert first == second
+    assert first["status"] == "approved"
+    assert first["changed"] is True
+    assert first["toast"]["type"] == "success"
+    assert len(spy.calls) == 1
+    assert await db_session.scalar(select(func.count(IntegrationActionReceipt.id))) == 1
+
+    from models import RemediationProposal
+
+    row = await db_session.get(RemediationProposal, int(proposal["id"]))
+    assert row is not None and row.status == "approved"
+    assert row.decided_by == "feishu:ou_operator"
+
+    with pytest.raises(FeishuActionConflict):
+        await process_card_action(db_session, payload, payload_sha256="b" * 64)
+
+
+@pytest.mark.asyncio
+async def test_proposal_reject_and_stale_click_answer_with_toasts(
+    db_session: AsyncSession,
+    temp_config: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import services.operations.remediation as remediation
+    from services.notifications.feishu_actions import build_proposal_action_value, process_proposal_card_action
+
+    temp_config.security.FEISHU_CARD_ACTION_SECRET = "unit-signing-secret"
+    temp_config.security.FEISHU_ALLOWED_TENANT_KEYS = "tenant-a"
+    temp_config.security.FEISHU_ALLOWED_OPERATOR_OPEN_IDS = "ou_operator"
+    spy = _ProposalExecutor()
+    monkeypatch.setattr(remediation, "run_remediation", spy)
+
+    proposal = await _pending_proposal(db_session)
+    reject_value = build_proposal_action_value("reject", int(proposal["id"]), expires_at=int(time.time()) + 60)
+
+    rejected = await process_proposal_card_action(
+        db_session,
+        _callback(event_id="prop-reject-1", value=reject_value),
+        payload_sha256="a" * 64,
+    )
+    assert rejected["status"] == "rejected"
+    assert spy.calls == []
+
+    # A later click on the surviving card is a normal event: toast, receipt,
+    # no exception, still nothing executed.
+    stale = await process_proposal_card_action(
+        db_session,
+        _callback(event_id="prop-reject-2", value=reject_value),
+        payload_sha256="c" * 64,
+    )
+    assert stale["changed"] is False
+    assert stale["toast"]["type"] == "error"
+    assert "already rejected" in str(stale["toast"]["content"])
+    assert spy.calls == []
+    assert await db_session.scalar(select(func.count(IntegrationActionReceipt.id))) == 2
+
+
+@pytest.mark.asyncio
+async def test_proposal_decision_rejects_a_non_member_operator(
+    db_session: AsyncSession,
+    temp_config: Any,
+) -> None:
+    """Membership is enforced twice (shared policy + the execution path's own
+    check); this pins the second so a loosened policy cannot silently open it."""
+    from services.notifications.feishu_actions import build_proposal_action_value, process_proposal_card_action
+
+    temp_config.security.FEISHU_CARD_ACTION_SECRET = "unit-signing-secret"
+    temp_config.security.FEISHU_ALLOWED_TENANT_KEYS = "tenant-a"
+    temp_config.security.FEISHU_ALLOWED_OPERATOR_OPEN_IDS = "ou_boss"
+
+    value = build_proposal_action_value("approve", 1, expires_at=int(time.time()) + 60)
+    with pytest.raises(FeishuActionError, match="not allowed"):
+        await process_proposal_card_action(
+            db_session,
+            _callback(event_id="prop-nonmember-1", value=value, open_id="ou_operator"),
+            payload_sha256="a" * 64,
+        )
+    assert await db_session.scalar(select(func.count(IntegrationActionReceipt.id))) == 0

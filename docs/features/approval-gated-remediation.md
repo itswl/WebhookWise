@@ -124,12 +124,35 @@ success toast for an executed approval, a warning when the command ran and
 changed nothing, and an error naming the failure when the execution raised
 (HTTP 502 — approved, did not run).
 
+## Deciding from Feishu
+
+A new proposal queues one idempotent card (`event_type=remediation_proposed`,
+outbox key `remediation-proposal:{id}`) to wherever incident cards go — a
+forward rule claiming the event type wins, else the configured fallback.
+**Approve & execute** / **Reject** buttons render only on the app channel with
+the full card-action configuration present; a webhook-only deployment gets the
+plain card and decides from the dashboard.
+
+The card grammar was deliberately widened rather than reused: proposals carry
+their own signed value (`resource_type=remediation_proposal`, actions
+`approve|reject`, verified by `verify_proposal_action_value`), and the incident
+verifier still rejects everything that is not an incident. Two guards are
+stricter than the incident path, because approving executes a command:
+
+- **The operator allowlist is fail-closed.** Incident actions treat an empty
+  `FEISHU_ALLOWED_OPERATOR_OPEN_IDS` as allow-all; a proposal decision with the
+  allowlist empty is refused outright.
+- **A button never outlives its proposal.** The signed value's expiry is
+  clamped to the proposal's own `expires_at`, not the (much longer)
+  card-action TTL.
+
+Decisions land in the same `decide_proposal` path the dashboard uses — same
+execution, same audit trail, `actor=feishu:<open_id>` — and the toast mirrors
+the dashboard's three outcomes. A stale button (already decided, expired)
+answers with an error toast and an idempotency receipt, not a failure.
+
 ## Not built yet
 
-- **A Feishu approval button.** The card-action path is HMAC-signed and
-  idempotent, and it is incident-shaped end to end (`verify_incident_action_value`
-  rejects any `resource_type` other than `incident`). Widening that grammar to a
-  second resource type is a security-sensitive change and deserves its own
-  review, so approval currently goes through the API.
-- **A dashboard view.** The queue is API- and MCP-readable; it does not render in
-  the operator UI yet.
+- **Card refresh after a decision.** The card answers with a toast, but its
+  buttons stay rendered; a second press gets the "already decided" toast
+  rather than a disabled button.
