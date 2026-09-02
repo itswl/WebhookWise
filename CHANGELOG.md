@@ -98,8 +98,11 @@ This project follows SemVer release headings.
   were already live-editable and the pricing path honoured the override, so a
   dashboard edit changed the arithmetic while the view kept quoting the
   shipped defaults and warning that nobody had reconciled them.
-- A digest row's delivery age is measured from its window end, not its
-  creation: measured from `created_at`, every hourly digest older than the
+- A digest row's delivery age is measured from its window end in BOTH expiry
+  paths. The five-minute batch scanner still measured from creation after the
+  first fix, so production kept batch-expiring hourly digests half an hour
+  before they were due, with zero attempts: 7 of 14 digest rows in the first
+  day. The single-row path was measured from its window end already: measured from `created_at`, every hourly digest older than the
   30-minute delivery ceiling expired with zero attempts before the window
   closed (seen in production within the first hour of the feature).
 - Pyroscope's compactor and metastore directories get named volumes; the

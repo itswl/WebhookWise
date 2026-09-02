@@ -31,6 +31,12 @@ async def _expire_due_outboxes(
     if policy.max_delivery_age_seconds <= 0 or limit <= 0:
         return 0
     cutoff = now - timedelta(seconds=policy.max_delivery_age_seconds)
+    # A digest row is created early on purpose and waits for its window to
+    # close, so its age runs from the window's end. This scan is the path that
+    # matters in production: measured from created_at it batch-expired hourly
+    # digests every five minutes, half an hour before they were due, with zero
+    # attempts. The same basis is applied when a single row is claimed.
+    age_basis = func.coalesce(ForwardOutbox.digest_window_end, ForwardOutbox.created_at)
     stmt = (
         update(ForwardOutbox)
         .where(
@@ -41,7 +47,7 @@ async def _expire_due_outboxes(
                         [ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING, ForwardOutboxStatus.PROCESSING]
                     )
                 )
-                .where(ForwardOutbox.created_at < cutoff)
+                .where(age_basis < cutoff)
                 .order_by(ForwardOutbox.created_at.asc(), ForwardOutbox.id.asc())
                 .limit(limit)
             )

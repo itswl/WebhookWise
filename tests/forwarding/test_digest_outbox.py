@@ -496,3 +496,32 @@ async def test_a_digest_row_is_not_late_until_its_window_has_closed(
     assert rows["age-waiting"] == ForwardOutboxStatus.PENDING
     assert rows["age-closed"] == ForwardOutboxStatus.EXPIRED
     assert rows["age-plain"] == ForwardOutboxStatus.EXPIRED
+
+
+@pytest.mark.asyncio
+async def test_the_batch_scanner_leaves_a_digest_alone_until_its_window_closes(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """The five-minute scan is the path that actually expired production's
+    digests: `_expire_outbox_if_old` guards one claimed row, but the scanner
+    sweeps in bulk, and it was still measuring age from created_at."""
+    from services.forwarding.outbox_scanner import _expire_due_outboxes
+
+    async with session_factory() as session:
+        await _aged_row(session, key="scan-waiting", created_ago=3000, window_end_in=600)
+        await _aged_row(session, key="scan-closed", created_ago=7200, window_end_in=-3600)
+        await _aged_row(session, key="scan-plain", created_ago=3000, window_end_in=None)
+        await session.commit()
+
+    async with session_factory() as session:
+        expired = await _expire_due_outboxes(session, now=utcnow(), policy=_aged_policy(), limit=50)
+        await session.commit()
+    assert expired == 2
+
+    from models import ForwardOutbox
+
+    async with session_factory() as session:
+        rows = {r.idempotency_key: r.status for r in (await session.execute(select(ForwardOutbox))).scalars()}
+    assert rows["scan-waiting"] == ForwardOutboxStatus.PENDING
+    assert rows["scan-closed"] == ForwardOutboxStatus.EXPIRED
+    assert rows["scan-plain"] == ForwardOutboxStatus.EXPIRED
