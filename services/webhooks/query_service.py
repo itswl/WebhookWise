@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
 from models import ForwardOutbox, WebhookEvent
+from services.incidents.grouping import is_recovery_payload
 from services.pagination import apply_cursor_window, trim_cursor_window
 from services.webhooks.types import WebhookProcessingStatus
 
@@ -64,6 +65,15 @@ _SUMMARY_COLUMNS = [
     # full analysis JSON, so the MCP list tools and the alert list never saw it.
     WebhookEvent.ai_analysis["triage_verdict"].astext.label("triage_verdict"),
     WebhookEvent.ai_analysis["triage_confidence"].astext.label("triage_confidence"),
+    # Recovery state for list rows: the dashboard and the MCP list tools
+    # otherwise show a resolved notification with an act-now verdict. Project
+    # only the status-bearing keys the recovery detector reads, not the blob.
+    WebhookEvent.parsed_data["status"].astext.label("parsed_status"),
+    WebhookEvent.parsed_data["state"].astext.label("parsed_state"),
+    WebhookEvent.parsed_data["alert_status"].astext.label("parsed_alert_status"),
+    WebhookEvent.parsed_data["event_status"].astext.label("parsed_event_status"),
+    WebhookEvent.parsed_data["phase"].astext.label("parsed_phase"),
+    WebhookEvent.ai_analysis["event_type"].astext.label("analysis_event_type"),
     WebhookEvent.created_at,
     WebhookEvent.prev_alert_id,
     _prev_ts_subq,
@@ -77,6 +87,22 @@ _SUMMARY_COLUMNS = [
     WebhookEvent.resolved_at,
     WebhookEvent.sla_due_at,
 ]
+
+
+_RECOVERY_STATUS_COLUMNS = (
+    ("status", "parsed_status"),
+    ("state", "parsed_state"),
+    ("alert_status", "parsed_alert_status"),
+    ("event_status", "parsed_event_status"),
+    ("phase", "parsed_phase"),
+)
+
+
+def _row_is_recovery(row: Any) -> bool:
+    """Same verdict as the card builder, from the projected status columns only."""
+    parsed = {key: getattr(row, attr, None) for key, attr in _RECOVERY_STATUS_COLUMNS if getattr(row, attr, None)}
+    event_type = getattr(row, "analysis_event_type", None)
+    return is_recovery_payload(parsed, {"event_type": event_type} if event_type else None)
 
 
 def _row_to_summary_dict(row: Any) -> dict[str, Any]:
@@ -100,6 +126,7 @@ def _row_to_summary_dict(row: Any) -> dict[str, Any]:
         "summary": row.summary,
         "triage_verdict": row.triage_verdict,
         "triage_confidence": float(row.triage_confidence) if row.triage_confidence is not None else None,
+        "is_recovery": _row_is_recovery(row),
         "created_at": utc_isoformat(row.created_at) if row.created_at is not None else None,
         "prev_alert_id": row.prev_alert_id,
         "prev_alert_timestamp": (

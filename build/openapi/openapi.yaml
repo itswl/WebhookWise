@@ -7654,6 +7654,10 @@ components:
           - type: number
           - type: 'null'
           title: Triage Confidence
+        is_recovery:
+          type: boolean
+          title: Is Recovery
+          default: false
         created_at:
           anyOf:
           - type: string

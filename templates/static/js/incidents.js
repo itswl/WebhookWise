@@ -104,7 +104,7 @@ const IncidentsModule = (function () {
             html += '<div style="display:flex; align-items:center; gap:0.75rem;">';
             html += '<span style="font-size:1.5rem;">' + badge.icon + '</span>';
             html += '<div style="flex:1; min-width:0;">';
-            html += '<div style="display:flex; align-items:center; gap:0.5rem;">';
+            html += '<div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; row-gap:0.25rem;">';
             html += '<span style="font-weight:600; font-size:1rem; color:var(--text-main);">' + escapeHtml(row.title) + '</span>';
             html += incidentBadgesHtml(row, badge);
             html += renderRecurrenceBadge(row.recurrence || row.recurrence_candidate);
@@ -699,7 +699,14 @@ const IncidentsModule = (function () {
         return String(value.status || value.review_status || 'pending').toLowerCase();
     }
 
-    function renderRecurrenceBadge(recurrence) {
+    function timelineStatusText(status) {
+    var keys = { pending: 'alerts.fwd.pending', queued: 'alerts.fwd.queued', skipped: 'alerts.fwd.skipped',
+        forwarded: 'alerts.fwd.forwarded', sent: 'alerts.fwd.sent', success: 'alerts.fwd.sent', failed: 'alerts.fwd.failed' };
+    if (!status) return t('incidents.timeline.ingested');
+    return keys[status] ? t(keys[status]) : status;
+}
+
+function renderRecurrenceBadge(recurrence) {
         if (!recurrence || typeof recurrence !== 'object') return '';
         var status = recurrenceStatus(recurrence);
         return '<span class="incident-recurrence-badge status-' +
@@ -1115,7 +1122,7 @@ const IncidentsModule = (function () {
                     rootBadge +
                     '<a href="#/alerts/' + encodeURIComponent(m.id) + '" data-ic-act="openAlert" data-ic-args="' + Number(m.id) + '"' +
                     ' style="font-size:0.8rem; font-weight:600; color:var(--primary); text-decoration:none;">#' + m.id + '</a>' +
-                    '<span class="badge badge-' + impClass(m.importance) + '" style="font-size:0.7rem; font-weight:600;">' + dotIcon + ' ' + escapeHtml(m.importance || t('common.unknown')) + '</span>' +
+                    '<span class="badge badge-' + impClass(m.importance) + '" style="font-size:0.7rem; font-weight:600;">' + dotIcon + ' ' + escapeHtml(m.importance ? getImportanceText(m.importance) : t('common.unknown')) + '</span>' +
                     dupBadge +
                     '<span style="font-size:0.72rem; color:var(--text-muted); font-weight:500;">' + escapeHtml(m.source || '') + '</span>' +
                     '</div>' +
@@ -1130,7 +1137,7 @@ const IncidentsModule = (function () {
                 
                 html += '<div style="font-size:0.7rem; color:var(--text-muted); display:flex; justify-content:space-between;">' +
                     '<span>' + escapeHtml(m.timestamp ? m.timestamp.replace('T', ' ').slice(0, 19) : '') + '</span>' +
-                    '<span>' + t('incidents.timeline.status') + ': ' + escapeHtml(m.forward_status || 'ingested') + '</span>' +
+                    '<span>' + t('incidents.timeline.status') + ': ' + escapeHtml(timelineStatusText(m.forward_status)) + '</span>' +
                     '</div>';
                 
                 html += '</div></div>'; // close tree-node and card contents
@@ -1886,7 +1893,7 @@ const IncidentsModule = (function () {
         h += '<div style="display:flex; align-items:center; gap:0.75rem;">';
         h += '<span style="font-size:1.5rem;">' + badge.icon + '</span>';
         h += '<div style="flex:1; min-width:0;">';
-        h += '<div style="display:flex; align-items:center; gap:0.5rem;">';
+        h += '<div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; row-gap:0.25rem;">';
         h += '<span style="font-weight:600; font-size:1rem; color:var(--text-main);">' + escapeHtml(row.title) + '</span>';
         h += incidentBadgesHtml(row, badge);
         h += renderRecurrenceBadge(row.recurrence || row.recurrence_candidate);

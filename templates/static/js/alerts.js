@@ -525,7 +525,11 @@ const AlertsModule = {
             // Act-now-vs-defer verdict, now projected onto list rows; absent
             // on pre-verdict analyses, in which case no badge is invented.
             var triageDot = { act_now: 'ww-dot-danger', monitor: 'ww-dot-warning', defer: 'ww-dot-muted' }[webhook.triage_verdict];
-            if (triageDot) {
+            if (webhook.is_recovery) {
+                // A resolved notification reuses its firing analysis, so the reused
+                // act-now verdict would contradict the recovery it announces.
+                html += '<span class="badge badge-low">' + escapeHtml(t('alerts.badge.recovered')) + '</span>';
+            } else if (triageDot) {
                 html += '<span class="badge badge-outline"><span class="ww-dot ' + triageDot + '"></span>' +
                     escapeHtml(t('alerts.ai.triage.' + webhook.triage_verdict)) + '</span>';
             }

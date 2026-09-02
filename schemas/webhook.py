@@ -35,6 +35,7 @@ class WebhookEventSummary(BaseModel):
     summary: str | None = None
     triage_verdict: str | None = None
     triage_confidence: float | None = None
+    is_recovery: bool = False
     created_at: str | None = None
     prev_alert_id: int | None = None
     prev_alert_timestamp: str | None = None

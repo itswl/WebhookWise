@@ -65,9 +65,13 @@ const ResponseCenterModule = (function () {
     }
 
     function impactText(item) {
-        const impact = displayValue(
-            item.impact_summary || item.impact || item.top_importance || item.importance || item.severity
-        );
+        const raw = item.impact_summary || item.impact || item.top_importance || item.importance || item.severity;
+        const level = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+        if (level === 'low' || level === 'medium' || level === 'high' || level === 'critical') {
+            // A bare importance enum is not an impact statement; show its label.
+            return getImportanceText(level === 'critical' ? 'high' : level);
+        }
+        const impact = displayValue(raw);
         return impact || t('response.queue.impactUnknown');
     }
 

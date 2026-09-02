@@ -188,8 +188,8 @@ function renderRuleCard(rule) {
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             ${cardOpacity}
         ">
-            <div class="rule-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                <div style="display: flex; align-items: center; gap: 1rem;">
+            <div class="rule-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem;">
+                <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; min-width: 0;">
                     <!-- Modern Toggle Switch -->
                     <label class="switch" style="position: relative; display: inline-block; width: 44px; height: 24px; margin: 0;">
                         <input type="checkbox" ${isEnabled ? 'checked' : ''} data-toggle-rule="${rule.id}" style="opacity: 0; width: 0; height: 0;">

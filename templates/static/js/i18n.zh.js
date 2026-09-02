@@ -22,7 +22,7 @@
             'nav.autoRefreshPause': '暂停自动刷新',
 
             'nav.autoRefreshOff': '已暂停',
-            'kb.title': '知识库草稿',
+            'kb.title': '知识草稿',
             'kb.searchLabel': '搜索知识草稿',
             'kb.bulk.selectPage': '全选本页',
             'kb.bulk.publish': '发布所选',
@@ -179,7 +179,7 @@
             'rs.domain.retention': '保留策略',
             'routing.view.rules': '转发规则',
             'routing.view.sandbox': '沙盒',
-            'action.title': '处理中心',
+            'action.title': '行动队列',
             'action.t.rule_disabled': '转发规则已自动停用：{name}',
             'action.t.remediation_unrecovered': '已批准的修复未生效：{action}',
             'action.t.delivery_fault_permanent': '永久投递故障：{name}',
@@ -286,7 +286,7 @@
             'action.empty.text': '没有需要处理的投递、任务或 AI 异常。',
             'action.msg.failed': '操作失败',
             'action.msg.undoPrompt': '操作已完成。要立即撤销吗？',
-            'noise.title': '告警降噪中心',
+            'noise.title': '降噪',
             'noise.subtitle': '量化告警噪音，查看安全建议，并执行可撤销的优化。',
             'noise.window.7d': '近 7 天',
             'noise.window.30d': '近 30 天',
@@ -473,7 +473,7 @@
             'aicost.title': 'AI 成本监控',
 
             // ── Deep Analysis tab ──
-            'deep.title': '深度分析记录',
+            'deep.title': '调查',
             'deep.status.all': '全部状态',
             'deep.status.pending': '分析中',
             'deep.status.completed': '已完成',
@@ -586,6 +586,7 @@
             'utils.timeAgo.minute': '{n} 分钟前',
             'utils.timeAgo.hour': '{n} 小时前',
             'utils.timeAgo.day': '{n} 天前',
+            'incidents.timeline.ingested': '已接收',
 
             // ── alerts.js (dynamic) ──
             'alerts.loadingData': '正在加载数据…',
@@ -601,6 +602,7 @@
             'alerts.meta.previous': '上一条 #{id}',
             'alerts.badge.duplicate': '重复告警',
             'alerts.badge.new': '新告警',
+            'alerts.badge.recovered': '已恢复',
             'alerts.fwd.statusTitle': '转发状态',
             'alerts.fwd.pending': '待转发',
             'alerts.fwd.queued': '已入队',
@@ -938,7 +940,7 @@
             'rules.alert.testFailed': '测试失败',
 
             // ── Sandbox tab (static + sandbox.js dynamic) ──
-            'sandbox.title': 'Payload 沙箱',
+            'sandbox.title': '沙箱',
             'sandbox.subtitle': '粘贴一段原始告警 payload，实时查看 WebhookWise 会怎么解析和判定它——用哪个适配器、提取出什么身份、命中哪些转发规则/静默。全程不入队、不调 AI、不落库。',
             'sandbox.source': '来源',
             'sandbox.payload': 'Payload（JSON）',
@@ -1459,7 +1461,7 @@
             'common.back': '返回',
             'common.close': '关闭',
             'common.continue': '继续',
-            'quality.title': '告警质量中心',
+            'quality.title': '告警质量',
             'quality.feedback.title': '判决反馈',
             'quality.feedback.empty': '还没有人对判决给过反馈——没有反馈就无从证明判得对不对。',
             'quality.feedback.total': '反馈条数',
@@ -1560,7 +1562,7 @@
             'quality.empty.text': '接入来源或发送一条告警后即可开始只读质量诊断。',
             'quality.scan.eventsTruncated': '时间范围超过扫描上限，字段指标基于最近 {value} 条事件。',
             'quality.scan.sourcesTruncated': '当前显示 {shown} / {total} 个来源。',
-            'response.queue.title': '事故待办队列',
+            'response.queue.title': '工作队列',
             'response.queue.subtitle': '按优先级排列事故，每项只保留一个明确的下一步。',
             'response.queue.actor': '我的操作员名称',
             'response.queue.actorPlaceholder': '例如 alice',
@@ -1701,7 +1703,7 @@
             'incidents.intelligence.calibration.reason.missing_service_scope': '缺少服务范围，因此未应用校准',
             'incidents.intelligence.calibration.reason.insufficient_sample': '人工结果样本不足，暂不调整分数',
             'incidents.intelligence.calibration.reason.bounded_bayesian_adjustment': '已根据人工结果进行保守调整',
-            'ingress.title': '入站接入',
+            'ingress.title': '接入设置',
             'ingress.subtitle': '创建来源专属凭据，并验证完整接入链路。',
             'ingress.restart': '重新开始',
             'ingress.step.source': '选择来源',

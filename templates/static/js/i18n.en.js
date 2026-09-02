@@ -22,7 +22,7 @@
             'nav.autoRefreshPause': 'Pause auto-refresh',
 
             'nav.autoRefreshOff': 'Paused',
-            'kb.title': 'Knowledge drafts',
+            'kb.title': 'Knowledge Drafts',
             'kb.searchLabel': 'Search drafts',
             'kb.bulk.selectPage': 'Select page',
             'kb.bulk.publish': 'Publish selected',
@@ -84,7 +84,7 @@
             'rs.domain.retention': 'Retention',
             'routing.view.rules': 'Forward Rules',
             'routing.view.sandbox': 'Sandbox',
-            'action.title': 'Action Center',
+            'action.title': 'Action Queue',
             'action.t.rule_disabled': 'Forwarding rule disabled: {name}',
             'action.t.remediation_unrecovered': 'Approved remediation did not recover: {action}',
             'action.t.delivery_fault_permanent': 'Permanent delivery fault: {name}',
@@ -191,7 +191,7 @@
             'action.empty.text': 'No delivery, processing, or AI problems need attention.',
             'action.msg.failed': 'Action failed',
             'action.msg.undoPrompt': 'Action completed. Undo it now?',
-            'noise.title': 'Noise Center',
+            'noise.title': 'Noise Reduction',
             'noise.subtitle': 'Measure alert noise, review safe recommendations, and apply reversible optimizations.',
             'noise.window.7d': '7 days',
             'noise.window.30d': '30 days',
@@ -379,7 +379,7 @@
             'aicost.title': 'AI Cost Monitoring',
 
             // ── Deep Analysis tab ──
-            'deep.title': 'Deep Analysis Records',
+            'deep.title': 'Investigations',
             'deep.status.all': 'All statuses',
             'deep.status.pending': 'Analyzing',
             'deep.status.completed': 'Completed',
@@ -492,6 +492,7 @@
             'utils.timeAgo.minute': '{n} minute ago',
             'utils.timeAgo.hour': '{n} hour ago',
             'utils.timeAgo.day': '{n} day ago',
+            'incidents.timeline.ingested': 'ingested',
 
             // ── alerts.js (dynamic) ──
             'alerts.loadingData': 'Loading data...',
@@ -507,6 +508,7 @@
             'alerts.meta.previous': 'Previous #{id}',
             'alerts.badge.duplicate': 'Duplicate alert',
             'alerts.badge.new': 'New alert',
+            'alerts.badge.recovered': 'Recovered',
             'alerts.fwd.statusTitle': 'Forward status',
             'alerts.fwd.pending': 'Pending forward',
             'alerts.fwd.queued': 'Queued',
@@ -844,7 +846,7 @@
             'rules.alert.testFailed': 'Test failed',
 
             // ── Sandbox tab (static + sandbox.js dynamic) ──
-            'sandbox.title': 'Payload Sandbox',
+            'sandbox.title': 'Sandbox',
             'sandbox.subtitle': 'Paste a raw alert payload and see what WebhookWise would extract and decide — which adapter parses it, the alert identity, and which rules/silences would match. Nothing is queued, analyzed by AI, or saved.',
             'sandbox.source': 'Source',
             'sandbox.payload': 'Payload (JSON)',
@@ -1365,7 +1367,7 @@
             'common.back': 'Back',
             'common.close': 'Close',
             'common.continue': 'Continue',
-            'quality.title': 'Alert quality center',
+            'quality.title': 'Alert Quality',
             'quality.feedback.title': 'Verdict feedback',
             'quality.feedback.empty': 'Nobody has rated a verdict yet — without feedback there is no way to show the judging is right.',
             'quality.feedback.total': 'Ratings',
@@ -1466,7 +1468,7 @@
             'quality.empty.text': 'Connect a source or send an alert to begin read-only quality diagnostics.',
             'quality.scan.eventsTruncated': 'Field metrics use the latest {value} events because the window exceeded the bounded scan.',
             'quality.scan.sourcesTruncated': 'Showing {shown} of {total} sources.',
-            'response.queue.title': 'Incident work queue',
+            'response.queue.title': 'Work Queue',
             'response.queue.subtitle': 'Prioritized incidents with one clear next action.',
             'response.queue.actor': 'My operator name',
             'response.queue.actorPlaceholder': 'e.g. alice',
@@ -1607,7 +1609,7 @@
             'incidents.intelligence.calibration.reason.missing_service_scope': 'No service scope is available, so calibration was not applied',
             'incidents.intelligence.calibration.reason.insufficient_sample': 'Not enough operator outcomes to adjust this score',
             'incidents.intelligence.calibration.reason.bounded_bayesian_adjustment': 'Adjusted conservatively from operator outcomes',
-            'ingress.title': 'Inbound setup',
+            'ingress.title': 'Inbound Setup',
             'ingress.subtitle': 'Create a scoped source credential and verify the complete ingest path.',
             'ingress.restart': 'Start over',
             'ingress.step.source': 'Choose source',
