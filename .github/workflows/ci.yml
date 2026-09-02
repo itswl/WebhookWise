@@ -209,6 +209,14 @@ jobs:
         run: pytest -q -p no:cacheprovider -n 4 --dist loadfile tests/forwarding tests/incidents tests/kb tests/webhooks tests/operations
         env:
           WW_TEST_DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/webhookwise_ci
+          # DATABASE_URL too, and it must name the same database. A handful of
+          # delivery tests reach code that opens the APPLICATION engine; with
+          # only the test variable set they fell through to conftest's
+          # placeholder DSN and CI failed on "password authentication failed
+          # for user webhook_user" while a laptop with a local Postgres on 5432
+          # passed. That engine uses the `public` schema, which the step above
+          # has just migrated — so this step must stay after it.
+          DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/webhookwise_ci
           REDIS_URL: redis://localhost:6379/0
 
   docker-e2e:
