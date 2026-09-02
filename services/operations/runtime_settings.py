@@ -385,6 +385,12 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
         _cast_choice("low", "medium", "high"),
         "Lowest incident importance that still gets a paid AI summary; low = every multi-alert incident",
     ),
+    SettingSpec(
+        "INCIDENT_MIN_IMPORTANCE",
+        "escalation",
+        _cast_choice("low", "medium", "high"),
+        "Lowest alert importance that can open or join an incident; recoveries always resolve; low = today",
+    ),
     # Backpressure / queue
     SettingSpec(
         "WEBHOOK_MQ_BACKLOG_WARN_FRACTION",
@@ -434,6 +440,18 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
         "Severity downgrade threshold for derived alerts",
     ),
     SettingSpec("SUPPRESS_DERIVED_ALERT_FORWARD", "noise", _cast_bool, "Forward only root-cause alerts"),
+    SettingSpec(
+        "NOISE_DIGEST_MIN_ALERTS",
+        "noise",
+        _cast_int(1, 100000),
+        "Alerts a rule needs in the window (with >= 40% repeats) before the noise centre proposes an hourly digest",
+    ),
+    SettingSpec(
+        "SYNTHETIC_SOURCES",
+        "ingest",
+        _cast_csv_names,
+        "Probe/canary source names: stored, judged and forwarded, but never an incident or an analytics row",
+    ),
     # Notification cadence
     SettingSpec(
         "NOTIFICATION_COOLDOWN_SECONDS", "cadence", _cast_int(0, 86400), "Re-notify cooldown after a delivery (seconds)"

@@ -241,7 +241,14 @@ def extract_forward_match_fields(parsed_data: dict[str, Any] | None) -> dict[str
     return {"project": project, "region": region, "environment": environment}
 
 
-def _csv_value_matches(expected_csv: str, actual: str) -> bool:
+def csv_value_matches(expected_csv: str, actual: str) -> bool:
+    """Whether a rule's comma-separated criterion covers this value.
+
+    Public because a criterion has to read the same way wherever it is asked
+    about: the noise centre asks "does an existing digest rule already cover
+    this alert rule" and must answer with the matcher that will decide it at
+    delivery time, not with an approximation of it.
+    """
     if not expected_csv:
         return True
     actual_normalized = actual.lower()
@@ -301,9 +308,9 @@ def _rule_matches(
     # to computing it here for direct callers that don't.
     if identity is None:
         identity = extract_forward_match_fields(parsed_data)
-    if not _csv_value_matches(rule.match_project, identity["project"]):
+    if not csv_value_matches(rule.match_project, identity["project"]):
         return False
-    if not _csv_value_matches(rule.match_region, identity["region"]):
+    if not csv_value_matches(rule.match_region, identity["region"]):
         return False
     if not _csv_environment_matches(rule.match_environment, identity["environment"]):
         return False
@@ -707,7 +714,7 @@ def _first_matching_inbound_value(
     for rule in rules:
         if rule.action != action or (action == CAP_IMPORTANCE and not rule.action_value):
             continue
-        if rule.match_rule_name and not _csv_value_matches(rule.match_rule_name, rule_name):
+        if rule.match_rule_name and not csv_value_matches(rule.match_rule_name, rule_name):
             continue
         probe = ForwardRuleSnapshot(
             id=rule.id,
@@ -762,7 +769,7 @@ def matching_inbound_actions(
     identity = extract_forward_match_fields(parsed_data)
     matched: set[str] = set()
     for rule in rules:
-        if rule.match_rule_name and not _csv_value_matches(rule.match_rule_name, rule_name):
+        if rule.match_rule_name and not csv_value_matches(rule.match_rule_name, rule_name):
             continue
         probe = ForwardRuleSnapshot(
             id=rule.id,

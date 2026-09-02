@@ -76,10 +76,15 @@ const AlertQualityModule = (function () {
                 })) + '</small></article>' +
             '<article><span>' + escapeHtml(t('quality.summary.recovery')) + '</span><strong>' +
                 escapeHtml(percent(recovery.match_rate)) + '</strong><small>' +
+                // The denominator is the recoveries that had an incident to join.
+                // Pairs that never formed one are reported beside it, not inside
+                // it: they are grouping policy, not a source defect.
                 escapeHtml(t('quality.summary.recoveryDetail', {
                     matched: number(recovery.matched),
-                    total: number(recovery.events)
-                })) + '</small></article></section>';
+                    total: number(recovery.attributable)
+                }) + (number(recovery.standalone)
+                    ? ' · ' + t('quality.summary.recoveryStandalone', { value: number(recovery.standalone) })
+                    : '')) + '</small></article></section>';
     }
 
     function renderGlobalCoverage(summary) {
@@ -165,6 +170,11 @@ const AlertQualityModule = (function () {
                 '<div class="alert-quality-mini-metric"><span>' +
                     escapeHtml(t('quality.source.recoveryMatch')) + '</span><strong>' +
                     escapeHtml(percent(recovery.match_rate)) + '</strong></div>' +
+                (number(recovery.standalone)
+                    ? '<div class="alert-quality-mini-metric"><span>' +
+                        escapeHtml(t('quality.source.recoveryStandalone')) + '</span><strong>' +
+                        escapeHtml(String(number(recovery.standalone))) + '</strong></div>'
+                    : '') +
             '</div>' +
             (findings.length
                 ? '<div class="alert-quality-findings">' + findings.map(renderFinding).join('') + '</div>'

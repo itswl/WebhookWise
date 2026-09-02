@@ -111,6 +111,16 @@ trace saying which rule chose that.
 robot secured by the 告警通知 keyword rejects it visibly (the outbox retries,
 then exhausts); add the keyword or use a signed robot.
 
+**Where the suggestion comes from.** The noise centre proposes one of these for
+any alert rule that fired at least `NOISE_DIGEST_MIN_ALERTS` times in the
+analysis window with a repeat share of 40% or more, and it writes the rule
+through the same `validate()` / `create_inbound_rule()` path this page
+documents — `{"action": "digest", "action_value": "60", "match_rule_name": …}`,
+named `digest 60m: <rule>`. It is not offered while an enabled digest rule
+already matches that alert rule, applying it twice changes nothing, and undoing
+it disables the row rather than deleting it, so the evidence in its `comment`
+survives.
+
 ## Choosing a ceiling from evidence, not from feel
 
 Do not guess. Every completed deep-analysis report carries the investigator's own

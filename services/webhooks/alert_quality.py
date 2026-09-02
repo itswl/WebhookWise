@@ -24,6 +24,7 @@ from models import Incident, IncidentMember, SourceConnection, WebhookEvent
 from services.analysis.alert_identity_context import build_alert_identity_context
 from services.incidents.grouping import is_recovery_payload
 from services.webhooks.decisioning import extract_forward_match_fields
+from services.webhooks.policies import is_synthetic_source
 from services.webhooks.source_onboarding import payload_schema_fingerprint
 from services.webhooks.source_stats import get_source_event_stats
 
@@ -74,6 +75,7 @@ class _SourceAccumulator:
     duplicate_count: int = 0
     recovery_count: int = 0
     matched_recovery_count: int = 0
+    standalone_recovery_count: int = 0
     missing_service: int = 0
     missing_environment: int = 0
     missing_severity: int = 0
@@ -85,6 +87,9 @@ class _SourceAccumulator:
     identity_anchors: set[str] = field(default_factory=set)
     schema_fingerprints: set[str] = field(default_factory=set)
     identity_states: dict[str, list[tuple[datetime, bool]]] = field(default_factory=lambda: defaultdict(list))
+    # Firing event ids per alert identity, so a recovery can be told apart from
+    # a recovery whose FIRING side never made an incident. See _classify_recoveries.
+    identity_firing_ids: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     issue_samples: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     unattended_incidents: int = 0
 
@@ -224,16 +229,63 @@ def _finding(
     }
 
 
-async def _matched_recovery_ids(
+async def _incident_member_ids(
     session: AsyncSession,
-    recovery_ids: list[int],
+    event_ids: list[int],
 ) -> set[int]:
-    matched: set[int] = set()
-    for offset in range(0, len(recovery_ids), _RECOVERY_LOOKUP_CHUNK):
-        chunk = recovery_ids[offset : offset + _RECOVERY_LOOKUP_CHUNK]
+    """Which of these events belong to an incident, looked up in bounded chunks."""
+    members: set[int] = set()
+    for offset in range(0, len(event_ids), _RECOVERY_LOOKUP_CHUNK):
+        chunk = event_ids[offset : offset + _RECOVERY_LOOKUP_CHUNK]
         rows = await session.execute(select(IncidentMember.event_id).where(IncidentMember.event_id.in_(chunk)))
-        matched.update(int(event_id) for event_id in rows.scalars().all())
-    return matched
+        members.update(int(event_id) for event_id in rows.scalars().all())
+    return members
+
+
+async def _classify_recoveries(
+    session: AsyncSession,
+    recovery_events: dict[int, tuple[_SourceAccumulator, str]],
+) -> None:
+    """Sort every scanned recovery into matched, unmatched, or standalone.
+
+    - **matched**: the recovery is itself an incident member — it joined.
+    - **unmatched**: it did not, but a FIRING event of the same alert identity
+      did. The incident existed and the recovery failed to reach it, which is
+      the only shape of this that a source can fix.
+    - **standalone**: nothing of this identity ever made an incident, so there
+      was nothing to join. An incident needs two correlated non-recovery alerts,
+      so a plain fire -> resolve pair can never match by construction; it is
+      counted for information and costs the source no score.
+    """
+    if not recovery_events:
+        return
+    # One identity can be seen by more than one source accumulator, so collect
+    # the firing ids per identity once instead of re-walking the recoveries.
+    firing_ids_by_identity: dict[str, set[int]] = defaultdict(set)
+    seen: set[tuple[str, str]] = set()
+    for accumulator, identity in recovery_events.values():
+        if identity and (accumulator.key, identity) not in seen:
+            seen.add((accumulator.key, identity))
+            firing_ids_by_identity[identity].update(accumulator.identity_firing_ids.get(identity, []))
+
+    candidates = set(recovery_events)
+    for firing_ids in firing_ids_by_identity.values():
+        candidates.update(firing_ids)
+    members = await _incident_member_ids(session, sorted(candidates))
+    firing_made_incident = {
+        identity: not members.isdisjoint(firing_ids) for identity, firing_ids in firing_ids_by_identity.items()
+    }
+    for event_id, (accumulator, identity) in recovery_events.items():
+        if event_id in members:
+            accumulator.matched_recovery_count += 1
+        elif not firing_made_incident.get(identity, False):
+            accumulator.standalone_recovery_count += 1
+        else:
+            # A real unmatched recovery: the sample stays as evidence.
+            continue
+        samples = accumulator.issue_samples.get("unmatched_recovery", [])
+        if event_id in samples:
+            samples.remove(event_id)
 
 
 async def _unattended_by_source(
@@ -281,6 +333,16 @@ def _unrecovered_identity_count(accumulator: _SourceAccumulator, now: datetime) 
         if not latest_is_recovery and latest_at <= now - _UNRECOVERED_AFTER:
             unresolved += 1
     return unresolved
+
+
+def _attributable_recoveries(accumulator: _SourceAccumulator) -> int:
+    """Recoveries for which matching an incident was ever possible.
+
+    Everything else is a standalone recovery pair: the firing side never made
+    an incident, so the recovery had nothing to join. Counting those as failures
+    blamed the source for this system's own grouping threshold.
+    """
+    return max(0, accumulator.recovery_count - accumulator.standalone_recovery_count)
 
 
 def _source_findings(accumulator: _SourceAccumulator, *, start: datetime, now: datetime) -> list[dict[str, object]]:
@@ -337,18 +399,25 @@ def _source_findings(accumulator: _SourceAccumulator, *, start: datetime, now: d
                 )
             )
 
-    unmatched_recovery = accumulator.recovery_count - accumulator.matched_recovery_count
-    if unmatched_recovery:
+    # Only the recoveries whose firing side actually formed an incident can be
+    # said to have failed to match one. A plain fire -> resolve pair that never
+    # became an incident is grouping policy (an incident needs two correlated
+    # non-recovery alerts), not a defect in what the source sent: 87% of the
+    # "unmatched" recoveries measured on 2026-09-02 were exactly that.
+    attributable = _attributable_recoveries(accumulator)
+    unmatched_recovery = attributable - accumulator.matched_recovery_count
+    if unmatched_recovery > 0:
         findings.append(
             _finding(
                 accumulator,
                 code="unmatched_recovery",
                 count=unmatched_recovery,
-                denominator=accumulator.recovery_count,
+                denominator=attributable,
                 maximum_penalty=18,
                 evidence={
                     "recovery_events": accumulator.recovery_count,
                     "matched_recovery_events": accumulator.matched_recovery_count,
+                    "standalone_recovery_pairs": accumulator.standalone_recovery_count,
                 },
             )
         )
@@ -482,7 +551,9 @@ def _source_payload(
         "recovery": {
             "events": accumulator.recovery_count,
             "matched": accumulator.matched_recovery_count,
-            "match_rate": _coverage(accumulator.matched_recovery_count, accumulator.recovery_count),
+            "standalone": accumulator.standalone_recovery_count,
+            "attributable": _attributable_recoveries(accumulator),
+            "match_rate": _coverage(accumulator.matched_recovery_count, _attributable_recoveries(accumulator)),
         },
         "identity": {
             "unique_dedup_keys": len(accumulator.unique_dedup_keys),
@@ -554,6 +625,10 @@ async def get_alert_quality_overview(
 
     accumulators: dict[str, _SourceAccumulator] = {}
     for connection in connections:
+        if is_synthetic_source(connection.source_type):
+            # A probe is judged, traced and delivered like anything else; it is
+            # simply not a source whose data quality anyone is grading.
+            continue
         key = _source_key(connection.source_type, int(connection.id))
         accumulators[key] = _SourceAccumulator(
             key=key,
@@ -564,6 +639,8 @@ async def get_alert_quality_overview(
         )
 
     for row in totals_rows:
+        if is_synthetic_source(row.source):
+            continue
         key = _source_key(row.source, row.source_connection_id)
         accumulator = accumulators.get(key)
         if accumulator is None:
@@ -574,12 +651,14 @@ async def get_alert_quality_overview(
         accumulator.duplicate_count = int(row.duplicates or 0)
         accumulator.last_event_at = row.last_seen
 
-    recovery_events: dict[int, _SourceAccumulator] = {}
+    recovery_events: dict[int, tuple[_SourceAccumulator, str]] = {}
     for index, event in enumerate(events):
         if index and index % _PAYLOAD_SCAN_YIELD_EVERY == 0:
             # The payload inspection below is pure CPU on the request's event
             # loop; yield periodically so a full scan cannot stall ingress.
             await asyncio.sleep(0)
+        if is_synthetic_source(event.source):
+            continue
         key = _source_key(event.source, event.source_connection_id)
         accumulator = accumulators.get(key)
         if accumulator is None:
@@ -629,13 +708,15 @@ async def get_alert_quality_overview(
             _record_sample(accumulator, "timestamp_anomaly", event.id)
 
         is_recovery = is_recovery_payload(parsed_data, analysis)
+        identity_key = str(event.dedup_key or event.alert_hash or "").strip()
         if is_recovery:
             accumulator.recovery_count += 1
             if event.id is not None:
-                recovery_events[int(event.id)] = accumulator
+                recovery_events[int(event.id)] = (accumulator, identity_key)
                 _record_sample(accumulator, "unmatched_recovery", event.id)
+        elif identity_key and event.id is not None:
+            accumulator.identity_firing_ids[identity_key].append(int(event.id))
 
-        identity_key = str(event.dedup_key or event.alert_hash or "").strip()
         if identity_key:
             accumulator.unique_dedup_keys.add(identity_key)
             accumulator.identity_states[identity_key].append((event_timestamp, is_recovery))
@@ -649,14 +730,7 @@ async def get_alert_quality_overview(
             if fingerprint:
                 accumulator.schema_fingerprints.add(fingerprint)
 
-    matched_recoveries = await _matched_recovery_ids(session, list(recovery_events))
-    for event_id in matched_recoveries:
-        accumulator = recovery_events.get(event_id)
-        if accumulator is not None:
-            accumulator.matched_recovery_count += 1
-            samples = accumulator.issue_samples.get("unmatched_recovery", [])
-            if event_id in samples:
-                samples.remove(event_id)
+    await _classify_recoveries(session, recovery_events)
 
     unattended = await _unattended_by_source(session, start=start, now=now)
     for key, count in unattended.items():
@@ -705,6 +779,8 @@ async def get_alert_quality_overview(
     missing_severity = sum(accumulator.missing_severity for accumulator in accumulators.values())
     recovery_count = sum(accumulator.recovery_count for accumulator in accumulators.values())
     matched_recovery_count = sum(accumulator.matched_recovery_count for accumulator in accumulators.values())
+    standalone_recovery_count = sum(accumulator.standalone_recovery_count for accumulator in accumulators.values())
+    attributable_recovery_count = sum(_attributable_recoveries(accumulator) for accumulator in accumulators.values())
     severity_counts = {"high": 0, "medium": 0, "low": 0}
     for source_payload in source_payloads:
         for finding in _finding_list(source_payload["findings"]):
@@ -745,7 +821,9 @@ async def get_alert_quality_overview(
             "recovery": {
                 "events": recovery_count,
                 "matched": matched_recovery_count,
-                "match_rate": _coverage(matched_recovery_count, recovery_count),
+                "standalone": standalone_recovery_count,
+                "attributable": attributable_recovery_count,
+                "match_rate": _coverage(matched_recovery_count, attributable_recovery_count),
             },
         },
         "top_findings": top_findings,

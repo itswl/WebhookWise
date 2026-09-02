@@ -225,6 +225,19 @@ class NoiseConfig(StaticSettings):
     FLAPPING_MIN_TRANSITIONS: int = Field(default=6, gt=0)
     FLAPPING_SUPPRESS_ENABLED: bool = Field(default=False)
 
+    # The noise centre proposes an hourly digest for an alert rule once it has
+    # fired at least this many times in the analysis window with a repeat share
+    # of 40% or more. Below it a digest has nothing to batch and the suggestion
+    # would only be noise about noise.
+    NOISE_DIGEST_MIN_ALERTS: int = Field(default=20, ge=1)
+    # Sources that exist to exercise the pipeline, not to report on it (a
+    # credential-rotation probe, a synthetic canary). Comma-separated source
+    # names, matched case-insensitively against WebhookEvent.source. Their
+    # events are stored, judged, traced and forwarded like any other, but they
+    # never create or join an incident and stay out of the quality and noise
+    # analytics. Empty = nothing is synthetic.
+    SYNTHETIC_SOURCES: str = Field(default="")
+
     @model_validator(mode="after")
     def validate_confidence_order(self) -> NoiseConfig:
         if self.ROOT_CAUSE_MIN_CONFIDENCE < self.NOISE_RELATED_MIN_CONFIDENCE:
@@ -485,6 +498,15 @@ class NotificationConfig(StaticSettings):
     # in ten minutes and that nobody reads. "low" keeps every multi-alert
     # incident summarized, which is the pre-existing behaviour.
     INCIDENT_SUMMARY_MIN_IMPORTANCE: str = Field(default="low")
+    # Only alerts at or above this importance can open or join an incident;
+    # below it an alert stays a plain alert with its dedup thread. Recoveries
+    # keep resolving incidents whatever their importance, and an unknown or
+    # missing importance is treated as high. Measured on production
+    # 2026-09-02: 12 of the 20 newest incidents were low, auto-resolved in
+    # about ten minutes, and their own AI summaries called them business
+    # fluctuation. "low" keeps every multi-alert correlation an incident, which
+    # is the pre-existing behaviour.
+    INCIDENT_MIN_IMPORTANCE: str = Field(default="low")
 
 
 class DeepAnalysisConfig(StaticSettings):

@@ -15,6 +15,7 @@ from db.session import acquire_advisory_xact_lock, session_scope
 from models import Incident, IncidentMember, WebhookEvent
 from services.incidents.auto_sla import AutoSlaPolicy, apply_auto_sla
 from services.incidents.summary import queue_summary_if_needed
+from services.webhooks.policies import is_synthetic_source
 
 logger = get_logger("incidents.grouping")
 
@@ -23,13 +24,49 @@ _INCIDENT_QUIET_MINUTES = 10
 _SCAN_LOOKBACK_MINUTES = 4320  # 72 h initial/backfill safety window
 _MAX_MEMBERS_PER_INCIDENT = 200
 _MAX_INCIDENTS_PER_SCAN = 200
-_RECOVERY_VALUES = {"clear", "resolved", "recovered", "recovery", "ok", "normal", "healthy", "inactive", "up", "恢复"}
+_RECOVERY_VALUES = {
+    "clear",
+    "resolved",
+    "recovered",
+    "recovery",
+    "ok",
+    "normal",
+    "healthy",
+    "inactive",
+    "up",
+    "恢复",
+}
+_IMPORTANCE_RANK = {"low": 0, "medium": 1, "high": 2}
 _DIMENSION_ALIASES: dict[str, tuple[str, ...]] = {
     "service": ("service", "service_name", "servicename", "application", "app"),
     "project": ("project", "project_name", "projectname"),
     "environment": ("environment", "env", "cluster"),
     "region": ("region", "region_id", "regionid"),
 }
+
+
+def _incident_min_importance() -> str:
+    """The operator's floor for opening an incident; runtime override wins over env."""
+    from core.app_context import get_config_manager
+    from services.operations import runtime_settings as rt
+
+    cfg = get_config_manager().notifications
+    raw = rt.override_or("INCIDENT_MIN_IMPORTANCE", getattr(cfg, "INCIDENT_MIN_IMPORTANCE", "low"))
+    value = str(raw or "low").strip().lower()
+    return value if value in _IMPORTANCE_RANK else "low"
+
+
+def _importance_opens_incident(importance: object, floor: str) -> bool:
+    """Whether this alert may open or join an incident.
+
+    An unknown or missing importance fails open — treated as `high` — for the
+    same reason the cap compares that way: a severity this system does not
+    recognise must never be quietly demoted to "not an incident".
+    """
+    rank = _IMPORTANCE_RANK.get(str(importance or "").strip().lower())
+    if rank is None:
+        return True
+    return rank >= _IMPORTANCE_RANK.get(floor, 0)
 
 
 def _event_rule_name(event: WebhookEvent) -> str:
@@ -236,12 +273,24 @@ async def run_incident_grouping() -> dict[str, Any]:
         candidates: list[WebhookEvent] = []
         updated = 0
         recovered = 0
+        # Read once per scan, not once per event: the floor is an operator
+        # policy, and a change mid-scan would split one batch across two rules.
+        importance_floor = _incident_min_importance()
         for event in unassigned:
+            if is_synthetic_source(event.source):
+                # A probe exercises ingest, judgement and delivery; it does not
+                # report on anything, so it neither opens nor joins an incident
+                # — including on its recovery, which has nothing to resolve.
+                continue
             if _is_recovery_event(event):
                 match = _find_recovery_incident(event, recoverable_incidents)
                 if match is not None and _add_event_to_incident(session, match, event):
                     _resolve_incident_from_recovery(match, event)
                     recovered += 1
+                continue
+            if not _importance_opens_incident(event.importance, importance_floor):
+                # Below the floor the alert stays a plain alert with its dedup
+                # thread: no new incident, and no membership in an existing one.
                 continue
             match = _find_matching_incident(event, active_incidents)
             if match is None:

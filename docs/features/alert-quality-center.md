@@ -50,7 +50,11 @@ The bounded scan currently reports:
   consistent between firing and recovery;
 - service, environment, and upstream severity coverage;
 - payload timestamps that are far ahead of or behind receive time;
-- recovery signals that do not join an incident;
+- recovery signals that did not join the incident their own firing side had
+  already formed. A fire -> resolve pair that never formed an incident is
+  counted separately, as a *standalone pair*: incidents need two correlated
+  non-recovery alerts, so such a pair could not have matched by construction
+  and is not a defect in what the source sent;
 - conservative identity-churn detection for a small set of alert anchors
   producing mostly unique deduplication keys;
 - repeatedly firing identities without a later recovery signal;

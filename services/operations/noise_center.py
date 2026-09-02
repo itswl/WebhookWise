@@ -11,17 +11,80 @@ from sqlalchemy import case, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
-from models import DecisionTrace, ForwardRule, NoiseReductionAction, Silence, WebhookEvent
+from core.text import split_csv_lower
+from models import DecisionTrace, ForwardRule, InboundRule, NoiseReductionAction, Silence, WebhookEvent
+from services.forwarding.outbox_records import digest_window_start
 from services.forwarding.rules import update_forward_rule
 from services.incidents.grouping import is_recovery_payload
 from services.operations.audit_logger import add_audit
 from services.silences.store import create_silence, lift_silence, list_silences
+from services.webhooks.decisioning import csv_value_matches
+from services.webhooks.inbound_rules import (
+    create_inbound_rule,
+    publish_inbound_rules_invalidation,
+    update_inbound_rule,
+)
+from services.webhooks.inbound_rules import validate as validate_inbound_rule
+from services.webhooks.policies import is_synthetic_source, synthetic_sources
 from services.webhooks.rule_audit import get_rule_audit
+from services.webhooks.types import DIGEST, DIGEST_WINDOW_MINUTES_DEFAULT
 
 _NOISE_SKIP_CODES = frozenset({"cooldown", "duplicate_no_rule", "noise_suppressed", "silenced"})
 _MINUTES_PER_AVOIDED_NOTIFICATION = 3
 _MAX_SOURCES = 12
 _MAX_RECOVERY_SAMPLE = 20_000
+# A rule has to fire this often, with this share of repeats, before batching it
+# is worth proposing. The count is an operator policy (NOISE_DIGEST_MIN_ALERTS);
+# the share is not, because below it a digest has almost nothing to batch.
+_DIGEST_MIN_REPEAT_RATE = 40.0
+
+# Event types that are WebhookWise reporting on ITSELF — an incident opening, an
+# SLA breaching, a forward giving up. `outbox_exhausted` is the name this system
+# emits; `forward_exhausted` is accepted as the same idea under an older name.
+_SYSTEM_EVENT_TYPES = frozenset(
+    {
+        "incident_created",
+        "incident_resolved",
+        "sla_breached",
+        "deep_analysis",
+        "ai_error",
+        "ai_degraded",
+        "outbox_exhausted",
+        "forward_exhausted",
+    }
+)
+# Targets that exist to COMPARE this system against another one rather than to
+# tell a person something.
+_COMPARISON_TARGET_TYPES = frozenset({"feishu_relay", "relay"})
+_COMPARISON_NAME_PREFIX = "shadow:"
+
+
+def _is_tunable_forward_rule(rule: ForwardRule) -> bool:
+    """Whether noise reduction may propose a change to this forward rule.
+
+    Two kinds of rule are off limits, and the reason is the same for both: the
+    number the suggestion is built from does not mean what it appears to mean.
+
+    A rule matching only system event types (`incident_created,incident_resolved`)
+    never carries an alert, so its "duplicate rate" is a statement about system
+    cards; switching it to new-alerts-only would silently drop incident
+    notifications. A shadow/relay comparison rule exists so that a second
+    implementation sees the SAME traffic — tuning it destroys the comparison it
+    was built for, and nothing about it is a delivery a person reads.
+
+    Measured on production 2026-09-02: the noise centre proposed three identical
+    "notify on new alerts only" changes, one of them against the shadow relay
+    rule and one against an incident-notification rule.
+    """
+    target_type = str(rule.target_type or "").strip().lower()
+    if target_type in _COMPARISON_TARGET_TYPES:
+        return False
+    if str(rule.name or "").strip().lower().startswith(_COMPARISON_NAME_PREFIX):
+        return False
+    event_types = split_csv_lower(str(rule.match_event_type or ""))
+    # An empty criterion matches everything, including alerts; only a rule whose
+    # every named type is a system event is excluded.
+    return not (event_types and all(event_type in _SYSTEM_EVENT_TYPES for event_type in event_types))
 
 
 def _pct(value: int, total: int) -> float:
@@ -54,6 +117,13 @@ async def _window_metrics(
 ) -> dict[str, Any]:
     event_window = (WebhookEvent.timestamp >= start) & (WebhookEvent.timestamp < end)
     trace_window = (DecisionTrace.created_at >= start) & (DecisionTrace.created_at < end)
+    # A probe fires on a timer and never stops; it is not noise anybody can
+    # tune, and leaving it in makes every rate on this page read wrong. Applied
+    # to both windows so the tables still sum to the summary above them.
+    synthetic = sorted(synthetic_sources())
+    if synthetic:
+        event_window = event_window & func.lower(func.coalesce(WebhookEvent.source, "")).notin_(synthetic)
+        trace_window = trace_window & func.lower(func.coalesce(DecisionTrace.source, "")).notin_(synthetic)
 
     event_row = (
         await session.execute(
@@ -244,12 +314,24 @@ async def _window_metrics(
     ).all()
     name_by_event: dict[int, str | None] = {}
     avoided_by_rule: dict[str, int] = {}
+    # Labels that are a real alert rule name, not a source used as a fallback
+    # label. Only the former can be written into an inbound rule's
+    # match_rule_name, so only the former can be proposed as a digest.
+    alert_rule_names: set[str] = set()
     for event_id, alert_name, _outcome, _skip_code in trace_name_rows:
         if event_id is not None:
             name_by_event[int(event_id)] = alert_name
+        if alert_name:
+            alert_rule_names.add(str(alert_name))
     event_rows = (
         await session.execute(
-            select(WebhookEvent.id, WebhookEvent.source, WebhookEvent.is_duplicate).where(event_window)
+            select(
+                WebhookEvent.id,
+                WebhookEvent.source,
+                WebhookEvent.is_duplicate,
+                WebhookEvent.timestamp,
+                WebhookEvent.created_at,
+            ).where(event_window)
         )
     ).all()
     noise_ids = {
@@ -265,7 +347,11 @@ async def _window_metrics(
     }
     rules_agg: dict[str, dict[str, int]] = {}
     sources_by_rule: dict[str, list[str]] = {}
-    for event_id, source, is_duplicate in event_rows:
+    # Which digest windows a rule actually fired in. A digest sends one card per
+    # window it fired in, so this is what the saving is measured against; the
+    # count of windows in the range would price the quiet ones too.
+    windows_by_rule: dict[str, set[datetime]] = {}
+    for event_id, source, is_duplicate, event_time, created_at in event_rows:
         source_label = str(source or "unknown").strip()
         label = name_by_event.get(int(event_id)) or source_label
         stats = rules_agg.setdefault(label, {"total": 0, "duplicates": 0, "noise_events": 0})
@@ -277,6 +363,9 @@ async def _window_metrics(
         rule_sources = sources_by_rule.setdefault(label, [])
         if source_label not in rule_sources:
             rule_sources.append(source_label)
+        fired_at = event_time or created_at
+        if fired_at is not None:
+            windows_by_rule.setdefault(label, set()).add(digest_window_start(fired_at, DIGEST_WINDOW_MINUTES_DEFAULT))
     for _event_id, alert_name, outcome, skip_code in trace_name_rows:
         if outcome == "skipped" and str(skip_code or "") in _NOISE_SKIP_CODES and alert_name:
             avoided_by_rule[alert_name] = avoided_by_rule.get(alert_name, 0) + 1
@@ -291,6 +380,7 @@ async def _window_metrics(
             "noise_rate": _pct(stats["noise_events"], stats["total"]),
             "recoveries": recovery_by_rule.get(label, 0),
             "notifications_avoided": avoided_by_rule.get(label, 0),
+            "firing_windows": len(windows_by_rule.get(label, ())),
         }
         for label, stats in rules_agg.items()
     ]
@@ -298,6 +388,7 @@ async def _window_metrics(
         key=lambda item: (-rules_agg[str(item["name"])]["noise_events"], -rules_agg[str(item["name"])]["total"])
     )
     result["noisy_rules"] = noisy_rules[:_MAX_SOURCES]
+    result["_alert_rule_names"] = alert_rule_names
     return result
 
 
@@ -319,13 +410,111 @@ def _source_for_rule(rule: ForwardRule, sources: list[dict[str, Any]], summary: 
     }
 
 
+def _digest_min_alerts() -> int:
+    """How often a rule must fire before batching it is worth proposing."""
+    from core.app_context import get_config_manager
+    from services.operations import runtime_settings as rt
+
+    cfg = get_config_manager().noise
+    return max(1, int(rt.override_or("NOISE_DIGEST_MIN_ALERTS", int(cfg.NOISE_DIGEST_MIN_ALERTS))))
+
+
+def _digest_expected_reduction(total: int, *, firing_windows: int) -> int:
+    """Cards a digest removes: one per alert today, one per window it fired in.
+
+    Measured against the windows the rule ACTUALLY fired in, not the windows in
+    the range. Pricing the quiet ones too made the estimate negative for every
+    rule that fires less than once an hour — which is every candidate the
+    production noise table has ever produced — and a clamp to zero would have
+    shown "saves 0 cards" beside a rule that repeats two thirds of the time.
+    """
+    return max(0, total - max(0, firing_windows))
+
+
+async def _digested_rule_names(session: AsyncSession) -> list[str]:
+    """`match_rule_name` of every enabled digest rule, as the matcher sees it."""
+    rows = (
+        await session.execute(
+            select(InboundRule.match_rule_name).where(
+                InboundRule.enabled.is_(True),
+                InboundRule.action == DIGEST,
+            )
+        )
+    ).all()
+    return [str(row[0] or "") for row in rows]
+
+
+async def _digest_suggestions(
+    session: AsyncSession,
+    *,
+    window_days: int,
+    noisy_rules: list[dict[str, Any]],
+    alert_rule_names: set[str],
+) -> list[dict[str, Any]]:
+    """Propose an hourly digest for an alert rule that repeats itself.
+
+    A cap changes what a card SAYS; it does not change how many cards there
+    are. Once a rule fires often enough and most of those firings are repeats,
+    the operator's question is cadence, and `digest` is the verb for it.
+    """
+    minimum = _digest_min_alerts()
+    covered = await _digested_rule_names(session)
+    suggestions: list[dict[str, Any]] = []
+    for row in noisy_rules:
+        rule_name = str(row.get("name") or "")
+        if rule_name not in alert_rule_names:
+            # A source used as a fallback label, not an alert rule: an inbound
+            # rule keyed on it would match nothing.
+            continue
+        total = int(row.get("total") or 0)
+        duplicates = int(row.get("duplicates") or 0)
+        duplicate_rate = float(row.get("duplicate_rate") or 0)
+        if total < minimum or duplicate_rate < _DIGEST_MIN_REPEAT_RATE:
+            continue
+        if any(csv_value_matches(existing, rule_name) for existing in covered):
+            # Already batched — including by a broad rule that names no alert
+            # rule at all, which covers this one too.
+            continue
+        expected = _digest_expected_reduction(total, firing_windows=int(row.get("firing_windows") or 0))
+        suggestions.append(
+            {
+                "id": _suggestion_id("digest", rule_name),
+                "kind": "digest",
+                "priority": "high" if total >= minimum * 2 else "medium",
+                "risk": "low",
+                "title": f"Deliver {rule_name} as an hourly digest",
+                "reason": (
+                    f"{rule_name} fired {total} times in the last {window_days} days and "
+                    f"{duplicate_rate:.1f}% of those were repeats. Every alert is still stored, "
+                    "judged and traced; only the chat cards are batched."
+                ),
+                "scope": {
+                    "rule_name": rule_name,
+                    "sources": list(row.get("sources") or []),
+                    "window_minutes": DIGEST_WINDOW_MINUTES_DEFAULT,
+                    "total": total,
+                    "duplicates": duplicates,
+                    "duplicate_rate": duplicate_rate,
+                },
+                "confidence": 0.85 if duplicate_rate >= 60 else 0.7,
+                "estimated_notifications": expected,
+                "estimated_minutes_saved": expected * _MINUTES_PER_AVOIDED_NOTIFICATION,
+                "action_available": True,
+                "reversible": True,
+            }
+        )
+    return suggestions
+
+
 async def _build_suggestions(
     session: AsyncSession,
     *,
     window_days: int,
     summary: dict[str, Any],
     sources: list[dict[str, Any]],
+    noisy_rules: list[dict[str, Any]],
     rule_keys: dict[tuple[str, str], str],
+    alert_rule_names: set[str],
 ) -> list[dict[str, Any]]:
     rules = list(
         (
@@ -344,6 +533,8 @@ async def _build_suggestions(
 
     for rule in rules:
         if str(rule.match_duplicate or "all") != "all":
+            continue
+        if not _is_tunable_forward_rule(rule):
             continue
         stats = _source_for_rule(rule, sources, summary)
         total = int(stats.get("total") or 0)
@@ -387,6 +578,10 @@ async def _build_suggestions(
     )
     for row in audit_rows:
         source = str(row.get("source") or "unknown")
+        if is_synthetic_source(source):
+            # get_rule_audit runs its own window query, so the exclusion applied
+            # to the metrics windows above has to be repeated here.
+            continue
         rule_name = str(row.get("rule_name") or "unknown")
         total = int(row.get("total") or 0)
         duplicates = int(row.get("duplicates") or 0)
@@ -458,6 +653,15 @@ async def _build_suggestions(
                 }
             )
 
+    suggestions.extend(
+        await _digest_suggestions(
+            session,
+            window_days=window_days,
+            noisy_rules=noisy_rules,
+            alert_rule_names=alert_rule_names,
+        )
+    )
+
     priority_order = {"high": 0, "medium": 1, "low": 2}
     suggestions.sort(
         key=lambda item: (
@@ -498,6 +702,7 @@ async def _current_window_state(
     start = now - timedelta(days=window_days)
     current = await _window_metrics(session, start=start, end=now, include_sources=True)
     rule_keys = current.pop("_rule_keys")
+    alert_rule_names = set(current.pop("_alert_rule_names", set()))
     sources = list(current.pop("sources", []))
     noisy_rules = list(current.pop("noisy_rules", []))
     suggestions = await _build_suggestions(
@@ -505,7 +710,9 @@ async def _current_window_state(
         window_days=window_days,
         summary=current,
         sources=sources,
+        noisy_rules=noisy_rules,
         rule_keys=rule_keys,
+        alert_rule_names=alert_rule_names,
     )
     return current, sources, noisy_rules, suggestions
 
@@ -617,6 +824,52 @@ async def apply_noise_suggestion(
         resource_id = int(silence.id)
         resource_name = str(scope.get("rule_name") or source)
         summary = f"Noise Center created a {duration_hours}-hour trial silence for {resource_name}"
+    elif kind == "digest":
+        rule_name = str(scope["rule_name"])
+        window_minutes = int(scope.get("window_minutes") or DIGEST_WINDOW_MINUTES_DEFAULT)
+        payload = {
+            "name": f"digest {window_minutes}m: {rule_name}",
+            "action": DIGEST,
+            "action_value": str(window_minutes),
+            "match_rule_name": rule_name,
+            "enabled": True,
+            "comment": f"Noise Center {utc_isoformat(utcnow())}: {scope.get('duplicate_rate')}% repeats "
+            f"over {scope.get('total')} alerts",
+        }
+        # Validated by the same function the API uses: a rule this page writes
+        # must be refusable for the same reasons a hand-written one is.
+        problem = validate_inbound_rule(payload)
+        if problem is not None:
+            return {"changed": False, "reason": "invalid_inbound_rule"}
+        existing_rule = (
+            await session.execute(
+                select(InboundRule)
+                .where(InboundRule.action == DIGEST, InboundRule.match_rule_name == rule_name)
+                .order_by(InboundRule.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing_rule is None:
+            inbound = await create_inbound_rule(session, payload, actor=actor)
+        else:
+            # Re-applying after an undo re-enables the row it disabled rather
+            # than leaving two rules with the same name and the same effect.
+            updated_rule = await update_inbound_rule(
+                session, int(existing_rule.id), {"enabled": True, "action_value": str(window_minutes)}
+            )
+            if updated_rule is None:
+                return {"changed": False, "reason": "rule_not_found"}
+            inbound = updated_rule
+        before_state = {}
+        after_state = {
+            "inbound_rule_id": int(inbound.id),
+            "match_rule_name": rule_name,
+            "window_minutes": window_minutes,
+        }
+        resource_type = "inbound_rule"
+        resource_id = int(inbound.id)
+        resource_name = inbound.name
+        summary = f"Noise Center will deliver {rule_name} as a {window_minutes}-minute digest"
     else:
         return {"changed": False, "reason": "unsupported_suggestion"}
 
@@ -642,6 +895,10 @@ async def apply_noise_suggestion(
         actor=actor,
     )
     await session.commit()
+    if resource_type == "inbound_rule":
+        # Every worker caches inbound rules; without this the digest starts
+        # applying a TTL later, and the operator watches cards keep arriving.
+        await publish_inbound_rules_invalidation()
     return {"changed": True, "action": _serialize_action(action)}
 
 
@@ -668,6 +925,16 @@ async def undo_noise_action(session: AsyncSession, *, action_id: int, actor: str
             return {"changed": False, "reason": "rule_state_changed"}
         await update_forward_rule(session, int(rule.id), {"match_duplicate": previous})
         resource_name = rule.name
+    elif action.action_type == "digest":
+        inbound = await session.get(InboundRule, action.resource_id)
+        if inbound is None:
+            return {"changed": False, "reason": "rule_not_found"}
+        if not inbound.enabled or str(inbound.action or "") != DIGEST:
+            return {"changed": False, "reason": "rule_state_changed"}
+        # Disabled rather than deleted: the row carries the evidence that made
+        # it, and an operator who wanted it back would have to retype that.
+        await update_inbound_rule(session, int(inbound.id), {"enabled": False})
+        resource_name = inbound.name
     elif action.action_type == "temporary_silence":
         silence = await session.get(Silence, action.resource_id)
         if silence is None:
@@ -691,4 +958,6 @@ async def undo_noise_action(session: AsyncSession, *, action_id: int, actor: str
         actor=actor,
     )
     await session.commit()
+    if action.resource_type == "inbound_rule":
+        await publish_inbound_rules_invalidation()
     return {"changed": True, "action": _serialize_action(action)}

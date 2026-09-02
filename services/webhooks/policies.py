@@ -23,6 +23,41 @@ def _parse_strip_keys(raw: str) -> frozenset[str]:
     return frozenset(k.strip().lower() for k in raw.split(",") if k.strip())
 
 
+@lru_cache(maxsize=16)
+def _parse_source_names(raw: str) -> frozenset[str]:
+    """Parse a CSV of source names into a lower-cased frozenset.
+
+    Memoized on the raw string the same way the strip keys are: this is asked
+    once per event on the grouping scan, and a settings change is a new key.
+    """
+    if not raw:
+        return frozenset()
+    return frozenset(name.strip().lower() for name in raw.split(",") if name.strip())
+
+
+def synthetic_sources() -> frozenset[str]:
+    """Sources that exist to exercise the pipeline rather than to report on it.
+
+    A rotation probe or a canary proves that ingest, judgement and delivery
+    still work end to end, so it must keep travelling the whole pipeline. What
+    it must NOT do is look like operational signal: a probe named
+    `rotation-probe` opened a real incident that sat in the work queue, and its
+    perfectly regular cadence is not noise anybody can tune away.
+    """
+    from services.operations import runtime_settings as rt
+
+    cfg = get_config_manager().noise
+    return _parse_source_names(rt.override_or("SYNTHETIC_SOURCES", str(cfg.SYNTHETIC_SOURCES or "")))
+
+
+def is_synthetic_source(source: str | None) -> bool:
+    """Whether this event source is a probe. Matched case-insensitively."""
+    names = synthetic_sources()
+    if not names:
+        return False
+    return str(source or "").strip().lower() in names
+
+
 @dataclass(frozen=True, slots=True)
 class NoiseReductionPolicy:
     enabled: bool

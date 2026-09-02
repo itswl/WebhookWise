@@ -29,6 +29,17 @@ const NoiseCenterModule = (function () {
                 })
             };
         }
+        if (item.kind === 'digest') {
+            return {
+                title: t('noise.suggestion.digest.title', { rule: scope.rule_name || '–' }),
+                reason: t('noise.suggestion.digest.reason', {
+                    total: scope.total || 0,
+                    duplicates: scope.duplicates || 0,
+                    rate: Number(scope.duplicate_rate || 0).toFixed(1),
+                    minutes: scope.window_minutes || 60
+                })
+            };
+        }
         if (item.kind === 'temporary_silence') {
             return {
                 title: t('noise.suggestion.silence.title', { rule: scope.rule_name || '–' }),
@@ -122,10 +133,16 @@ const NoiseCenterModule = (function () {
             }).join('') + '</tbody></table></div>';
     }
 
+    // One label per applied action type. A ternary silently mislabelled every
+    // new kind as a silence, which is how the history panel lies.
+    const ACTION_LABELS = {
+        duplicate_filter: 'noise.action.duplicate',
+        temporary_silence: 'noise.action.silence',
+        digest: 'noise.action.digest'
+    };
+
     function actionLabel(action) {
-        return action.action_type === 'duplicate_filter'
-            ? t('noise.action.duplicate')
-            : t('noise.action.silence');
+        return t(ACTION_LABELS[action.action_type] || 'noise.action.unknown');
     }
 
     function renderActions(actions) {

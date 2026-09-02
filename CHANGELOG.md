@@ -22,6 +22,20 @@ This project follows SemVer release headings.
   `0.0.0.0` for a bare host.
 
 ### Added
+- The noise centre proposes a digest, and applies it in one click. A rule with
+  at least `NOISE_DIGEST_MIN_ALERTS` firings (default 20) and a 40% repeat
+  share is offered hourly batching, written as an inbound `digest` rule
+  through the same validation the API uses; the estimate counts the windows
+  the rule actually fired in, so a rule that fires 93 times a week reads as
+  "saves 53 cards" instead of the zero a whole-range count produced.
+- `INCIDENT_MIN_IMPORTANCE` (runtime-policy, default `low`): a floor on what
+  may open or join an incident. Below it an alert stays a plain alert with its
+  dedup thread; recoveries keep resolving incidents whatever their importance,
+  and an unknown importance fails open.
+- `SYNTHETIC_SOURCES` (runtime-policy, comma-separated, default empty) names
+  probe and canary sources. Their alerts are still stored, judged, traced and
+  forwarded — a probe that does not exercise delivery proves nothing — but they
+  never open or join an incident and stay out of the quality and noise centres.
 - `INCIDENT_SUMMARY_MIN_IMPORTANCE` (runtime-policy, default `low`): the
   lowest incident importance that still earns a paid AI summary. Measured on
   production, summaries were about a fifth of paid model calls and most of
@@ -69,6 +83,17 @@ This project follows SemVer release headings.
   (187 of 331 alerts), each one a card, an incident and a paid summary.
 
 ### Fixed
+- The noise centre stops proposing changes to rules it must not touch: a
+  forward rule whose `match_event_type` names only system events is not alert
+  forwarding, and a shadow/relay comparison target exists to see the same
+  traffic. It had proposed three identical "notify on new alerts only"
+  changes, one against each.
+- "Recovery signal did not match an incident" now means what it says. A
+  recovery counts against a source only when its own identity had already
+  formed an incident and the recovery failed to join it; a fire/resolve pair
+  that never formed one is counted separately and costs no score, because
+  incidents need two correlated non-recovery alerts and such a pair could
+  never have matched. 87% of the production figure was our own grouping rule.
 - The AI cost view reads the rates an operator set at runtime. Both rates
   were already live-editable and the pricing path honoured the override, so a
   dashboard edit changed the arithmetic while the view kept quoting the
