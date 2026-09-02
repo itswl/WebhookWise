@@ -1,12 +1,13 @@
 """Forwarding decision and finalization stage for webhook processing."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.normalized import extract_alert_identity
+from core.datetime_utils import utcnow
 from core.logger import get_logger
 from core.observability.attributes import WEBHOOK_ALERT_HASH, WEBHOOK_EVENT_ID, WEBHOOK_SOURCE
 from core.observability.events import add_span_event, emit_event
@@ -15,7 +16,9 @@ from core.sensitive_data import redact_headers
 from db.session import session_scope
 from models import WebhookEvent
 from services.dedup import DedupResult
+from services.forwarding import outbox_records
 from services.forwarding.outbox import resolve_and_forward
+from services.forwarding.outbox_records import DeferredDigest
 from services.forwarding.rules import get_cached_forward_rules
 from services.forwarding.types import ForwardRuleSnapshot
 from services.silences.store import get_cached_active_silences
@@ -35,6 +38,7 @@ from services.webhooks.types import (
     AnalysisResult,
     NoiseReductionContext,
     WebhookProcessContext,
+    analysis_digest_window,
 )
 
 logger = get_logger("webhooks.forwarding_stage")
@@ -45,6 +49,10 @@ class FinalizeAnalysisResult:
     save_result: SaveWebhookResult
     forward_decision: ForwardDecision | None
     outbox_ids: list[int]
+    # The subset of outbox_ids whose digest window is still open. They exist —
+    # the per-alert record is the point — but must not be kicked now; the
+    # pipeline kicks the group opener when the window closes instead.
+    deferred: DeferredDigest = field(default_factory=DeferredDigest)
 
 
 async def resolve_forward_decision(
@@ -150,6 +158,7 @@ async def finalize_analysis_transaction(
     )
 
     outbox_ids: list[int] = []
+    deferred = DeferredDigest()
     persist_attrs = {
         WEBHOOK_EVENT_ID: ctx.event_id or 0,
         WEBHOOK_SOURCE: ctx.req_ctx.source,
@@ -245,6 +254,10 @@ async def finalize_analysis_transaction(
                         orig_id=save_res.original_id,
                     )
                     outbox_ids = list(fwd_result.get("outbox_ids") or [])
+                    if outbox_ids and analysis_digest_window(final_analysis)[0]:
+                        # Only asked for digested alerts: a PK lookup, but
+                        # still a round trip nobody else needs.
+                        deferred = await outbox_records.deferred_digest_kicks(session, outbox_ids, now=utcnow())
                 emit_event(
                     "forward.outbox.queued",
                     {
@@ -266,4 +279,4 @@ async def finalize_analysis_transaction(
                     },
                 )
 
-    return FinalizeAnalysisResult(save_res, fwd_dec, outbox_ids)
+    return FinalizeAnalysisResult(save_res, fwd_dec, outbox_ids, deferred)

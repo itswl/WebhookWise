@@ -43,12 +43,14 @@ class InboundRule(Base):
     # comma-separated, case-insensitive.
     match_rule_name: Mapped[str] = mapped_column(String(512), default="", server_default="")
 
-    # skip_ai | skip_deep_analysis. Deliberately not "drop" or "mute": an alert
-    # that is never stored cannot be investigated afterwards, and muting already
-    # has a home in silences, with expiry semantics this table does not have.
+    # skip_ai | skip_deep_analysis | cap_importance | digest. Deliberately not
+    # "drop" or "mute": an alert that is never stored cannot be investigated
+    # afterwards, and muting already has a home in silences, with expiry
+    # semantics this table does not have.
     action: Mapped[str] = mapped_column(String(40), nullable=False)
     # What the verb acts ON, when it needs a target: cap_importance stores the
-    # ceiling here. Empty for verbs that need none (skip_ai, skip_deep_analysis).
+    # ceiling here, digest the window in minutes. Empty for verbs that need
+    # none (skip_ai, skip_deep_analysis).
     action_value: Mapped[str] = mapped_column(String(20), default="", server_default="")
 
     comment: Mapped[str] = mapped_column(String(500), default="")

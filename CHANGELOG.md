@@ -45,6 +45,18 @@ This project follows SemVer release headings.
   language, bare list links follow the primary token instead of the
   browser default, and the language toggle no longer wraps.
 
+- Digest delivery for noisy alert rules: a fourth inbound-rule verb, `digest`,
+  whose `action_value` is a window in minutes (5–1440, empty = 60). Chat
+  deliveries (Feishu bot / Feishu app / DingTalk / WeCom) for a matching rule
+  wait for the window to close and go out as ONE card (`📦 汇总通知`, up to 15
+  lines, header coloured by the highest importance); deep-analysis, relay and
+  generic webhook targets keep per-alert delivery, and periodic reminders are
+  not raised for digested rules. Every alert is still stored, judged and traced
+  (`_digest` on the analysis); outbox rows carry `digest_key` /
+  `digest_window_end` (migration 0039) and the first row claimed delivers for
+  its due siblings. Measured motive: two rules were 56% of a week's volume
+  (187 of 331 alerts), each one a card, an incident and a paid summary.
+
 ### Fixed
 - Outbox creation is race-safe: two workers creating the same forwarding
   intent no longer fail the whole forwarding stage on the `idempotency_key`

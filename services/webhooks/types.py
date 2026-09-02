@@ -77,16 +77,28 @@ SKIP_DEEP_ANALYSIS: Final = "skip_deep_analysis"
 # Ceiling an operator sets for a named alert rule, applied AFTER judgement to
 # whatever route answered. Needs InboundRule.action_value to say "at what".
 CAP_IMPORTANCE: Final = "cap_importance"
+# Batch this rule's chat notifications into one card per window instead of one
+# card per alert. Every alert is still stored, judged and traced individually;
+# only the chat delivery coalesces. InboundRule.action_value holds the window
+# in minutes. Deep-analysis, relay and generic webhook targets are never
+# digested: a machine consumer wants every event, a person wants the digest.
+DIGEST: Final = "digest"
+DIGEST_WINDOW_MINUTES_MIN: Final = 5
+DIGEST_WINDOW_MINUTES_MAX: Final = 1440
+DIGEST_WINDOW_MINUTES_DEFAULT: Final = 60
 # Deliberately short. "drop" would make an alert unfindable afterwards, and
 # "mute" already exists as a silence, with expiry semantics this table lacks.
-INBOUND_ACTIONS: Final = frozenset({SKIP_AI, SKIP_DEEP_ANALYSIS, CAP_IMPORTANCE})
+INBOUND_ACTIONS: Final = frozenset({SKIP_AI, SKIP_DEEP_ANALYSIS, CAP_IMPORTANCE, DIGEST})
 # Only these verbs take a value; the others must leave action_value empty.
-INBOUND_ACTIONS_WITH_VALUE: Final = frozenset({CAP_IMPORTANCE})
+INBOUND_ACTIONS_WITH_VALUE: Final = frozenset({CAP_IMPORTANCE, DIGEST})
 
 # A capped severity must never look like the judgement that produced it. Same
 # doctrine as _importance_override: an importance nobody can trace back to a
 # decision is how you end up arguing with a model that never said it.
 ANALYSIS_IMPORTANCE_CAP: Final = "_importance_cap"
+# The digest decision, recorded on the analysis the same way: a card that
+# arrived an hour late needs a trace saying which rule chose to batch it.
+ANALYSIS_DIGEST: Final = "_digest"
 # Ordered so a cap can be compared against a judgement. Unknown values are
 # treated as `high` when capping, so a severity this table does not recognise
 # is never left ABOVE the ceiling an operator set.
@@ -168,6 +180,7 @@ class AnalysisResult(TypedDict):
     _importance_override_reason: NotRequired[str]
     _correction_prior: NotRequired[JsonObject]
     _importance_cap: NotRequired[JsonObject]
+    _digest: NotRequired[JsonObject]
 
 
 class ForwardResult(TypedDict):
@@ -415,3 +428,47 @@ def apply_importance_cap(result: AnalysisResult, *, cap: str, rule_name: str) ->
     result["importance"] = cap
     result[ANALYSIS_IMPORTANCE_CAP] = {"capped_to": cap, "judged": current, "rule": rule_name}
     return result
+
+
+def parse_digest_window_minutes(value: object) -> int | None:
+    """The digest window an inbound rule's action_value names, or None if it is not one.
+
+    Empty means the default: an operator who writes a digest rule without a
+    number wants "hourly", not an error. Anything else has to be a whole number
+    of minutes inside the bounds — a window under five minutes is a slower way
+    to page per alert, and one over a day hides an outage behind yesterday's
+    batch.
+    """
+    text = str(value if value is not None else "").strip()
+    if not text:
+        return DIGEST_WINDOW_MINUTES_DEFAULT
+    if not text.isdigit():
+        return None
+    minutes = int(text)
+    if minutes < DIGEST_WINDOW_MINUTES_MIN or minutes > DIGEST_WINDOW_MINUTES_MAX:
+        return None
+    return minutes
+
+
+def mark_analysis_digest(result: AnalysisResult, *, window_minutes: int, rule_name: str) -> AnalysisResult:
+    """Record that this alert's chat delivery will be batched, and by which rule.
+
+    Mirrors _importance_cap: the marker travels with the analysis into
+    persistence, so the decision trace can say why a card arrived an hour late
+    and which rule chose that. Underscore-prefixed, so the AI cache strips it —
+    a cached verdict must not carry another alert's delivery decision.
+    """
+    result[ANALYSIS_DIGEST] = {"window_minutes": int(window_minutes), "rule": rule_name}
+    return result
+
+
+def analysis_digest_window(result: Mapping[str, Any] | None) -> tuple[int, str]:
+    """(window minutes, rule name) recorded on this analysis; (0, "") when not digested."""
+    marker = (result or {}).get(ANALYSIS_DIGEST)
+    if not isinstance(marker, dict):
+        return 0, ""
+    raw = marker.get("window_minutes")
+    minutes = raw if isinstance(raw, int) and not isinstance(raw, bool) else 0
+    if minutes <= 0:
+        return 0, ""
+    return minutes, str(marker.get("rule") or "")

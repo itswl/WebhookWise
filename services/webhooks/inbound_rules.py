@@ -21,12 +21,18 @@ from models import InboundRule
 from services.webhooks.decisioning import (
     InboundRuleSnapshot,
     matching_inbound_actions,
+    matching_inbound_digest_window,
     matching_inbound_importance_cap,
 )
 from services.webhooks.types import (
+    CAP_IMPORTANCE,
+    DIGEST,
+    DIGEST_WINDOW_MINUTES_MAX,
+    DIGEST_WINDOW_MINUTES_MIN,
     INBOUND_ACTIONS,
     INBOUND_ACTIONS_WITH_VALUE,
     SKIP_AI,
+    parse_digest_window_minutes,
 )
 
 logger = get_logger("webhooks.inbound_rules")
@@ -142,9 +148,22 @@ def validate(payload: dict[str, Any]) -> str | None:
     if not str(payload.get("name") or "").strip():
         return "name is required"
     value = str(payload.get("action_value") or "").strip().lower()
-    if action in INBOUND_ACTIONS_WITH_VALUE:
+    if action == CAP_IMPORTANCE:
         if value not in VALID_IMPORTANCE_CAPS:
             return f"{action} needs action_value to be one of {', '.join(sorted(VALID_IMPORTANCE_CAPS))}"
+    elif action == DIGEST:
+        # Empty is allowed and means the default window; a number outside the
+        # bounds is refused rather than clamped, so the stored rule says what
+        # its author typed.
+        if parse_digest_window_minutes(value) is None:
+            return (
+                f"{action} needs action_value to be a window in whole minutes between "
+                f"{DIGEST_WINDOW_MINUTES_MIN} and {DIGEST_WINDOW_MINUTES_MAX}"
+            )
+    elif action in INBOUND_ACTIONS_WITH_VALUE:
+        # A valued verb nobody taught this function about: refuse rather than
+        # store a value with no reader.
+        return f"{action} needs an action_value this version cannot validate"
     elif value:
         # Storing a value a verb never reads is how a rule comes to look
         # configured while doing something else.
@@ -175,7 +194,22 @@ def validate(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def normalize_action_value(action: str, value: object) -> str:
+    """The action_value as it is stored: lower-cased, and a digest window made explicit.
+
+    A digest rule saved with an empty value would otherwise read as "no window"
+    to anyone inspecting the row, while the matcher quietly used the default.
+    Writing the default down keeps the table honest about what it does.
+    """
+    text = str(value if value is not None else "").strip().lower()
+    if action == DIGEST:
+        minutes = parse_digest_window_minutes(text)
+        return str(minutes) if minutes is not None else text
+    return text
+
+
 async def create_inbound_rule(session: AsyncSession, payload: dict[str, Any], *, actor: str = "") -> InboundRule:
+    action = str(payload.get("action") or "").strip()
     rule = InboundRule(
         name=str(payload.get("name") or "").strip(),
         enabled=bool(payload.get("enabled", True)),
@@ -189,8 +223,8 @@ async def create_inbound_rule(session: AsyncSession, payload: dict[str, Any], *,
         match_environment=str(payload.get("match_environment") or ""),
         match_payload=str(payload.get("match_payload") or ""),
         match_rule_name=str(payload.get("match_rule_name") or ""),
-        action=str(payload.get("action") or "").strip(),
-        action_value=str(payload.get("action_value") or "").strip().lower(),
+        action=action,
+        action_value=normalize_action_value(action, payload.get("action_value")),
         comment=str(payload.get("comment") or ""),
         created_by=actor,
     )
@@ -222,6 +256,10 @@ async def update_inbound_rule(session: AsyncSession, rule_id: int, payload: dict
     ):
         if field in payload:
             setattr(rule, field, payload[field])
+    if "action" in payload or "action_value" in payload:
+        # Normalised against the verb the rule now has, not the one it had:
+        # switching a rule to digest with an empty value must land as "60".
+        rule.action_value = normalize_action_value(str(rule.action or ""), rule.action_value)
     rule.updated_at = utcnow()
     await session.flush()
     return rule
@@ -276,6 +314,34 @@ async def inbound_importance_cap_for(
     if not rules:
         return "", ""
     return matching_inbound_importance_cap(
+        rules,
+        event_type=event_type,
+        importance=importance,
+        source=source,
+        is_duplicate=is_duplicate,
+        parsed_data=parsed_data,
+        rule_name=rule_name,
+    )
+
+
+async def inbound_digest_window_for(
+    *,
+    parsed_data: dict[str, Any] | None,
+    source: str = "",
+    event_type: str = "",
+    importance: str = "",
+    is_duplicate: bool = False,
+    rule_name: str = "",
+) -> tuple[int, str]:
+    """The digest window an operator set for this alert: (minutes, rule name).
+
+    (0, "") when none applies. Fails open like the cap: a rules outage delivers
+    per alert, which is the behaviour the operator had before writing the rule.
+    """
+    rules = await cached_inbound_rules()
+    if not rules:
+        return 0, ""
+    return matching_inbound_digest_window(
         rules,
         event_type=event_type,
         importance=importance,

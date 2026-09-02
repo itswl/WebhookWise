@@ -12,9 +12,11 @@ from core.text import split_csv_lower
 from services.forwarding.types import ForwardRuleSnapshot
 from services.webhooks.types import (
     CAP_IMPORTANCE,
+    DIGEST,
     AnalysisResult,
     NoiseReductionContext,
     WebhookProcessContext,
+    parse_digest_window_minutes,
 )
 
 if TYPE_CHECKING:
@@ -642,9 +644,68 @@ def matching_inbound_importance_cap(
     and the table already has a priority column for exactly this. Rules arrive
     priority-descending from list_enabled_inbound_rules.
     """
+    return _first_matching_inbound_value(
+        rules,
+        action=CAP_IMPORTANCE,
+        event_type=event_type,
+        importance=importance,
+        source=source,
+        is_duplicate=is_duplicate,
+        parsed_data=parsed_data,
+        rule_name=rule_name,
+    )
+
+
+def matching_inbound_digest_window(
+    rules: list[InboundRuleSnapshot],
+    *,
+    event_type: str = "",
+    importance: str = "",
+    source: str = "",
+    is_duplicate: bool = False,
+    parsed_data: dict[str, Any] | None = None,
+    rule_name: str = "",
+) -> tuple[int, str]:
+    """The digest window (minutes) an operator set for this alert, or (0, "").
+
+    Same first-match-by-priority shape as the cap, for the same reason: the verb
+    carries a value, and two matching windows would disagree. A stored value the
+    parser rejects (a row predating validation) is ignored rather than guessed —
+    delivering nothing on time is worse than delivering per alert.
+    """
+    value, name = _first_matching_inbound_value(
+        rules,
+        action=DIGEST,
+        event_type=event_type,
+        importance=importance,
+        source=source,
+        is_duplicate=is_duplicate,
+        parsed_data=parsed_data,
+        rule_name=rule_name,
+    )
+    if not name:
+        return 0, ""
+    minutes = parse_digest_window_minutes(value)
+    if minutes is None:
+        return 0, ""
+    return minutes, name
+
+
+def _first_matching_inbound_value(
+    rules: list[InboundRuleSnapshot],
+    *,
+    action: str,
+    event_type: str,
+    importance: str,
+    source: str,
+    is_duplicate: bool,
+    parsed_data: dict[str, Any] | None,
+    rule_name: str,
+) -> tuple[str, str]:
+    """(action_value, rule name) of the highest-priority matching rule with this verb."""
     identity = extract_forward_match_fields(parsed_data)
     for rule in rules:
-        if rule.action != CAP_IMPORTANCE or not rule.action_value:
+        if rule.action != action or (action == CAP_IMPORTANCE and not rule.action_value):
             continue
         if rule.match_rule_name and not _csv_value_matches(rule.match_rule_name, rule_name):
             continue

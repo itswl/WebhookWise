@@ -6,12 +6,15 @@
  * whether it reaches the model and whether it funds an investigation.
  *
  * Deliberately smaller than the forwarding page. There is no target to
- * configure, no delivery to test, and only two actions — so the form is the
- * match criteria plus a verb.
+ * configure and no delivery to test — so the form is the match criteria plus
+ * a verb, and for the verbs that carry a value (a severity ceiling, a digest
+ * window in minutes) one field for it.
  */
 
 let inboundRules = [];
-let inboundActions = ['skip_ai', 'skip_deep_analysis'];
+let inboundActions = ['skip_ai', 'skip_deep_analysis', 'cap_importance', 'digest'];
+// Which verbs take a value. The API says, so a new verb needs no UI release.
+let inboundActionsWithValue = ['cap_importance', 'digest'];
 
 async function loadInboundRules() {
     const container = document.getElementById('inboundRulesList');
@@ -22,6 +25,7 @@ async function loadInboundRules() {
         if (!result.success) throw new Error(result.error || t('common.unknownError'));
         inboundRules = result.data || [];
         if (Array.isArray(result.actions) && result.actions.length) inboundActions = result.actions;
+        if (Array.isArray(result.actions_with_value)) inboundActionsWithValue = result.actions_with_value;
         renderInboundRules(inboundRules);
     } catch (error) {
         container.innerHTML = `
@@ -50,6 +54,44 @@ function _inboundCriteria(rule) {
     return parts.length ? parts.join(' · ') : t('inbound.noCriteria');
 }
 
+// The verb and, when it carries one, its value: "汇总投递 · 60 分钟",
+// "重要度上限 · medium". A digest saved without a number means the default.
+function _inboundActionBadge(rule) {
+    // t() returns the key itself when a label is missing, so the fallback must be passed in.
+    const label = t('inbound.action.' + rule.action, null, rule.action);
+    if (rule.action === 'digest') {
+        return label + ' · ' + t('inbound.badge.digestWindow', { n: rule.action_value || '60' });
+    }
+    return rule.action_value ? label + ' · ' + rule.action_value : label;
+}
+
+// What the value field asks for, per verb. A verb the UI does not know yet
+// still gets a field (the API said it takes a value), labelled generically.
+function _inboundValueSpec(action) {
+    if (action === 'digest') {
+        return { labelKey: 'inbound.field.digestWindow', placeholder: '60', hintKey: 'inbound.hint.digestWindow' };
+    }
+    if (action === 'cap_importance') {
+        return { labelKey: 'inbound.field.capCeiling', placeholder: 'high / medium / low', hintKey: '' };
+    }
+    return { labelKey: 'inbound.field.actionValue', placeholder: '', hintKey: '' };
+}
+
+function _syncInboundValueField() {
+    const select = document.getElementById('ir-action');
+    const group = document.getElementById('ir-action_value-group');
+    if (!select || !group) return;
+    const action = select.value;
+    const spec = _inboundValueSpec(action);
+    group.style.display = inboundActionsWithValue.indexOf(action) >= 0 ? 'block' : 'none';
+    const label = document.getElementById('ir-action_value-label');
+    const input = document.getElementById('ir-action_value');
+    const hint = document.getElementById('ir-action_value-hint');
+    if (label) label.textContent = t(spec.labelKey);
+    if (input) input.placeholder = spec.placeholder;
+    if (hint) hint.textContent = spec.hintKey ? t(spec.hintKey) : '';
+}
+
 let inboundQuery = '';
 let inboundPage = 1;
 
@@ -64,9 +106,9 @@ function renderInboundRules(rules) {
         return;
     }
     const paged = wwFilterPage(rules, inboundQuery, inboundPage, 20, function (rule) {
-        return [rule.name, rule.action, rule.match_rule_name, rule.match_source, rule.match_event_type,
-            rule.match_importance, rule.match_project, rule.match_region, rule.match_environment,
-            rule.match_payload].filter(Boolean).join(' ');
+        return [rule.name, rule.action, rule.action_value, rule.match_rule_name, rule.match_source,
+            rule.match_event_type, rule.match_importance, rule.match_project, rule.match_region,
+            rule.match_environment, rule.match_payload].filter(Boolean).join(' ');
     });
     inboundPage = paged.page;
     if (!paged.rows.length) {
@@ -75,7 +117,7 @@ function renderInboundRules(rules) {
         return;
     }
     container.innerHTML = paged.rows.map(function (rule) {
-        const actionLabel = t('inbound.action.' + rule.action, null, rule.action);
+        const actionLabel = _inboundActionBadge(rule);
         const state = rule.enabled
             ? `<span class="badge badge-success">${t('inbound.status.enabled')}</span>`
             : `<span class="badge badge-outline">${t('inbound.status.disabled')}</span>`;
@@ -131,6 +173,12 @@ function showInboundRuleForm(id) {
                         ${inboundActions.map(a => `<option value="${escapeHtml(a)}" ${rule.action === a ? 'selected' : ''}>${escapeHtml(t('inbound.action.' + a, null, a))}</option>`).join('')}
                     </select>
                 </div>
+                <div class="form-group" id="ir-action_value-group" style="display:none;">
+                    <label class="form-label" for="ir-action_value" id="ir-action_value-label">${t('inbound.field.actionValue')}</label>
+                    <input type="text" class="form-input" id="ir-action_value" value="${escapeHtml(String(rule.action_value || ''))}"
+                           placeholder="" autocomplete="off">
+                    <div id="ir-action_value-hint" style="margin-top: 0.25rem; color: var(--text-muted); font-size: var(--fs-sm);"></div>
+                </div>
             </div>
             ${field('inbound.field.ruleName', 'match_rule_name', rule.match_rule_name, t('inbound.hint.ruleName'))}
             <div style="margin:-0.4rem 0 1rem;">
@@ -151,6 +199,11 @@ function showInboundRuleForm(id) {
             </div>
         </div>`;
     container.style.display = 'block';
+    // The value field follows the verb: shown, labelled and hinted for the
+    // verbs that take one, hidden for the rest.
+    const actionSelect = document.getElementById('ir-action');
+    if (actionSelect) actionSelect.addEventListener('change', _syncInboundValueField);
+    _syncInboundValueField();
 }
 
 function hideInboundRuleForm() {
@@ -167,6 +220,7 @@ async function saveInboundRule() {
     const payload = {
         name: value('name').trim(),
         action: value('action'),
+        action_value: value('action_value').trim(),
         match_rule_name: value('match_rule_name').trim(),
         match_source: value('match_source').trim(),
         match_environment: value('match_environment').trim(),

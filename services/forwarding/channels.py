@@ -18,6 +18,8 @@ A channel owns:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import datetime
 from typing import Any, Protocol, cast, runtime_checkable
 
 from contracts.webhook_payload import JsonObject, WebhookData
@@ -34,6 +36,46 @@ class ForwardChannel(Protocol):
     async def deliver(self, record: ForwardOutbox) -> ForwardResult: ...
 
     def needs_followup_on_success(self, record: ForwardOutbox, result: ForwardResult) -> bool: ...
+
+
+@runtime_checkable
+class DigestChannel(Protocol):
+    """A chat surface that can say "N alerts this hour" in one message.
+
+    Only the channels a person reads implement it. A machine consumer (the
+    investigator, a generic webhook, the relay) wants every event as it comes,
+    so those channels are never asked — `is_chat_target` keeps digest records
+    from being created for them in the first place.
+    """
+
+    async def deliver_digest(
+        self,
+        record: ForwardOutbox,
+        records: Sequence[ForwardOutbox],
+        *,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> ForwardResult: ...
+
+
+def is_chat_target(target_type: str, target_url: str) -> bool:
+    """Whether a forward target is a chat surface a person reads.
+
+    Decided from the rule's target, before any outbox row exists, so the
+    enqueue path can mark a record for digest delivery. Mirrors the registry
+    order below: the Feishu custom app is named by type, the three bot
+    channels by their URL shapes; deep analysis and the relay are excluded by
+    name even when their URL looks like a bot's.
+    """
+    kind = str(target_type or "")
+    if kind in ("deep_analysis", "feishu_relay"):
+        return False
+    if kind == "feishu_app":
+        return True
+    from services.notifications import dingtalk, feishu, wecom
+
+    url = str(target_url or "")
+    return feishu.is_feishu_url(url) or dingtalk.is_dingtalk_url(url) or wecom.is_wecom_url(url)
 
 
 class _DeepAnalysisChannel:
@@ -146,6 +188,23 @@ class _FeishuChannel:
             idempotency_key=str(record.idempotency_key or "") or None,
         )
 
+    async def deliver_digest(
+        self,
+        record: ForwardOutbox,
+        records: Sequence[ForwardOutbox],
+        *,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> ForwardResult:
+        from services.notifications import feishu
+        from services.notifications.digest_cards import build_digest_card
+
+        return await feishu.send_to_feishu(
+            str(record.target_url or ""),
+            build_digest_card(records, window_start=window_start, window_end=window_end),
+            idempotency_key=str(record.idempotency_key or "") or None,
+        )
+
     def needs_followup_on_success(self, record: ForwardOutbox, result: ForwardResult) -> bool:
         return False
 
@@ -166,6 +225,24 @@ class _FeishuAppChannel:
         return await send_to_feishu_app(
             chat_id,
             _build_http_payload(record),
+            idempotency_key=str(record.idempotency_key or "") or None,
+        )
+
+    async def deliver_digest(
+        self,
+        record: ForwardOutbox,
+        records: Sequence[ForwardOutbox],
+        *,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> ForwardResult:
+        from services.notifications.digest_cards import build_digest_card
+        from services.notifications.feishu_app_transport import send_to_feishu_app
+
+        chat_id = str(record.target_url or "").removeprefix("feishu-app://")
+        return await send_to_feishu_app(
+            chat_id,
+            build_digest_card(records, window_start=window_start, window_end=window_end),
             idempotency_key=str(record.idempotency_key or "") or None,
         )
 
@@ -214,6 +291,26 @@ class _DingTalkChannel:
             idempotency_key=str(record.idempotency_key or "") or None,
         )
 
+    async def deliver_digest(
+        self,
+        record: ForwardOutbox,
+        records: Sequence[ForwardOutbox],
+        *,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> ForwardResult:
+        from services.forwarding import circuit_breakers, remote
+        from services.notifications import dingtalk
+
+        target_url = str(record.target_url or "")
+        return await remote.post_json_to_remote(
+            target_url,
+            dingtalk.build_dingtalk_digest(records, window_start=window_start, window_end=window_end),
+            dependencies=circuit_breakers.build_remote_forward_dependencies(target_url),
+            target_type_label=self.name,
+            idempotency_key=str(record.idempotency_key or "") or None,
+        )
+
     def needs_followup_on_success(self, record: ForwardOutbox, result: ForwardResult) -> bool:
         return False
 
@@ -236,6 +333,26 @@ class _WeComChannel:
         return await remote.post_json_to_remote(
             target_url,
             _build_bot_markdown_payload(record, wecom.build_wecom_markdown),
+            dependencies=circuit_breakers.build_remote_forward_dependencies(target_url),
+            target_type_label=self.name,
+            idempotency_key=str(record.idempotency_key or "") or None,
+        )
+
+    async def deliver_digest(
+        self,
+        record: ForwardOutbox,
+        records: Sequence[ForwardOutbox],
+        *,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> ForwardResult:
+        from services.forwarding import circuit_breakers, remote
+        from services.notifications import wecom
+
+        target_url = str(record.target_url or "")
+        return await remote.post_json_to_remote(
+            target_url,
+            wecom.build_wecom_digest(records, window_start=window_start, window_end=window_end),
             dependencies=circuit_breakers.build_remote_forward_dependencies(target_url),
             target_type_label=self.name,
             idempotency_key=str(record.idempotency_key or "") or None,

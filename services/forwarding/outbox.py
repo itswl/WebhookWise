@@ -20,10 +20,11 @@ rules).
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +41,7 @@ from models import DeepAnalysis, ForwardOutbox, ForwardRule, WebhookEvent
 from services.analysis.ai_prompt import DEEP_ANALYSIS_PROMPT_KIND, get_prompt_version
 from services.forwarding import outbox_queries, outbox_records, outbox_scheduling
 from services.forwarding import rules as forwarding_rules
-from services.forwarding.channels import resolve_channel
+from services.forwarding.channels import DigestChannel, resolve_channel
 from services.forwarding.outbox_records import create_outbox_records, outbox_result
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.forwarding.types import ForwardRuleSnapshot
@@ -70,6 +71,11 @@ _TERMINAL_OUTBOX_STATUSES = {
     ForwardOutboxStatus.EXPIRED,
     ForwardOutboxStatus.EXHAUSTED,
 }
+
+# A digest group is at most this many rows per send: the card is read by a
+# person, and the sibling claim is bounded by it. Rows past the cap stay due
+# and form the next group when the scan re-kicks them.
+DIGEST_GROUP_MAX_RECORDS = 200
 
 
 # ── Enqueue: turn a forward decision / notification into outbox records ───────
@@ -291,6 +297,9 @@ async def _deliver_one(outbox_id: int, *, policy: ForwardDeliveryPolicy) -> Forw
     record = await _claim_outbox(outbox_id, policy=policy)
     if record is None:
         return {"status": "not_claimed", "outbox_id": outbox_id}
+    if record.digest_key:
+        _status, digest_result = await _deliver_digest_group(record, policy=policy)
+        return {**digest_result, "outbox_id": outbox_id}
     try:
         result = await deliver_outbox_record(record)
     except _DELIVERY_RUNTIME_ERRORS as e:
@@ -331,29 +340,200 @@ async def process_forward_outbox_by_id(outbox_id: int) -> None:
             FORWARD_STATUS: str(record.status or "unknown"),
         },
     ) as outbox_span:
-        try:
-            result = await deliver_outbox_record(record)
-        except _DELIVERY_RUNTIME_ERRORS as e:
-            status = "failed"
-            set_span_error(outbox_span, e)
-            await _finalize_outbox_failure(record.id, str(e))
+        if record.digest_key:
+            status, _result = await _deliver_digest_group(record)
         else:
-            if _is_forward_success(result):
-                status = "sent"
-                await _finalize_outbox_success(record, result)
-            else:
-                status = "failed"
-                await _finalize_outbox_failure(
-                    record.id,
-                    f"forward status={result.get('status')}: {result.get('message', '')}",
-                    permanent=result.get("retryable") is False,
-                    quarantine_rule=result.get("disable_rule") is True,
-                    failure_data=result,
-                )
-            if outbox_span is not None:
-                outbox_span.set_attribute("forward.status", status)
+            status = await _deliver_single(record, outbox_span)
+        if outbox_span is not None:
+            outbox_span.set_attribute("forward.status", status)
     FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, status).inc()
     FORWARD_OUTBOX_PROCESS_DURATION_SECONDS.labels(target_type, status).observe(time.perf_counter() - started)
+
+
+async def _deliver_single(record: ForwardOutbox, outbox_span: Any | None) -> str:
+    """Deliver one claimed record and finalize it; returns the status label for metrics."""
+    try:
+        result = await deliver_outbox_record(record)
+    except _DELIVERY_RUNTIME_ERRORS as e:
+        set_span_error(outbox_span, e)
+        await _finalize_outbox_failure(record.id, str(e))
+        return "failed"
+    if _is_forward_success(result):
+        await _finalize_outbox_success(record, result)
+        return "sent"
+    await _finalize_outbox_failure(
+        record.id,
+        f"forward status={result.get('status')}: {result.get('message', '')}",
+        permanent=result.get("retryable") is False,
+        quarantine_rule=result.get("disable_rule") is True,
+        failure_data=result,
+    )
+    return "failed"
+
+
+# ── Deliver: a digest group — one message for every due row of a window ──────
+
+
+async def _claim_digest_siblings(leader: ForwardOutbox, *, now: datetime) -> list[ForwardOutbox]:
+    """Claim every due, unclaimed row of the leader's digest group in one conditional UPDATE.
+
+    Same shape as _claim_outbox, for the same reason: two workers kicked for
+    two rows of one group cannot both take a sibling — whichever UPDATE runs
+    first owns it, the other sees zero rows and delivers only what it holds.
+    """
+    key = str(leader.digest_key or "")
+    if not key:
+        return []
+    due = (
+        select(ForwardOutbox.id)
+        .where(ForwardOutbox.digest_key == key)
+        .where(ForwardOutbox.id != leader.id)
+        .where(ForwardOutbox.status.in_([ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING]))
+        .where((ForwardOutbox.next_attempt_at.is_(None)) | (ForwardOutbox.next_attempt_at <= now))
+        .order_by(ForwardOutbox.id.asc())
+        .limit(DIGEST_GROUP_MAX_RECORDS - 1)
+    )
+    async with session_scope() as session:
+        claimed = (
+            (
+                await session.execute(
+                    update(ForwardOutbox)
+                    .where(ForwardOutbox.id.in_(due))
+                    .values(
+                        status=ForwardOutboxStatus.PROCESSING,
+                        attempts=ForwardOutbox.attempts + 1,
+                        last_attempt_at=now,
+                        updated_at=now,
+                    )
+                    .returning(ForwardOutbox)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return sorted(claimed, key=lambda row: int(row.id))
+
+
+async def _deliver_digest_group(
+    leader: ForwardOutbox, *, policy: ForwardDeliveryPolicy | None = None
+) -> tuple[str, ForwardResult]:
+    """Deliver ONE message for the leader and every due sibling of its digest group.
+
+    Success finalizes every row exactly as a single delivery would — the same
+    bookkeeping and the same per-record metrics, so "how many notifications
+    went out" still counts alerts. Failure applies the normal retry policy to
+    the leader and parks the siblings on the leader's next attempt, so the
+    group coalesces again instead of fanning out into per-alert retries.
+    """
+    channel = resolve_channel(leader)
+    now = utcnow()
+    can_digest = isinstance(channel, DigestChannel)
+    siblings = await _claim_digest_siblings(leader, now=now) if can_digest else []
+    group: list[ForwardOutbox] = [leader, *siblings]
+    window_end = leader.digest_window_end or now
+    window_start = outbox_records.digest_window_start_from_key(leader.digest_key) or window_end
+    try:
+        if isinstance(channel, DigestChannel):
+            result = await channel.deliver_digest(leader, group, window_start=window_start, window_end=window_end)
+        else:
+            # A digest row whose channel cannot batch should not exist (the
+            # enqueue path marks chat targets only); deliver it alone rather
+            # than leave it waiting forever.
+            result = await channel.deliver(leader)
+    except _DELIVERY_RUNTIME_ERRORS as e:
+        await _finalize_outbox_failure(leader.id, str(e), policy=policy)
+        await _park_digest_siblings(leader.id, siblings, error=str(e))
+        return "failed", {"status": "failed", "message": str(e)}
+
+    if _is_forward_success(result):
+        for record in group:
+            await _finalize_outbox_success(record, result)
+        if siblings:
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(leader.target_type or "unknown"), "sent").inc(len(siblings))
+        _state_logger.info(
+            "[ForwardOutbox] Digest delivered key=%s records=%s leader_id=%s",
+            leader.digest_key,
+            len(group),
+            leader.id,
+        )
+        return "sent", result
+
+    error = f"forward status={result.get('status')}: {result.get('message', '')}"
+    await _finalize_outbox_failure(
+        leader.id,
+        error,
+        policy=policy,
+        permanent=result.get("retryable") is False,
+        quarantine_rule=result.get("disable_rule") is True,
+        failure_data=result,
+    )
+    await _park_digest_siblings(leader.id, siblings, error=error)
+    return "failed", result
+
+
+async def _park_digest_siblings(leader_id: int, siblings: Sequence[ForwardOutbox], *, error: str) -> None:
+    """Return the claimed siblings to the queue on the leader's terms.
+
+    Leader retrying → siblings go back to PENDING, due at the leader's next
+    attempt, so the same kick claims the whole group again. Leader exhausted →
+    the siblings are exhausted with it: they failed the same send to the same
+    target, and letting each take a turn as leader would raise the exhausted
+    notice once per alert for one dead webhook.
+    """
+    ids = [int(row.id) for row in siblings]
+    if not ids:
+        return
+    now = utcnow()
+    async with session_scope() as session:
+        leader = await session.get(ForwardOutbox, leader_id)
+        retry_at = (
+            leader.next_attempt_at
+            if leader is not None and leader.status == ForwardOutboxStatus.RETRYING and leader.next_attempt_at
+            else None
+        )
+        if retry_at is not None:
+            await session.execute(
+                update(ForwardOutbox)
+                .where(ForwardOutbox.id.in_(ids))
+                .where(ForwardOutbox.status == ForwardOutboxStatus.PROCESSING)
+                .values(
+                    status=ForwardOutboxStatus.PENDING,
+                    next_attempt_at=retry_at,
+                    updated_at=now,
+                    last_error=error[:2000],
+                )
+            )
+            _state_logger.info(
+                "[ForwardOutbox] Digest siblings parked count=%s until=%s leader_id=%s",
+                len(ids),
+                retry_at,
+                leader_id,
+            )
+            return
+        await session.execute(
+            update(ForwardOutbox)
+            .where(ForwardOutbox.id.in_(ids))
+            .where(ForwardOutbox.status == ForwardOutboxStatus.PROCESSING)
+            .values(
+                status=ForwardOutboxStatus.EXHAUSTED,
+                next_attempt_at=None,
+                updated_at=now,
+                last_error=error[:2000],
+            )
+        )
+        event_ids = sorted({event_id for row in siblings for event_id in _related_webhook_event_ids(row)})
+        if event_ids:
+            await session.execute(
+                update(WebhookEvent).where(WebhookEvent.id.in_(event_ids)).values(forward_status="failed")
+            )
+    for row in siblings:
+        FORWARD_OUTBOX_RECORDS_TOTAL.labels(str(row.target_type or "unknown"), "exhausted").inc()
+    _state_logger.warning(
+        "[ForwardOutbox] Digest siblings exhausted with their leader count=%s leader_id=%s error=%s",
+        len(ids),
+        leader_id,
+        error,
+    )
 
 
 # ── State transitions: claim / expire / finalize success|failure / requeue ───

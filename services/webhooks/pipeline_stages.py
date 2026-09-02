@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import math
 import time
+from datetime import datetime
 from typing import Any, cast
 
 from core.alert_concurrency import ProcessingLockLost
+from core.datetime_utils import utcnow
 from core.log_context import set_log_context
 from core.logger import get_logger
 from core.observability.attributes import (
@@ -22,7 +25,7 @@ from core.observability.metrics import (
 )
 from services.analysis.ai_usage import log_ai_usage
 from services.dedup import DedupResult, remember_dedup_state, resolve_dedup
-from services.forwarding.outbox import schedule_forward_outbox_many
+from services.forwarding.outbox import schedule_forward_outbox_many, schedule_forward_outbox_retry
 from services.silences.store import get_cached_active_silences
 from services.webhooks import pipeline_runtime
 from services.webhooks.decisioning import (
@@ -256,7 +259,43 @@ async def resolve_noise_context(
     be three places to forget the next time a fourth is added.
     """
     analysis, noise, dedup = await _resolve_noise_context(ctx, dependencies)
-    return await _apply_rule_importance_cap(ctx, analysis), noise, dedup
+    analysis = await _apply_rule_importance_cap(ctx, analysis)
+    return await _mark_rule_digest(ctx, analysis), noise, dedup
+
+
+async def _mark_rule_digest(ctx: WebhookProcessContext, analysis: AnalysisResult) -> AnalysisResult:
+    """Record the digest window an operator set for this alert's rule, if any.
+
+    Decided here, after the cap and at the same converging layer, so a reused
+    or silenced analysis gets the same answer as a fresh one — and matched on
+    the CAPPED importance, so a rule that says "digest the mediums" sees what
+    the card will say. The forwarding stage reads the marker when it files the
+    outbox rows; the decision trace reads it when someone asks why a card came
+    an hour late.
+    """
+    from services.webhooks.inbound_rules import alert_rule_name, inbound_digest_window_for
+    from services.webhooks.types import ANALYSIS_DIGEST, mark_analysis_digest
+
+    # A reused analysis carries the earlier event's marker; this alert decides
+    # for itself, against the rules as they are now.
+    analysis.pop(ANALYSIS_DIGEST, None)
+    raw = getattr(ctx.req_ctx, "parsed_data", None)
+    parsed: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
+    minutes, rule = await inbound_digest_window_for(
+        parsed_data=parsed,
+        source=str(getattr(ctx.req_ctx, "source", "") or ""),
+        importance=str(analysis.get("importance") or ""),
+        rule_name=alert_rule_name(parsed),
+    )
+    if not minutes:
+        return analysis
+    logger.info(
+        "[Pipeline] Inbound rule digests delivery event_id=%s window_minutes=%s by=%s",
+        ctx.event_id,
+        minutes,
+        rule,
+    )
+    return mark_analysis_digest(analysis, window_minutes=minutes, rule_name=rule)
 
 
 async def _apply_rule_importance_cap(ctx: WebhookProcessContext, analysis: AnalysisResult) -> AnalysisResult:
@@ -383,6 +422,11 @@ async def validate_backpressure(
         return pipeline_runtime.PipelineProcessingResult(suppressed=True)
 
 
+def _seconds_until(due_at: datetime) -> int:
+    """Delay for a kick that must land AFTER the row is due, never a second before it."""
+    return max(1, math.ceil((due_at - utcnow()).total_seconds()) + 1)
+
+
 async def persist_and_schedule(
     ctx: WebhookProcessContext,
     analysis: AnalysisResult,
@@ -428,7 +472,13 @@ async def persist_and_schedule(
         ttl_seconds=dependencies.dedup_ttl_seconds,
         reset_chain=analysis_res.reset_chain or analysis_res.is_rechain,
     )
-    await schedule_forward_outbox_many(finalize_res.outbox_ids)
+    # Digested records wait for their window; kicking them now would only be
+    # refused by the claim. The group opener is kicked when the window closes
+    # and the scheduled outbox scan covers a kick that never arrives.
+    deferred = finalize_res.deferred
+    await schedule_forward_outbox_many([oid for oid in finalize_res.outbox_ids if oid not in deferred.ids])
+    for outbox_id, due_at in deferred.kicks:
+        await schedule_forward_outbox_retry(outbox_id, _seconds_until(due_at))
 
     return pipeline_runtime.PipelineProcessingResult(
         suppressed=False,

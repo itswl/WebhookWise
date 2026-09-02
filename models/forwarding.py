@@ -75,6 +75,12 @@ class ForwardOutbox(Base):
     # redirect a delivery that is already queued.
     target_gateway: Mapped[str] = mapped_column(String(50), default="", server_default="")
     is_periodic_reminder: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Set when an inbound `digest` rule batches this alert's chat delivery:
+    # "<forward_rule_id>:<target_type>:<window start>" names the group, and the
+    # row waits (next_attempt_at) until the window closes. Whichever row of the
+    # group is claimed first delivers ONE card for all of them (migration 0039).
+    digest_key: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    digest_window_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     channel_name: Mapped[str] = mapped_column(String(32), default="")
     event_type: Mapped[str] = mapped_column(String(32), default="")

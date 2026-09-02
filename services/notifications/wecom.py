@@ -8,9 +8,13 @@ channel — same zero-config detection as Feishu and DingTalk targets.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import datetime
+from typing import Any
 from urllib.parse import urlparse
 
 from contracts.webhook_payload import JsonObject, WebhookData
+from services.notifications.digest_cards import build_digest_markdown
 from services.notifications.markdown_summary import alert_markdown_summary, truncate_utf8
 from services.webhooks.types import AnalysisResult
 
@@ -37,5 +41,12 @@ def build_wecom_markdown(
     is_periodic_reminder: bool = False,
 ) -> JsonObject:
     title, body = alert_markdown_summary(webhook_data, analysis_result, is_periodic_reminder=is_periodic_reminder)
+    content = f"### {title}\n\n{body}"
+    return {"msgtype": "markdown", "markdown": {"content": truncate_utf8(content, _MAX_CONTENT_BYTES)}}
+
+
+def build_wecom_digest(records: Sequence[Any], *, window_start: datetime, window_end: datetime) -> JsonObject:
+    """One markdown message for a digest window of outbox records."""
+    title, body = build_digest_markdown(records, window_start=window_start, window_end=window_end)
     content = f"### {title}\n\n{body}"
     return {"msgtype": "markdown", "markdown": {"content": truncate_utf8(content, _MAX_CONTENT_BYTES)}}

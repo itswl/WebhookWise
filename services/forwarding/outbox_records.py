@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.datetime_utils import utcnow
+from core.datetime_utils import parse_utc_datetime, utcnow
 from core.logger import get_logger
 from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
 from models import ForwardOutbox
+from services.forwarding.channels import is_chat_target
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.forwarding.types import ForwardRuleSnapshot
 from services.webhooks.inbound_rules import alert_rule_name, inbound_actions_for
@@ -22,10 +25,90 @@ from services.webhooks.types import (
     AnalysisResult,
     ForwardOutboxStatus,
     ForwardResult,
+    analysis_digest_window,
     analysis_route,
 )
 
 logger = get_logger("forward_outbox")
+
+
+# ── Digest windows ───────────────────────────────────────────────────────────
+
+
+def digest_window_start(event_time: datetime, window_minutes: int) -> datetime:
+    """Floor `event_time` (naive UTC) to the start of its digest window.
+
+    Windows are aligned to UTC midnight: 60 minutes gives clock hours, 1440 the
+    UTC day. Alignment is what lets two alerts processed on different workers
+    agree on one key without talking to each other.
+    """
+    seconds = max(1, int(window_minutes)) * 60
+    epoch = int(event_time.replace(tzinfo=UTC).timestamp())
+    return datetime.fromtimestamp(epoch - epoch % seconds, tz=UTC).replace(tzinfo=None)
+
+
+def digest_key_for(*, forward_rule_id: int | None, target_type: str, window_start: datetime) -> str:
+    """The group a digested record belongs to: one forward rule, one target kind, one window."""
+    rule = forward_rule_id if forward_rule_id is not None else "default"
+    return f"{rule}:{target_type}:{window_start.isoformat(timespec='minutes')}"
+
+
+def digest_window_start_from_key(digest_key: str | None) -> datetime | None:
+    """The window start a digest key was built from, or None for a malformed key."""
+    parts = str(digest_key or "").split(":", 2)
+    if len(parts) != 3:
+        return None
+    return parse_utc_datetime(parts[2])
+
+
+@dataclass(frozen=True, slots=True)
+class DeferredDigest:
+    """Outbox records that must not be kicked now: their digest window is still open.
+
+    `ids` is every such record. `kicks` is the (id, due at) pairs worth a
+    delayed kick — the first record of each group. One kick per group is
+    enough: the record it wakes claims every due sibling, and the scheduled
+    outbox scan re-kicks anything a lost kick leaves behind.
+    """
+
+    ids: frozenset[int] = frozenset()
+    kicks: tuple[tuple[int, datetime], ...] = ()
+
+
+async def deferred_digest_kicks(session: AsyncSession, outbox_ids: list[int], *, now: datetime) -> DeferredDigest:
+    """Which of `outbox_ids` wait for a digest window, and which of those open a group."""
+    if not outbox_ids:
+        return DeferredDigest()
+    rows = (
+        await session.execute(
+            select(ForwardOutbox.id, ForwardOutbox.digest_key, ForwardOutbox.next_attempt_at)
+            .where(ForwardOutbox.id.in_(outbox_ids))
+            .where(ForwardOutbox.digest_key.is_not(None))
+            .where(ForwardOutbox.next_attempt_at > now)
+        )
+    ).all()
+    if not rows:
+        return DeferredDigest()
+    keys = {str(row.digest_key) for row in rows}
+    openers = {
+        str(key): int(first_id)
+        for key, first_id in (
+            await session.execute(
+                select(ForwardOutbox.digest_key, func.min(ForwardOutbox.id))
+                .where(ForwardOutbox.digest_key.in_(keys))
+                .group_by(ForwardOutbox.digest_key)
+            )
+        ).all()
+    }
+    kicks = tuple(
+        (int(row.id), row.next_attempt_at)
+        for row in rows
+        if row.next_attempt_at is not None and openers.get(str(row.digest_key)) == int(row.id)
+    )
+    return DeferredDigest(ids=frozenset(int(row.id) for row in rows), kicks=kicks)
+
+
+# ── Record creation ──────────────────────────────────────────────────────────
 
 
 async def create_outbox_records(
@@ -70,9 +153,36 @@ async def create_outbox_records(
         )
         ai_excluded = bool(actions & {SKIP_AI, SKIP_DEEP_ANALYSIS})
 
+    # An inbound digest rule batches this alert's CHAT deliveries into one card
+    # per window. The window is fixed by the alert's own time, so every alert
+    # of the window lands in the same group whichever worker files it.
+    digest_minutes, _digest_rule = analysis_digest_window(analysis_result)
+    digest_start: datetime | None = None
+    digest_end: datetime | None = None
+    if digest_minutes:
+        stamped = parse_utc_datetime(str((forward_data or {}).get("timestamp") or "") or None)
+        digest_start = digest_window_start(stamped or now, digest_minutes)
+        digest_end = digest_start + timedelta(minutes=digest_minutes)
+
     for rule in matched_rules:
         target_type = str(rule.target_type or "webhook")
         target_url = str(rule.target_url or "")
+        digest_key: str | None = None
+        digest_due: datetime | None = None
+        if digest_start is not None and digest_end is not None and is_chat_target(target_type, target_url):
+            digest_key = digest_key_for(forward_rule_id=rule.id, target_type=target_type, window_start=digest_start)
+            digest_due = digest_end
+        if digest_key is not None and is_periodic_reminder:
+            # A reminder says "still firing, hours on". The digest already says
+            # that every window; a reminder card would be a second voice
+            # repeating the first, at exactly the cadence the rule removed.
+            logger.info(
+                "[%s] Rule '%s' periodic reminder skipped: this alert rule is delivered as a digest",
+                log_tag,
+                rule.name or rule.id,
+            )
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "skipped_digest_reminder").inc()
+            continue
         if ai_excluded and target_type == "deep_analysis":
             logger.info(
                 "[%s] Rule '%s' targets deep analysis, but this alert rule is excluded from AI",
@@ -120,7 +230,11 @@ async def create_outbox_records(
             status=ForwardOutboxStatus.PENDING,
             attempts=0,
             max_attempts=policy.max_attempts,
-            next_attempt_at=now,
+            # A digested record is not due until its window closes; whichever
+            # record of the group is claimed first then delivers for all.
+            next_attempt_at=digest_due or now,
+            digest_key=digest_key,
+            digest_window_end=digest_due,
             forward_data=forward_data,
             analysis_result=analysis_result,
             formatted_payload=formatted_payload,
@@ -136,13 +250,14 @@ async def create_outbox_records(
             continue
         FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "created").inc()
         logger.info(
-            "[%s] Created forward intent id=%s event_id=%s event_type=%s rule=%s target=%s",
+            "[%s] Created forward intent id=%s event_id=%s event_type=%s rule=%s target=%s digest=%s",
             log_tag,
             outbox_id,
             webhook_id,
             event_type,
             rule.name,
             target_type,
+            digest_key or "-",
         )
 
     return outbox_ids
