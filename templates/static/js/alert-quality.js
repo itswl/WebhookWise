@@ -283,6 +283,12 @@ const AlertQualityModule = (function () {
         container.innerHTML = '<div class="loading"><div class="spinner"></div><p>' +
             escapeHtml(t('common.loading')) + '</p></div>';
         const selector = document.getElementById('alertQualityWindow');
+        // Shared analysis window: 1/7/30 days follow the choice made on any
+        // analysis page; 90 days stays a local pick of this select.
+        if (typeof wwAnalysisWindow !== 'undefined') {
+            wwAnalysisWindow.bindSelect(selector);
+            wwAnalysisWindow.syncSelect(selector);
+        }
         const windowDays = number(selector && selector.value) || 7;
         try {
             const payload = await API.getAlertQuality({

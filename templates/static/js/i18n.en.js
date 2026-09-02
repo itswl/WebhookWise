@@ -1681,5 +1681,22 @@
             'ingress.forward.test': 'Test forwarding',
             'ingress.forward.success': 'Forwarding destination verified.',
             'ingress.forward.urlRequired': 'Enter the destination URL.',
+            // ── Analysis group + shared window ──
+            'nav.group.analysis': 'Analysis',
+            // ── Forward rules as compact rows ──
+            'rules.row.matchAll': 'Matches everything',
+            'rules.row.toggleDetails': 'Show or hide details',
+            'rules.row.toggleAria': 'Enable rule {name}',
+            // ── Programmatic labels for form controls ──
+            'alerts.page.sizeLabel': 'Rows per page',
+            'incidents.filter.statusLabel': 'Filter incidents by status',
+            'deep.filter.statusLabel': 'Filter analyses by status',
+            'deep.filter.engineLabel': 'Filter by engine',
+            'dt.filter.resultLabel': 'Filter by outcome',
+            'dt.filter.sourceLabel': 'Filter by source',
+            'kb.contentLabel': 'Draft content',
+            'rs.edit.valueLabel': 'New value',
+            'knowledgeGaps.form.titleLabel': 'Runbook title',
+            'knowledgeGaps.form.contentLabel': 'Runbook content',
     };
 })();

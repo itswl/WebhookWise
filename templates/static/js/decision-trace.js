@@ -9,7 +9,13 @@
  *    served inline so expansion needs no extra request.
  */
 var DecisionTraceModule = (function () {
-    var currentPeriod = 'day';
+    // The Day/Week/Month toggle in this tab header is the shared analysis
+    // window (analysis-window.js): Alert Quality, Rule Audit and Noise Center
+    // read the same choice, so a period picked here follows the operator.
+    function sharedPeriod(fallback) {
+        return (typeof wwAnalysisWindow !== 'undefined') ? wwAnalysisWindow.get().period : fallback;
+    }
+    var currentPeriod = sharedPeriod('day');
     var currentView = 'overview';  // 'overview' | 'trace' | 'cost' (all merged into the Overview landing tab)
     var currentSkipCode = '';
     var currentOutcome = '';
@@ -692,6 +698,9 @@ var DecisionTraceModule = (function () {
     }
 
     function loadActiveView() {
+        // A window chosen on another analysis page since we were last here
+        // applies on this load — the promise of a shared window.
+        currentPeriod = sharedPeriod(currentPeriod);
         updatePeriodButtons(currentPeriod);  // keep the shared Day/Week/Month highlight in sync for every sub-view
         if (currentView === 'overview') {
             // The Overview sub-view delegates to OverviewModule (its own renderer);
@@ -718,6 +727,7 @@ var DecisionTraceModule = (function () {
     }
 
     function setPeriod(period) {
+        if (typeof wwAnalysisWindow !== 'undefined') wwAnalysisWindow.set(period);
         currentPeriod = period;
         loadActiveView();
     }

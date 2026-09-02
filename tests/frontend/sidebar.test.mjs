@@ -17,7 +17,7 @@ globalThis.html = (strings, ...vals) => strings.reduce((acc, s, i) => {
     : (v === null || v === undefined) ? '' : globalThis.escapeHtml(String(v));
   return acc + piece + s;
 }, '');
-globalThis.t = k => ({'nav.group.overview':'概览','nav.group.inbox':'收件箱','nav.group.routing':'路由','nav.group.operations':'运维'}[k] || k);
+globalThis.t = k => ({'nav.group.overview':'概览','nav.group.analysis':'分析','nav.group.inbox':'收件箱','nav.group.routing':'路由','nav.group.operations':'运维'}[k] || k);
 globalThis.navigateTo = () => true;
 
 const elements = {};
@@ -43,20 +43,31 @@ const check = (label, ok) => { if (!ok) fails++; console.log((ok ? 'PASS' : 'FAI
 
 check('渲染了全部 23 项', (html.match(/data-sidebar-slug=/g) || []).length === 23);
 check('23 项全部走 sprite 图标', (html.match(/data-icon=/g) || []).length >= 23);
-check('4 个分组头', (html.match(/sidebar-group/g) || []).length === 4);
-check('分组已翻译', html.includes('收件箱') && html.includes('运维'));
+check('5 个分组头', (html.match(/sidebar-group/g) || []).length === 5);
+check('分组已翻译', html.includes('收件箱') && html.includes('运维') && html.includes('分析'));
 check('incidents 带徽章占位', html.includes('sidebarIncidentsBadge'));
 check('折叠按钮存在', html.includes('sidebarCollapseBtn'));
+
+// The five analysis pages share one group (and one time window): all five
+// render between the 分析 header and the next header, none in the low-freq fold.
+const analysisStart = html.indexOf('>分析<');
+const analysisEnd = html.indexOf('sidebar-group', analysisStart + 1);
+const analysisHtml = html.slice(analysisStart, analysisEnd);
+check('分析分组存在', analysisStart > 0 && analysisEnd > analysisStart);
+for (const slug of ['trace', 'cost', 'quality', 'audit', 'noise']) {
+  check('分析分组包含 ' + slug, analysisHtml.includes('data-sidebar-slug="' + slug + '"'));
+}
 
 // Rarely-used tier: every lowFreq slug still renders (parity is about
 // reachability), inside one collapsed <details> after the groups.
 check('低频层存在', html.includes('sidebarLowfreq'));
 const detailsHtml = html.slice(html.indexOf('<details'));
-for (const slug of ['sandbox', 'audit', 'integrations', 'kb', 'gaps']) {
+for (const slug of ['sandbox', 'integrations', 'kb', 'gaps']) {
   check('低频层包含 ' + slug, detailsHtml.includes('data-sidebar-slug="' + slug + '"'));
 }
+check('audit 随分析组出列，不再在低频层', !detailsHtml.includes('data-sidebar-slug="audit"'));
 check('主列表不再平铺低频项', !html.slice(0, html.indexOf('<details')).includes('data-sidebar-slug="sandbox"'));
-check('低频计数正确', html.includes('(7)'));
+check('低频计数正确', html.includes('(6)'));
 check('版本脚注渲染', html.includes('sidebar-version') && html.includes('v3.6.1'));
 // Navigation + drawer dismissal now travel as ONE dispatched action name
 // (markup carries no call chain since the CSP burn-down).

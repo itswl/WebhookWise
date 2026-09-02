@@ -192,6 +192,13 @@ const NoiseCenterModule = (function () {
     async function load() {
         const suggestions = document.getElementById('noiseSuggestions');
         if (suggestions) suggestions.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + escapeHtml(t('common.loading')) + '</p></div>';
+        // Shared analysis window: 7/30 days follow the choice made on any
+        // analysis page; 90 days stays a local pick of this select.
+        if (typeof wwAnalysisWindow !== 'undefined') {
+            const select = document.getElementById('noiseWindowDays');
+            wwAnalysisWindow.bindSelect(select);
+            wwAnalysisWindow.syncSelect(select);
+        }
         try {
             const response = await API.authenticatedFetch('/v1/noise-center?days=' + windowDays());
             const payload = await response.json();

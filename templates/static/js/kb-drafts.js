@@ -130,7 +130,7 @@ const KbDraftsModule = (function () {
     // server-side, so what you read here is exactly what RAG will retrieve.
     function enterEdit(sourceRef, panel) {
         const original = detailText[panel.id] || '';
-        panel.innerHTML = '<textarea class="filter-input" style="width:100%; min-height:260px; font-size:0.85rem; line-height:1.6; resize:vertical; font-family:inherit;"></textarea>' +
+        panel.innerHTML = '<textarea class="filter-input" aria-label="' + escapeHtml(t('kb.contentLabel')) + '" style="width:100%; min-height:260px; font-size:0.85rem; line-height:1.6; resize:vertical; font-family:inherit;"></textarea>' +
             '<div style="display:flex; gap:8px; margin-top:8px;">' +
             '<button type="button" class="btn btn-sm btn-quiet-primary" data-kb-save="1">' + wwIcon('check') + ' ' + escapeHtml(t('kb.save')) + '</button>' +
             '<button type="button" class="btn btn-sm" data-kb-cancel="1">' + escapeHtml(t('kb.cancel')) + '</button></div>';

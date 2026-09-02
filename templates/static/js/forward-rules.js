@@ -8,6 +8,9 @@ let forwardRules = [];
 // Client-side search + page over the loaded list; mirrors silences.js.
 let ruleQuery = '';
 let rulePage = 1;
+// Rows the operator has unfolded; a re-render (toggle, search, paging)
+// rebuilds them open so comparing two rules' conditions survives a click.
+const expandedRuleIds = new Set();
 
 /**
  * Load the list of forward rules
@@ -79,10 +82,10 @@ function renderForwardRules(rules) {
         return;
     }
 
-    let html = '<div class="rules-list" style="display: flex; flex-direction: column; gap: 15px;">';
+    let html = '<div class="rules-list">';
 
     paged.rows.forEach(rule => {
-        html += renderRuleCard(rule);
+        html += renderRuleRow(rule);
     });
 
     html += '</div>';
@@ -90,75 +93,119 @@ function renderForwardRules(rules) {
     container.innerHTML = html;
 }
 
+// Event-type enum → display key. Shared by the row summary and the detail.
+const RULE_EVENT_TYPE_KEYS = {
+    webhook_forward: 'rules.evtType.webhook_forward',
+    manual_forward: 'rules.evtType.manual_forward',
+    ai_error: 'rules.evtType.ai_error',
+    ai_degraded: 'rules.evtType.ai_degraded',
+    deep_analysis: 'rules.evtType.deep_analysis',
+    outbox_exhausted: 'rules.evtType.outbox_exhausted',
+    rule_test: 'rules.evtType.rule_test'
+};
+
+function formatEventTypes(raw) {
+    return String(raw || '').split(',').map(function (et) {
+        const key = RULE_EVENT_TYPE_KEYS[et.trim()];
+        return key ? t(key) : et.trim();
+    }).filter(Boolean);
+}
+
 /**
- * Render a single rule card
+ * One line naming ONLY the conditions a rule constrains.
+ *
+ * The card listed seven conditions per rule and most read "全部": twenty-three
+ * rules were eleven screens of the word "all". A rule that constrains nothing
+ * says so in two words; a constrained one reads like a sentence —
+ * "重要性 高,严重 · 仅新告警".
+ */
+function ruleMatchSummary(rule) {
+    const parts = [];
+    if (rule.match_event_type) parts.push(t('rules.card.eventType') + ' ' + formatEventTypes(rule.match_event_type).join(','));
+    if (rule.match_importance) parts.push(t('rules.card.importance') + ' ' + formatImportance(rule.match_importance));
+    if (rule.match_duplicate && rule.match_duplicate !== 'all') parts.push(formatDuplicateStatus(rule.match_duplicate));
+    [['match_source', 'rules.card.source'], ['match_project', 'rules.card.project'],
+        ['match_region', 'rules.card.region'], ['match_environment', 'rules.card.environment']].forEach(function (pair) {
+        if (rule[pair[0]]) parts.push(t(pair[1]) + ' ' + rule[pair[0]]);
+    });
+    if (rule.match_payload) parts.push(t('rules.card.payload') + ' ' + rule.match_payload);
+    return parts.length ? parts.join(' · ') : t('rules.row.matchAll');
+}
+
+/** Scheme, host and first path segment; the rest — where tokens live — is elided. */
+function maskRuleUrl(url) {
+    const raw = String(url || '');
+    if (!raw) return '';
+    const match = raw.match(/^([a-z][a-z0-9+.-]*:\/\/[^/?#]+)(\/[^/?#]*)?/i);
+    if (!match) return raw.length > 24 ? raw.slice(0, 24) + '…' : raw;
+    const rest = raw.slice(match[0].length);
+    return match[1] + (match[2] || '') + (rest ? '/…' : '');
+}
+
+// Name the gateway INSTANCE, not just the platform: with several configured,
+// "hookprobe" no longer identifies where this rule sends.
+function deepGatewayLabel(deepTarget) {
+    if (!deepTarget) return '';
+    return [deepTarget.name && deepTarget.name !== 'default' ? deepTarget.name : '', deepTarget.platform]
+        .filter(Boolean).join(' · ');
+}
+
+/**
+ * Where a rule sends: an icon per target type, the target's name, and the
+ * address (masked) on hover. A deep-analysis rule carries no address of its
+ * own — the gateway is server configuration — so it names the gateway.
+ */
+function ruleTargetSummary(rule) {
+    const type = String(rule.target_type || '');
+    const icon = type === 'feishu' ? 'message' : (type === 'deep_analysis' ? 'flask' : 'link');
+    const typeText = formatTargetType(type);
+    const deepTarget = rule.deep_analysis_target;
+    let name = rule.target_name || typeText;
+    let address = maskRuleUrl(rule.target_url);
+    if (deepTarget) {
+        const gateway = deepGatewayLabel(deepTarget);
+        if (!rule.target_name || rule.target_name === typeText) name = gateway || typeText;
+        address = deepTarget.error
+            ? String(deepTarget.error)
+            : (deepTarget.gateway_url ? String(deepTarget.gateway_url) : t('rules.deepTarget.unset'));
+    }
+    return { icon: icon, name: name, title: typeText + (address ? ' · ' + address : '') };
+}
+
+function ruleDeliveryHealth(rule) {
+    const status = String(rule.delivery_status || 'unknown');
+    const failures = Number(rule.delivery_failure_count_24h || 0);
+    return {
+        status: status,
+        failures: failures,
+        unhealthy: status === 'exhausted' || failures > 0,
+        retrying: status === 'retrying' || status === 'processing'
+    };
+}
+
+/**
+ * Render a single rule as a compact row: switch, name, health, a one-line
+ * match summary, target, priority, actions. The full conditions + action
+ * detail unfolds beneath on demand (chevron or row body) and is generated
+ * lazily — see toggleRuleDetail.
  * @param {Object} rule - rule object
  */
-function renderRuleCard(rule) {
-    const importanceText = escapeHtml(formatImportance(rule.match_importance));
-    const duplicateText = escapeHtml(formatDuplicateStatus(rule.match_duplicate));
-    const sourceText = escapeHtml(rule.match_source || t('common.all'));
-    const projectText = escapeHtml(rule.match_project || t('common.all'));
-    const regionText = escapeHtml(rule.match_region || t('common.all'));
-    const environmentText = escapeHtml(rule.match_environment || t('common.all'));
-    const targetTypeText = escapeHtml(formatTargetType(rule.target_type));
+function renderRuleRow(rule) {
+    const id = Number(rule.id);
+    const isEnabled = rule.enabled !== false;
+    const health = ruleDeliveryHealth(rule);
+    const expanded = expandedRuleIds.has(id);
+    const target = ruleTargetSummary(rule);
+    const summary = ruleMatchSummary(rule);
+    const priority = Number(rule.priority || 0);
 
-    // A deep-analysis rule carries no address of its own: the gateway is server
-    // configuration, so one setting repoints every such rule. The card used to
-    // read "deep analysis (deep analysis)" over an empty address — true, and
-    // useless. Name the gateway that actually answers, and say where it is.
-    const deepTarget = rule.deep_analysis_target;
-    const suppressTargetName = !!deepTarget && rule.target_name === formatTargetType(rule.target_type);
-    // Name the gateway INSTANCE, not just the platform: with several configured,
-    // "hookprobe" no longer identifies where this rule sends.
-    const deepGatewayLabel = deepTarget
-        ? [deepTarget.name && deepTarget.name !== 'default' ? deepTarget.name : '', deepTarget.platform]
-            .filter(Boolean).join(' · ')
-        : '';
-    const deepTargetSuffix = deepGatewayLabel
-        ? ` <span style="color: var(--primary); font-weight: 600;">${escapeHtml(deepGatewayLabel)}</span>`
-        : '';
-    let targetAddressText = escapeHtml(rule.target_url || '-');
-    if (deepTarget) {
-        if (deepTarget.error) {
-            // A rule naming a removed gateway delivers nothing. Say it here, in
-            // the one place someone reads to answer "where does this go".
-            targetAddressText = `<span style="color: var(--danger);">${escapeHtml(String(deepTarget.error))}</span>`;
-        } else {
-            const where = deepTarget.gateway_url
-                ? escapeHtml(String(deepTarget.gateway_url))
-                : t('rules.deepTarget.unset');
-            const off = deepTarget.enabled ? '' : ` — ${t('rules.deepTarget.disabled')}`;
-            targetAddressText = `${where}<span style="color: var(--text-muted);"> (${t('rules.deepTarget.fromConfig')}${off})</span>`;
-        }
-    }
-
-    const isEnabled = rule.enabled;
-    const deliveryStatus = String(rule.delivery_status || 'unknown');
-    const deliveryFailures = Number(rule.delivery_failure_count_24h || 0);
-    const deliveryUnhealthy = deliveryStatus === 'exhausted' || deliveryFailures > 0;
-    const deliveryRetrying = deliveryStatus === 'retrying' || deliveryStatus === 'processing';
-    const cardBorder = deliveryUnhealthy
-        ? 'border-left: 3px solid var(--danger);'
-        : (isEnabled ? '' : '');
-    const cardOpacity = isEnabled ? 'opacity: 1;' : 'opacity: 0.65; background: var(--bg-subtle);';
-    const titleColor = isEnabled ? 'color: var(--text-main);' : 'color: var(--text-muted); text-decoration: line-through;';
-    const deliveryBadge = deliveryUnhealthy
-        ? '<span class="badge badge-danger">' + wwIcon('alert-triangle') + ' ' + t('rules.health.failed', { count: deliveryFailures || 1 }) + '</span>'
-        : (deliveryRetrying
+    const deliveryBadge = health.unhealthy
+        ? '<span class="badge badge-danger">' + wwIcon('alert-triangle') + ' ' + t('rules.health.failed', { count: health.failures || 1 }) + '</span>'
+        : (health.retrying
             ? '<span class="badge badge-warning">' + wwIcon('clock') + ' ' + t('rules.health.retrying') + '</span>'
-            : (deliveryStatus === 'sent'
+            : (health.status === 'sent'
                 ? '<span class="badge badge-success">' + wwIcon('check') + ' ' + t('rules.health.healthy') + '</span>'
                 : ''));
-    const deliveryDetail = rule.last_delivery_at
-        ? '<div style="margin-top:0.75rem; font-size:0.82rem; color:' +
-            (deliveryUnhealthy ? 'var(--danger)' : 'var(--text-muted)') + ';">' +
-            escapeHtml(t('rules.health.lastDelivery', {
-                time: (typeof formatTime === 'function' ? formatTime(rule.last_delivery_at) : rule.last_delivery_at)
-            })) +
-            (rule.last_delivery_error ? '<div style="margin-top:0.35rem; overflow-wrap:anywhere;">' +
-                escapeHtml(rule.last_delivery_error) + '</div>' : '') + '</div>'
-        : '';
 
     // ROI: how many alerts this rule has matched. A high count = it's carrying
     // load; an enabled rule with zero matches is a "zombie" rule worth reviewing.
@@ -171,110 +218,140 @@ function renderRuleCard(rule) {
             ? '<span class="badge badge-danger" title="' + escapeHtml(t('rules.roi.zombieTooltip')) + '">' +
                 t('rules.roi.zombie') + '</span>'
             : '<span class="badge badge-outline">' + t('rules.roi.hits', { count: 0 }) + '</span>');
+
+    const rowClass = 'rule-row' + (isEnabled ? '' : ' is-disabled') +
+        (health.unhealthy ? ' is-unhealthy' : '') + (expanded ? ' is-open' : '');
+
+    // data-stop on the switch, the badges and the actions: their clicks are
+    // their own (toggle, drill, test/edit/delete) and must not also unfold
+    // the row. Everything else in the row body expands it.
+    return '<div class="' + rowClass + '" data-rule-id="' + id + '">' +
+        '<div class="rule-row-main" data-act="ForwardRulesModule.toggleDetail" data-args="' + id + '">' +
+            '<label class="switch rule-row-toggle" data-stop>' +
+                '<input type="checkbox"' + (isEnabled ? ' checked' : '') + ' data-toggle-rule="' + id + '"' +
+                    ' aria-label="' + escapeHtml(t('rules.row.toggleAria', { name: rule.name })) + '">' +
+                '<span class="slider"></span>' +
+            '</label>' +
+            '<button type="button" class="rule-row-expander" data-act="ForwardRulesModule.toggleDetail" data-args="' + id + '"' +
+                ' aria-expanded="' + (expanded ? 'true' : 'false') + '" aria-controls="rule-detail-' + id + '"' +
+                ' title="' + escapeHtml(t('rules.row.toggleDetails')) + '">' +
+                wwIcon('chevron-down', 'rule-row-chevron') +
+                '<span class="rule-row-name">' + escapeHtml(rule.name) + '</span>' +
+            '</button>' +
+            (isEnabled ? '' : '<span class="badge badge-outline">' + t('rules.card.disabled') + '</span>') +
+            '<span class="rule-row-badges" data-stop>' + hitBadge + deliveryBadge + '</span>' +
+            '<span class="rule-row-match" title="' + escapeHtml(summary) + '">' + escapeHtml(summary) + '</span>' +
+            '<span class="rule-row-target" title="' + escapeHtml(target.title) + '">' + wwIcon(target.icon) +
+                '<span class="rule-row-target-name">' + escapeHtml(target.name) + '</span></span>' +
+            '<span class="rule-row-priority ww-muted ww-mono" title="' + escapeHtml(t('rules.card.priority', { n: priority })) + '">' + priority + '</span>' +
+            '<span class="rule-row-actions" data-stop>' +
+                '<button class="btn btn-sm btn-quiet-primary" data-act="testRule" data-args="' + id + '">' + wwIcon('flask') + ' ' + t('rules.action.test') + '</button>' +
+                '<button class="btn btn-sm" data-act="showRuleForm" data-args="' + id + '">' + wwIcon('pencil') + ' ' + t('rules.action.edit') + '</button>' +
+                '<button class="btn btn-sm btn-ghost rule-row-delete" data-act="deleteRule" data-args="' + id + '">' + wwIcon('trash') + ' ' + t('rules.action.delete') + '</button>' +
+            '</span>' +
+        '</div>' +
+        '<div class="rule-detail" id="rule-detail-' + id + '"' + (expanded ? '' : ' hidden') + '>' +
+            (expanded ? renderRuleDetail(rule) : '') +
+        '</div>' +
+    '</div>';
+}
+
+/**
+ * The full conditions + action detail beneath a row. Generated on first
+ * expand (or up front for rows the operator already had open).
+ * @param {Object} rule - rule object
+ */
+function renderRuleDetail(rule) {
+    const health = ruleDeliveryHealth(rule);
+    const deepTarget = rule.deep_analysis_target;
+    const typeText = formatTargetType(rule.target_type);
+    const suppressTargetName = !!deepTarget && rule.target_name === typeText;
+    const gateway = deepGatewayLabel(deepTarget);
+    const deepTargetSuffix = gateway ? ' <span class="rule-detail-gateway">' + escapeHtml(gateway) + '</span>' : '';
+
+    let targetAddress = escapeHtml(rule.target_url || '-');
+    if (deepTarget) {
+        if (deepTarget.error) {
+            // A rule naming a removed gateway delivers nothing. Say it here, in
+            // the one place someone reads to answer "where does this go".
+            targetAddress = '<span class="rule-detail-error">' + escapeHtml(String(deepTarget.error)) + '</span>';
+        } else {
+            const where = deepTarget.gateway_url ? escapeHtml(String(deepTarget.gateway_url)) : t('rules.deepTarget.unset');
+            const off = deepTarget.enabled ? '' : ' — ' + t('rules.deepTarget.disabled');
+            targetAddress = where + '<span class="ww-muted"> (' + t('rules.deepTarget.fromConfig') + off + ')</span>';
+        }
+    }
+
+    const field = function (labelKey, value) {
+        return '<div class="rule-detail-field"><strong>' + t(labelKey) + ':</strong> ' + value + '</div>';
+    };
+    const eventTypes = rule.match_event_type
+        ? field('rules.card.eventType', formatEventTypes(rule.match_event_type).map(function (label) {
+            return '<span class="badge badge-outline">' + escapeHtml(label) + '</span>';
+        }).join(' '))
+        : '';
+    const conditions = eventTypes +
+        field('rules.card.importance', escapeHtml(formatImportance(rule.match_importance))) +
+        field('rules.card.alertStatus', escapeHtml(formatDuplicateStatus(rule.match_duplicate))) +
+        field('rules.card.source', escapeHtml(rule.match_source || t('common.all'))) +
+        field('rules.card.project', escapeHtml(rule.match_project || t('common.all'))) +
+        field('rules.card.region', escapeHtml(rule.match_region || t('common.all'))) +
+        field('rules.card.environment', escapeHtml(rule.match_environment || t('common.all'))) +
+        (rule.match_payload ? field('rules.card.payload', '<code class="ww-mono">' + escapeHtml(rule.match_payload) + '</code>') : '');
+
+    const formatWhen = function (value) {
+        return typeof formatTime === 'function' ? formatTime(value) : value;
+    };
+    const deliveryDetail = rule.last_delivery_at
+        ? '<div class="rule-detail-note' + (health.unhealthy ? ' is-danger' : '') + '">' +
+            escapeHtml(t('rules.health.lastDelivery', { time: formatWhen(rule.last_delivery_at) })) +
+            (rule.last_delivery_error ? '<div>' + escapeHtml(rule.last_delivery_error) + '</div>' : '') + '</div>'
+        : '';
     const lastMatched = rule.last_matched_at
-        ? '<div style="margin-top: 0.75rem; color: var(--text-muted); font-size: 0.85rem;">' +
-            t('rules.roi.lastMatched', { time: (typeof formatTime === 'function' ? formatTime(rule.last_matched_at) : rule.last_matched_at) }) + '</div>'
+        ? '<div class="rule-detail-note">' + t('rules.roi.lastMatched', { time: formatWhen(rule.last_matched_at) }) + '</div>'
         : '';
 
-    return `
-        <div class="rule-card" style="
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            ${cardBorder}
-            border-radius: var(--radius-lg);
-            padding: 1.25rem 1.5rem;
-            margin-bottom: 1.5rem;
-            box-shadow: var(--shadow-sm);
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            ${cardOpacity}
-        ">
-            <div class="rule-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem;">
-                <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; min-width: 0;">
-                    <!-- Modern Toggle Switch -->
-                    <label class="switch" style="position: relative; display: inline-block; width: 44px; height: 24px; margin: 0;">
-                        <input type="checkbox" ${isEnabled ? 'checked' : ''} data-toggle-rule="${rule.id}" style="opacity: 0; width: 0; height: 0;">
-                        <span class="slider" style="
-                            position: absolute;
-                            cursor: pointer;
-                            top: 0; left: 0; right: 0; bottom: 0;
-                            background-color: ${isEnabled ? 'var(--primary)' : 'var(--border)'};
-                            transition: 0.3s;
-                            border-radius: 24px;
-                            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
-                        ">
-                            <span style="
-                                position: absolute;
-                                content: '';
-                                height: 18px; width: 18px;
-                                left: ${isEnabled ? '23px' : '3px'};
-                                bottom: 3px;
-                                background-color: var(--bg-surface);
-                                transition: 0.3s;
-                                border-radius: 50%;
-                                box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-                            "></span>
-                        </span>
-                    </label>
-                    <span style="font-weight: 600; font-size: 1.15rem; ${titleColor}">${escapeHtml(rule.name)}</span>
-                    ${!isEnabled ? '<span class="badge badge-outline" style="color: var(--text-muted); font-size: 0.75rem; border: 1px solid var(--border);">' + t('rules.card.disabled') + '</span>' : ''}
-                    ${hitBadge}
-                    ${deliveryBadge}
-                </div>
-                <span style="
-                    background: var(--bg-subtle);
-                    padding: 4px 12px;
-                    border-radius: 9999px;
-                    font-size: 0.85rem;
-                    font-weight: 600;
-                    color: var(--text-secondary);
-                    border: 1px solid var(--border);
-                ">${t('rules.card.priority', { n: rule.priority || 0 })}</span>
-            </div>
+    return '<div class="rule-detail-grid">' +
+        '<div class="rule-detail-panel">' +
+            '<div class="ww-eyebrow">' + wwIcon('target') + ' ' + t('rules.card.matchConditions') + '</div>' +
+            conditions +
+        '</div>' +
+        '<div class="rule-detail-panel">' +
+            '<div class="ww-eyebrow">' + wwIcon('send') + ' ' + t('rules.card.action') + '</div>' +
+            '<div class="rule-detail-field"><strong>' + t('rules.card.pushTo') + ':</strong> ' + escapeHtml(typeText) + deepTargetSuffix +
+                (suppressTargetName || !rule.target_name ? '' : ' (' + escapeHtml(rule.target_name) + ')') + '</div>' +
+            '<div class="rule-detail-address ww-mono">' + targetAddress + '</div>' +
+            (rule.stop_on_match ? '<div class="rule-detail-stop">' + wwIcon('zap') + ' ' + t('rules.card.stopOnMatch') + '</div>' : '') +
+            deliveryDetail +
+        '</div>' +
+    '</div>' + lastMatched;
+}
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
-                <!-- Match conditions area -->
-                <div class="rule-conditions" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--bg-subtle); padding: 1.25rem; border-radius: 8px; border: 1px dashed var(--border);">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;">${wwIcon('target')} ${t('rules.card.matchConditions')}</div>
-                    ${rule.match_event_type ? '<div style="margin-bottom:0.5rem;"><strong>' + t('rules.card.eventType') + ':</strong> ' + (function() { var types = rule.match_event_type.split(',').map(function(et) { var m = { webhook_forward: t('rules.evtType.webhook_forward'), manual_forward: t('rules.evtType.manual_forward'), ai_error: t('rules.evtType.ai_error'), ai_degraded: t('rules.evtType.ai_degraded'), deep_analysis: t('rules.evtType.deep_analysis'), outbox_exhausted: t('rules.evtType.outbox_exhausted'), rule_test: t('rules.evtType.rule_test') }; return '<span style="display:inline-block;background:var(--primary-bg);color:var(--primary);padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;margin-right:4px;">' + (m[et.trim()] || et.trim()) + '</span>'; }); return types.join(''); })() + '</div>' : ''}
-                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.importance')}:</strong> ${importanceText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.alertStatus')}:</strong> ${duplicateText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.source')}:</strong> ${sourceText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.project')}:</strong> ${projectText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.region')}:</strong> ${regionText}</div>
-                    <div style="margin-bottom: 0.5rem;"><strong>${t('rules.card.environment')}:</strong> ${environmentText}</div>
-                    ${rule.match_payload ? '<div><strong>' + t('rules.card.payload') + ':</strong> <code style="font-size:0.8rem;">' + escapeHtml(rule.match_payload) + '</code></div>' : ''}
-                </div>
-
-                <!-- Forward target area -->
-                <div class="rule-target" style="font-size: 0.95rem; color: var(--text-secondary); background: var(--bg-subtle); padding: 1.25rem; border-radius: 8px; border: 1px dashed var(--border);">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em;"><span style="color: var(--success);">${wwIcon('send')}</span> ${t('rules.card.action')}</div>
-                    <div style="margin-bottom: 0.75rem;">
-                        <strong>${t('rules.card.pushTo')}:</strong> ${targetTypeText}${deepTargetSuffix}
-                        ${suppressTargetName ? '' : (rule.target_name ? `(${escapeHtml(rule.target_name)})` : '')}
-                    </div>
-                    <div style="word-break: break-all; color: var(--text-main); font-family: var(--font-mono); font-size: 0.85rem; background: var(--bg-surface); padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border); box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);">
-                        ${targetAddressText}
-                    </div>
-                    ${rule.stop_on_match ? '<div style="margin-top: 0.75rem; color: var(--warning); font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;">' + wwIcon('zap') + ' ' + t('rules.card.stopOnMatch') + '</div>' : ''}
-                    ${deliveryDetail}
-                </div>
-            </div>
-
-            ${lastMatched}
-
-            <div class="rule-actions" style="display: flex; gap: 0.75rem; justify-content: flex-end; padding-top: 1.25rem; border-top: 1px solid var(--border);">
-                <button class="btn" data-act="testRule" data-args="${rule.id}" style="color: var(--primary); border-color: var(--primary-light); background: transparent; font-weight: 600;">
-                    ${wwIcon('flask')} ${t('rules.action.test')}
-                </button>
-                <button class="btn" data-act="showRuleForm" data-args="${rule.id}" style="font-weight: 600;">
-                    ${wwIcon('pencil')} ${t('rules.action.edit')}
-                </button>
-                <button class="btn" data-act="deleteRule" data-args="${rule.id}" style="color: var(--danger); border-color: transparent; background: transparent;">
-                    ${wwIcon('trash')} ${t('rules.action.delete')}
-                </button>
-            </div>
-        </div>
-    `;
+/**
+ * Unfold / fold one rule's detail. The detail markup is built on first open;
+ * open rows are remembered so a re-render (toggle, search, paging) keeps them.
+ * @param {number} id - rule ID
+ */
+function toggleRuleDetail(id) {
+    const ruleId = Number(id);
+    const detail = document.getElementById('rule-detail-' + ruleId);
+    const row = detail ? detail.closest('.rule-row') : null;
+    if (!detail || !row) return;
+    const opening = detail.hasAttribute('hidden');
+    if (opening) {
+        if (!detail.innerHTML.trim()) {
+            const rule = forwardRules.find(r => Number(r.id) === ruleId);
+            if (rule) detail.innerHTML = renderRuleDetail(rule);
+        }
+        detail.removeAttribute('hidden');
+        expandedRuleIds.add(ruleId);
+    } else {
+        detail.setAttribute('hidden', '');
+        expandedRuleIds.delete(ruleId);
+    }
+    row.classList.toggle('is-open', opening);
+    const expander = row.querySelector('.rule-row-expander');
+    if (expander) expander.setAttribute('aria-expanded', opening ? 'true' : 'false');
 }
 /**
  * Format importance display
@@ -673,7 +750,9 @@ const ForwardRulesModule = {
         ruleQuery = String(value || '');
         rulePage = 1;
         renderForwardRules(forwardRules);
-    }
+    },
+    // Chevron / row-body click: unfold the full conditions + action detail.
+    toggleDetail: toggleRuleDetail
 };
 
 

@@ -50,7 +50,7 @@ const IntegrationsModule = (function () {
             field('integrationSource', 'Source filter', '', 'Optional') +
             field('integrationProject', 'Project filter', '', 'Optional') +
             field('integrationEnvironment', 'Environment filter', '', 'Optional') +
-            '<div class="filter-item"><label class="filter-label">Importance</label><select id="integrationImportance" class="filter-input"><option value="">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>' +
+            '<div class="filter-item"><label class="filter-label" for="integrationImportance">Importance</label><select id="integrationImportance" class="filter-input"><option value="">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>' +
             '</div><div style="display:flex; gap:8px; margin-top:16px;">' +
             '<button class="btn" id="integrationTestBtn">2. Test</button>' +
             '<button class="btn btn-primary" id="integrationInstallBtn">3. Test and install</button>' +
@@ -62,7 +62,7 @@ const IntegrationsModule = (function () {
     }
 
     function field(id, label, value, placeholder) {
-        return '<div class="filter-item"><label class="filter-label">' + escapeHtml(label) + '</label><input id="' + id +
+        return '<div class="filter-item"><label class="filter-label" for="' + id + '">' + escapeHtml(label) + '</label><input id="' + id +
             '" class="filter-input" value="' + escapeHtml(value || '') + '" placeholder="' + escapeHtml(placeholder || '') + '"></div>';
     }
 

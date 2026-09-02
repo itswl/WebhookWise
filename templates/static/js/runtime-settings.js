@@ -83,16 +83,17 @@ const RuntimeSettingsModule = (function () {
             ? editingValue
             : String(setting.effective != null ? setting.effective : '');
         let input;
+        const inputLabel = escapeHtml(t('rs.edit.valueLabel'));
         if (kind === 'boolean') {
             const truthy = raw.trim().toLowerCase() === 'true';
-            input = '<select id="rsEditInput" class="filter-input" style="width: 100%;">' +
+            input = '<select id="rsEditInput" class="filter-input" style="width: 100%;" aria-label="' + inputLabel + '">' +
                 '<option value="true"' + (truthy ? ' selected' : '') + '>true</option>' +
                 '<option value="false"' + (truthy ? '' : ' selected') + '>false</option>' +
                 '</select>';
         } else if (kind === 'number') {
-            input = '<input type="number" step="any" id="rsEditInput" class="filter-input" style="width: 100%; ' + MONO + '" value="' + escapeHtml(raw) + '">';
+            input = '<input type="number" step="any" id="rsEditInput" class="filter-input" style="width: 100%; ' + MONO + '" value="' + escapeHtml(raw) + '" aria-label="' + inputLabel + '">';
         } else {
-            input = '<input type="text" id="rsEditInput" class="filter-input" style="width: 100%; ' + MONO + '" value="' + escapeHtml(raw) + '" autocomplete="off" spellcheck="false">';
+            input = '<input type="text" id="rsEditInput" class="filter-input" style="width: 100%; ' + MONO + '" value="' + escapeHtml(raw) + '" autocomplete="off" spellcheck="false" aria-label="' + inputLabel + '">';
         }
         return '<div style="display: flex; flex-direction: column; gap: 6px; min-width: 200px;">' + input +
             '<div style="display: flex; gap: 6px; flex-wrap: wrap;">' +
@@ -320,7 +321,7 @@ const RuntimeSettingsModule = (function () {
             // typing never rebuilds (and un-focuses) the input itself.
             container.innerHTML =
                 '<div class="rs-toolbar"><input id="rsSearch" class="filter-input" type="search" ' +
-                'placeholder="' + escapeHtml(t('rs.search.placeholder')) + '" autocomplete="off"></div>' +
+                'placeholder="' + escapeHtml(t('rs.search.placeholder')) + '" aria-label="' + escapeHtml(t('rs.search.placeholder')) + '" autocomplete="off"></div>' +
                 '<div id="rsTableHost"></div>';
             const search = document.getElementById('rsSearch');
             if (search) {

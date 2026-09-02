@@ -4590,3 +4590,150 @@ body.sidebar-collapsed .sidebar-collapse .sidebar-icon { transform: rotate(180de
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Forward rules — one compact row per rule
+   The card listed seven conditions per rule, most reading "all": two rules
+   per screen. A row names only what a rule constrains; the full detail
+   unfolds beneath it. Rows wrap so a 390px viewport never squeezes the name.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.rule-row {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* State, not decoration: a rule whose deliveries are failing. */
+.rule-row.is-unhealthy { border-left: 3px solid var(--danger); }
+
+.rule-row.is-disabled { background: var(--bg-subtle); }
+.rule-row.is-disabled .rule-row-name { color: var(--text-muted); text-decoration: line-through; }
+
+.rule-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  cursor: pointer;
+}
+
+.rule-row-toggle { margin: 0; }
+
+.rule-row-expander {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-main);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rule-row-name { min-width: 0; overflow-wrap: anywhere; }
+
+.rule-row-chevron { flex-shrink: 0; transition: transform 0.15s; }
+.rule-row.is-open .rule-row-chevron { transform: rotate(180deg); }
+
+.rule-row-badges { display: inline-flex; flex-wrap: wrap; gap: var(--sp-1); }
+
+.rule-row-match {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule-row-target {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  max-width: 220px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.rule-row-target-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rule-row-priority { font-size: var(--fs-xs); }
+
+.rule-row-actions {
+  display: inline-flex;
+  gap: var(--sp-1);
+  margin-left: auto;
+  cursor: default;
+}
+
+.rule-row-delete { color: var(--danger); }
+.rule-row-delete:hover { background: var(--danger-bg); color: var(--danger); }
+
+@media (max-width: 480px) {
+  .rule-row-actions { margin-left: 0; width: 100%; }
+}
+
+/* The unfolded detail: two divided regions, no dashed boxes. */
+.rule-detail {
+  padding: 0 var(--sp-3) var(--sp-3);
+  border-top: 1px solid var(--border-light);
+}
+.rule-detail[hidden] { display: none; }
+
+.rule-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-3);
+  padding-top: var(--sp-3);
+}
+
+.rule-detail-panel {
+  padding: var(--sp-3);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.rule-detail-field { margin-bottom: var(--sp-1); overflow-wrap: anywhere; }
+.rule-detail-gateway { color: var(--primary); font-weight: 600; }
+.rule-detail-error { color: var(--danger); }
+
+.rule-detail-address {
+  margin-top: var(--sp-2);
+  padding: var(--sp-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: var(--fs-xs);
+  word-break: break-all;
+}
+
+.rule-detail-note { margin-top: var(--sp-2); font-size: var(--fs-xs); color: var(--text-muted); overflow-wrap: anywhere; }
+.rule-detail-note.is-danger { color: var(--danger); }
+
+.rule-detail-stop {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--warning);
+}

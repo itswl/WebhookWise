@@ -1172,9 +1172,6 @@ _GHOST_CLASS_ALLOWLIST = frozenset(
         "response-queue-service",
         "routing-section",
         "rule-audit-section",
-        "rule-conditions",
-        "rule-target",
-        "rules-list",
         "sandbox-grid",
         "sandbox-section",
         "silence-actions",
@@ -1606,3 +1603,171 @@ def test_every_runtime_setting_has_a_zh_description_overlay() -> None:
     covered = set(re.findall(r"'rs\.desc\.([A-Z0-9_]+)':", zh))
     missing = [spec.key for spec in _SPEC_LIST if spec.key not in covered]
     assert missing == [], f"tunables missing a zh 'rs.desc.<KEY>' overlay: {missing}"
+
+
+class _FormControlParser(HTMLParser):
+    """Every non-hidden <select>/<input>/<textarea> with its labelling status.
+
+    A wrapping <label> names only its FIRST labelable descendant (HTML's
+    labeled-control rule), so a label around two inputs leaves the second one
+    unlabelled — the parser counts controls per open label for that reason.
+    """
+
+    CONTROLS = ("select", "input", "textarea")
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.open_labels: list[int] = []  # controls seen under each open label
+        self.label_for: set[str] = set()
+        self.controls: list[dict[str, object]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attr_map = dict(attrs)
+        if tag == "label":
+            self.open_labels.append(0)
+            if attr_map.get("for"):
+                self.label_for.add(attr_map["for"] or "")
+        if tag in self.CONTROLS and attr_map.get("type") != "hidden":
+            wrapped = bool(self.open_labels) and self.open_labels[-1] == 0
+            if self.open_labels:
+                self.open_labels[-1] += 1
+            line, _ = self.getpos()
+            self.controls.append(
+                {
+                    "line": line,
+                    "tag": tag,
+                    "id": attr_map.get("id"),
+                    "wrapped": wrapped,
+                    "aria": bool(
+                        attr_map.get("aria-label")
+                        or attr_map.get("data-i18n-aria-label")
+                        or attr_map.get("aria-labelledby")
+                    ),
+                }
+            )
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "label" and self.open_labels:
+            self.open_labels.pop()
+
+
+def test_every_form_control_has_a_programmatic_label() -> None:
+    """Forty-seven of the dashboard's ninety-eight controls had no name a
+    screen reader could speak: a visible <label> sat next to them with no
+    for=, or a placeholder stood in for a label. Every non-hidden control is
+    now wrapped in a <label>, referenced by for=, or carries aria-label /
+    data-i18n-aria-label / aria-labelledby — and stays that way."""
+    parser = _FormControlParser()
+    parser.feed(_dashboard_html())
+
+    assert len(parser.controls) >= 90, "the parser stopped seeing the form controls"
+    unlabelled = [
+        f"line {c['line']}: <{c['tag']} id={c['id']}>"
+        for c in parser.controls
+        if not (c["wrapped"] or c["aria"] or (c["id"] and c["id"] in parser.label_for))
+    ]
+    assert unlabelled == [], f"form controls with no programmatic label: {unlabelled}"
+
+
+def test_static_aria_label_keys_exist_in_both_dictionaries() -> None:
+    """data-i18n-aria-label resolves through t(); a missing key would put a raw
+    'deep.filter.statusLabel' into the accessible name, which no screenshot
+    review ever catches."""
+    dictionaries = {}
+    for language in ("zh", "en"):
+        text = _static_js(f"i18n.{language}.js")
+        dictionaries[language] = set(re.findall(r"^\s*'([a-zA-Z0-9_.]+)':", text, re.M))
+
+    sources = [_dashboard_html()] + [
+        path.read_text()
+        for path in sorted((PROJECT_ROOT / "templates/static/js").glob("*.js"))
+        if not path.name.startswith("i18n.")
+    ]
+    asked = set()
+    for source in sources:
+        asked.update(re.findall(r'data-i18n-aria-label="([a-zA-Z0-9_.]+)"', source))
+    assert asked, "no data-i18n-aria-label annotations found"
+
+    missing = sorted(
+        f"{key} ({language})" for key in asked for language, known in dictionaries.items() if key not in known
+    )
+    assert missing == [], f"aria-label keys used but never defined: {missing}"
+
+
+def test_js_rendered_form_controls_carry_a_label() -> None:
+    """Controls built in JS renderers get their name at the render site:
+    aria-label on the tag, a for= pointing at its id, or a <label> opened
+    (and not yet closed) just before it in the same string."""
+    js_dir = PROJECT_ROOT / "templates/static/js"
+    # A tag with at least one attribute: bare "<select>" in comment prose is
+    # not a control. Whitespace is collapsed so a concatenated id ('" + id + "')
+    # compares equal to the for= that names it across a line break.
+    tag_re = re.compile(r"<(select|input|textarea)\s[^>]*>", re.S)
+    unlabelled: list[str] = []
+    for path in sorted(js_dir.glob("*.js")):
+        if path.name.startswith("i18n."):
+            continue
+        src = re.sub(r"\s+", " ", path.read_text())
+        raw = path.read_text()
+        for match in tag_re.finditer(src):
+            tag = match.group(0)
+            if 'type="hidden"' in tag:
+                continue
+            if "aria-label=" in tag or "aria-labelledby=" in tag:
+                continue
+            id_match = re.search(r'id="([^"]+)"', tag)
+            if id_match and f'for="{id_match.group(1)}"' in src:
+                continue
+            before = src[max(0, match.start() - 600) : match.start()]
+            if before.rfind("<label") > before.rfind("</label>"):
+                continue
+            line = raw.count("\n", 0, raw.find(tag[:30])) + 1
+            unlabelled.append(f"{path.name}:{line} {tag[:60]}")
+    assert unlabelled == [], f"JS-rendered controls with no programmatic label: {unlabelled}"
+
+
+def test_analysis_destinations_share_one_group_and_one_window() -> None:
+    """Decision Trace, AI Cost, Alert Quality, Rule Audit and Noise Center
+    answer one question — what happened over this window — and used to sit in
+    three sidebar groups with five private time ranges. They now share one
+    group and one persisted window (analysis-window.js), loaded before any of
+    them so every module reads the same choice on load."""
+    palette = _static_js("command-palette.js")
+    group = re.search(r"title: 'nav\.group\.analysis',\s*items: \[(.*?)\],\s*\},", palette, re.S)
+    assert group, "the nav.group.analysis group is missing from CommandPalette._groups"
+    slugs = re.findall(r"slug: '([a-z-]+)'", group.group(1))
+    assert slugs == ["trace", "cost", "quality", "audit", "noise"]
+    for language in ("zh", "en"):
+        assert "'nav.group.analysis':" in _static_js(f"i18n.{language}.js")
+
+    parser = _AssetParser()
+    parser.feed(_dashboard_html())
+    paths = [urlsplit(asset).path for asset in parser.assets]
+    window_index = paths.index("/static/js/analysis-window.js")
+    modules = ("decision-trace.js", "ai-cost.js", "alert-quality.js", "rule-audit.js", "noise-center.js")
+    for name in modules:
+        assert window_index < paths.index(f"/static/js/{name}"), f"{name} loads before the shared window"
+        assert "wwAnalysisWindow" in _static_js(name), f"{name} does not read the shared window"
+    assert "'ww-analysis-window'" in _static_js("analysis-window.js")
+
+
+def test_forward_rules_render_as_compact_rows() -> None:
+    """Twenty-three rules were eleven screens of 480px cards, each listing
+    seven conditions that mostly read "all". A rule is one wrapping flex row
+    naming only what it constrains; the detail unfolds beneath on demand, and
+    no nested panel wears a dashed border (dashed is not a container style)."""
+    rules = _static_js("forward-rules.js")
+    assert "function renderRuleRow(" in rules and "function renderRuleDetail(" in rules
+    assert 'data-act="ForwardRulesModule.toggleDetail"' in rules
+    assert "toggleDetail: toggleRuleDetail" in rules
+    assert "rules.row.matchAll" in rules
+    assert "dashed" not in rules
+    # The operator hooks the page always had.
+    for hook in ('data-toggle-rule="', 'data-act="testRule"', 'data-act="showRuleForm"', 'data-act="deleteRule"', "data-drill-rule"):
+        assert hook in rules, f"forward rules lost the {hook} hook"
+
+    css = _static_css("components.css")
+    row = re.search(r"\.rule-row-main \{(.*?)\}", css, re.S)
+    assert row and "display: flex" in row.group(1) and "flex-wrap: wrap" in row.group(1)
+    assert "min-width: 0" in row.group(1)
+    assert ".rule-row-delete { color: var(--danger); }" in css

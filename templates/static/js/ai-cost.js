@@ -19,7 +19,12 @@ const AICostModule = {
      * Load statistics data
      * @param {string} period - Statistics period (day/week/month)
      */
-    async loadStats(period = 'day') {
+    async loadStats(period) {
+        // No explicit period means "whatever the shared analysis window says"
+        // (analysis-window.js) — the same choice the trace and quality pages read.
+        if (!period) {
+            period = (typeof wwAnalysisWindow !== 'undefined') ? wwAnalysisWindow.get().period : 'day';
+        }
         this.currentPeriod = period;
         // Period-button highlighting belongs to DecisionTraceModule, which owns
         // the shared Day/Week/Month toggle for every sub-view of this tab.

@@ -234,7 +234,8 @@ const IngressSetupModule = (function () {
         return '<section class="ingress-step-card"><div class="ingress-step-heading"><span>4</span><div><h3>' +
             escapeHtml(t('ingress.payload.title')) + '</h3><p>' +
             escapeHtml(t('ingress.payload.hint')) + '</p></div></div>' +
-            '<textarea class="form-input ingress-payload" id="ingressPayload" rows="14" spellcheck="false">' +
+            '<textarea class="form-input ingress-payload" id="ingressPayload" rows="14" spellcheck="false" aria-label="' +
+            escapeHtml(t('sandbox.payload')) + '">' +
             escapeHtml(samplePayload()) + '</textarea>' + dryRun +
             (!sourceToken ? '<div class="ingress-token-warning">' + wwIcon('alert-triangle') + ' ' +
                 escapeHtml(t('ingress.payload.rotateNeeded')) + '</div>' : '') +

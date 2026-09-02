@@ -248,7 +248,13 @@ function renderBreadcrumb(slug) {
     const element = document.getElementById('breadcrumb');
     const destination = DESTINATIONS[slug];
     if (!element || !destination) return;
-    const area = t(DESTINATION_AREA[destination.tab] || '');
+    // The area is the destination's palette group — the same grouping the
+    // sidebar shows — so a page moved between groups (the analysis five) reads
+    // the same in both places. The tab map remains the fallback.
+    const paletteItem = typeof CommandPalette !== 'undefined'
+        ? CommandPalette._all.find((item) => item.slug === slug)
+        : null;
+    const area = t(paletteItem ? paletteItem.group : (DESTINATION_AREA[destination.tab] || ''));
     const leaf = t('nav.dest.' + (slug === 'work-queue' ? 'workQueue' : slug));
     element.innerHTML = '<span class="crumb-area">' + escapeHtml(area) + '</span>'
         + '<span class="crumb-sep" aria-hidden="true">/</span>'

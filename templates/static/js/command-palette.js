@@ -26,8 +26,20 @@ const CommandPalette = (function () {
             title: 'nav.group.overview',
             items: [
                 { slug: 'overview', icon: 'bar-chart', label: 'nav.dest.overview', keywords: 'overview home stats 总览 概览 首页' },
+            ],
+        },
+        {
+            // The five read-only analysis pages. They used to sit in three
+            // different groups, each with a private time range; they now
+            // share one group and one window (analysis-window.js), so a
+            // "30 days" chosen here means 30 days on every one of them.
+            title: 'nav.group.analysis',
+            items: [
                 { slug: 'trace', icon: 'search', label: 'nav.dest.trace', keywords: 'decision trace why skipped 决策链 为什么 抑制' },
                 { slug: 'cost', icon: 'dollar', label: 'nav.dest.cost', keywords: 'ai cost spend token 成本 花费' },
+                { slug: 'quality', icon: 'gauge', label: 'nav.dest.quality', keywords: 'alert quality schema 质量 数据质量' },
+                { slug: 'audit', icon: 'history', label: 'nav.dest.audit', keywords: 'audit rule history 审计 变更' },
+                { slug: 'noise', icon: 'activity', label: 'nav.dest.noise', keywords: 'noise reduction dedup 降噪 噪音' },
             ],
         },
         {
@@ -52,9 +64,7 @@ const CommandPalette = (function () {
                 // counter recordDestination keeps will let the Aug review
                 // re-tier on real numbers instead of judgement.
                 { slug: 'sandbox', icon: 'zap', label: 'nav.dest.sandbox', keywords: 'sandbox test payload dry run 沙箱 测试', lowFreq: true },
-                { slug: 'audit', icon: 'history', label: 'nav.dest.audit', keywords: 'audit rule history 审计 变更', lowFreq: true },
                 { slug: 'ingress', icon: 'inbox', label: 'nav.dest.ingress', keywords: 'inbound setup webhook source 接入 来源' },
-                { slug: 'quality', icon: 'gauge', label: 'nav.dest.quality', keywords: 'alert quality schema 质量 数据质量' },
                 { slug: 'integrations', icon: 'link', label: 'nav.dest.integrations', keywords: 'integrations feishu lark 集成 飞书', lowFreq: true },
             ],
         },
@@ -62,7 +72,6 @@ const CommandPalette = (function () {
             title: 'nav.group.operations',
             items: [
                 { slug: 'actions', icon: 'wrench', label: 'nav.dest.actions', keywords: 'action center queue todo 行动 待处理' },
-                { slug: 'noise', icon: 'activity', label: 'nav.dest.noise', keywords: 'noise reduction dedup 降噪 噪音' },
                 { slug: 'kb', icon: 'book-open', label: 'nav.dest.kb', keywords: 'knowledge base drafts runbook 知识库 草稿', lowFreq: true },
                 { slug: 'gaps', icon: 'lightbulb', label: 'nav.dest.gaps', keywords: 'knowledge gaps missing 知识缺口', lowFreq: true },
                 { slug: 'delivery', icon: 'send', label: 'nav.dest.delivery', keywords: 'delivery outbox dead letters replay 投递 死信 队列 重放', lowFreq: true },

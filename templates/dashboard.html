@@ -185,7 +185,7 @@
                     <button id="lastPage" data-i18n="alerts.page.last">Last</button>
                     <button id="loadMoreBtn" style="display: none;" data-i18n="alerts.page.loadMore">Load 200 more</button>
                 </div>
-                <select class="filter-input" id="pageSize" style="width: auto;">
+                <select class="filter-input" id="pageSize" style="width: auto;" data-i18n-aria-label="alerts.page.sizeLabel" aria-label="Rows per page">
                     <option value="10" data-i18n="alerts.page.perPage10">10 / page</option>
                     <option value="20" selected data-i18n="alerts.page.perPage20">20 / page</option>
                     <option value="50" data-i18n="alerts.page.perPage50">50 / page</option>
@@ -239,8 +239,8 @@
                         <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="incidents.subtitle">Related alerts auto-grouped into operational incidents. Active incidents are still receiving new alerts; quiet incidents are ready for review.</p>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <input type="text" id="incidentSearchInput" data-i18n-placeholder="incidents.filter.search" placeholder="Search incidents..." style="width:180px; padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);" data-i18n-placeholder="incidents.searchPlaceholder">
-                        <select id="incidentStatusFilter" style="border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
+                        <input type="text" id="incidentSearchInput" data-i18n-placeholder="incidents.filter.search" placeholder="Search incidents..." style="width:180px; padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);" data-i18n-aria-label="incidents.filter.search" aria-label="Search incidents">
+                        <select id="incidentStatusFilter" style="border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);" data-i18n-aria-label="incidents.filter.statusLabel" aria-label="Filter incidents by status">
                             <option value="" data-i18n="incidents.filter.all">All</option>
                             <option value="active" data-i18n="incidents.filter.active">Active</option>
                             <option value="quiet" data-i18n="incidents.filter.quiet">Quiet</option>
@@ -261,13 +261,13 @@
                 <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <div class="section-title" data-i18n="deep.title">Deep Analysis Records</div>
                     <div style="display: flex; gap: 10px; align-items: center;">
-                        <select id="daStatusFilter" class="form-input" style="width: auto;">
+                        <select id="daStatusFilter" class="form-input" style="width: auto;" data-i18n-aria-label="deep.filter.statusLabel" aria-label="Filter analyses by status">
                             <option value="" data-i18n="deep.status.all">All statuses</option>
                             <option value="pending" data-i18n="deep.status.pending">Analyzing</option>
                             <option value="completed" data-i18n="deep.status.completed">Completed</option>
                             <option value="failed" data-i18n="deep.status.failed">Failed</option>
                         </select>
-                        <select id="daEngineFilter" class="form-input" style="width: auto;">
+                        <select id="daEngineFilter" class="form-input" style="width: auto;" data-i18n-aria-label="deep.filter.engineLabel" aria-label="Filter by engine">
                             <option value="" data-i18n="deep.engine.all">All engines</option>
                             <option value="openclaw" data-i18n="deep.engine.openclaw">OpenClaw</option>
                             <option value="hookprobe" data-i18n="deep.engine.hookprobe">hookprobe</option>
@@ -329,14 +329,14 @@
                     <!-- AI-vs-rules disagreement drill-down behind the override rate above. Filled by decision-trace.js. -->
                     <div id="decisionTraceDisagreements"></div>
                     <div class="dt-list-filters" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 12px;">
-                        <select id="dtResultFilter" class="filter-input" style="width: auto;">
+                        <select id="dtResultFilter" class="filter-input" style="width: auto;" data-i18n-aria-label="dt.filter.resultLabel" aria-label="Filter by outcome">
                             <option value="" data-i18n="dt.filter.allOutcomes">All outcomes</option>
                             <!-- Options are text-only UI: markup inside <option> is dead HTML. -->
                             <option value="forwarded" data-i18n="dt.filter.optForwarded">Forwarded</option>
                             <option value="skipped" data-i18n="dt.filter.optSkipped">Skipped</option>
                             <option value="failed" data-i18n="dt.filter.optFailed">Delivery failed</option>
                         </select>
-                        <select id="dtSourceFilter" class="filter-input" style="width: auto;">
+                        <select id="dtSourceFilter" class="filter-input" style="width: auto;" data-i18n-aria-label="dt.filter.sourceLabel" aria-label="Filter by source">
                             <option value="" data-i18n="dt.filter.allSources">All sources</option>
                         </select>
                     </div>
@@ -521,9 +521,9 @@
                     </div>
                     <div class="sandbox-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start;">
                         <div>
-                            <label style="display:block; font-size: var(--fs-sm); font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.source">Source</label>
+                            <label for="sandboxSource" style="display:block; font-size: var(--fs-sm); font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.source">Source</label>
                             <input type="text" id="sandboxSource" placeholder="volcengine, grafana, prometheus…" style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-md); margin-bottom:1rem;" />
-                            <label style="display:block; font-size: var(--fs-sm); font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.payload">Payload (JSON)</label>
+                            <label for="sandboxPayload" style="display:block; font-size: var(--fs-sm); font-weight:600; margin-bottom:0.4rem;" data-i18n="sandbox.payload">Payload (JSON)</label>
                             <textarea id="sandboxPayload" rows="18" spellcheck="false" placeholder='{ "RuleName": "...", "Level": "critical" }' style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border); border-radius:var(--radius); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size: var(--fs-sm); resize:vertical;"></textarea>
                             <div style="display:flex; gap:0.6rem; margin-top:0.85rem;">
                                 <button data-sb="sb11" class="btn btn-primary"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> <span data-i18n="sandbox.run">Test</span></button>
@@ -553,7 +553,7 @@
                             <label class="sr-only" for="auditSearch" data-i18n="audit.searchLabel">Search rules</label>
                             <input id="auditSearch" type="search" class="filter-input" style="width: 180px;"
                                    data-i18n-placeholder="audit.searchPlaceholder" placeholder="Search rules…" data-sb="sb40">
-                            <select id="auditWindowDays" style="border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);">
+                            <select id="auditWindowDays" style="border:1px solid var(--border); border-radius:var(--radius); font-size: var(--fs-sm);" data-i18n-aria-label="dt.period.groupLabel" aria-label="Time window">
                                 <option value="7" data-i18n="audit.window.7d">7 days</option>
                                 <option value="30" selected data-i18n="audit.window.30d">30 days</option>
                                 <option value="90" data-i18n="audit.window.90d">90 days</option>
@@ -584,7 +584,7 @@
                         <p style="margin:4px 0 0; color:var(--text-secondary); font-size: var(--fs-sm);" data-i18n="noise.subtitle">Measure alert noise, review safe recommendations, and apply reversible optimizations.</p>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <select id="noiseWindowDays" class="form-input" style="width:auto;">
+                        <select id="noiseWindowDays" class="form-input" style="width:auto;" data-i18n-aria-label="dt.period.groupLabel" aria-label="Time window">
                             <option value="7" data-i18n="noise.window.7d">7 days</option>
                             <option value="30" data-i18n="noise.window.30d">30 days</option>
                             <option value="90" data-i18n="noise.window.90d">90 days</option>
@@ -661,7 +661,7 @@
                         <label class="sr-only" for="knowledgeGapSearch" data-i18n="knowledgeGaps.searchLabel">Search gaps</label>
                         <input id="knowledgeGapSearch" type="search" class="filter-input" style="width: 180px;"
                                data-i18n-placeholder="knowledgeGaps.searchPlaceholder" placeholder="Search gaps…" data-sb="sb39">
-                        <select id="knowledgeGapWindow" class="filter-input">
+                        <select id="knowledgeGapWindow" class="filter-input" data-i18n-aria-label="dt.period.groupLabel" aria-label="Time window">
                             <option value="7" data-i18n="knowledgeGaps.window.7d">7 days</option>
                             <option value="30" selected data-i18n="knowledgeGaps.window.30d">30 days</option>
                             <option value="90" data-i18n="knowledgeGaps.window.90d">90 days</option>
@@ -960,14 +960,14 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label" data-i18n="auth.apiKeyLabel">API_KEY (read-only)</label>
+                    <label for="authApiKey" class="form-label" data-i18n="auth.apiKeyLabel">API_KEY (read-only)</label>
                     <input type="password" class="form-input" id="authApiKey" data-i18n-placeholder="auth.apiKeyPlaceholder" placeholder="Used for GET queries; leave blank to keep unchanged">
                     <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="auth.apiKeyHelp">
                         Used for read-only requests such as the alert list, AI cost, and forward rule list.
                     </p>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="auth.adminKeyLabel">ADMIN_WRITE_KEY (write operations)</label>
+                    <label for="authAdminWriteKey" class="form-label" data-i18n="auth.adminKeyLabel">ADMIN_WRITE_KEY (write operations)</label>
                     <input type="password" class="form-input" id="authAdminWriteKey" data-i18n-placeholder="auth.adminKeyPlaceholder" placeholder="Used for POST / PUT / DELETE; leave blank to keep unchanged">
                     <p style="margin: 6px 0 0; color: var(--text-secondary); font-size: var(--fs-sm);" data-i18n="auth.adminKeyHelp">
                         Used for write requests such as re-analysis, manual forwarding, retries, and saving/deleting forward rules.
@@ -998,7 +998,7 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label" data-i18n="forward.urlLabel">Forward URL</label>
+                    <label for="forwardUrl" class="form-label" data-i18n="forward.urlLabel">Forward URL</label>
                     <input type="text" class="form-input" id="forwardUrl" placeholder="https://example.com/webhook">
                 </div>
             </div>
@@ -1021,12 +1021,12 @@
 
                 <!-- Basic info -->
                 <div class="form-group">
-                    <label class="form-label" data-i18n="rule.nameLabel">Rule Name *</label>
+                    <label for="ruleFormName" class="form-label" data-i18n="rule.nameLabel">Rule Name *</label>
                     <input type="text" class="form-input" id="ruleFormName" data-i18n-placeholder="rule.namePlaceholder" placeholder="e.g. Route high-priority alerts to the Feishu ops group" autocomplete="off">
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label" data-i18n="rule.priorityLabel">Priority</label>
+                        <label for="ruleFormPriority" class="form-label" data-i18n="rule.priorityLabel">Priority</label>
                         <input type="number" class="form-input" id="ruleFormPriority" value="10" min="-1000000" max="1000000">
                         <small style="color: var(--text-muted); font-size: var(--fs-xs);" data-i18n="rule.priorityHint">Higher values match first</small>
                     </div>
@@ -1078,7 +1078,7 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="rule.statusLabel">Alert Status</label>
+                    <label for="ruleFormDuplicate" class="form-label" data-i18n="rule.statusLabel">Alert Status</label>
                     <select class="form-input" id="ruleFormDuplicate">
                         <option value="all" data-i18n="rule.status.all">All (new alerts + duplicates)</option>
                         <option value="new" data-i18n="rule.status.new">New alerts only</option>
@@ -1086,26 +1086,26 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="rule.sourceLabel">Source</label>
+                    <label for="ruleFormSource" class="form-label" data-i18n="rule.sourceLabel">Source</label>
                     <input type="text" class="form-input" id="ruleFormSource" data-i18n-placeholder="rule.sourcePlaceholder" placeholder="Comma-separated; empty = all sources" autocomplete="off">
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label" data-i18n="rule.projectLabel">Project</label>
+                        <label for="ruleFormProject" class="form-label" data-i18n="rule.projectLabel">Project</label>
                         <input type="text" class="form-input" id="ruleFormProject" data-i18n-placeholder="rule.projectPlaceholder" placeholder="e.g. demo-cn" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label class="form-label" data-i18n="rule.regionLabel">Region</label>
+                        <label for="ruleFormRegion" class="form-label" data-i18n="rule.regionLabel">Region</label>
                         <input type="text" class="form-input" id="ruleFormRegion" data-i18n-placeholder="rule.regionPlaceholder" placeholder="e.g. cn-shanghai" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label class="form-label" data-i18n="rule.envLabel">Environment</label>
+                        <label for="ruleFormEnvironment" class="form-label" data-i18n="rule.envLabel">Environment</label>
                         <input type="text" class="form-input" id="ruleFormEnvironment" data-i18n-placeholder="rule.envPlaceholder" placeholder="e.g. prod,dev" autocomplete="off">
                     </div>
                 </div>
                 <small style="display:block; color: var(--text-muted); font-size: var(--fs-xs); margin: -0.5rem 0 0.75rem;" data-i18n="rule.geoHint">Project, region, and environment support comma-separated values; use !prod / !demo-cn to exclude. Environment is detected from the env/environment/stage field or from dev/prod/test segments in the resource name.</small>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="rule.payloadLabel">Payload Field Match</label>
+                    <label for="ruleFormPayload" class="form-label" data-i18n="rule.payloadLabel">Payload Field Match</label>
                     <input type="text" class="form-input" id="ruleFormPayload" data-i18n-placeholder="rule.payloadPlaceholder" placeholder='e.g. status=firing,severity=critical' autocomplete="off">
                     <small style="color: var(--text-muted); font-size: var(--fs-xs);" data-i18n="rule.payloadHint">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
                 </div>
@@ -1116,7 +1116,7 @@
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label" data-i18n="rule.targetTypeLabel">Target Type *</label>
+                        <label for="ruleFormTargetType" class="form-label" data-i18n="rule.targetTypeLabel">Target Type *</label>
                         <select class="form-input" id="ruleFormTargetType">
                             <option value="feishu" data-i18n="rule.targetType.feishu">Feishu</option>
                             <option value="deep_analysis" data-i18n="rule.targetType.deep_analysis">Deep analysis</option>
@@ -1124,18 +1124,18 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label" data-i18n="rule.targetNameLabel">Target Name</label>
+                        <label for="ruleFormTargetName" class="form-label" data-i18n="rule.targetNameLabel">Target Name</label>
                         <input type="text" class="form-input" id="ruleFormTargetName" data-i18n-placeholder="rule.targetNamePlaceholder" placeholder="e.g. Ops Feishu group" autocomplete="off">
                     </div>
                 </div>
                 <div class="form-group" id="ruleFormTargetUrlGroup">
-                    <label class="form-label" data-i18n="rule.targetUrlLabel">Target URL *</label>
+                    <label for="ruleFormTargetUrl" class="form-label" data-i18n="rule.targetUrlLabel">Target URL *</label>
                     <input type="text" class="form-input" id="ruleFormTargetUrl" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx" autocomplete="off">
                 </div>
                 <!-- Shown only for the deep-analysis target: which configured
                      gateway this rule reaches. Options come from the server. -->
                 <div class="form-group" id="ruleFormGatewayGroup" style="display: none;">
-                    <label class="form-label" data-i18n="rule.gatewayLabel">Deep-analysis gateway</label>
+                    <label for="ruleFormGateway" class="form-label" data-i18n="rule.gatewayLabel">Deep-analysis gateway</label>
                     <div style="display: flex; gap: var(--sp-2); align-items: center;">
                         <select class="form-input" id="ruleFormGateway" style="flex: 1;"></select>
                         <button type="button" class="btn btn-sm" data-act="testRuleGateway"
@@ -1173,7 +1173,7 @@
                 <input type="hidden" id="silenceFormId">
 
                 <div class="form-group">
-                    <label class="form-label" data-i18n="silence.commentLabel">Note</label>
+                    <label for="silenceFormComment" class="form-label" data-i18n="silence.commentLabel">Note</label>
                     <input type="text" class="form-input" id="silenceFormComment" data-i18n-placeholder="silence.commentPlaceholder" placeholder="e.g. Muting GPU node maintenance window" autocomplete="off">
                 </div>
 
@@ -1183,7 +1183,7 @@
                     <span style="font-size: var(--fs-xs); color: var(--text-muted); margin-left: 0.5rem;" data-i18n="silence.matchHint">At least one is required. Same matching as forward rules.</span>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="silence.sourceLabel">Source</label>
+                    <label for="silenceFormSource" class="form-label" data-i18n="silence.sourceLabel">Source</label>
                     <input type="text" class="form-input" id="silenceFormSource" data-i18n-placeholder="silence.sourcePlaceholder" placeholder="Comma-separated; empty = all sources" autocomplete="off">
                 </div>
                 <div class="form-group" style="margin-bottom: 0.75rem;">
@@ -1201,26 +1201,26 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="silence.eventTypeLabel">Event Type</label>
+                    <label for="silenceFormEventType" class="form-label" data-i18n="silence.eventTypeLabel">Event Type</label>
                     <input type="text" class="form-input" id="silenceFormEventType" data-i18n-placeholder="silence.eventTypePlaceholder" placeholder="Comma-separated; empty = all types" autocomplete="off">
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label" data-i18n="silence.projectLabel">Project</label>
+                        <label for="silenceFormProject" class="form-label" data-i18n="silence.projectLabel">Project</label>
                         <input type="text" class="form-input" id="silenceFormProject" data-i18n-placeholder="silence.projectPlaceholder" placeholder="e.g. demo-cn" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label class="form-label" data-i18n="silence.regionLabel">Region</label>
+                        <label for="silenceFormRegion" class="form-label" data-i18n="silence.regionLabel">Region</label>
                         <input type="text" class="form-input" id="silenceFormRegion" data-i18n-placeholder="silence.regionPlaceholder" placeholder="e.g. cn-shanghai" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label class="form-label" data-i18n="silence.envLabel">Environment</label>
+                        <label for="silenceFormEnvironment" class="form-label" data-i18n="silence.envLabel">Environment</label>
                         <input type="text" class="form-input" id="silenceFormEnvironment" data-i18n-placeholder="silence.envPlaceholder" placeholder="e.g. prod,dev" autocomplete="off">
                     </div>
                 </div>
                 <small style="display:block; color: var(--text-muted); font-size: var(--fs-xs); margin: -0.5rem 0 0.75rem;" data-i18n="silence.geoHint">Project, region, and environment support comma-separated values; use !prod / !demo-cn to exclude.</small>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="silence.payloadLabel">Payload Field Match</label>
+                    <label for="silenceFormPayload" class="form-label" data-i18n="silence.payloadLabel">Payload Field Match</label>
                     <input type="text" class="form-input" id="silenceFormPayload" data-i18n-placeholder="silence.payloadPlaceholder" placeholder='e.g. status=firing,severity=critical' autocomplete="off">
                     <small style="color: var(--text-muted); font-size: var(--fs-xs);" data-i18n="silence.payloadHint">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
                 </div>
@@ -1230,7 +1230,7 @@
                     <span style="font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;" data-i18n="silence.durationSection">Duration</span>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="silence.durationLabel">Mute for</label>
+                    <label for="silenceFormDuration" class="form-label" data-i18n="silence.durationLabel">Mute for</label>
                     <select class="form-input" id="silenceFormDuration">
                         <option value="keep" data-i18n="silence.duration.keep">Keep current</option>
                         <option value="1" data-i18n="silence.duration.1h">1 hour</option>
@@ -1265,7 +1265,7 @@
 
                 <div style="display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: end;">
                     <div class="form-group">
-                        <label class="form-label" data-i18n="mw.nameLabel">Name *</label>
+                        <label for="mwFormName" class="form-label" data-i18n="mw.nameLabel">Name *</label>
                         <input type="text" class="form-input" id="mwFormName" data-i18n-placeholder="mw.namePlaceholder" placeholder="e.g. weekend-db-maintenance" autocomplete="off">
                     </div>
                     <div class="form-checkbox" style="padding-bottom: 0.35rem;">
@@ -1274,7 +1274,7 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="mw.commentLabel">Note</label>
+                    <label for="mwFormComment" class="form-label" data-i18n="mw.commentLabel">Note</label>
                     <input type="text" class="form-input" id="mwFormComment" data-i18n-placeholder="mw.commentPlaceholder" placeholder="e.g. Weekly DB maintenance, DBA team" autocomplete="off">
                 </div>
 
@@ -1297,15 +1297,15 @@
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label" data-i18n="mw.startLabel">Start time *</label>
+                        <label for="mwFormStartTime" class="form-label" data-i18n="mw.startLabel">Start time *</label>
                         <input type="time" class="form-input" id="mwFormStartTime" value="02:00">
                     </div>
                     <div class="form-group">
-                        <label class="form-label" data-i18n="mw.durationLabel">Duration (minutes) *</label>
+                        <label for="mwFormDurationMinutes" class="form-label" data-i18n="mw.durationLabel">Duration (minutes) *</label>
                         <input type="number" class="form-input" id="mwFormDurationMinutes" min="1" max="10080" step="1" value="120">
                     </div>
                     <div class="form-group">
-                        <label class="form-label" data-i18n="mw.timezoneLabel">Timezone</label>
+                        <label for="mwFormTimezone" class="form-label" data-i18n="mw.timezoneLabel">Timezone</label>
                         <input type="text" class="form-input" id="mwFormTimezone" value="Asia/Shanghai" autocomplete="off">
                     </div>
                 </div>
@@ -1316,7 +1316,7 @@
                     <span style="font-size: var(--fs-xs); color: var(--text-muted); margin-left: 0.5rem;" data-i18n="silence.matchHint">At least one is required. Same matching as forward rules.</span>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="silence.sourceLabel">Source</label>
+                    <label for="mwFormSource" class="form-label" data-i18n="silence.sourceLabel">Source</label>
                     <input type="text" class="form-input" id="mwFormSource" data-i18n-placeholder="silence.sourcePlaceholder" placeholder="Comma-separated; empty = all sources" autocomplete="off">
                 </div>
                 <div class="form-group" style="margin-bottom: 0.75rem;">
@@ -1334,26 +1334,26 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="silence.eventTypeLabel">Event Type</label>
+                    <label for="mwFormEventType" class="form-label" data-i18n="silence.eventTypeLabel">Event Type</label>
                     <input type="text" class="form-input" id="mwFormEventType" data-i18n-placeholder="silence.eventTypePlaceholder" placeholder="Comma-separated; empty = all types" autocomplete="off">
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
                     <div class="form-group">
-                        <label class="form-label" data-i18n="silence.projectLabel">Project</label>
+                        <label for="mwFormProject" class="form-label" data-i18n="silence.projectLabel">Project</label>
                         <input type="text" class="form-input" id="mwFormProject" data-i18n-placeholder="silence.projectPlaceholder" placeholder="e.g. demo-cn" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label class="form-label" data-i18n="silence.regionLabel">Region</label>
+                        <label for="mwFormRegion" class="form-label" data-i18n="silence.regionLabel">Region</label>
                         <input type="text" class="form-input" id="mwFormRegion" data-i18n-placeholder="silence.regionPlaceholder" placeholder="e.g. cn-shanghai" autocomplete="off">
                     </div>
                     <div class="form-group">
-                        <label class="form-label" data-i18n="silence.envLabel">Environment</label>
+                        <label for="mwFormEnvironment" class="form-label" data-i18n="silence.envLabel">Environment</label>
                         <input type="text" class="form-input" id="mwFormEnvironment" data-i18n-placeholder="silence.envPlaceholder" placeholder="e.g. prod,dev" autocomplete="off">
                     </div>
                 </div>
                 <small style="display:block; color: var(--text-muted); font-size: var(--fs-xs); margin: -0.5rem 0 0.75rem;" data-i18n="silence.geoHint">Project, region, and environment support comma-separated values; use !prod / !demo-cn to exclude.</small>
                 <div class="form-group">
-                    <label class="form-label" data-i18n="silence.payloadLabel">Payload Field Match</label>
+                    <label for="mwFormPayload" class="form-label" data-i18n="silence.payloadLabel">Payload Field Match</label>
                     <input type="text" class="form-input" id="mwFormPayload" data-i18n-placeholder="silence.payloadPlaceholder" placeholder='e.g. status=firing,severity=critical' autocomplete="off">
                     <small style="color: var(--text-muted); font-size: var(--fs-xs);" data-i18n="silence.payloadHint">key=value, comma-separated; multiple conditions are combined with AND. Nested paths are supported, e.g. alert.labels.severity=critical</small>
                 </div>
@@ -1371,6 +1371,8 @@
          injected at render time; see api/dashboard.py. -->
     <script defer src="/static/js/i18n.js"></script>
     <script defer src="/static/js/utils.js"></script>
+    <!-- Before every analysis module: they read the shared window at load. -->
+    <script defer src="/static/js/analysis-window.js"></script>
     <script defer src="/static/js/api.js"></script>
     <script defer src="/static/js/overview.js"></script>
     <script defer src="/static/js/alerts.js"></script>
@@ -1406,6 +1408,7 @@
                 <span class="palette-prompt" aria-hidden="true"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></span>
                 <input id="paletteInput" type="text" autocomplete="off" spellcheck="false"
                        data-i18n-placeholder="palette.placeholder" placeholder="Search destinations…"
+                       data-i18n-aria-label="palette.placeholder" aria-label="Search destinations"
                        role="combobox" aria-expanded="true" aria-controls="paletteList">
             </div>
             <div class="palette-list" id="paletteList" role="listbox"></div>

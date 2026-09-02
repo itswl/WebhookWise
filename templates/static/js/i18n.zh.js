@@ -1775,5 +1775,22 @@
             'ingress.forward.test': '测试转发',
             'ingress.forward.success': '转发目标验证成功。',
             'ingress.forward.urlRequired': '请输入目标 URL。',
+            // ── Analysis group + shared window ──
+            'nav.group.analysis': '分析',
+            // ── Forward rules as compact rows ──
+            'rules.row.matchAll': '匹配全部',
+            'rules.row.toggleDetails': '展开或收起详情',
+            'rules.row.toggleAria': '启用规则 {name}',
+            // ── Programmatic labels for form controls ──
+            'alerts.page.sizeLabel': '每页条数',
+            'incidents.filter.statusLabel': '按状态筛选事件',
+            'deep.filter.statusLabel': '按状态筛选分析',
+            'deep.filter.engineLabel': '按引擎筛选',
+            'dt.filter.resultLabel': '按结果筛选',
+            'dt.filter.sourceLabel': '按来源筛选',
+            'kb.contentLabel': '草稿内容',
+            'rs.edit.valueLabel': '新值',
+            'knowledgeGaps.form.titleLabel': '预案标题',
+            'knowledgeGaps.form.contentLabel': '预案内容',
     };
 })();

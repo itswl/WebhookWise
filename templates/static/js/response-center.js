@@ -474,8 +474,8 @@ const ResponseCenterModule = (function () {
         panel.style.display = 'block';
         const pattern = displayValue(item.alert_pattern) || serviceName(item);
         panel.innerHTML =
-            '<input type="text" class="filter-input" data-rb-title style="width:100%; margin-bottom:8px;">' +
-            '<textarea class="filter-input" data-rb-content style="width:100%; min-height:220px; font-size:0.85rem; line-height:1.6; resize:vertical; font-family:inherit;"></textarea>' +
+            '<input type="text" class="filter-input" data-rb-title aria-label="' + escapeHtml(t('knowledgeGaps.form.titleLabel')) + '" style="width:100%; margin-bottom:8px;">' +
+            '<textarea class="filter-input" data-rb-content aria-label="' + escapeHtml(t('knowledgeGaps.form.contentLabel')) + '" style="width:100%; min-height:220px; font-size:0.85rem; line-height:1.6; resize:vertical; font-family:inherit;"></textarea>' +
             '<div style="display:flex; gap:8px; margin-top:8px;">' +
             '<button type="button" class="btn btn-sm btn-quiet-primary" data-rb-save>' + wwIcon('check') + ' ' + escapeHtml(t('knowledgeGaps.form.publish')) + '</button>' +
             '<button type="button" class="btn btn-sm" data-rb-cancel>' + escapeHtml(t('common.cancel')) + '</button></div>';

@@ -26,6 +26,12 @@ const RuleAuditModule = (function () {
         container.innerHTML = '<div class="loading"><div class="spinner"></div><p>' + t('common.loading') + '</p></div>';
 
         var daysEl = document.getElementById('auditWindowDays');
+        // Shared analysis window: 7/30 days follow the choice made on any
+        // analysis page; 90 and 180 stay local picks of this select.
+        if (typeof wwAnalysisWindow !== 'undefined') {
+            wwAnalysisWindow.bindSelect(daysEl);
+            wwAnalysisWindow.syncSelect(daysEl);
+        }
         var windowDays = daysEl ? parseInt(daysEl.value, 10) || 30 : 30;
 
         try {
