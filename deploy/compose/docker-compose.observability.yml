@@ -52,10 +52,16 @@ services:
     volumes:
       - ../../deploy/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - alloy_data:/var/lib/alloy/data
+    # Every published port in this file binds to loopback unless
+    # OBSERVABILITY_BIND_ADDRESS says otherwise. The app containers ship
+    # telemetry to Alloy over webhook_net and Prometheus scrapes over the
+    # Compose networks; the host ports exist for a person on the box (or an SSH
+    # tunnel), not for the internet. Nine of these were on 0.0.0.0 with a
+    # non-persistent firewall in front — see the 2026-09-02 decision note.
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "12345:12345"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:4317:4317"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:4318:4318"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:12345:12345"
     # A ceiling the process can actually hit, so memory_limiter's soft limit
     # means something relative to a real bound. It had none: the limiter was
     # refusing batches at 192MiB while the container was free to take the
@@ -89,7 +95,7 @@ services:
       - ../../deploy/observability/prometheus/hookjudge.token:/etc/prometheus/hookjudge.token:ro
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:9090:9090"
     networks:
       - webhook_net
       - hookstack_net
@@ -110,7 +116,7 @@ services:
       - ../../deploy/observability/alertmanager/bypass-url:/etc/alertmanager/bypass-url:ro
       - alertmanager_data:/alertmanager
     ports:
-      - "9093:9093"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:9093:9093"
     networks:
       - webhook_net
 
@@ -167,11 +173,29 @@ services:
     restart: unless-stopped
     profiles:
       - diagnostics
-    command: ["server"]
+    # Pyroscope 2 stops flag parsing at a positional word, so the former
+    # `command: ["server"]` was ignored — and, being a CMD override, it also
+    # discarded the image's `-config.file`. The binary ran on pure defaults.
+    # Verified on 2.0.2: WORKDIR is /, and every default path
+    # (-pyroscopedb.data-path ./data, -storage.filesystem.dir ./data/v2/shared,
+    # -metastore.raft.dir ./data/v2/metastore/raft) resolves under /data, which
+    # the image declares as a VOLUME. That is why production carried 965 MB in
+    # an ANONYMOUS volume while the named volume, mounted at /var/lib/pyroscope,
+    # held nothing — and why the raft WAL, which its own flag help says must
+    # live on a persistent directory, was recreated with every container.
+    #
+    # -retention-period already defaults to 31d; it is set here so the bound is
+    # written down rather than inherited, and matches Loki's 30d. The
+    # compactor's block retention defaults to 0 (never), so it gets the same
+    # value. The disk-floor policy (-pyroscopedb.retention-policy-min-free-disk-gb,
+    # default 10 GiB) keeps its default.
+    command:
+      - -retention-period=30d
+      - -compactor.blocks-retention-period=30d
     volumes:
-      - pyroscope_data:/var/lib/pyroscope
+      - pyroscope_data:/data
     ports:
-      - "4040:4040"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:4040:4040"
     networks:
       - webhook_net
 
@@ -187,7 +211,7 @@ services:
       - ../../deploy/observability/tempo/tempo.yml:/etc/tempo.yml:ro
       - tempo_data:/tmp/tempo
     ports:
-      - "3200:3200"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3200:3200"
     networks:
       - webhook_net
 
@@ -200,7 +224,7 @@ services:
       - ../../deploy/observability/loki/loki.yml:/etc/loki/local-config.yml:ro
       - loki_data:/loki
     ports:
-      - "3100:3100"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3100:3100"
     networks:
       - webhook_net
 
@@ -217,7 +241,7 @@ services:
       - ../../deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     ports:
-      - "3000:3000"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3000:3000"
     depends_on:
       prometheus:
         condition: service_started

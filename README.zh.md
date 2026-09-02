@@ -56,6 +56,22 @@ high,脚本就拒绝建议降级,因为那种噪音必须靠把告警做得更�
 
 ![降噪中心:每条静默规则都有 ROI](docs/img/zh/03-noise-center.png)
 
+## 一键试用
+
+不用 clone、不用 build、不用任何密钥,只拉已发布的镜像:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/itswl/WebhookWise/main/docker-compose.quickstart.yml
+docker compose -f docker-compose.quickstart.yml up -d
+docker compose -f docker-compose.quickstart.yml run --rm seed
+```
+
+然后打开 `http://127.0.0.1:8000`。seed 会经由真实的接收链路灌入 60 条覆盖四种来源方言的合成告警,大约三十秒后面板里就有了归组的事故、去重链、一次恢复和一个抖动身份,而不是一个空壳。
+
+不需要模型密钥:分析会退化到关键词规则,这条规则底线正是 AI 路径被拿来对照的基准。想点亮模型路径,在 `up` 前面加上 `OPENAI_API_KEY=... ENABLE_AI_ANALYSIS=true`。
+
+这是一套评估栈,并且被设计成无法悄悄变成部署:里面每一个凭据都以 `please-change-` 开头,而生产环境的启动检查恰好拒绝这个前缀,所以在不替换它们的情况下设置 `APP_ENV=production` 会让应用带着一条具名错误停下,而不是把一个用着已知密钥的实例暴露到公网。正式安装请继续往下看。
+
 ## 五分钟上手
 
 1. 准备配置:

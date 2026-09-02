@@ -111,7 +111,7 @@ const IncidentsModule = (function () {
             html += '</div>';
             html += '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">';
             html += '<span>' + escapeHtml(row.source || '') + '</span> · ';
-            html += '<span>' + row.alert_count + ' alerts</span> · ';
+            html += '<span>' + escapeHtml(t('incidents.alertCount', { n: row.alert_count })) + '</span> · ';
             html += '<span>' + formatTime(row.started_at) + '</span>';
             if (row.top_importance) {
                 html += ' · <span>' + (row.top_importance === 'high' ? '<span class="ww-dot ww-dot-danger"></span> high' : row.top_importance === 'medium' ? '<span class="ww-dot ww-dot-warning"></span> medium' : '<span class="ww-dot ww-dot-success"></span> low') + '</span>';

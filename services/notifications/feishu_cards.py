@@ -10,6 +10,7 @@ from contracts.webhook_payload import JsonObject, WebhookData
 from core.datetime_utils import naive_utc, parse_utc_datetime
 from core.logger import mask_url
 from services.notifications.feishu_parser import _build_identity_content, format_identity_line
+from services.notifications.markdown_safety import escape_lark_md
 from services.webhooks.types import AnalysisResult
 
 _IMPORTANCE_TEMPLATE = {"high": "red", "critical": "red", "medium": "orange", "low": "green"}
@@ -27,10 +28,11 @@ _TRIAGE_LABEL = {"act_now": "立即处理", "monitor": "关注观察", "defer": 
 
 
 def _add_md_section(elements: list[JsonObject], title: str, content: object, max_len: int = 800) -> None:
+    """Append one titled block; ``content`` is model/payload text, escaped rather than trusted as markup."""
     text = _truncate_section_text(content, max_len)
     if not text:
         return
-    elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**{title}**\n{text}"}})
+    elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**{title}**\n{escape_lark_md(text)}"}})
     elements.append({"tag": "hr"})
 
 
@@ -82,7 +84,7 @@ def _markdown_list(value: object, *, max_items: int = 4, max_item_len: int = 180
     for item in _string_list(value)[:max_items]:
         text = item if len(item) <= max_item_len else item[: max_item_len - 3] + "..."
         if text:
-            lines.append(f"- {text}")
+            lines.append(f"- {escape_lark_md(text)}")
     return "\n".join(lines)
 
 
@@ -153,14 +155,17 @@ def build_feishu_card(
     # 1) Lead with what matters: importance tag + the one-line summary. This is
     #    the first thing the eye lands on, so the reader immediately knows
     #    "how bad" and "what happened" without scanning a label grid.
-    headline = f"{importance_label}　{summary[:400]}" if summary else importance_label
+    #    Every value interpolated below comes from the payload or the model; the
+    #    escape keeps a crafted summary from paging the chat (<at id=all>) or
+    #    closing this bold early to plant a fake label.
+    headline = f"{importance_label}　{escape_lark_md(summary[:400])}" if summary else importance_label
     elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**{headline}**"}})
 
     # 2) Identity condensed to one readable line (a breadcrumb of the meaningful
     #    values), instead of a label grid that read as cluttered.
     identity_line = format_identity_line(analysis_result, parsed)
     if identity_line:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"🏷️ {identity_line}"}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"🏷️ {escape_lark_md(identity_line)}"}})
 
     # 2b) Act-now-vs-defer verdict — the reader's first question, answered
     #     before they scan anything else. Suppressed on recovery cards: the
@@ -182,12 +187,17 @@ def build_feishu_card(
     # 3) Impact as its own clearly-titled block (secondary to the headline).
     if impact:
         elements.append({"tag": "hr"})
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🎯 影响范围**\n{impact[:600]}"}})
+        elements.append(
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"**🎯 影响范围**\n{escape_lark_md(impact[:600])}"}}
+        )
 
     # 4) Matching knowledge-base entries (documented resolutions) so the reader
     #    gets the runbook at notification time, not after a dashboard visit.
     if kb_links:
-        kb_lines = "\n".join(f"- **{item.get('title', '')}**：{item.get('snippet', '')}" for item in kb_links[:3])
+        kb_lines = "\n".join(
+            f"- **{escape_lark_md(str(item.get('title', '')))}**：{escape_lark_md(str(item.get('snippet', '')))}"
+            for item in kb_links[:3]
+        )
         elements.append({"tag": "hr"})
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📖 相关知识库**\n{kb_lines}"}})
 
@@ -227,7 +237,10 @@ def build_ai_error_card(webhook_data: WebhookData, error_reason: str, *, is_degr
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": f"**🔔 来源**：{webhook_data.get('source', '未知')}\n**⚠️ 原因**：{error_reason}",
+                        "content": (
+                            f"**🔔 来源**：{escape_lark_md(str(webhook_data.get('source', '未知')))}\n"
+                            f"**⚠️ 原因**：{escape_lark_md(error_reason)}"
+                        ),
                     },
                 }
             ],
@@ -259,7 +272,10 @@ def build_deep_analysis_card(
         {
             "tag": "div",
             "fields": [
-                {"is_short": True, "text": {"tag": "lark_md", "content": f"**🔔 来源**\n{display_source or '—'}"}},
+                {
+                    "is_short": True,
+                    "text": {"tag": "lark_md", "content": f"**🔔 来源**\n{escape_lark_md(display_source) or '—'}"},
+                },
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**🆔 告警 ID**\n{webhook_event_id or '—'}"}},
                 {"is_short": True, "text": {"tag": "lark_md", "content": f"**⚙️ 引擎**\n{engine or '—'}"}},
                 {
@@ -272,7 +288,9 @@ def build_deep_analysis_card(
     ]
 
     if summary:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📝 分析摘要**\n{summary}"}})
+        elements.append(
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"**📝 分析摘要**\n{escape_lark_md(summary)}"}}
+        )
         elements.append({"tag": "hr"})
 
     _add_md_section(elements, "🔍 根因", root_cause, 1000)
@@ -295,11 +313,14 @@ def build_deep_analysis_card(
 
     identity_content = _build_identity_content({"alert_identity": identity}, {})
     if identity_content:
-        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警标识**\n{identity_content}"}})
+        elements.append(
+            {"tag": "div", "text": {"tag": "lark_md", "content": f"**🏷️ 告警标识**\n{escape_lark_md(identity_content)}"}}
+        )
         elements.append({"tag": "hr"})
 
     if len(elements) == 2:
-        fallback = _truncate_section_text(report.get("primary_text") or report.get("raw_text"), 1200) or "无"
+        raw_fallback = _truncate_section_text(report.get("primary_text") or report.get("raw_text"), 1200)
+        fallback = escape_lark_md(raw_fallback) or "无"
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📋 分析内容**\n{fallback}"}})
         elements.append({"tag": "hr"})
 
@@ -387,7 +408,10 @@ def build_delivery_exhausted_card(outbox: Any) -> JsonObject:
                         "content": f"**🔗 目标地址**\n{mask_url(target_url) if target_url else '—'}",
                     },
                 },
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"**⚠️ 最后错误**\n{last_error or '—'}"}},
+                {
+                    "tag": "div",
+                    "text": {"tag": "lark_md", "content": f"**⚠️ 最后错误**\n{escape_lark_md(last_error) or '—'}"},
+                },
             ],
         },
     }

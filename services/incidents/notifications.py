@@ -11,8 +11,10 @@ from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
 from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
 from models import ForwardOutbox, Incident, WebhookEvent
+from services.forwarding.outbox_records import find_outbox_id_by_key, insert_outbox_or_existing
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.notifications.feishu_actions import build_incident_action_value
+from services.notifications.markdown_safety import escape_lark_md
 from services.notifications.routing import resolve_notification_target
 from services.webhooks.types import ForwardOutboxStatus
 
@@ -27,7 +29,7 @@ def _incident_card(
         {
             "tag": "markdown",
             "content": (
-                f"**Source:** {incident.source or 'unknown'}\n"
+                f"**Source:** {escape_lark_md(incident.source or '') or 'unknown'}\n"
                 f"**Alerts:** {incident.alert_count}\n"
                 f"**Started:** {incident.started_at.isoformat()}\n"
                 f"**Importance:** {incident.top_importance or '?'}"
@@ -175,11 +177,9 @@ async def queue_incident_notifications(
         if incident.id is None:
             continue
         key = f"incident-created:{incident.id}"
-        existing = (
-            await session.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
-        ).scalar_one_or_none()
+        existing = await find_outbox_id_by_key(session, key)
         if existing is not None:
-            outbox_ids.append(int(existing))
+            outbox_ids.append(existing)
             continue
         record = ForwardOutbox(
             idempotency_key=key,
@@ -204,10 +204,12 @@ async def queue_incident_notifications(
             created_at=now,
             updated_at=now,
         )
-        session.add(record)
-        await session.flush()
-        outbox_ids.append(int(record.id))
-        FORWARD_OUTBOX_RECORDS_TOTAL.labels("feishu_app" if app_enabled else "feishu", "created").inc()
+        # Grouping can run on more than one worker; the loser of the insert race
+        # adopts the winner's row instead of failing the incident transaction.
+        outbox_id, created = await insert_outbox_or_existing(session, record)
+        outbox_ids.append(outbox_id)
+        if created:
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels("feishu_app" if app_enabled else "feishu", "created").inc()
     return outbox_ids
 
 
@@ -232,17 +234,18 @@ def _incident_resolved_card(incident: Incident, *, resolver: str) -> dict[str, A
     lines = [
         f"**⏱️ 持续时长**：{duration}",
         f"**📊 告警数量**：{incident.alert_count}",
-        f"**👤 解决人**：{resolver or incident.assignee or '—'}",
+        f"**👤 解决人**：{escape_lark_md(resolver or incident.assignee or '') or '—'}",
     ]
     elements: list[dict[str, Any]] = [
-        {"tag": "div", "text": {"tag": "lark_md", "content": f"**{incident.title[:120]}**"}},
+        {"tag": "div", "text": {"tag": "lark_md", "content": f"**{escape_lark_md(incident.title[:120])}**"}},
         {"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}},
     ]
 
     summary = incident.summary_analysis if isinstance(incident.summary_analysis, dict) else None
     if summary:
-        summary_text = str(summary.get("summary") or "").strip()[:400]
-        root_cause = str(summary.get("root_cause") or "").strip()[:400]
+        # Model output: escaped like every other untrusted value in a card.
+        summary_text = escape_lark_md(str(summary.get("summary") or "").strip()[:400])
+        root_cause = escape_lark_md(str(summary.get("root_cause") or "").strip()[:400])
         parts = []
         if summary_text:
             parts.append(f"**📝 事故摘要**\n{summary_text}")
@@ -311,11 +314,9 @@ async def queue_incident_resolved_recap(session: AsyncSession, incident: Inciden
         return None
 
     key = f"incident-resolved-recap:{incident.id}"
-    existing = (
-        await session.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
-    ).scalar_one_or_none()
+    existing = await find_outbox_id_by_key(session, key)
     if existing is not None:
-        return int(existing)
+        return existing
 
     policy = ForwardDeliveryPolicy.from_config()
     now = utcnow()
@@ -338,10 +339,10 @@ async def queue_incident_resolved_recap(session: AsyncSession, incident: Inciden
         created_at=now,
         updated_at=now,
     )
-    session.add(record)
-    await session.flush()
-    FORWARD_OUTBOX_RECORDS_TOTAL.labels(target.target_type, "created").inc()
-    return int(record.id)
+    outbox_id, created = await insert_outbox_or_existing(session, record)
+    if created:
+        FORWARD_OUTBOX_RECORDS_TOTAL.labels(target.target_type, "created").inc()
+    return outbox_id
 
 
 async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> list[int]:
@@ -441,11 +442,13 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
     for (resource_type, resource_id, title, status, due_at, assignee), key in keys_by_resource:
         if key in already_queued:
             continue
+        # Title and assignee are payload/operator text and get escaped; the
+        # template's own dashboard link and <at id="all"> below are markup.
         body = (
             f"**Resource:** {resource_type} #{resource_id}\n"
-            f"**Title:** {title[:160]}\n"
+            f"**Title:** {escape_lark_md(title[:160])}\n"
             f"**Workflow status:** {status}\n"
-            f"**Assignee:** {assignee or 'unassigned'}\n"
+            f"**Assignee:** {escape_lark_md(assignee) or 'unassigned'}\n"
             f"**SLA due:** {due_at.isoformat()}"
         )
         if dashboard_url:
@@ -479,10 +482,10 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
             created_at=now,
             updated_at=now,
         )
-        session.add(record)
-        await session.flush()
-        outbox_ids.append(int(record.id))
-        FORWARD_OUTBOX_RECORDS_TOTAL.labels("feishu", "created").inc()
+        outbox_id, created = await insert_outbox_or_existing(session, record)
+        outbox_ids.append(outbox_id)
+        if created:
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels("feishu", "created").inc()
         # Mark the escalation on the incident itself so it is visible without
         # joining the outbox (dashboard badge, postmortem timeline).
         if resource_type == "incident":

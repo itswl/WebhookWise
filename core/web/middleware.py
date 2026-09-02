@@ -2,6 +2,7 @@ import time
 from collections.abc import Callable, MutableMapping
 from typing import Any
 
+from starlette.requests import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from core.log_context import clear_log_context, set_log_context
@@ -16,6 +17,7 @@ from core.observability.tracing import (
     set_current_span_error,
     set_fallback_trace_id,
 )
+from core.request_ip import get_client_ip
 
 logger = get_logger("web.middleware")
 
@@ -160,7 +162,14 @@ class TraceContextMiddleware:
         method = str(scope.get("method") or "")
         path = str(scope.get("path") or "")
         client = scope.get("client")
-        client_ip = client[0] if isinstance(client, tuple) and client else ""
+        peer_ip = client[0] if isinstance(client, tuple) and client else ""
+        # Behind Cloudflare -> Caddy -> docker-proxy the TCP peer is always the
+        # bridge gateway; resolve the trusted forwarded address so the request
+        # log and the `client.address` attribute name the real caller.
+        try:
+            client_ip = get_client_ip(Request(scope)) if peer_ip else ""
+        except Exception:  # noqa: BLE001 - a log attribute must never fail the request
+            client_ip = peer_ip
         content_length = headers.get("content-length", "")
         incoming = extract_trace_id_from_headers(headers)
         otel_tid = get_otel_trace_id()

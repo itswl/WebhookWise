@@ -21,6 +21,28 @@ _SUMMARY_MAX_ATTEMPTS = 5
 _SUMMARY_LEASE_SECONDS = 180
 
 
+_IMPORTANCE_RANK = {"low": 0, "medium": 1, "high": 2}
+
+
+def _summary_min_importance() -> str:
+    """The operator's floor for paid summaries; runtime override wins over env."""
+    from core.app_context import get_config_manager
+    from services.operations import runtime_settings as rt
+
+    cfg = get_config_manager().notifications
+    raw = rt.override_or("INCIDENT_SUMMARY_MIN_IMPORTANCE", getattr(cfg, "INCIDENT_SUMMARY_MIN_IMPORTANCE", "low"))
+    value = str(raw or "low").strip().lower()
+    return value if value in _IMPORTANCE_RANK else "low"
+
+
+def _importance_earns_summary(importance: object) -> bool:
+    """An unknown or missing importance fails open: a summary is never withheld by accident."""
+    rank = _IMPORTANCE_RANK.get(str(importance or "").strip().lower())
+    if rank is None:
+        return True
+    return rank >= _IMPORTANCE_RANK[_summary_min_importance()]
+
+
 def queue_summary_if_needed(incident: Incident, now: Any) -> None:
     """Set the durable summary-work state for an incident entering a quiet/closed state.
 
@@ -29,6 +51,11 @@ def queue_summary_if_needed(incident: Incident, now: Any) -> None:
     quiet-scan, recovery-close, and workflow-resolve paths that all queue it.
     """
     if incident.summary_analysis is not None:
+        return
+    if incident.alert_count >= 2 and not _importance_earns_summary(incident.top_importance):
+        incident.summary_status = "skipped"
+        incident.summary_next_attempt_at = None
+        incident.summary_last_error = "incident importance below INCIDENT_SUMMARY_MIN_IMPORTANCE"
         return
     if incident.alert_count >= 2:
         incident.summary_status = "pending"

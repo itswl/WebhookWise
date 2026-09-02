@@ -281,7 +281,7 @@ function renderRuleCard(rule) {
  */
 function formatImportance(importance) {
     if (!importance) return t('common.all');
-    const map = { 'high': t('common.high'), 'medium': t('common.medium'), 'low': t('common.low') };
+    const map = { 'critical': t('common.critical'), 'high': t('common.high'), 'medium': t('common.medium'), 'low': t('common.low') };
     return importance.split(',').map(i => map[i.trim()] || i.trim()).join(',') || t('common.all');
 }
 

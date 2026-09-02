@@ -21,6 +21,7 @@ from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
 from models import ForwardOutbox, RemediationProposal
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.notifications.feishu_actions import build_proposal_action_value
+from services.notifications.markdown_safety import escape_lark_md
 from services.notifications.routing import resolve_notification_target
 from services.webhooks.types import ForwardOutboxStatus
 
@@ -45,11 +46,13 @@ def _proposal_card(
         {
             "tag": "markdown",
             "content": (
-                f"**Action:** {proposal.action}\n"
-                f"**Resource:** {resource}\n"
-                f"**Proposed by:** {proposal.proposed_by}\n"
+                # The proposer is an agent and the reason is model text: escape
+                # before it can place a link or a mention in the approval card.
+                f"**Action:** {escape_lark_md(str(proposal.action))}\n"
+                f"**Resource:** {escape_lark_md(resource)}\n"
+                f"**Proposed by:** {escape_lark_md(str(proposal.proposed_by))}\n"
                 f"**Expires:** {proposal.expires_at.isoformat()}\n"
-                f"**Reason:** {reason}"
+                f"**Reason:** {escape_lark_md(reason)}"
             ),
         }
     ]

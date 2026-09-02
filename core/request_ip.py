@@ -33,7 +33,12 @@ def _parse_proxy_cidrs(raw: str) -> tuple[tuple[str, _IpNetwork | None], ...]:
 
 def get_client_ip(request: Request) -> str:
     """Return the trusted client IP for a FastAPI request."""
-    context = getattr(request.app.state, "app_context", None)
+    # Test doubles and bare ASGI scopes carry no application; fall back to the
+    # process-wide config instead of failing a log/limit lookup.
+    try:
+        context = getattr(request.app.state, "app_context", None)
+    except (AttributeError, KeyError):
+        context = None
     config = context.config if isinstance(context, AppContext) else get_config_manager()
     security = config.security
     if _is_trusted_proxy(request.client.host if request.client else None, security=security):

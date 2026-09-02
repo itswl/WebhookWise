@@ -19,6 +19,8 @@ When using the business Compose files in this directory directly, the command ne
 
 The observability stack uses the separate project `webhookwise-observability` and joins the `webhookwise_webhook_net` network created by the business stack. This way `docker compose ps` from the repository root only shows the business containers.
 
+Every host port these files publish binds to `127.0.0.1` by default (`API_BIND_ADDRESS` and `OBSERVABILITY_BIND_ADDRESS` in `.env`): the reference host fronts the API with a reverse proxy and the containers talk to each other over the Compose networks, so set a variable to `0.0.0.0` only on a bare host whose firewall you own.
+
 ## Data persistence
 
 Redis and PostgreSQL persist to named volumes (`webhookwise_redis_data`,

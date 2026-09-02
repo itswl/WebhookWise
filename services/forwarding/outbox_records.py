@@ -6,6 +6,7 @@ import hashlib
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
@@ -94,13 +95,11 @@ async def create_outbox_records(
             is_periodic_reminder=is_periodic_reminder,
             extra=idempotency_extra,
         )
-        existing = (
-            await session.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
-        ).scalar_one_or_none()
+        existing = await find_outbox_id_by_key(session, key)
         if existing is not None:
             logger.info("[%s] Idempotency hit key=%s id=%s", log_tag, key, existing)
             FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "duplicate").inc()
-            outbox_ids.append(int(existing))
+            outbox_ids.append(existing)
             continue
 
         record = ForwardOutbox(
@@ -128,14 +127,18 @@ async def create_outbox_records(
             created_at=now,
             updated_at=now,
         )
-        session.add(record)
-        await session.flush()
-        outbox_ids.append(int(record.id))
+        outbox_id, created = await insert_outbox_or_existing(session, record)
+        outbox_ids.append(outbox_id)
+        if not created:
+            # Same outcome as the pre-check hit above; only the timing differs.
+            logger.info("[%s] Idempotency race lost key=%s id=%s", log_tag, key, outbox_id)
+            FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "duplicate").inc()
+            continue
         FORWARD_OUTBOX_RECORDS_TOTAL.labels(target_type, "created").inc()
         logger.info(
             "[%s] Created forward intent id=%s event_id=%s event_type=%s rule=%s target=%s",
             log_tag,
-            record.id,
+            outbox_id,
             webhook_id,
             event_type,
             rule.name,
@@ -143,6 +146,41 @@ async def create_outbox_records(
         )
 
     return outbox_ids
+
+
+async def find_outbox_id_by_key(session: AsyncSession, key: str) -> int | None:
+    """Id of the committed-and-visible outbox row carrying ``key``, if any."""
+    existing = (
+        await session.execute(select(ForwardOutbox.id).where(ForwardOutbox.idempotency_key == key))
+    ).scalar_one_or_none()
+    return int(existing) if existing is not None else None
+
+
+async def insert_outbox_or_existing(session: AsyncSession, record: ForwardOutbox) -> tuple[int, bool]:
+    """Flush ``record`` under a SAVEPOINT; on an idempotency-key collision adopt the winner's row.
+
+    Returns ``(outbox_id, created)``. Two workers can both pass the SELECT
+    pre-check for one key before either commits; the UNIQUE index then rejects
+    the loser at flush time. Left uncaught, that IntegrityError poisoned the
+    caller's whole transaction — on PostgreSQL every later statement fails
+    until rollback — so the webhook's persist stage was recorded as failed
+    even though the row it wanted already exists. Rolling back to the
+    SAVEPOINT keeps the transaction usable, and the re-select returns the row
+    the other worker committed: the same outcome as a pre-check hit.
+
+    An IntegrityError that is NOT this collision (a foreign-key or NOT NULL
+    violation) has no row to fall back on and is re-raised unchanged.
+    """
+    try:
+        async with session.begin_nested():
+            session.add(record)
+            await session.flush()
+    except IntegrityError:
+        existing = await find_outbox_id_by_key(session, record.idempotency_key)
+        if existing is None:
+            raise
+        return existing, False
+    return int(record.id), True
 
 
 def outbox_result(outbox_ids: list[int]) -> ForwardResult:

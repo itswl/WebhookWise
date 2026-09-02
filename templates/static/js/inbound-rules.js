@@ -75,7 +75,7 @@ function renderInboundRules(rules) {
         return;
     }
     container.innerHTML = paged.rows.map(function (rule) {
-        const actionLabel = t('inbound.action.' + rule.action) || rule.action;
+        const actionLabel = t('inbound.action.' + rule.action, null, rule.action);
         const state = rule.enabled
             ? `<span class="badge badge-success">${t('inbound.status.enabled')}</span>`
             : `<span class="badge badge-outline">${t('inbound.status.disabled')}</span>`;
@@ -128,7 +128,7 @@ function showInboundRuleForm(id) {
                 <div class="form-group">
                     <label class="form-label" for="ir-action">${t('inbound.field.action')}</label>
                     <select class="form-input" id="ir-action">
-                        ${inboundActions.map(a => `<option value="${escapeHtml(a)}" ${rule.action === a ? 'selected' : ''}>${escapeHtml(t('inbound.action.' + a) || a)}</option>`).join('')}
+                        ${inboundActions.map(a => `<option value="${escapeHtml(a)}" ${rule.action === a ? 'selected' : ''}>${escapeHtml(t('inbound.action.' + a, null, a))}</option>`).join('')}
                     </select>
                 </div>
             </div>

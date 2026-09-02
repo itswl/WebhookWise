@@ -49,10 +49,12 @@ function timeAgo(timestamp) {
     if (Number.isNaN(past.getTime())) return '-';
     const seconds = Math.floor((now - past) / 1000);
 
-    if (seconds < 60) return t('utils.timeAgo.seconds', { n: seconds });
-    if (seconds < 3600) return t('utils.timeAgo.minutes', { n: Math.floor(seconds / 60) });
-    if (seconds < 86400) return t('utils.timeAgo.hours', { n: Math.floor(seconds / 3600) });
-    return t('utils.timeAgo.days', { n: Math.floor(seconds / 86400) });
+    // English needs singular forms; the zh strings are identical either way.
+    const unit = (n, one, many) => t(n === 1 ? one : many, { n });
+    if (seconds < 60) return unit(seconds, 'utils.timeAgo.second', 'utils.timeAgo.seconds');
+    if (seconds < 3600) return unit(Math.floor(seconds / 60), 'utils.timeAgo.minute', 'utils.timeAgo.minutes');
+    if (seconds < 86400) return unit(Math.floor(seconds / 3600), 'utils.timeAgo.hour', 'utils.timeAgo.hours');
+    return unit(Math.floor(seconds / 86400), 'utils.timeAgo.day', 'utils.timeAgo.days');
 }
 
 /**

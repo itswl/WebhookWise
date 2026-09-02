@@ -106,8 +106,15 @@ services:
           cpus: '0.5'
           memory: 256M
 
+    # Bound to loopback by default. The reference host fronts the API with a
+    # reverse proxy (Caddy in host network mode -> 127.0.0.1:8000) and every
+    # other consumer — worker, scheduler, hookprobe, the observability stack —
+    # reaches it over the Compose networks, so nothing needed the port on the
+    # wire. A 2026-09 audit found it and nine observability ports published on
+    # 0.0.0.0 behind a firewall chain that a pending reboot would not restore.
+    # Bare host with no proxy: API_BIND_ADDRESS=0.0.0.0, and own the firewall.
     ports:
-      - "8000:8000"   # Expose only the business service
+      - "${API_BIND_ADDRESS:-127.0.0.1}:8000:8000"   # Expose only the business service
 
     env_file:
       - ../../.env

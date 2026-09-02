@@ -24,6 +24,18 @@ schema_config:
         prefix: index_
         period: 24h
 
+# Retention is the compactor's job in Loki 3: without this block every chunk
+# lives forever on the loki_data volume. delete_request_store is mandatory once
+# retention_enabled is set (Loki refuses to start otherwise); working_directory
+# sits under common.path_prefix so the compactor's state survives a recreate.
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
 limits_config:
   allow_structured_metadata: true
   volume_enabled: true
+  # Matches the log-rotation reasoning in the compose files: Loki is the copy of
+  # record, but 30 days is what an incident review has ever reached back for.
+  retention_period: 30d

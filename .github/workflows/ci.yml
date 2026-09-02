@@ -47,26 +47,37 @@ jobs:
               - "requirements*.txt"
               - "requirements*.lock"
 
-  # Unit job runs the SOURCE floor (3.12), which keeps scripts/gate.sh an exact
-  # local replica. Production's 3.14 runtime is covered by docker-e2e, which
-  # builds the real image — so both versions are actually exercised.
+  # The 3.12 leg is the SOURCE floor: it keeps scripts/gate.sh an exact local
+  # replica and keeps the check-run name `test`, so anything that requires that
+  # check keeps resolving. The image is python:3.14-slim, and until now the only
+  # place 3.14 ran the suite was docker-e2e's image build — which does not run
+  # mypy, pytest or the audits. The 3.14 leg is EXPERIMENTAL: continue-on-error
+  # means it cannot fail the workflow or block a merge, and fail-fast is off so
+  # a red 3.14 cannot cancel a green 3.12. Read it; do not gate on it until it
+  # has been green for a while, then flip the two.
   test:
+    name: ${{ matrix.python-version == '3.12' && 'test' || format('test (experimental python {0})', matrix.python-version) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    continue-on-error: ${{ matrix.python-version == '3.14' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: "pip"
       # Persist mypy's incremental cache across runs, keyed on the Python version
       # plus the dependency locks and mypy config so it invalidates when they change.
       - uses: actions/cache@v6
         with:
           path: .mypy_cache
-          key: mypy-${{ runner.os }}-py3.12-${{ hashFiles('requirements.lock', 'requirements-dev.lock', 'pyproject.toml') }}
+          key: mypy-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('requirements.lock', 'requirements-dev.lock', 'pyproject.toml') }}
           restore-keys: |
-            mypy-${{ runner.os }}-py3.12-
+            mypy-${{ runner.os }}-py${{ matrix.python-version }}-
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements.lock -r requirements-dev.lock
       - run: python -m compileall -q .
@@ -76,7 +87,10 @@ jobs:
       # Node ships pre-installed on GitHub-hosted ubuntu runners.
       - run: node tests/frontend/run-all.mjs
       - run: npx --yes eslint@9.39.2 templates/static/js
-      - run: shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh tests/e2e/run_feishu_card_actions.sh scripts/ci/ai_review.sh
+      # Same globs as scripts/gate.sh, byte for byte. CI used to name the files
+      # by hand: a new tests/e2e/*.sh or scripts/ci/*.sh was linted locally and
+      # never here, and gate.sh itself was never linted here at all.
+      - run: shellcheck entrypoint.sh scripts/gate.sh tests/e2e/*.sh scripts/ci/*.sh
       - run: python scripts/check_requirements_locks.py
       # Decision records keep their shape, or the practice decays into a folder.
       - run: python scripts/assert_agent_notes.py

@@ -324,9 +324,23 @@ body {
 }
 
 .btn-icon.btn-lang {
+  width: auto;
+  padding: 0 0.5rem;
   font-size: var(--fs-sm);
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+
+/* Bare anchors emitted by list renderers (e.g. the outbox's #id links) had
+   no rule at all and fell back to the browser's default blue on the dark theme. */
+a:not([class]) {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:not([class]):hover,
+a:not([class]):focus-visible {
+  text-decoration: underline;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

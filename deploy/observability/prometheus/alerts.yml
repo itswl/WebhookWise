@@ -1,3 +1,11 @@
+# bypass_relay: "true" marks the alerts that mean the notification path itself
+# is broken: WebhookWise cannot ingest, process or deliver, its database or
+# broker is gone, or the hookrelay front door has stopped answering its scrape.
+# Alertmanager routes those straight to the chat bot (the chat-direct receiver
+# in alertmanager.yml); everything else travels hookrelay -> WebhookWise -> chat
+# like any other alert. The route had existed since the start; until 2026-09-02
+# no rule carried the label, so an outage of the path could only have been
+# reported through the path.
 groups:
   - name: webhookwise-recording
     interval: 30s
@@ -237,6 +245,7 @@ groups:
         labels:
           severity: critical
           service: webhookwise-api
+          bypass_relay: "true"
         annotations:
           summary: WebhookWise API is burning the 99% availability budget quickly.
           runbook: Run `python scripts/observability/webhookwise_observe.py runbook WebhookWiseApiAvailabilityFastBurn`, then inspect API 5xx, p95 latency, traces, and error logs.
@@ -280,6 +289,7 @@ groups:
         labels:
           severity: critical
           service: webhookwise-api
+          bypass_relay: "true"
         annotations:
           summary: Webhook ingress is burning the 99% queueing budget quickly.
           runbook: Check rejected/error outcomes, request payload sizes, rate limits, and enqueue traces.
@@ -340,6 +350,7 @@ groups:
         labels:
           severity: critical
           service: webhookwise-worker
+          bypass_relay: "true"
         annotations:
           summary: Webhook processing is burning the 98% completion budget quickly.
           runbook: Run the processing runbook, then inspect worker failures, pipeline step latency, DB/Redis health, and dead letters.
@@ -383,6 +394,7 @@ groups:
         labels:
           severity: critical
           service: webhookwise-worker
+          bypass_relay: "true"
         annotations:
           summary: Forward delivery is burning the 95% success budget quickly.
           runbook: Check downstream status, circuit breakers, outbox retry age, and target-specific errors.
@@ -472,6 +484,7 @@ groups:
         labels:
           severity: critical
           service: webhookwise-worker
+          bypass_relay: "true"
         annotations:
           summary: Redis Stream is at its cap while consumers are behind — eviction is dropping unconsumed webhooks.
           runbook: At-most-once ingress means capped-stream eviction drops unconsumed webhooks. Raise WEBHOOK_MQ_STREAM_MAXLEN or scale workers now. Retained depth alone is NOT this condition — see WebhookWiseQueueRetainedDepthGrowing for that.
@@ -499,6 +512,7 @@ groups:
         labels:
           severity: critical
           service: webhookwise-api
+          bypass_relay: "true"
         annotations:
           summary: Database health check is unhealthy.
           runbook: Check DB connectivity, migrations, pool saturation, and recent app errors.
@@ -509,6 +523,7 @@ groups:
         labels:
           severity: critical
           service: webhookwise-worker
+          bypass_relay: "true"
         annotations:
           summary: Redis unavailable degradations are occurring.
           runbook: Check Redis readiness, queue operations, concurrency gate suppression, and Redis operation latency.
@@ -637,6 +652,7 @@ groups:
         labels:
           severity: warning
           service: hookstack-shadow
+          bypass_relay: "true"
         annotations:
           summary: A shadow-run service ({{ $labels.job }}) has not answered its scrape for 30m; the agreement ledger is not accumulating.
 

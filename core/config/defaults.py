@@ -479,6 +479,12 @@ class NotificationConfig(StaticSettings):
     # landed). Assembled from existing data — no extra model call. Off by
     # default so an upgrade does not surprise a chat with new card traffic.
     INCIDENT_RESOLVE_RECAP_ENABLED: bool = Field(default=False)
+    # Only incidents at or above this importance earn a paid summary call.
+    # Measured on production 2026-09-02: 88 summary calls a month, most of
+    # them for low-importance business-threshold episodes that auto-resolve
+    # in ten minutes and that nobody reads. "low" keeps every multi-alert
+    # incident summarized, which is the pre-existing behaviour.
+    INCIDENT_SUMMARY_MIN_IMPORTANCE: str = Field(default="low")
 
 
 class DeepAnalysisConfig(StaticSettings):

@@ -130,6 +130,10 @@ def mock_redis(request: pytest.FixtureRequest):
         return 1
 
     mock = AsyncMock()
+    # redis.asyncio.Redis.pubsub() is a plain (sync) factory. Left as an
+    # AsyncMock attribute it hands the invalidation listeners a coroutine they
+    # never await — one RuntimeWarning per test that starts a listener.
+    mock.pubsub = MagicMock()
     mock.get.return_value = None
     mock.set.return_value = True
     mock.setex.return_value = True

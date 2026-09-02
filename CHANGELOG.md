@@ -3,6 +3,69 @@
 All notable project changes should be summarized here after merge or release.
 This project follows SemVer release headings.
 
+## [Unreleased]
+
+### Security
+- Every place that names a caller — the `[Auth]` warnings, the `[HTTP]`
+  request log and the per-IP rate-limit buckets — now resolves the trusted
+  forwarded address (`core/request_ip.get_client_ip`) instead of the TCP peer.
+  Behind Cloudflare → Caddy → docker-proxy the peer is always the bridge
+  gateway, so every stored event carried the same address and every caller
+  shared one admin rate-limit bucket. `get_client_ip` tolerates requests
+  without an application (test doubles, bare ASGI scopes).
+- Untrusted text is neutralized before it enters Feishu `lark_md` (and the
+  DingTalk/WeCom markdown) cards: alert bodies and model output could place
+  links, `<at id=all>` mentions or fake headings in the operator's card.
+- Published ports bind to loopback by default: `API_BIND_ADDRESS` and
+  `OBSERVABILITY_BIND_ADDRESS` (default `127.0.0.1`) front the API and the
+  nine observability ports, on the assumption of a host reverse proxy; set
+  `0.0.0.0` for a bare host.
+
+### Added
+- `INCIDENT_SUMMARY_MIN_IMPORTANCE` (runtime-policy, default `low`): the
+  lowest incident importance that still earns a paid AI summary. Measured on
+  production, summaries were about a fifth of paid model calls and most of
+  them described low-importance business-threshold episodes nobody reads;
+  `medium` stops paying for those while keeping the reason on the incident.
+- Decide a remediation proposal from its Feishu card (#8).
+- One-command evaluation stack from published images
+  (`docker-compose.quickstart.yml`), with `please-change-` credentials that
+  the production startup checks refuse.
+- CI runs an experimental, non-gating Python 3.14 leg next to the gating
+  3.12 job — the image has shipped 3.14 while every test ran on 3.12.
+- Retention for the two unbounded stores in the local observability stack:
+  Loki 30 days (compactor + `retention_period`), Pyroscope 30 days with its
+  data on the named volume it actually writes to (`/data`).
+- `bypass_relay: "true"` on the alert rules that mean WebhookWise or its
+  host is down, so they reach chat directly when the relay on the same host
+  is down with them.
+- Dashboard copy: the inbound-rule action `cap_importance` has a label (it
+  rendered as a raw key), `critical` importance is labelled, relative times
+  have singular forms in English, incident rows say "N alerts" in the page
+  language, bare list links follow the primary token instead of the
+  browser default, and the language toggle no longer wraps.
+
+### Fixed
+- Outbox creation is race-safe: two workers creating the same forwarding
+  intent no longer fail the whole forwarding stage on the `idempotency_key`
+  unique constraint; the existing row is reused.
+- `scripts/eval/score_severity.py --ai` bootstraps an AppContext, so the live
+  provider leg runs in a bare process instead of dying before the first call.
+- `.gitignore` covers `.env*.bak*` (a production backup named
+  `.env.env.bak-…` was not ignored).
+- `.env.example.all` pinned observability images several major versions
+  behind the compose defaults (Loki 3.2 vs 3.7, Prometheus 2.55 vs 3.11,
+  Pyroscope 1.9 vs 2.0, Grafana 11 vs 13); copying it as `.env` silently
+  downgraded the whole stack.
+- pre-commit's ruff matches the locked version; CI's shellcheck uses the
+  same globs as `scripts/gate.sh`, so the gate script itself and new shell
+  scripts are checked.
+
+### Docs
+- `.agents/README.md`, `docs/capabilities.md` and the observability
+  query-tools page no longer describe the removed `.claude/` and `.codex/`
+  directories; the Chinese README gains the one-command trial section.
+
 ## [0.1.1] - 2026-08-31
 
 The version line restarts at 0.1.x. This repository's public history begins at

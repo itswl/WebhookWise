@@ -139,15 +139,15 @@ Example JSON-RPC call:
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"webhookwise_preset","arguments":{"name":"api-rate"}}}
 ```
 
-## Codex Skill
+## Agent skill
 
 A repo-local skill is stored at:
 
 ```text
-.codex/skills/webhookwise-observability/SKILL.md
+.agents/skills/ww-observability/SKILL.md
 ```
 
-It tells Codex how to use the CLI and MCP-style entrypoint for questions such
+It tells any agent (Codex reads it natively; Claude Code via the per-machine symlinks in `AGENTS.md`) how to use the CLI and MCP-style entrypoint for questions such
 as "why is the dashboard No data?", "check API latency", "show worker queue
 lag", or "query recent Loki errors".
 
@@ -225,7 +225,7 @@ a Pyroscope/Grafana profile link.
 When metrics change:
 
 1. Update `scripts/observability/query_lib.py` presets.
-2. Update `.codex/skills/webhookwise-observability/SKILL.md` if the workflow changes.
+2. Update `.agents/skills/ww-observability/SKILL.md` if the workflow changes.
 3. Update `deploy/observability/grafana/dashboards/dashboard.json` if the dashboard should reflect the change.
 4. Update `deploy/observability/prometheus/alerts.yml` if the new metric affects SLOs or alerting.
 5. Run:

@@ -10,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from core.app_context import get_config_manager
 from core.config import AppConfig
 from core.logger import get_logger
+from core.request_ip import get_client_ip
 from core.sensitive_data import redact_headers
 
 logger = get_logger("auth")
@@ -76,7 +77,7 @@ async def verify_api_key(
 
     credentials = _token_candidates(request, auth, "x-api-key", "x-admin-key", "x-admin-write-key")
     if not any(_matches_any_configured_token(credential, api_key) for credential in credentials):
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = get_client_ip(request)
 
         if logger.isEnabledFor(logging.WARNING):
             try:
@@ -118,7 +119,7 @@ async def verify_admin_write(
     credentials = _token_candidates(request, auth, "x-admin-write-key", "x-admin-key", "x-api-key")
 
     if not credentials:
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = get_client_ip(request)
         logger.warning(
             "[Auth] Admin write operation requires permission: missing token, IP=%s, URL=%s",
             client_ip,
@@ -139,7 +140,7 @@ async def verify_admin_write(
         )
         for credential in credentials
     ):
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = get_client_ip(request)
         logger.warning(
             "[Auth] Admin write operation rejected with API key: IP=%s, URL=%s",
             client_ip,
@@ -150,7 +151,7 @@ async def verify_admin_write(
             detail="Admin write token required. API key is insufficient for this endpoint.",
         )
 
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     logger.warning(
         "[Auth] Insufficient permission for Admin write operation: IP=%s, URL=%s",
         client_ip,
@@ -186,7 +187,7 @@ async def verify_change_ingest_token(
     ):
         return True
 
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     if logger.isEnabledFor(logging.WARNING):
         try:
             body_bytes = await request.body()
@@ -247,7 +248,7 @@ async def verify_feishu_card_callback(
     if not supplied_token or not hmac.compare_digest(
         supplied_token.encode("utf-8"), verification_token.encode("utf-8")
     ):
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = get_client_ip(request)
         logger.warning("[Auth] Feishu card callback verification failed: IP=%s", client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -36,7 +36,16 @@ def test_ci_enforces_coverage_gate() -> None:
 
     assert re.search(r"(?m)^  pull_request:\s*$", ci)
     assert re.search(r"(?m)^  push:\s*$", ci)
-    assert "shellcheck entrypoint.sh tests/e2e/run_webhook_to_feishu.sh" in ci
+    # The shellcheck invocation is the same string in CI and in scripts/gate.sh,
+    # byte for byte. CI used to list files by hand, so a new tests/e2e/*.sh or
+    # scripts/ci/*.sh was linted locally and never in CI, and gate.sh itself
+    # was never linted in CI at all.
+    gate = (ROOT / "scripts/gate.sh").read_text()
+    ci_shellcheck = re.search(r"(?m)^\s*- run: (shellcheck .+?)\s*$", ci)
+    gate_shellcheck = re.search(r"(?m)^(shellcheck .+?)\s*$", gate)
+    assert ci_shellcheck is not None and gate_shellcheck is not None
+    assert ci_shellcheck.group(1) == gate_shellcheck.group(1)
+    assert ci_shellcheck.group(1) == "shellcheck entrypoint.sh scripts/gate.sh tests/e2e/*.sh scripts/ci/*.sh"
     # The headless dashboard-behaviour suite runs in BOTH the local gate and
     # CI: three shipped regressions were invisible to python-side contracts.
     assert "node tests/frontend/run-all.mjs" in ci

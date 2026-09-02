@@ -363,6 +363,12 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
         _cast_bool,
         "Send one recap card to chat when an incident is resolved",
     ),
+    SettingSpec(
+        "INCIDENT_SUMMARY_MIN_IMPORTANCE",
+        "ai",
+        _cast_choice("low", "medium", "high"),
+        "Lowest incident importance that still gets a paid AI summary; low = every multi-alert incident",
+    ),
     # Backpressure / queue
     SettingSpec(
         "WEBHOOK_MQ_BACKLOG_WARN_FRACTION",

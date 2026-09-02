@@ -10,30 +10,32 @@ Ported from the hookstack family, which took it from
 (`.agents/notes`). `docs/` already explains how WebhookWise works; this holds the
 decisions behind it, including the ones that left no code.
 
-## The three agent directories
+## One agent directory
 
-They look redundant and are not. One is documentation; two are vendor plug-in
-folders that now point at the same place.
+Agent material lives in `.agents/` only — this directory. There is no `.claude/`
+and no `.codex/` in the repository: the four operator skills are in
+`.agents/skills/` and the decision notes are here.
 
-| Path | What it is | Who reads it |
-| --- | --- | --- |
-| `.agents/` | This — decision records, including the rejected ones. Prose, no tool reads it to change behaviour. | People, and any agent you point at it |
-| `.claude/` | Claude Code's plug-in folder: `skills/` (the four repo workflows) and `prompts/`. | Claude Code |
-| `.codex/` | Codex's plug-in folder. `skills` is a **symlink** to `../.claude/skills`. | Codex |
+| Reader | How it finds the skills |
+| --- | --- |
+| Codex | Reads `.agents/skills` natively. |
+| Claude Code | Has no project-level discovery path outside `.claude/`, so each machine points at the skills with one symlink per skill under `~/.claude/skills` (the loop is in `AGENTS.md`; `scripts/assert_skill_pointers.py` reports a missing or stale pointer and the gate runs it). |
+| hookprobe | Mounts `.agents/skills` read-only as its user skills layer. |
+| People | Read `notes/` — prose, no tool reads it to change behaviour. |
 
-`AGENTS.md` is the single instruction file and `CLAUDE.md` is a symlink to it.
-
-Both symlinks exist because both pairs had already drifted:
+It took several passes to get here, and the history explains the shape:
 
 - `AGENTS.md` and `CLAUDE.md` were two copies, and the older one still told an
   agent to hand-pick a few local checks instead of running the gate — the exact
   habit that let bandit, pip-audit and the OpenAPI contract each go red in CI
-  while local was green.
-- The two `skills/` folders held **four skills with zero overlap**: three ops
-  workflows visible only to Claude Code, one observability skill visible only to
-  Codex, and different naming conventions. Nobody decided that; it was an
+  while local was green. `AGENTS.md` is now the single instruction file and
+  `CLAUDE.md` is a symlink to it.
+- Two vendor `skills/` folders once held **four skills with zero overlap**: three
+  ops workflows visible only to Claude Code, one observability skill visible only
+  to Codex, and different naming conventions. Nobody decided that; it was an
   accident of which tool was open when each was written. Skills are knowledge
-  about operating *this* system, so both tools get all of them.
+  about operating *this* system, so every tool gets all of them — from one
+  neutral directory rather than one vendor's folder.
 
 `scripts/assert_agent_notes.py` asserts AGENTS.md and CLAUDE.md have identical
 CONTENT rather than checking that a link exists — a checkout without symlink

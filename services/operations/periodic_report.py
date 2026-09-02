@@ -35,6 +35,7 @@ from models import (
     RunbookExecution,
     WebhookEvent,
 )
+from services.notifications.markdown_safety import escape_lark_md
 from services.notifications.routing import resolve_notification_target
 from services.webhooks.types import ForwardOutboxStatus, ForwardResult
 
@@ -509,7 +510,7 @@ def _build_summary(stats: dict[str, Any]) -> str:
     no LLM call (keeps the report a pure read over existing data, always works
     even if AI is degraded). An LLM narrative could be layered on later."""
     top = stats["top_sources"][0] if stats["top_sources"] else None
-    top_txt = f"{top['source']} ({top['count']} alerts)" if top else "none"
+    top_txt = f"{escape_lark_md(str(top['source']))} ({top['count']} alerts)" if top else "none"
     imp = stats["importance_breakdown"]
     imp_txt = ", ".join(f"{k}:{v}" for k, v in sorted(imp.items(), key=lambda kv: -kv[1])) or "none"
     lines = [
@@ -534,8 +535,11 @@ def _build_summary(stats: dict[str, Any]) -> str:
     # Break the noisiest source down by rule so the report says WHAT is noisy.
     rules = stats.get("top_rules") or []
     if rules:
-        rule_lines = "\n".join(f"  · {r['rule']}: {r['count']} alerts" for r in rules)
-        lines.append(f"Where {rules[0]['source']} broken down by alert rule (Top {len(rules)}):\n{rule_lines}")
+        # Rule and source names come from the senders' payloads.
+        rule_lines = "\n".join(f"  · {escape_lark_md(str(r['rule']))}: {r['count']} alerts" for r in rules)
+        lines.append(
+            f"Where {escape_lark_md(str(rules[0]['source']))} broken down by alert rule (Top {len(rules)}):\n{rule_lines}"
+        )
     lines.append(
         f"AI: {stats['ai_calls']} calls, cache hit rate {stats['cache_hit_pct']}%, cost ${stats['ai_cost_usd']}."
     )

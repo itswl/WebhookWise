@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from contracts.webhook_payload import WebhookData
+from services.notifications.markdown_safety import escape_lark_md
 from services.webhooks.types import AnalysisResult
 
 _IMPORTANCE_LABEL = {"high": "🔴 高", "critical": "🔴 高", "medium": "🟡 中", "low": "🟢 低"}
@@ -73,11 +74,15 @@ def alert_markdown_summary(
     prefix = "🔁 [周期提醒] " if is_periodic_reminder else ""
     title = f"{prefix}📡 告警通知"
 
-    lines = [f"**{label}　{summary[:400]}**" if summary else f"**{label}**"]
-    identity_bits = [bit for bit in (rule_name, event_type) if bit]
+    # WeCom renders <@userid> mentions and <font> tags, both bots render
+    # [label](url) links, and a ** in a value closes this template's own bold —
+    # the same constructs the Feishu card escapes, so every payload- or
+    # model-derived value goes through the same escape.
+    lines = [f"**{label}　{escape_lark_md(summary[:400])}**" if summary else f"**{label}**"]
+    identity_bits = [escape_lark_md(bit) for bit in (rule_name, event_type) if bit]
     if identity_bits:
         lines.append(f"🏷️ {' ・ '.join(identity_bits[:2])}")
     if impact:
-        lines.append(f"**🎯 影响范围**：{impact[:600]}")
-    lines.append(f"🔔 {source} ・ 🕐 {timestamp or '—'}")
+        lines.append(f"**🎯 影响范围**：{escape_lark_md(impact[:600])}")
+    lines.append(f"🔔 {escape_lark_md(source)} ・ 🕐 {escape_lark_md(timestamp) or '—'}")
     return title, "\n\n".join(lines)

@@ -24,7 +24,9 @@ redis_data/
 # Temporary and backup files
 *.sh~
 *.bak
-.env.bak*
+# Any env-file backup, whatever the tool named it: `.env.bak-x` and the real
+# prod copy `.env.env.bak-<suffix>` both match. `.env.example*` stays tracked.
+.env*.bak*
 *.tmp
 backups/
 deploy/compose/backups/
