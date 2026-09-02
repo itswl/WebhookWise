@@ -23,7 +23,10 @@ class AuditLog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     # What was changed: "silence" | "forward_rule" | "incident"
-    resource_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    # No standalone index: every resource_type filter also orders by created_at
+    # (api/v1/activity.py, services/operations/action_center.py), which is
+    # exactly ix_audit_log_type_created's leading column.
+    resource_type: Mapped[str] = mapped_column(String(20), nullable=False)
     resource_id: Mapped[int | None] = mapped_column(Integer)
     resource_name: Mapped[str | None] = mapped_column(String(200))
 
@@ -39,6 +42,9 @@ class AuditLog(Base):
     # identity. Do not treat it as one.
     actor: Mapped[str | None] = mapped_column(String(100))
 
+    # Indexed on its own as well as in the composite below: the activity feed's
+    # default query has no resource_type filter, so a composite that leads with
+    # resource_type cannot serve its created_at DESC ordering.
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: utcnow(), index=True)
 
     __table_args__ = (Index("ix_audit_log_type_created", "resource_type", "created_at"),)

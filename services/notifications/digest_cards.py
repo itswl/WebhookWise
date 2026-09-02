@@ -23,7 +23,8 @@ from typing import Any, Final
 
 from contracts.webhook_payload import JsonObject
 from core.datetime_utils import naive_utc, parse_utc_datetime
-from services.notifications.feishu_cards import _CHINA_TZ, _IMPORTANCE_TEMPLATE, _strip_redundant_prefix
+from core.report_time import format_utc_offset, report_timezone
+from services.notifications.feishu_cards import _IMPORTANCE_TEMPLATE, _strip_redundant_prefix
 from services.notifications.markdown_safety import escape_lark_md
 from services.webhooks.inbound_rules import alert_rule_name
 
@@ -98,14 +99,15 @@ def _event_time(record: Any, forward_data: dict[str, Any]) -> datetime | None:
 
 
 def _local(value: datetime) -> datetime:
-    return naive_utc(value).replace(tzinfo=UTC).astimezone(_CHINA_TZ)
+    return naive_utc(value).replace(tzinfo=UTC).astimezone(report_timezone())
 
 
 def _format_window(window_start: datetime, window_end: datetime) -> str:
     start, end = _local(window_start), _local(window_end)
+    offset = format_utc_offset(start)
     if start.date() == end.date():
-        return f"{start:%Y-%m-%d %H:%M} – {end:%H:%M} UTC+8"
-    return f"{start:%Y-%m-%d %H:%M} – {end:%Y-%m-%d %H:%M} UTC+8"
+        return f"{start:%Y-%m-%d %H:%M} – {end:%H:%M} {offset}"
+    return f"{start:%Y-%m-%d %H:%M} – {end:%Y-%m-%d %H:%M} {offset}"
 
 
 def _line_for(record: Any, order: int) -> DigestLine:

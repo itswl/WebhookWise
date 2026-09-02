@@ -91,4 +91,11 @@ class DecisionTrace(Base):
         # trace *list* — that paginates by id DESC, which (source, created_at)
         # cannot satisfy; add (source, id) only if that filter proves hot.
         Index("ix_decision_trace_source_created_at", "source", "created_at"),
+        # Partial (migration 0035): capped rows are the minority (19% of a
+        # week), and the queries all ask "which rows were capped".
+        Index(
+            "ix_decision_trace_importance_capped_from",
+            "importance_capped_from",
+            postgresql_where=text("importance_capped_from IS NOT NULL"),
+        ),
     )

@@ -42,6 +42,7 @@ from core.observability.tracing import (
 )
 from core.redis_health import scheduled_task_lock
 from core.redis_lua import ALERT_RELEASE_LOCK_IF_OWNER
+from core.report_time import report_timezone_name
 from core.taskiq_broker import broker
 from services.operations.policies import TaskRuntimePolicy
 
@@ -53,9 +54,11 @@ _INGEST_RECORD_ERRORS = (OSError, RuntimeError, SQLAlchemyError, TimeoutError, V
 _TASK_PROCESSING_ERRORS = (OSError, RuntimeError, SQLAlchemyError, ValueError)
 
 # TaskIQ's scheduler matches cron against UTC, ignoring the container TZ. Anchor
-# the human-facing cron tasks (reports + maintenance) to Beijing time via
-# cron_offset so e.g. "0 9" means 09:00 Beijing, not 09:00 UTC.
-_REPORT_CRON_OFFSET = "Asia/Shanghai"
+# the human-facing cron tasks (reports + maintenance) to REPORT_TIMEZONE via
+# cron_offset so e.g. "0 9" means 09:00 local, not 09:00 UTC. Read at import,
+# like _maintenance_cron() below, because a task's schedule is fixed when the
+# module is imported.
+_REPORT_CRON_OFFSET = report_timezone_name()
 
 
 @dataclass(slots=True)

@@ -30,7 +30,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
 from core.logger import get_logger
+from core.report_time import report_timezone_name, resolve_timezone
 from db.session import session_scope
 from models import MaintenanceWindow, Silence
 from services.silences.store import invalidate_silences_cache, publish_silences_invalidation
@@ -84,15 +85,13 @@ class WindowOccurrence:
 
 
 def _window_tz(window: MaintenanceWindow) -> ZoneInfo:
-    try:
-        return ZoneInfo(str(window.timezone or "Asia/Shanghai"))
-    except ZoneInfoNotFoundError:
-        logger.warning(
-            "[MaintenanceWindow] Unknown timezone %r on window id=%s, falling back to UTC",
-            window.timezone,
-            window.id,
-        )
-        return ZoneInfo("UTC")
+    """The window's own zone, or REPORT_TIMEZONE when it carries none.
+
+    A window's timezone column is operator-supplied and unvalidated, so an
+    unknown name degrades to UTC rather than taking the sweep down.
+    """
+    name = str(window.timezone or "").strip() or report_timezone_name()
+    return resolve_timezone(name, context=f" on window id={window.id}")
 
 
 def active_occurrence(window: MaintenanceWindow, now: datetime) -> WindowOccurrence | None:

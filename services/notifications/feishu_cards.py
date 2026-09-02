@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from contracts.deep_analysis_report import DEEP_ANALYSIS_REPORT_SCHEMA, normalize_deep_analysis_report
 from contracts.webhook_payload import JsonObject, WebhookData
 from core.datetime_utils import naive_utc, parse_utc_datetime
 from core.logger import mask_url
+from core.report_time import format_utc_offset, report_timezone
 from services.notifications.feishu_parser import _build_identity_content, format_identity_line
 from services.notifications.markdown_safety import escape_lark_md
 from services.webhooks.types import AnalysisResult
@@ -20,7 +21,6 @@ _IMPORTANCE_LABEL = {
     "medium": "🟡 中",
     "low": "🟢 低",
 }
-_CHINA_TZ = timezone(timedelta(hours=8), "UTC+8")
 
 # Stable machine values → card copy. Unknown/absent verdicts render nothing:
 # analyses cached before the field existed must not invent a recommendation.
@@ -105,7 +105,11 @@ def _format_card_time(value: object) -> str:
             return value
     else:
         return str(value) if value else ""
-    return parsed.replace(tzinfo=UTC).astimezone(_CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S UTC+8")
+    # The zone comes from REPORT_TIMEZONE and the suffix from the instant's
+    # actual offset, so a deployment outside UTC+8 no longer gets times shifted
+    # to Beijing under a label that says so.
+    local = parsed.replace(tzinfo=UTC).astimezone(report_timezone())
+    return f"{local.strftime('%Y-%m-%d %H:%M:%S')} {format_utc_offset(local)}"
 
 
 def dashboard_public_url() -> str:

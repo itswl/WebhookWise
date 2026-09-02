@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.datetime_utils import utcnow
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.types import DeepAnalysisStatus, ForwardOutboxStatus, WebhookProcessingStatus
+from tests.helpers.db import ensure_forward_rules, ensure_webhook_events
 
 
 @pytest.fixture
@@ -269,6 +270,8 @@ async def test_outbox_create_schedule_forward_list_and_mask_paths(
     from services.webhooks.decisioning import ForwardDecision
 
     async with session_factory.begin() as session:
+        await ensure_webhook_events(session, 1, 10, 11)
+        await ensure_forward_rules(session, 1, 2, 3)
         skipped = await outbox.resolve_and_forward(
             session=session,
             decision=ForwardDecision(False, "none", False, []),

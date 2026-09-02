@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import DateTime, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -50,3 +50,14 @@ class KBDocument(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow())
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: utcnow(), onupdate=lambda: utcnow())
+
+    __table_args__ = (
+        # Retrieval filters on status; a partial index keeps the published-only
+        # scan cheap without indexing the (smaller, transient) draft set.
+        # Migration 0016.
+        Index(
+            "ix_kb_documents_published",
+            "embedding_model",
+            postgresql_where=text("status = 'published'"),
+        ),
+    )

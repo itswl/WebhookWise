@@ -62,6 +62,13 @@ services:
       context: ../..
     container_name: webhook-migrate
     restart: "no"
+    # The image HEALTHCHECK probes a running service. This one is a one-shot job
+    # that exits 0 and stays exited, so the inherited probe can never pass again
+    # and `docker compose ps` reports the successful migration as `unhealthy`.
+    # Disabling it does not affect the dependents below: they wait on
+    # service_completed_successfully, which reads the EXIT CODE, not health.
+    healthcheck:
+      disable: true
     env_file:
       - ../../.env
     environment:

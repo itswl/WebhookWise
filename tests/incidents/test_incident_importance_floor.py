@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.datetime_utils import utcnow
 from models import Incident, WebhookEvent
 from services.incidents import grouping
+from services.operations import runtime_settings as rt
 
 
 @pytest.fixture
@@ -75,8 +76,6 @@ def test_importance_floor_decides_whether_an_alert_can_group(
 
 
 def test_floor_reads_runtime_override_then_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    from services.operations import runtime_settings as rt
-
     monkeypatch.setattr(rt, "override_or", lambda key, fallback: "medium")
     assert grouping._incident_min_importance() == "medium"
     monkeypatch.setattr(rt, "override_or", lambda key, fallback: "nonsense")
@@ -153,8 +152,6 @@ async def test_a_recovery_resolves_its_incident_whatever_its_importance(
 async def test_a_synthetic_source_never_opens_an_incident(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    from services.operations import runtime_settings as rt
-
     async with session_factory.begin() as session:
         session.add_all([_alert(source="rotation-probe", minutes_ago=3, importance="high") for _ in range(3)])
 

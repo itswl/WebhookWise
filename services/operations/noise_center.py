@@ -10,12 +10,14 @@ from typing import Any
 from sqlalchemy import case, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.app_context import get_config_manager
 from core.datetime_utils import utc_isoformat, utcnow
 from core.text import split_csv_lower
 from models import DecisionTrace, ForwardRule, InboundRule, NoiseReductionAction, Silence, WebhookEvent
 from services.forwarding.outbox_records import digest_window_start
 from services.forwarding.rules import update_forward_rule
 from services.incidents.grouping import is_recovery_payload
+from services.operations import runtime_settings as rt
 from services.operations.audit_logger import add_audit
 from services.silences.store import create_silence, lift_silence, list_silences
 from services.webhooks.decisioning import csv_value_matches
@@ -412,9 +414,6 @@ def _source_for_rule(rule: ForwardRule, sources: list[dict[str, Any]], summary: 
 
 def _digest_min_alerts() -> int:
     """How often a rule must fire before batching it is worth proposing."""
-    from core.app_context import get_config_manager
-    from services.operations import runtime_settings as rt
-
     cfg = get_config_manager().noise
     return max(1, int(rt.override_or("NOISE_DIGEST_MIN_ALERTS", int(cfg.NOISE_DIGEST_MIN_ALERTS))))
 

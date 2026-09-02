@@ -103,6 +103,27 @@ async def worker_startup_event(state: object) -> None:
     await start_runtime_settings_plane()
     await start_runtime_heartbeat("worker")
 
+    # A restart registers a new consumer name in the stream group and leaves the
+    # old one behind forever (production: 127 consumers, 1 alive). Reap the
+    # corpses here, where Redis is up and the group certainly exists.
+    # Best-effort — a cleanup must never be why a worker fails to start.
+    try:
+        from core.redis_streams import reap_idle_stream_consumers
+
+        reaped = await reap_idle_stream_consumers(
+            _settings.queue_name,
+            _settings.consumer_group_name,
+            keep=_settings.consumer_name,
+        )
+        if reaped:
+            logger.info(
+                "[TaskIQ] reaped %d idle consumer(s) from stream group %s",
+                reaped,
+                _settings.consumer_group_name,
+            )
+    except Exception:  # noqa: BLE001 - never let consumer hygiene break worker startup
+        logger.warning("[TaskIQ] stream consumer reap failed", exc_info=True)
+
     # Catch-up: send any enabled periodic report whose most recent scheduled fire
     # was missed while no scheduler was alive (deploy/restart landing on the cron
     # minute). Idempotent via a Redis last-sent marker. Best-effort — a failure

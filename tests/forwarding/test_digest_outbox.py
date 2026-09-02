@@ -25,6 +25,7 @@ from services.forwarding.outbox_records import (
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.forwarding.types import ForwardRuleSnapshot
 from services.webhooks.types import ANALYSIS_DIGEST, ForwardOutboxStatus
+from tests.helpers.db import ensure_forward_rules, ensure_webhook_events
 
 FEISHU_URL = "https://open.feishu.cn/open-apis/bot/v2/hook/demo-token"
 DINGTALK_URL = "https://oapi.dingtalk.com/robot/send?access_token=demo"
@@ -127,6 +128,8 @@ async def _create(
     webhook_id: int = 1,
 ) -> list[int]:
     async with session_factory.begin() as session:
+        await ensure_webhook_events(session, webhook_id)
+        await ensure_forward_rules(session, *(rule.id for rule in rules))
         return await outbox_records.create_outbox_records(
             session,
             rules,
@@ -276,6 +279,8 @@ async def _insert_group(
     due_at = due or (now - timedelta(minutes=1))
     ids: list[int] = []
     async with session_factory.begin() as session:
+        await ensure_webhook_events(session, *(100 + index for index in range(count)))
+        await ensure_forward_rules(session, 7)
         for index in range(count):
             record = ForwardOutbox(
                 idempotency_key=f"forward:{index}:{now.timestamp()}",

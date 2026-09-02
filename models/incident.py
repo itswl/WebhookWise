@@ -29,9 +29,9 @@ class Incident(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     title: Mapped[str] = mapped_column(String(300), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(20), default="active", nullable=False, index=True
-    )  # active | quiet | closed
+    # No standalone index: ix_incidents_status_started leads with status, and
+    # ix_incidents_active covers the active-only reads.
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)  # active | quiet | closed
 
     source: Mapped[str | None] = mapped_column(String(100))
     source_connection_id: Mapped[int | None] = mapped_column(
@@ -39,6 +39,9 @@ class Incident(Base):
         ForeignKey("source_connections.id", ondelete="SET NULL"),
         index=True,
     )
+    # Indexed on its own as well as in the composite: the change-impact and
+    # service-profile windows filter on started_at with no status predicate,
+    # which ix_incidents_status_started cannot serve.
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime)
 

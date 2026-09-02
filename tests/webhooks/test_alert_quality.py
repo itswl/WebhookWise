@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
 from models import Incident, IncidentMember, SourceConnection, WebhookEvent
+from services.operations import runtime_settings as rt
 from services.webhooks import alert_quality
 from services.webhooks.alert_quality import get_alert_quality_overview
 
@@ -454,8 +455,6 @@ async def test_a_recovery_that_missed_its_open_incident_is_unmatched(
 async def test_a_synthetic_source_is_left_out_of_source_diagnostics(
     db_session: AsyncSession,
 ) -> None:
-    from services.operations import runtime_settings as rt
-
     connection = _connection(public_id="src_quality_probe", name="Rotation probe", source_type="rotation-probe")
     db_session.add(connection)
     await db_session.flush()

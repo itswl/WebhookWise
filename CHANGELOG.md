@@ -22,6 +22,24 @@ This project follows SemVer release headings.
   `0.0.0.0` for a bare host.
 
 ### Added
+- The persistence suites (forwarding, incidents, kb, webhooks, operations) run
+  a second time in CI against real PostgreSQL. SQLite does not enforce foreign
+  keys, so six test files had been filing outbox rows and decision traces
+  against event and rule ids that never existed: 36 tests were passing on
+  semantics production does not have.
+- `alembic check` runs in CI against the migrated schema, and migration `0040`
+  closes the drift it found — two indexes created, two redundant `index=True`
+  flags dropped, eight migration-only indexes declared in the models, and
+  `maintenance_windows.created_at/updated_at` made NOT NULL.
+- `REPORT_TIMEZONE` (default `Asia/Shanghai`, validated at startup) replaces
+  the zone hard-coded in the report cron, the maintenance-window default and
+  the Feishu card, whose timestamps carried a fixed +08:00 offset under a
+  literal " UTC+8" label. The suffix is derived from the instant now, so
+  half-hour and DST zones render correctly.
+- A worker reaps stream consumers idle for more than a day with nothing
+  pending; production held 127 consumers in one group with one process alive.
+- Ruff `PLC0415` is a ratchet over the files that already contain function-body
+  imports, so new ones fail the gate.
 - The noise centre proposes a digest, and applies it in one click. A rule with
   at least `NOISE_DIGEST_MIN_ALERTS` firings (default 20) and a 40% repeat
   share is offered hourly batching, written as an inbound `digest` rule
@@ -94,6 +112,8 @@ This project follows SemVer release headings.
   that never formed one is counted separately and costs no score, because
   incidents need two correlated non-recovery alerts and such a pair could
   never have matched. 87% of the production figure was our own grouping rule.
+- The one-shot `webhook-migrate` compose service no longer reports
+  `unhealthy` after exiting 0.
 - The AI cost view reads the rates an operator set at runtime. Both rates
   were already live-editable and the pricing path honoured the override, so a
   dashboard edit changed the arithmetic while the view kept quoting the

@@ -4,6 +4,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tests.helpers.db import ensure_forward_rules, ensure_webhook_events
+
 
 @pytest.fixture
 def session_factory(
@@ -40,6 +42,10 @@ async def test_resolve_and_forward_is_idempotent(
     )
 
     async with session_factory.begin() as session:
+        # forward_outboxes points at webhook_events and forward_rules with real
+        # foreign keys; SQLite let this fixture skip both parents.
+        await ensure_webhook_events(session, 1)
+        await ensure_forward_rules(session, 7)
         first = await resolve_and_forward(
             session=session,
             decision=decision,
@@ -76,6 +82,7 @@ async def test_process_forward_outbox_marks_sent(
     from services.forwarding.outbox import process_forward_outbox_by_id
 
     async with session_factory.begin() as session:
+        await ensure_webhook_events(session, 1)
         record = ForwardOutbox(
             idempotency_key="forward:test",
             webhook_event_id=1,

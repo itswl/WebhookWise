@@ -131,6 +131,48 @@ class WebhookEvent(Base):
             "id",
             postgresql_where=text("processing_status = 'dead_letter'"),
         ),
+        # Trigram (GIN) search indexes from migration 0011. The alert-search
+        # predicates are ILIKE with LEADING wildcards, which no btree can serve;
+        # pg_trgm keeps them indexable without changing the API's substring
+        # semantics. PostgreSQL-only — SQLite has neither GIN nor pg_trgm — and
+        # the operator class needs the pg_trgm extension installed.
+        #
+        # The opclass is inside the text() rather than in postgresql_ops,
+        # because that dict is keyed on expr.key and a text() element has none
+        # (SQLAlchemy wants a labelled expression, which text() cannot produce).
+        # The cost is that `alembic check` matches these six by NAME and logs
+        # "assuming equal and skipping" instead of comparing the expression: a
+        # renamed index is caught, an edited expression is not.
+        Index(
+            "ix_webhook_events_search_rule_name",
+            text("lower(parsed_data->>'RuleName') gin_trgm_ops"),
+            postgresql_using="gin",
+        ).ddl_if(dialect="postgresql"),
+        Index(
+            "ix_webhook_events_search_alert_name",
+            text("lower(parsed_data->>'AlertName') gin_trgm_ops"),
+            postgresql_using="gin",
+        ).ddl_if(dialect="postgresql"),
+        Index(
+            "ix_webhook_events_search_alert_name_lower",
+            text("lower(parsed_data->>'alert_name') gin_trgm_ops"),
+            postgresql_using="gin",
+        ).ddl_if(dialect="postgresql"),
+        Index(
+            "ix_webhook_events_search_ai_summary",
+            text("lower(ai_analysis->>'summary') gin_trgm_ops"),
+            postgresql_using="gin",
+        ).ddl_if(dialect="postgresql"),
+        Index(
+            "ix_webhook_events_search_source",
+            text("lower(source) gin_trgm_ops"),
+            postgresql_using="gin",
+        ).ddl_if(dialect="postgresql"),
+        Index(
+            "ix_webhook_events_search_request_id",
+            text("lower(request_id) gin_trgm_ops"),
+            postgresql_using="gin",
+        ).ddl_if(dialect="postgresql"),
     )
 
     def fill_fields(self, data: WebhookEventInput) -> None:

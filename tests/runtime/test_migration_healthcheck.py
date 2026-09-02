@@ -6,7 +6,7 @@ from scripts.healthcheck import _expected_migration_heads, _migration_heads_matc
 
 
 def test_expected_migration_head_is_current_image_head() -> None:
-    assert _expected_migration_heads() == {"0039_forward_outbox_digest"}
+    assert _expected_migration_heads() == {"0040_declared_indexes"}
 
 
 def test_migration_gate_rejects_stale_and_partial_revisions() -> None:

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import ForwardOutbox
 from services.operations.remediation_proposals import propose_remediation
+from tests.helpers.db import ensure_forward_rules
 
 
 async def _propose(session: AsyncSession) -> dict[str, Any]:
@@ -183,6 +184,9 @@ async def test_a_rule_claiming_a_webhook_target_strips_the_buttons(
 
     monkeypatch.setattr(notifications, "resolve_notification_target", rule_claims_webhook)
 
+    # The proposal card is filed against rule 5; forward_outboxes.forward_rule_id
+    # is a real foreign key that SQLite never enforced.
+    await ensure_forward_rules(db_session, 5)
     proposal = await _propose(db_session)
 
     outbox = (

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utcnow
 from models import DecisionTrace, ForwardRule, InboundRule, NoiseReductionAction, WebhookEvent
+from services.operations import runtime_settings as rt
 from services.operations.noise_center import (
     _digest_expected_reduction,
     apply_noise_suggestion,
@@ -214,8 +215,6 @@ async def test_undoing_a_digest_disables_the_rule_and_re_applying_reuses_it(sess
 
 @pytest.mark.asyncio
 async def test_a_synthetic_source_is_absent_from_the_tables_and_the_suggestions(session: AsyncSession) -> None:
-    from services.operations import runtime_settings as rt
-
     await _seed(session)
     now = utcnow()
     for index in range(30):

@@ -23,11 +23,23 @@ if _ps not in sys.path:
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://webhook_user:test-password@localhost:5432/webhooks_test")
 
+# Set to an asyncpg URL to run the DB-backed suites on a real PostgreSQL
+# instead of in-memory SQLite (what the CI `integration` job does). Unset is
+# the default everywhere else. Read once: a mid-session change would leave the
+# session-scoped schema and the per-test engines disagreeing about the backend.
+_TEST_DATABASE_URL = (os.environ.get("WW_TEST_DATABASE_URL") or "").strip() or None
 
-@compiles(JSONB, "sqlite")
+
 def _compile_jsonb_sqlite(type_: Any, compiler: Any, **kw: Any) -> str:
     """Let SQLite-backed unit tests create models that use PostgreSQL JSONB."""
     return "JSON"
+
+
+if _TEST_DATABASE_URL is None:
+    # Registered only on the SQLite default. On PostgreSQL the columns are real
+    # JSONB, and leaving a JSONB→JSON shim installed would be a standing
+    # invitation to "fix" a containment operator by degrading the column type.
+    compiles(JSONB, "sqlite")(_compile_jsonb_sqlite)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -195,21 +207,41 @@ def inline_webhook_task_runner(monkeypatch: pytest.MonkeyPatch):
     return run_task_inline
 
 
-# ── Shared In-Memory Database Fixtures ────────────────────────────────────────
-# One in-memory SQLite engine per test with the full schema, replacing the
-# per-file engine + Base.metadata.create_all boilerplate that used to be copied
-# across the DB-backed test modules. Function-scoped to preserve the previous
+# ── Shared Database Fixtures ──────────────────────────────────────────────────
+# One engine per test with the full schema, replacing the per-file engine +
+# Base.metadata.create_all boilerplate that used to be copied across the
+# DB-backed test modules. Function-scoped to preserve the previous
 # fresh-database-per-test isolation. Engine construction lives in
 # tests/helpers/db.py so it is reusable outside these fixtures too.
+#
+# Default backend: in-memory SQLite, one database per test. With
+# WW_TEST_DATABASE_URL set, the same fixtures hand out sessions on a real
+# PostgreSQL: the schema is built once per session into this worker's own
+# schema, and each test starts from a TRUNCATE of every table.
+
+
+@pytest.fixture(scope="session")
+def db_postgres_schema() -> str | None:
+    """This worker's PostgreSQL schema, built once, or None on the SQLite default."""
+    if _TEST_DATABASE_URL is None:
+        return None
+    from tests.helpers.db import create_postgres_schema
+
+    return create_postgres_schema(_TEST_DATABASE_URL)
 
 
 @pytest.fixture
-async def db_engine() -> AsyncIterator[AsyncEngine]:
-    """A fresh in-memory SQLite engine with every ORM table created."""
-    from tests.helpers.db import create_all, make_memory_engine
+async def db_engine(db_postgres_schema: str | None) -> AsyncIterator[AsyncEngine]:
+    """A fresh engine with every ORM table created and no rows in them."""
+    from tests.helpers.db import create_all, make_memory_engine, make_postgres_engine, truncate_all
 
-    engine = make_memory_engine()
-    await create_all(engine)
+    engine: AsyncEngine
+    if _TEST_DATABASE_URL is None or db_postgres_schema is None:
+        engine = make_memory_engine()
+        await create_all(engine)
+    else:
+        engine = make_postgres_engine(_TEST_DATABASE_URL, db_postgres_schema)
+        await truncate_all(engine)
     try:
         yield engine
     finally:

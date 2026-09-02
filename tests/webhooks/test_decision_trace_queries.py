@@ -16,6 +16,7 @@ from services.webhooks.decision_trace_queries import (
     list_ai_rule_disagreements,
     list_decision_traces,
 )
+from tests.helpers.db import ensure_webhook_events
 
 
 @pytest.fixture
@@ -53,6 +54,17 @@ def _trace(event_id: int, outcome: str, skip_code: str, **extra: Any) -> Decisio
         matched_rules=extra.get("matched_rules", []),
         steps=extra.get("steps", [{"step": "forward", "outcome": outcome, "skip_code": skip_code}]),
     )
+
+
+async def _add_outboxes(session: AsyncSession, *records: ForwardOutbox) -> None:
+    """Add outbox rows, materializing the events they reference first.
+
+    forward_outboxes.webhook_event_id is a real foreign key. SQLite leaves it
+    unenforced, so these fixtures used to file deliveries against events that
+    never existed; PostgreSQL rejects that.
+    """
+    await ensure_webhook_events(session, *(record.webhook_event_id for record in records))
+    session.add_all(records)
 
 
 async def _seed(factory: async_sessionmaker[AsyncSession]) -> None:
@@ -141,7 +153,7 @@ async def test_get_for_event_attaches_delivery(session_factory: async_sessionmak
     # The per-alert (by-event) view must carry delivery status too, like the list.
     async with session_factory.begin() as session:
         session.add(_trace(70, "forwarded", "none"))
-        session.add(_outbox(70, "sent", target_name="feishu"))
+        await _add_outboxes(session, _outbox(70, "sent", target_name="feishu"))
     async with session_factory() as session:
         found = await get_decision_trace_for_event(session, 70)
     assert found is not None
@@ -199,11 +211,10 @@ async def test_list_attaches_delivery_status(session_factory: async_sessionmaker
                 _trace(13, "skipped", "silenced"),  # skipped → never gets a delivery badge
             ]
         )
-        session.add_all(
-            [
-                _outbox(10, "sent", target_name="ops-feishu"),
-                _outbox(11, "exhausted", target_name="ops-feishu", last_error="HTTP 500 from Feishu"),
-            ]
+        await _add_outboxes(
+            session,
+            _outbox(10, "sent", target_name="ops-feishu"),
+            _outbox(11, "exhausted", target_name="ops-feishu", last_error="HTTP 500 from Feishu"),
         )
 
     async with session_factory() as session:
@@ -227,11 +238,10 @@ async def test_delivery_multi_target_precedence_failed_wins(
     # (the operator most needs to see the failure).
     async with session_factory.begin() as session:
         session.add(_trace(20, "forwarded", "none"))
-        session.add_all(
-            [
-                _outbox(20, "sent", target_name="t1", idempotency_key="k20a"),
-                _outbox(20, "exhausted", target_name="t2", last_error="boom", idempotency_key="k20b"),
-            ]
+        await _add_outboxes(
+            session,
+            _outbox(20, "sent", target_name="t1", idempotency_key="k20a"),
+            _outbox(20, "exhausted", target_name="t2", last_error="boom", idempotency_key="k20b"),
         )
     async with session_factory() as session:
         items, _, _ = await list_decision_traces(session)
@@ -259,12 +269,11 @@ async def test_delivery_does_not_absorb_dedup_chain_descendants(
     # outbox row, not also the duplicate's — else it falsely reads "delivered 2x".
     async with session_factory.begin() as session:
         session.add_all([_trace(100, "forwarded", "none"), _trace(101, "forwarded", "none")])
-        session.add_all(
-            [
-                _outbox(100, "sent", target_name="feishu", idempotency_key="own-100"),
-                # event 101 is a duplicate of 100; its forward points back to 100.
-                _outbox(101, "sent", target_name="feishu", original_event_id=100, idempotency_key="own-101"),
-            ]
+        await _add_outboxes(
+            session,
+            _outbox(100, "sent", target_name="feishu", idempotency_key="own-100"),
+            # event 101 is a duplicate of 100; its forward points back to 100.
+            _outbox(101, "sent", target_name="feishu", original_event_id=100, idempotency_key="own-101"),
         )
     async with session_factory() as session:
         items, _, _ = await list_decision_traces(session)
@@ -285,11 +294,10 @@ async def test_list_delivery_failed_filter(session_factory: async_sessionmaker[A
                 _trace(32, "skipped", "silenced"),  # skipped (no delivery)
             ]
         )
-        session.add_all(
-            [
-                _outbox(30, "sent", idempotency_key="k30"),
-                _outbox(31, "exhausted", last_error="boom", idempotency_key="k31"),
-            ]
+        await _add_outboxes(
+            session,
+            _outbox(30, "sent", idempotency_key="k30"),
+            _outbox(31, "exhausted", last_error="boom", idempotency_key="k31"),
         )
     async with session_factory() as session:
         items, _, _ = await list_decision_traces(session, delivery="failed")
@@ -403,11 +411,10 @@ async def test_overview_stats_composes_volume_delivery_sources(
                 _trace(82, "skipped", "silenced", source="aliyun"),
             ]
         )
-        session.add_all(
-            [
-                _outbox(80, "sent", idempotency_key="o80"),
-                _outbox(81, "exhausted", idempotency_key="o81"),
-            ]
+        await _add_outboxes(
+            session,
+            _outbox(80, "sent", idempotency_key="o80"),
+            _outbox(81, "exhausted", idempotency_key="o81"),
         )
     async with session_factory() as session:
         ov = await get_overview_stats(session, "day")

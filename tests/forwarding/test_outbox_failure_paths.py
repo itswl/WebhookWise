@@ -1,6 +1,6 @@
 """Tests for outbox failure, retry exhaustion, stale claim handling, and claim semantics.
 
-Reuses the SQLite session-factory pattern from tests/forwarding/test_forward_outbox.py.
+Reuses the session-factory pattern from tests/forwarding/test_forward_outbox.py.
 """
 
 from datetime import datetime, timedelta
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.datetime_utils import utcnow
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.webhooks.types import DeepAnalysisStatus, ForwardOutboxStatus
+from tests.helpers.db import ensure_forward_rules, ensure_webhook_events
 
 
 @pytest.fixture
@@ -55,6 +56,11 @@ async def _insert_outbox(
 
     now = utcnow()
     async with session_factory.begin() as session:
+        # forward_outboxes carries real foreign keys to webhook_events and
+        # forward_rules. SQLite never enforced them, so these fixtures pointed
+        # at rows that did not exist; PostgreSQL refuses the insert.
+        await ensure_webhook_events(session, webhook_event_id, original_event_id)
+        await ensure_forward_rules(session, forward_rule_id)
         record = ForwardOutbox(
             idempotency_key=f"forward:test-{now.timestamp()}",
             webhook_event_id=webhook_event_id,
@@ -692,6 +698,7 @@ class TestDeepAnalysisPoller:
         from services.analysis.deep_analysis_poll import _claim_deep_analysis_poll
 
         async with session_factory.begin() as session:
+            await ensure_webhook_events(session, 1)
             record = DeepAnalysis(
                 webhook_event_id=1,
                 engine="gateway",

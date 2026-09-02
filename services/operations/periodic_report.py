@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from statistics import median
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import pycron
 from sqlalchemy import case, exists, func, select
@@ -23,6 +22,7 @@ from sqlalchemy.orm import aliased
 from core.app_context import get_config_manager
 from core.datetime_utils import utcnow
 from core.logger import get_logger
+from core.report_time import report_timezone
 from db.session import session_scope
 from models import (
     AIUsageLog,
@@ -44,8 +44,7 @@ logger = get_logger("periodic_report")
 
 # Must match the cron_offset on the scheduled report tasks (services/operations/
 # tasks.py): TaskIQ matches cron in this zone, so catch-up must evaluate the same
-# zone to compute the same fire times.
-_REPORT_CRON_TZ = ZoneInfo("Asia/Shanghai")
+# zone to compute the same fire times. Both read REPORT_TIMEZONE.
 
 _TOP_SOURCES = 5
 _TOP_RULES = 5
@@ -713,10 +712,10 @@ def _most_recent_fire(cron: str, now: datetime, lookback_minutes: int) -> dateti
     backwards from now and short-circuits on the first match; the lookback bound
     keeps the worst case cheap even for the monthly cadence.
     """
-    # Evaluate the cron in the scheduler's offset zone (Asia/Shanghai) so the
+    # Evaluate the cron in the scheduler's offset zone (REPORT_TIMEZONE) so the
     # computed fire times match what TaskIQ actually scheduled; return in UTC so
     # all fire timestamps (and the Redis last-sent marker) share one basis.
-    cursor = now.astimezone(_REPORT_CRON_TZ).replace(second=0, microsecond=0)
+    cursor = now.astimezone(report_timezone()).replace(second=0, microsecond=0)
     for _ in range(max(1, lookback_minutes) + 1):
         try:
             if pycron.is_now(cron, cursor):

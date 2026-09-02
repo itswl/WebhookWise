@@ -37,6 +37,24 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def include_object(
+    obj: object,
+    name: str | None,
+    type_: str,
+    reflected: bool,
+    compare_to: object,
+) -> bool:
+    """Keep Alembic's own bookkeeping table out of autogenerate/`alembic check`.
+
+    Alembic normally filters the version table itself, but only when the schema
+    being compared equals ``version_table_schema``. This env pins that to
+    "public" while autogenerate compares the DEFAULT (unnamed) schema, so the
+    two never match and every `alembic check` reports alembic_version as a
+    table to drop.
+    """
+    return not (type_ == "table" and name == "alembic_version")
+
+
 def get_url() -> str:
     """Return the synchronous database URL (Alembic uses a synchronous engine)."""
     url = app_config.db.DATABASE_URL
@@ -57,6 +75,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -86,6 +105,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             version_table_schema="public",
+            include_object=include_object,
         )
 
         with context.begin_transaction():

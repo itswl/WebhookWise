@@ -182,6 +182,34 @@ jobs:
           REAL_INFRA_TESTS: "1"
           DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/webhookwise_ci
           REDIS_URL: redis://localhost:6379/0
+      # The models and the migrations are two descriptions of one schema, and
+      # nothing compared them: three model `index=True` columns had no index in
+      # any migration, eight migration indexes were undeclared in the models,
+      # and maintenance_windows.created_at was NOT NULL in one and nullable in
+      # the other. `alembic check` is the comparison. It needs a real database,
+      # so it lives here and NOT in scripts/gate.sh or the `test` job — the
+      # integration job is CI-only by design (real PostgreSQL + Redis service
+      # containers), which is why gate.sh does not replicate it.
+      # tests/real_infra/ above already migrated `public`; upgrading again is a
+      # no-op that keeps this step readable on its own.
+      - name: schema matches its migrations
+        run: |
+          alembic upgrade head
+          alembic check
+        env:
+          DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/webhookwise_ci
+      # The persistence suites a second time, on real PostgreSQL instead of the
+      # in-memory SQLite the `test` job runs them on. SQLite silently ignores
+      # foreign keys, FOR UPDATE SKIP LOCKED, ON CONFLICT DO UPDATE and the
+      # advisory lock, so these tests were passing on semantics production does
+      # not have. WW_TEST_DATABASE_URL is what switches the shared db_engine
+      # fixture over; each xdist worker builds its own schema, leaving `public`
+      # (checked above) alone.
+      - name: persistence suites on postgres
+        run: pytest -q -p no:cacheprovider -n 4 --dist loadfile tests/forwarding tests/incidents tests/kb tests/webhooks tests/operations
+        env:
+          WW_TEST_DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/webhookwise_ci
+          REDIS_URL: redis://localhost:6379/0
 
   docker-e2e:
     needs: changes

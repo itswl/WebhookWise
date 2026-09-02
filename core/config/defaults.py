@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.worker_identity import default_worker_id
@@ -422,7 +423,12 @@ class NotificationConfig(StaticSettings):
     # the report webhook (each cadence falls back to WEEKLY_REPORT_FEISHU_WEBHOOK,
     # then DEEP_ANALYSIS_FEISHU_WEBHOOK). All off by default; enable any cadence to
     # get "are my alerts healthy / where did AI $ go" over that window.
-    # Cron is evaluated in the container timezone (Asia/Shanghai in the image).
+    # The one operator-facing timezone: report crons are matched in it, the
+    # Feishu card timestamp is rendered in it, and a maintenance window with no
+    # zone of its own inherits it. IANA name; validated below, so a typo fails
+    # at startup instead of at the first 09:00 report. Stored times stay UTC.
+    REPORT_TIMEZONE: str = Field(default="Asia/Shanghai")
+
     WEEKLY_REPORT_ENABLED: bool = Field(default=False)
     WEEKLY_REPORT_CRON: str = Field(default="0 9 * * 1")  # Monday 09:00
     WEEKLY_REPORT_WINDOW_DAYS: int = Field(default=7, gt=0)
@@ -507,6 +513,19 @@ class NotificationConfig(StaticSettings):
     # fluctuation. "low" keeps every multi-alert correlation an incident, which
     # is the pre-existing behaviour.
     INCIDENT_MIN_IMPORTANCE: str = Field(default="low")
+
+    @field_validator("REPORT_TIMEZONE")
+    @classmethod
+    def validate_report_timezone(cls, value: str) -> str:
+        """Reject an unknown zone at startup, not at the first scheduled report."""
+        name = (value or "").strip()
+        if not name:
+            raise ValueError("REPORT_TIMEZONE must be an IANA timezone name, e.g. Asia/Shanghai")
+        try:
+            ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"REPORT_TIMEZONE {name!r} is not a known IANA timezone name") from exc
+        return name
 
 
 class DeepAnalysisConfig(StaticSettings):
