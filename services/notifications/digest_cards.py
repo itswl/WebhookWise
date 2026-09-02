@@ -200,6 +200,11 @@ def build_digest_card(records: Sequence[Any], *, window_start: datetime, window_
     if content.overflow:
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"…另有 {content.overflow} 条"}})
     elements.append({"tag": "hr"})
+    from services.notifications.feishu_cards import _link_element, dashboard_public_url
+
+    base = dashboard_public_url()
+    if base:
+        elements.append(_link_element(f"{base}/#/alerts", "🔎 打开告警列表"))
     elements.append({"tag": "note", "elements": [{"tag": "plain_text", "content": content.footer}]})
     return {
         "msg_type": "interactive",

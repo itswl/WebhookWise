@@ -116,7 +116,11 @@ def _build_http_payload(record: ForwardOutbox, *, kb_links: list[dict[str, str]]
         is_reminder = bool(record.is_periodic_reminder)
         if feishu.is_feishu_url(str(record.target_url or "")):
             return feishu.build_feishu_card(
-                webhook_data, analysis_result, is_periodic_reminder=is_reminder, kb_links=kb_links
+                webhook_data,
+                analysis_result,
+                is_periodic_reminder=is_reminder,
+                kb_links=kb_links,
+                event_id=record.webhook_event_id,
             )
         from services.incidents.grouping import is_recovery_payload
 
@@ -469,6 +473,7 @@ class _FeishuRelayChannel:
                     cast(AnalysisResult, dict(record.analysis_result)),
                     is_periodic_reminder=bool(record.is_periodic_reminder),
                     kb_links=await _kb_links_for_alert_card(record),
+                    event_id=record.webhook_event_id,
                 )
             if message is None:
                 return {"status": "failed", "reason": "no payload to relay", "retryable": False}

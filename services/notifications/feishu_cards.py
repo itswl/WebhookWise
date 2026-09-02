@@ -108,12 +108,37 @@ def _format_card_time(value: object) -> str:
     return parsed.replace(tzinfo=UTC).astimezone(_CHINA_TZ).strftime("%Y-%m-%d %H:%M:%S UTC+8")
 
 
+def dashboard_public_url() -> str:
+    """The operator's dashboard origin, or empty when cards must stay link-free."""
+    from core.app_context import get_config_manager
+    from services.operations import runtime_settings as rt
+
+    cfg = get_config_manager().notifications
+    raw = rt.override_or("DASHBOARD_PUBLIC_URL", str(getattr(cfg, "DASHBOARD_PUBLIC_URL", "") or ""))
+    return str(raw or "").strip().rstrip("/")
+
+
+def dashboard_alert_link(event_id: int | None) -> str:
+    """`#/alerts/<id>` on the public dashboard, or empty when unknown/unconfigured."""
+    base = dashboard_public_url()
+    if not base or not event_id:
+        return ""
+    return f"{base}/#/alerts/{int(event_id)}"
+
+
+def _link_element(url: str, label: str) -> JsonObject:
+    # Template markup, not payload text: the label is ours and the URL is the
+    # operator's own dashboard, so neither goes through escape_lark_md.
+    return {"tag": "div", "text": {"tag": "lark_md", "content": f"[{label}]({url})"}}
+
+
 def build_feishu_card(
     webhook_data: WebhookData,
     analysis_result: AnalysisResult,
     *,
     is_periodic_reminder: bool = False,
     kb_links: list[dict[str, str]] | None = None,
+    event_id: int | None = None,
 ) -> JsonObject:
     importance = str(analysis_result.get("importance", "medium")).strip().lower()
     if "." in importance:
@@ -200,6 +225,13 @@ def build_feishu_card(
         )
         elements.append({"tag": "hr"})
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**📖 相关知识库**\n{kb_lines}"}})
+
+    # 4b) The way back: the reader's next question is "why did it do that",
+    #     which the decision chain answers; without the link they open the
+    #     dashboard and search for the alert by hand.
+    link = dashboard_alert_link(event_id)
+    if link:
+        elements.append(_link_element(link, "🔎 查看决策链"))
 
     # 5) Metadata footer (source · type · time) — de-emphasized in a note so it
     #    doesn't compete with the alert content above.
@@ -339,6 +371,9 @@ def build_deep_analysis_card(
         }
     )
 
+    da_link = dashboard_alert_link(webhook_event_id)
+    if da_link:
+        elements.append(_link_element(da_link, "🔎 查看决策链"))
     return {
         "msg_type": "interactive",
         "card": {

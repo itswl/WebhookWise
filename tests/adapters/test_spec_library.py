@@ -13,6 +13,8 @@ Each spec gets a realistic fixture payload asserted three ways:
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from adapters.declarative import CompiledSpec, load_specs, register_declarative_adapters
@@ -86,6 +88,17 @@ JENKINS_PAYLOAD = {
     },
 }
 
+HEALTHCHECKS_PAYLOAD: dict[str, Any] = {
+    "check": "db-backup",
+    "code": "3a1d7f0e-2c4b-4c5d-9e8f-0123456789ab",
+    "status": "down",
+    "tags": "prod cron",
+    "time": "2026-09-03T00:00:00+00:00",
+    "exit_status": "1",
+    "msg": "[db-backup] is down (prod cron)",
+    "url": "https://healthchecks.io/checks/3a1d7f0e-2c4b-4c5d-9e8f-0123456789ab/details/",
+}
+
 SENTRY_PAYLOAD = {
     "id": "42",
     "project": "backend",
@@ -108,6 +121,7 @@ FIXTURES: dict[str, dict[str, object]] = {
     "tencent_cloud_monitor": TENCENT_CLOUD_MONITOR_PAYLOAD,
     "jenkins": JENKINS_PAYLOAD,
     "sentry": SENTRY_PAYLOAD,
+    "healthchecks": HEALTHCHECKS_PAYLOAD,
 }
 
 
@@ -180,6 +194,9 @@ def test_aliases_resolve(declarative_registry: AdapterRegistry) -> None:
         "qcloud_monitor": "tencent_cloud_monitor",
         "jenkins_notification": "jenkins",
         "sentry_legacy": "sentry",
+        "healthchecks_io": "healthchecks",
+        "healthchecks-io": "healthchecks",
+        "hc": "healthchecks",
     }
     for alias, name in expected.items():
         assert declarative_registry.find_adapter_by_source(alias) == name
@@ -277,3 +294,22 @@ def test_sentry_normalizes(specs_by_name: dict[str, CompiledSpec]) -> None:
     assert data["RuleName"] == "IntegrityError: duplicate key value violates unique constraint"
     assert data["Level"] == "critical"
     assert data["summary"] == "IntegrityError: duplicate key value violates unique constraint"
+
+
+def test_healthchecks_normalizes(specs_by_name: dict[str, CompiledSpec]) -> None:
+    data = specs_by_name["healthchecks"].normalizer(HEALTHCHECKS_PAYLOAD)
+    identity = data["_alert_identity"]
+    assert identity["source"] == "healthchecks"
+    assert identity["name"] == "db-backup"
+    assert identity["resource"] == "3a1d7f0e-2c4b-4c5d-9e8f-0123456789ab"
+    # up/down is a state, not a severity: left to the keyword rules.
+    assert "severity" not in identity
+    assert data["Type"] == "HealthchecksAlert"
+    assert data["RuleName"] == "db-backup"
+
+
+def test_healthchecks_up_is_a_recovery() -> None:
+    from services.incidents.grouping import is_recovery_payload
+
+    assert is_recovery_payload({**HEALTHCHECKS_PAYLOAD, "status": "up"}, None) is True
+    assert is_recovery_payload(HEALTHCHECKS_PAYLOAD, None) is False

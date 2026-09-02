@@ -1,0 +1,46 @@
+# Healthchecks.io webhook notification.
+#
+# Healthchecks.io's "Webhook" integration posts a body the operator writes,
+# with template variables filled in per check. Configure the integration with
+# method POST, header `Content-Type: application/json`, and this body:
+#   {
+#     "check": "$NAME",
+#     "code": "$CODE",
+#     "status": "$STATUS",
+#     "tags": "$TAGS",
+#     "time": "$NOW",
+#     "exit_status": "$EXITSTATUS",
+#     "msg": "[$NAME] is $STATUS ($TAGS)",
+#     "url": "https://healthchecks.io/checks/$CODE/details/"
+#   }
+# $STATUS is "down" when a check is late or failed and "up" when it recovers;
+# "up" is understood as a recovery signal by the incident grouping.
+# Point the integration at /v1/webhook/healthchecks (or any alias below).
+
+name: healthchecks
+priority: 0
+aliases:
+  - healthchecks_io
+  - healthchecks-io
+  - hc
+
+# The check/code/status trio is unique to this body; no built-in adapter or
+# sibling spec keys on `code` alongside `check`.
+detect:
+  all:
+    - key_exists: check
+    - key_exists: code
+    - key_exists: status
+
+identity:
+  name: check # the check's name: the stable per-check alert identity
+  resource: code # the check's UUID: survives a rename of the check
+  # status is up/down, not a severity; the shared normalizer would flatten it,
+  # so severity is left to the keyword rules like Uptime Kuma does.
+
+output:
+  Type: HealthchecksAlert
+  RuleName: check
+  summary:
+    - msg # the operator-composed "[check] is down (tags)" line
+    - status

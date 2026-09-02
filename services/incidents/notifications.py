@@ -14,6 +14,7 @@ from models import ForwardOutbox, Incident, WebhookEvent
 from services.forwarding.outbox_records import find_outbox_id_by_key, insert_outbox_or_existing
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.notifications.feishu_actions import build_incident_action_value
+from services.notifications.feishu_cards import dashboard_public_url
 from services.notifications.markdown_safety import escape_lark_md
 from services.notifications.routing import resolve_notification_target
 from services.webhooks.types import ForwardOutboxStatus
@@ -199,7 +200,7 @@ async def queue_incident_notifications(
             formatted_payload=_incident_card(
                 incident,
                 interactive_actions=app_enabled,
-                dashboard_url=str(cfg.DASHBOARD_PUBLIC_URL or "").strip(),
+                dashboard_url=dashboard_public_url(),
             ),
             created_at=now,
             updated_at=now,
@@ -427,7 +428,7 @@ async def queue_sla_breach_notifications(session: AsyncSession, now: Any) -> lis
     keys_by_resource = [
         (resource, f"sla-breached:{resource[0]}:{resource[1]}:{resource[4].isoformat()}") for resource in resources
     ]
-    dashboard_url = str(cfg.DASHBOARD_PUBLIC_URL or "").strip()
+    dashboard_url = dashboard_public_url()
     already_queued: set[str] = set()
     if keys_by_resource:
         already_queued = set(

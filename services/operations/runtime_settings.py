@@ -103,6 +103,16 @@ def _cast_choice(*choices: str) -> Callable[[str], str]:
     return cast
 
 
+def _cast_public_url(raw: str) -> str:
+    """An http(s) origin for links in chat cards, or empty to disable them."""
+    value = str(raw or "").strip().rstrip("/")
+    if not value:
+        return ""
+    if not value.startswith(("https://", "http://")) or " " in value:
+        raise ValueError("DASHBOARD_PUBLIC_URL must be an http(s) URL")
+    return value
+
+
 def _cast_csv_names(raw: str) -> str:
     """A comma-separated list of names, normalised and bounded.
 
@@ -362,6 +372,12 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
         "escalation",
         _cast_bool,
         "Send one recap card to chat when an incident is resolved",
+    ),
+    SettingSpec(
+        "DASHBOARD_PUBLIC_URL",
+        "delivery",
+        _cast_public_url,
+        "Public dashboard URL; when set, chat cards link to the alert's decision chain",
     ),
     SettingSpec(
         "INCIDENT_SUMMARY_MIN_IMPORTANCE",

@@ -21,6 +21,7 @@ from core.observability.metrics import FORWARD_OUTBOX_RECORDS_TOTAL
 from models import ForwardOutbox, RemediationProposal
 from services.forwarding.policies import ForwardDeliveryPolicy
 from services.notifications.feishu_actions import build_proposal_action_value
+from services.notifications.feishu_cards import dashboard_public_url
 from services.notifications.markdown_safety import escape_lark_md
 from services.notifications.routing import resolve_notification_target
 from services.webhooks.types import ForwardOutboxStatus
@@ -197,7 +198,7 @@ async def queue_proposal_notification(
         formatted_payload=_proposal_card(
             proposal,
             interactive_actions=interactive,
-            dashboard_url=str(cfg.DASHBOARD_PUBLIC_URL or "").strip(),
+            dashboard_url=dashboard_public_url(),
         ),
         created_at=now,
         updated_at=now,

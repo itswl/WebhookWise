@@ -124,6 +124,7 @@
             'rs.desc.SLA_BREACH_MENTION_ALL': 'SLA 超时卡片是否 @所有人',
             'rs.desc.INCIDENT_RESOLVE_RECAP_ENABLED': '事故解决时向群里发送一张复盘卡片',
             'rs.desc.INCIDENT_SUMMARY_MIN_IMPORTANCE': '达到该重要性的事故才生成付费 AI 摘要；low 表示全部',
+            'rs.desc.DASHBOARD_PUBLIC_URL': '面板的公网地址；设置后聊天卡片带「查看决策链」链接',
             'rs.desc.WEBHOOK_MQ_BACKLOG_WARN_FRACTION': '在行动队列里标记队列积压的比例阈值；0 关闭',
             'rs.desc.WEBHOOK_MQ_INGRESS_HIGH_WATER_FRACTION': '积压超过该比例时接收口返回 503；0 关闭',
             'rs.desc.WEBHOOK_INGRESS_STORM_THRESHOLD': '单告警风暴抑制阈值；0 关闭',

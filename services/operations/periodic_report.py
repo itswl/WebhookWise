@@ -35,6 +35,7 @@ from models import (
     RunbookExecution,
     WebhookEvent,
 )
+from services.notifications.feishu_cards import dashboard_public_url
 from services.notifications.markdown_safety import escape_lark_md
 from services.notifications.routing import resolve_notification_target
 from services.webhooks.types import ForwardOutboxStatus, ForwardResult
@@ -828,7 +829,7 @@ async def generate_and_send_report(period_key: str, *, fire_ts: datetime | None 
         logger.info("[PeriodicReport] daily report skipped because the window had no activity")
         return {"skipped": "no_activity", **stats}
 
-    card = _build_card(stats, period.title, str(notif.DASHBOARD_PUBLIC_URL or "").strip())
+    card = _build_card(stats, period.title, dashboard_public_url())
 
     result = await _send_report_with_retry(webhook_url, card, period.key)
     if result.get("status") != "success":
