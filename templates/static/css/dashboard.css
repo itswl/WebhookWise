@@ -331,6 +331,88 @@ body {
   letter-spacing: 0.02em;
 }
 
+/* "What needs me" — the operator's queue, first on the home page. */
+.needs-me {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.needs-me.needs-me-empty {
+  border-left-color: var(--success);
+}
+
+.needs-me-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.needs-me-heading {
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.needs-me-count {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.needs-me-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.needs-me-chip {
+  cursor: pointer;
+  text-transform: none;
+}
+
+.needs-me-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+}
+
+.needs-me-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-md, 6px);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.needs-me-row:hover {
+  background: var(--bg-subtle);
+}
+
+.needs-me-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.needs-me-meta,
+.needs-me-more {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* Bare anchors emitted by list renderers (e.g. the outbox's #id links) had
    no rule at all and fell back to the browser's default blue on the dark theme. */
 a:not([class]) {

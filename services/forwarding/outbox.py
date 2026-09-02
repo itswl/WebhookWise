@@ -24,7 +24,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -559,11 +559,16 @@ async def _expire_outbox_if_old(
         return False
 
     cutoff = now - timedelta(seconds=policy.max_delivery_age_seconds)
+    # A digest row is created early on purpose and waits for its window, so
+    # its age counts from the window's end, not from creation: measured from
+    # created_at, every hourly digest older than the 30-minute ceiling expired
+    # with zero attempts before the window ever closed.
+    age_basis = func.coalesce(ForwardOutbox.digest_window_end, ForwardOutbox.created_at)
     stmt = (
         update(ForwardOutbox)
         .where(ForwardOutbox.id == outbox_id)
         .where(ForwardOutbox.status.in_([ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING]))
-        .where(ForwardOutbox.created_at < cutoff)
+        .where(age_basis < cutoff)
         .values(
             status=ForwardOutboxStatus.EXPIRED,
             next_attempt_at=None,

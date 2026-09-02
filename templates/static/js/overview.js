@@ -43,7 +43,7 @@ const OverviewModule = {
             // Overview + AI usage + recent incidents + sparkline + queue health,
             // in parallel. Everything but the core overview is best-effort
             // (.catch → null) so one failing probe never blanks the page.
-            const [ovRes, aiRes, incRes, sparkRes, queueRes, respRes, debtRes] = await Promise.all([
+            const [ovRes, aiRes, incRes, sparkRes, queueRes, respRes, debtRes, acRes] = await Promise.all([
                 API.getOverview(this.currentPeriod),
                 API.getAIUsage(this.currentPeriod).catch(() => null),
                 API.getIncidents({ status: 'active', page_size: 5 }).catch(() => null),
@@ -51,6 +51,7 @@ const OverviewModule = {
                 API.getQueueHealth().catch(() => null),
                 API.getResponseMetrics(30).catch(() => null),
                 API.getSilenceDebt(30).catch(() => null),
+                API.authenticatedFetch('/v1/action-center').then((r) => (r.ok ? r.json() : null)).catch(() => null),
             ]);
             if (!ovRes || !ovRes.success || !ovRes.data) {
                 container.innerHTML = this.emptyHtml();
@@ -60,7 +61,10 @@ const OverviewModule = {
                 const queue = (queueRes && queueRes.success && queueRes.data) ? queueRes.data : null;
                 const response = (respRes && respRes.success && respRes.data) ? respRes.data : null;
                 const debt = (debtRes && debtRes.success && debtRes.data) ? debtRes.data : null;
-                container.innerHTML = this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents, sparkData, queue, response, debt);
+                const actionCenter = (acRes && acRes.success && acRes.data) ? acRes.data : (acRes && acRes.summary ? acRes : null);
+                const incidentsHaveMore = !!(incRes && incRes.pagination && incRes.pagination.has_more);
+                container.innerHTML = this._renderNeedsMe(incidents, incidentsHaveMore, actionCenter) +
+                    this.renderHtml(ovRes.data, aiRes && aiRes.success ? aiRes.data : null, incidents, sparkData, queue, response, debt);
             }
             if (mark) mark.textContent = t('common.lastRefreshed', { time: new Date().toLocaleTimeString() });
         } catch (err) {
@@ -105,6 +109,47 @@ const OverviewModule = {
         if (!cards) return '';
         return '<div style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem;">' + t('overview.section.response') + '</div>' +
             '<div class="stats-grid" style="margin-bottom: 1.5rem;">' + cards + '</div>';
+    },
+
+    // The first thing on the home page answers "what needs me right now?":
+    // open incidents, the Action Center's pending items, dead letters and SLA
+    // breaches. The health ratios below it describe the gateway; this block
+    // describes the operator's queue, and it says so when the queue is empty.
+    _renderNeedsMe(incidents, incidentsHaveMore, actionCenter) {
+        const summary = (actionCenter && actionCenter.summary) || {};
+        const acItems = (actionCenter && Array.isArray(actionCenter.items)) ? actionCenter.items : [];
+        // The Action Center summary reports `total`; older payloads only carry items.
+        const pending = Number(summary.total != null ? summary.total : acItems.filter((i) => i && i.status === 'pending').length) || 0;
+        const deadLetters = Number(summary.dead_letters) || 0;
+        const slaBreaches = Number(summary.sla_breaches) || 0;
+        const openIncidents = (incidents || []).filter((inc) => inc && inc.workflow_status !== 'resolved' && inc.workflow_status !== 'ignored');
+        const dot = { high: 'ww-dot-danger', medium: 'ww-dot-warning', low: 'ww-dot-success' };
+        let rows = '';
+        openIncidents.slice(0, 5).forEach((inc) => {
+            rows += '<div class="needs-me-row" data-act="openIncident" data-args="' + escapeHtml(String(inc.id)) + '">' +
+                '<span class="ww-dot ' + (dot[inc.top_importance] || 'ww-dot-muted') + '"></span>' +
+                '<span class="needs-me-title">' + escapeHtml(inc.title || '') + '</span>' +
+                '<span class="needs-me-meta">' + escapeHtml(t('overview.incidentAlerts', { n: inc.alert_count })) + ' · ' + escapeHtml(formatTime(inc.started_at)) + '</span></div>';
+        });
+        if (incidentsHaveMore) {
+            rows += '<div class="needs-me-row needs-me-more" data-act="navigateTo" data-args="incidents">' + escapeHtml(t('overview.needsMe.moreIncidents')) + '</div>';
+        }
+        const chips = [];
+        if (pending > 0) chips.push({ text: t('overview.needsMe.actions', { n: pending }), dest: 'actions', dot: 'ww-dot-warning' });
+        if (deadLetters > 0) chips.push({ text: t('overview.needsMe.deadLetters', { n: deadLetters }), dest: 'delivery', dot: 'ww-dot-danger' });
+        if (slaBreaches > 0) chips.push({ text: t('overview.needsMe.sla', { n: slaBreaches }), dest: 'work-queue', dot: 'ww-dot-danger' });
+        const count = openIncidents.length + chips.length;
+        let html = '<div class="needs-me' + (count ? '' : ' needs-me-empty') + '">';
+        html += '<div class="needs-me-head"><span class="needs-me-heading">' + escapeHtml(t('overview.needsMe.title')) + '</span>' +
+            '<span class="needs-me-count">' + (count ? escapeHtml(t('overview.needsMe.count', { n: count })) : escapeHtml(t('overview.needsMe.none'))) + '</span></div>';
+        if (chips.length) {
+            html += '<div class="needs-me-chips">' + chips.map((c) =>
+                '<button type="button" class="badge badge-outline needs-me-chip" data-act="navigateTo" data-args="' + escapeHtml(c.dest) + '">' +
+                '<span class="ww-dot ' + c.dot + '"></span>' + escapeHtml(c.text) + '</button>').join('') + '</div>';
+        }
+        if (rows) html += '<div class="needs-me-rows">' + rows + '</div>';
+        html += '</div>';
+        return html;
     },
 
     renderHtml(d, ai, incidents, sparkData, queue, response, debt) {
@@ -169,23 +214,6 @@ const OverviewModule = {
             html += '</div>';
         }
 
-        // Recent active incidents — quick glance at what's happening right now.
-        if (incidents && incidents.length) {
-            html += '<div style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem;">' + t('overview.section.incidents') + '</div>';
-            html += '<div style="display:flex; flex-direction:column; gap:0.5rem;">';
-            var impEmoji = { high: '<span class="ww-dot ww-dot-danger"></span>', medium: '<span class="ww-dot ww-dot-warning"></span>', low: '<span class="ww-dot ww-dot-success"></span>' };
-            for (var i = 0; i < Math.min(incidents.length, 5); i++) {
-                var inc = incidents[i];
-                html += '<div class="incident-row" style="display:flex; align-items:center; gap:0.75rem; padding:0.6rem 0.75rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:8px; cursor:pointer;" data-act="openIncident" data-args="' + Number(inc.id) + '">';
-                html += '<div style="flex:1; min-width:0;">';
-                html += '<div style="font-weight:500; font-size:0.9rem;">' + escapeHtml(inc.title) + '</div>';
-                html += '<div style="font-size:0.76rem; color:var(--text-muted);">' + escapeHtml(inc.source || '') + ' · ' + escapeHtml(t('overview.incidentAlerts', { n: inc.alert_count })) + ' · ' + (impEmoji[inc.top_importance] || '') + (inc.top_importance || '') + '</div>';
-                html += '</div>';
-                html += '<span style="color:var(--text-muted); font-size:0.7rem;">' + formatTime(inc.started_at) + '</span>';
-                html += '</div>';
-            }
-            html += '</div>';
-        }
         // Dependency-free 7-day sparkline trend.
         if (sparkData && sparkData.length > 1) {
             html += '<div style="font-size:1rem; font-weight:600; margin:1.5rem 0 0.5rem;">' + t('overview.section.trend') + '</div>';

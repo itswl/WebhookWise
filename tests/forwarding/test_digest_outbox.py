@@ -291,7 +291,7 @@ async def _insert_group(
                 max_attempts=3,
                 next_attempt_at=due_at,
                 digest_key=key,
-                digest_window_end=datetime(2026, 9, 2, 3, 0),
+                digest_window_end=due_at,
                 forward_data={
                     "source": "grafana",
                     "timestamp": f"2026-09-02T02:{10 + index:02d}:00Z",
@@ -434,3 +434,65 @@ async def test_a_permanently_failed_group_exhausts_together(
     assert [row.status for row in rows] == [ForwardOutboxStatus.EXHAUSTED] * 3
     assert all(row.next_attempt_at is None for row in rows)
     assert notices.await_count == 1
+
+
+def _aged_policy() -> ForwardDeliveryPolicy:
+    return ForwardDeliveryPolicy(
+        timeout_seconds=10,
+        max_attempts=3,
+        retry_initial_delay=30,
+        retry_max_delay=300,
+        retry_backoff_multiplier=2.0,
+        stale_processing_threshold_seconds=60,
+        max_delivery_age_seconds=1800,
+    )
+
+
+async def _aged_row(session: AsyncSession, *, key: str, created_ago: int, window_end_in: int | None) -> int:
+    from models import ForwardOutbox
+
+    now = utcnow()
+    row = ForwardOutbox(
+        idempotency_key=key,
+        target_type="feishu",
+        target_url=FEISHU_URL,
+        rule_name="digest-age",
+        status=ForwardOutboxStatus.PENDING,
+        created_at=now - timedelta(seconds=created_ago),
+        next_attempt_at=now if window_end_in is None else now + timedelta(seconds=window_end_in),
+        digest_key=None if window_end_in is None else f"1:feishu:{key}",
+        digest_window_end=None if window_end_in is None else now + timedelta(seconds=window_end_in),
+    )
+    session.add(row)
+    await session.flush()
+    return int(row.id)
+
+
+@pytest.mark.asyncio
+async def test_a_digest_row_is_not_late_until_its_window_has_closed(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Production lost every hourly digest older than the 30-minute ceiling: the
+    age check read created_at, and a digest row is created early by design."""
+    from services.forwarding import outbox as outbox_module
+
+    async with session_factory() as session:
+        waiting = await _aged_row(session, key="age-waiting", created_ago=3000, window_end_in=600)
+        closed = await _aged_row(session, key="age-closed", created_ago=7200, window_end_in=-3600)
+        plain = await _aged_row(session, key="age-plain", created_ago=3000, window_end_in=None)
+        await session.commit()
+
+    now = utcnow()
+    async with session_factory() as session:
+        assert await outbox_module._expire_outbox_if_old(session, waiting, now=now, policy=_aged_policy()) is False
+        assert await outbox_module._expire_outbox_if_old(session, closed, now=now, policy=_aged_policy()) is True
+        assert await outbox_module._expire_outbox_if_old(session, plain, now=now, policy=_aged_policy()) is True
+        await session.commit()
+
+    from models import ForwardOutbox
+
+    async with session_factory() as session:
+        rows = {r.idempotency_key: r.status for r in (await session.execute(select(ForwardOutbox))).scalars()}
+    assert rows["age-waiting"] == ForwardOutboxStatus.PENDING
+    assert rows["age-closed"] == ForwardOutboxStatus.EXPIRED
+    assert rows["age-plain"] == ForwardOutboxStatus.EXPIRED

@@ -39,6 +39,10 @@ This project follows SemVer release headings.
 - `bypass_relay: "true"` on the alert rules that mean WebhookWise or its
   host is down, so they reach chat directly when the relay on the same host
   is down with them.
+- The overview opens with a "needs me" block — open incidents (each opens
+  its incident), pending Action Center items, dead letters and SLA breaches —
+  and says so when the queue is empty; `#/alerts/<id>` now lands on the
+  alert's decision chain instead of a collapsed row.
 - Dashboard copy: the inbound-rule action `cap_importance` has a label (it
   rendered as a raw key), `critical` importance is labelled, relative times
   have singular forms in English, incident rows say "N alerts" in the page
@@ -58,6 +62,13 @@ This project follows SemVer release headings.
   (187 of 331 alerts), each one a card, an incident and a paid summary.
 
 ### Fixed
+- A digest row's delivery age is measured from its window end, not its
+  creation: measured from `created_at`, every hourly digest older than the
+  30-minute delivery ceiling expired with zero attempts before the window
+  closed (seen in production within the first hour of the feature).
+- Pyroscope's compactor and metastore directories get named volumes; the
+  metastore's raft log no longer lands on a fresh anonymous volume at every
+  recreate.
 - Outbox creation is race-safe: two workers creating the same forwarding
   intent no longer fail the whole forwarding stage on the `idempotency_key`
   unique constraint; the existing row is reused.

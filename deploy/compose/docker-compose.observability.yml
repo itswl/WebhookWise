@@ -194,6 +194,11 @@ services:
       - -compactor.blocks-retention-period=30d
     volumes:
       - pyroscope_data:/data
+      # The image also declares /data-compactor and /data-metastore as VOLUMEs;
+      # left unnamed, the metastore's raft WAL landed on a fresh anonymous volume
+      # at every recreate, which is one reason /ready never turned 200.
+      - pyroscope_compactor:/data-compactor
+      - pyroscope_metastore:/data-metastore
     ports:
       - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:4040:4040"
     networks:
@@ -265,6 +270,10 @@ volumes:
     name: webhookwise_prometheus_data
   pyroscope_data:
     name: webhookwise_pyroscope_data
+  pyroscope_compactor:
+    name: webhookwise_pyroscope_compactor
+  pyroscope_metastore:
+    name: webhookwise_pyroscope_metastore
   tempo_data:
     name: webhookwise_tempo_data
 

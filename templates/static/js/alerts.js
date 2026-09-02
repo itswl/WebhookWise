@@ -1068,12 +1068,18 @@ const AlertsModule = {
         if (processingStatusFilter) processingStatusFilter.value = '';
     },
 
-    _revealAlertItem(id) {
+    _revealAlertItem(id, options) {
         const alertItem = document.querySelector('.alert-item[data-id="' + id + '"]');
         if (!alertItem) return false;
         alertItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
         if (!alertItem.classList.contains('expanded')) {
             alertItem.classList.add('expanded');
+        }
+        // A shared #/alerts/<id> link is a question ("why did this one do that?"),
+        // so the URL lands on the decision chain, not on the collapsed row.
+        if (options && options.openDecision) {
+            const decisionTab = alertItem.querySelector('.tab[data-tab="decision"]');
+            if (decisionTab && !decisionTab.classList.contains('active')) decisionTab.click();
         }
         alertItem.classList.add('alert-focus');
         setTimeout(function() {
@@ -1089,7 +1095,7 @@ const AlertsModule = {
 
     async focusAlertById(id) {
         if (!id) return false;
-        if (this._revealAlertItem(id)) return true;
+        if (this._revealAlertItem(id, { openDecision: true })) return true;
 
         let index = this.filteredAlerts.findIndex(w => w.id == id);
         if (index === -1) {
@@ -1122,7 +1128,7 @@ const AlertsModule = {
 
         this.currentPage = Math.floor(index / this.pageSize) + 1;
         this.displayCurrentPage();
-        setTimeout(() => this._revealAlertItem(id), 50);
+        setTimeout(() => this._revealAlertItem(id, { openDecision: true }), 50);
         return true;
     },
 
