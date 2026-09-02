@@ -88,6 +88,20 @@ JENKINS_PAYLOAD = {
     },
 }
 
+NETDATA_PAYLOAD: dict[str, Any] = {
+    "name": "ram_in_use",
+    "chart": "system.ram",
+    "family": "ram",
+    "host": "node-01",
+    "status": "CRITICAL",
+    "old_status": "WARNING",
+    "value": "94.2",
+    "units": "%",
+    "info": "system memory utilization",
+    "when": "1788400000",
+    "alarm": "ram_in_use = 94.2 %",
+}
+
 HEALTHCHECKS_PAYLOAD: dict[str, Any] = {
     "check": "db-backup",
     "code": "3a1d7f0e-2c4b-4c5d-9e8f-0123456789ab",
@@ -122,6 +136,7 @@ FIXTURES: dict[str, dict[str, object]] = {
     "jenkins": JENKINS_PAYLOAD,
     "sentry": SENTRY_PAYLOAD,
     "healthchecks": HEALTHCHECKS_PAYLOAD,
+    "netdata": NETDATA_PAYLOAD,
 }
 
 
@@ -197,6 +212,8 @@ def test_aliases_resolve(declarative_registry: AdapterRegistry) -> None:
         "healthchecks_io": "healthchecks",
         "healthchecks-io": "healthchecks",
         "hc": "healthchecks",
+        "netdata_agent": "netdata",
+        "netdata-agent": "netdata",
     }
     for alias, name in expected.items():
         assert declarative_registry.find_adapter_by_source(alias) == name
@@ -313,3 +330,25 @@ def test_healthchecks_up_is_a_recovery() -> None:
 
     assert is_recovery_payload({**HEALTHCHECKS_PAYLOAD, "status": "up"}, None) is True
     assert is_recovery_payload(HEALTHCHECKS_PAYLOAD, None) is False
+
+
+def test_netdata_normalizes(specs_by_name: dict[str, CompiledSpec]) -> None:
+    data = specs_by_name["netdata"].normalizer(NETDATA_PAYLOAD)
+    identity = data["_alert_identity"]
+    assert identity["source"] == "netdata"
+    assert identity["name"] == "ram_in_use"
+    assert identity["resource"] == "node-01"
+    assert identity["service"] == "system.ram"
+    # CRITICAL / WARNING are real severities and go through the shared normalizer.
+    assert identity["severity"] == "critical"
+    assert data["Type"] == "NetdataAlarm"
+    assert data["RuleName"] == "ram_in_use"
+    assert data["Level"] == "critical"
+    assert data["summary"] == "system memory utilization"
+
+
+def test_netdata_clear_is_a_recovery() -> None:
+    from services.incidents.grouping import is_recovery_payload
+
+    assert is_recovery_payload({**NETDATA_PAYLOAD, "status": "CLEAR"}, None) is True
+    assert is_recovery_payload(NETDATA_PAYLOAD, None) is False

@@ -15,6 +15,24 @@ For anything the mapping below can't express (multi-alert fan-out, computed
 fields, conditional logic), write a code adapter in `adapters/simple_adapters.py`
 instead.
 
+## What ships here
+
+| Spec | Source | Notes |
+| --- | --- | --- |
+| `generic_json.yaml` | any flat `{alert_name, level, host, service, id, message}` body | the worked example |
+| `zabbix.yaml` | Zabbix webhook media type | |
+| `uptime_kuma.yaml` | Uptime Kuma | numeric `heartbeat.status`, so no severity mapping |
+| `healthchecks.yaml` | Healthchecks.io | operator-composed body; `status: up` is a recovery |
+| `netdata.yaml` | Netdata agent, custom notification | operator-composed body; `CLEAR` is a recovery |
+| `aliyun_cms.yaml` | Alibaba Cloud Monitor | |
+| `tencent_cloud_monitor.yaml` | Tencent Cloud Monitor | |
+| `jenkins.yaml` | Jenkins notification plugin | |
+| `sentry.yaml` | Sentry legacy webhook | |
+| `aws_health.yaml` | AWS Health events | |
+
+Adding one is a YAML file, a sample payload in `tests/adapters/test_spec_library.py`,
+and a row above.
+
 ## Format
 
 ```yaml

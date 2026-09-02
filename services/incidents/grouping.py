@@ -23,7 +23,7 @@ _INCIDENT_QUIET_MINUTES = 10
 _SCAN_LOOKBACK_MINUTES = 4320  # 72 h initial/backfill safety window
 _MAX_MEMBERS_PER_INCIDENT = 200
 _MAX_INCIDENTS_PER_SCAN = 200
-_RECOVERY_VALUES = {"resolved", "recovered", "recovery", "ok", "normal", "healthy", "inactive", "up", "恢复"}
+_RECOVERY_VALUES = {"clear", "resolved", "recovered", "recovery", "ok", "normal", "healthy", "inactive", "up", "恢复"}
 _DIMENSION_ALIASES: dict[str, tuple[str, ...]] = {
     "service": ("service", "service_name", "servicename", "application", "app"),
     "project": ("project", "project_name", "projectname"),

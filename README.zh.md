@@ -103,7 +103,7 @@ curl -X POST http://localhost:8000/v1/webhook \
 python scripts/seed_demo_data.py --base-url http://localhost:8000
 ```
 
-开箱即用的源格式:volcengine、Grafana、Prometheus Alertmanager、Datadog、PagerDuty、飞书卡片(代码适配器),以及 Zabbix、Uptime-Kuma、Healthchecks.io、阿里云云监控、腾讯云监控、Jenkins、Sentry 的声明式 YAML 规格(`adapters/specs/`)——写一个 YAML 文件即可接入自己的简单源,见 [adapters/specs/README.md](adapters/specs/README.md)(英文)。
+开箱即用的源格式:volcengine、Grafana、Prometheus Alertmanager、Datadog、PagerDuty、飞书卡片(代码适配器),以及 Zabbix、Uptime-Kuma、Healthchecks.io、Netdata、阿里云云监控、腾讯云监控、Jenkins、Sentry 的声明式 YAML 规格(`adapters/specs/`)——写一个 YAML 文件即可接入自己的简单源,见 [adapters/specs/README.md](adapters/specs/README.md)(英文)。
 
 4. 打开入口:
 

@@ -46,8 +46,10 @@ This project follows SemVer release headings.
 - Chat cards link back to the alert's decision chain (`🔎 查看决策链` →
   `#/alerts/<id>`) when `DASHBOARD_PUBLIC_URL` is set; the setting is now a
   runtime policy shared by alert, digest, incident, proposal and report cards.
-- Healthchecks.io joins the declarative adapter specs (`adapters/specs/healthchecks.yaml`);
-  a `status: up` payload is understood as a recovery signal.
+- Healthchecks.io and Netdata join the declarative adapter specs, and the
+  specs README now lists what ships. Both post an operator-composed body, so
+  each spec documents the exact JSON to configure; their recovery words
+  (`up`, `CLEAR`) are understood by the incident grouping (#7).
 - Dashboard copy: the inbound-rule action `cap_importance` has a label (it
   rendered as a raw key), `critical` importance is labelled, relative times
   have singular forms in English, incident rows say "N alerts" in the page

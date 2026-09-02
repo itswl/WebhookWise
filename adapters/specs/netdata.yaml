@@ -1,0 +1,53 @@
+# Netdata health alarm notification (agent-dispatched "custom" method).
+#
+# Netdata's custom notification is a shell function the operator writes, so the
+# body is ours to choose. Configure `custom_sender()` in `health_alarm_notify.conf`
+# to POST this JSON to /v1/webhook/netdata:
+#   {
+#     "name":       "${name}",        # alert name, e.g. ram_in_use
+#     "chart":      "${chart}",       # chart id, e.g. system.ram
+#     "family":     "${family}",      # instance, e.g. eth0
+#     "host":       "${host}",
+#     "status":     "${status}",      # CLEAR | WARNING | CRITICAL | REMOVED | UNDEFINED
+#     "old_status": "${old_status}",
+#     "value":      "${value}",
+#     "units":      "${units}",
+#     "info":       "${info}",        # the alert's description
+#     "when":       "${when}",
+#     "alarm":      "${alarm}"        # pre-rendered "name = value units"
+#   }
+#
+# CRITICAL and WARNING normalize to this service's own levels; CLEAR is a
+# recovery signal (the incident grouping recognises it and closes the incident),
+# and its severity is inherited from the firing alert it clears, so the level
+# CLEAR itself would carry is never the one a reader sees.
+
+name: netdata
+priority: 0
+aliases:
+  - netdata_agent
+  - netdata-agent
+
+# name + chart + status together are Netdata's shape; no built-in adapter or
+# sibling spec keys on `chart`.
+detect:
+  all:
+    - key_exists: name
+    - key_exists: chart
+    - key_exists: status
+
+identity:
+  name: name # the alert name: stable across hosts and restarts
+  resource:
+    - host # the machine the alarm fired on
+    - chart
+  service: chart # the measured thing, e.g. system.ram
+  severity: status # CRITICAL / WARNING run through the shared normalizer
+
+output:
+  Type: NetdataAlarm
+  RuleName: name
+  Level: status
+  summary:
+    - info # the alert's own description
+    - alarm # "name = value units"
