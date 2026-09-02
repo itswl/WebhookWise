@@ -1763,7 +1763,13 @@ def test_forward_rules_render_as_compact_rows() -> None:
     assert "rules.row.matchAll" in rules
     assert "dashed" not in rules
     # The operator hooks the page always had.
-    for hook in ('data-toggle-rule="', 'data-act="testRule"', 'data-act="showRuleForm"', 'data-act="deleteRule"', "data-drill-rule"):
+    for hook in (
+        'data-toggle-rule="',
+        'data-act="testRule"',
+        'data-act="showRuleForm"',
+        'data-act="deleteRule"',
+        "data-drill-rule",
+    ):
         assert hook in rules, f"forward rules lost the {hook} hook"
 
     css = _static_css("components.css")
