@@ -32,7 +32,7 @@ x-logging: &logging
 
 # One image, four process modes. RUN_MODE is what the entrypoint dispatches on.
 x-app: &app
-  image: ghcr.io/itswl/webhookwise:${WEBHOOKWISE_TAG:-0.1.1}
+  image: ghcr.io/itswl/webhookwise:${WEBHOOKWISE_TAG:-0.2.0}
   logging: *logging
   restart: unless-stopped
   environment: &app-env

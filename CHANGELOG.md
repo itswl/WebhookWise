@@ -3,7 +3,7 @@
 All notable project changes should be summarized here after merge or release.
 This project follows SemVer release headings.
 
-## [Unreleased]
+## [0.2.0] - 2026-09-03
 
 ### Security
 - Every place that names a caller — the `[Auth]` warnings, the `[HTTP]`
