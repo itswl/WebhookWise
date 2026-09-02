@@ -101,11 +101,17 @@ def _cost_basis() -> dict[str, Any]:
     with this provider's price list".
     """
     from core.app_context import get_config_manager
+    from services.operations import runtime_settings as rt
 
     ai = get_config_manager().ai
     model = str(ai.OPENAI_MODEL or "")
-    rate_in = float(ai.AI_COST_PER_1K_INPUT_TOKENS)
-    rate_out = float(ai.AI_COST_PER_1K_OUTPUT_TOKENS)
+    # Both rates are runtime-editable, and the pricing path already honours the
+    # override (AIProviderPolicy.from_config). Reading the raw config here made
+    # the view disagree with the arithmetic it was describing: an operator who
+    # pasted their provider's real price still saw the shipped defaults and the
+    # "nobody reconciled these" warning.
+    rate_in = float(rt.override_or("AI_COST_PER_1K_INPUT_TOKENS", float(ai.AI_COST_PER_1K_INPUT_TOKENS)))
+    rate_out = float(rt.override_or("AI_COST_PER_1K_OUTPUT_TOKENS", float(ai.AI_COST_PER_1K_OUTPUT_TOKENS)))
     # The shipped defaults; a deployment that never touched them is the case
     # this flag exists to surface.
     default_rates = (rate_in, rate_out) == (0.003, 0.015)

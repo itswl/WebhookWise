@@ -95,6 +95,35 @@ async def test_cost_figures_declare_the_rates_they_were_computed_from(
     assert basis["reconciled_with_provider"] is True
 
 
+@pytest.mark.asyncio
+async def test_the_cost_view_reads_the_rates_an_operator_set_at_runtime(
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both rates are runtime-editable and the pricing path already honoured the
+    override, so a dashboard edit changed the arithmetic while the view kept
+    quoting the shipped defaults — and kept warning that nobody had reconciled
+    them. The view must describe the numbers it is actually using."""
+    from core.app_context import get_config_manager
+    from services.analysis.analysis_queries import get_ai_usage_stats
+    from services.operations import runtime_settings as rt
+
+    ai = get_config_manager().ai
+    ai.AI_COST_PER_1K_INPUT_TOKENS = 0.003
+    ai.AI_COST_PER_1K_OUTPUT_TOKENS = 0.015
+
+    overrides = {"AI_COST_PER_1K_INPUT_TOKENS": 0.0006, "AI_COST_PER_1K_OUTPUT_TOKENS": 0.0022}
+    monkeypatch.setattr(rt, "override_or", lambda key, fallback: overrides.get(key, fallback))
+
+    async with session_factory() as session:
+        basis = (await get_ai_usage_stats(session, period="week"))["cost"]["basis"]
+
+    assert basis["input_per_1k_usd"] == 0.0006
+    assert basis["output_per_1k_usd"] == 0.0022
+    assert basis["rates_are_defaults"] is False
+    assert basis["reconciled_with_provider"] is True
+
+
 def test_the_response_model_does_not_drop_the_cost_basis() -> None:
     """The service adding a field is not enough: FastAPI filters the payload
     through the response model, so an undeclared field reaches the client as

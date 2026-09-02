@@ -69,6 +69,10 @@ This project follows SemVer release headings.
   (187 of 331 alerts), each one a card, an incident and a paid summary.
 
 ### Fixed
+- The AI cost view reads the rates an operator set at runtime. Both rates
+  were already live-editable and the pricing path honoured the override, so a
+  dashboard edit changed the arithmetic while the view kept quoting the
+  shipped defaults and warning that nobody had reconciled them.
 - A digest row's delivery age is measured from its window end, not its
   creation: measured from `created_at`, every hourly digest older than the
   30-minute delivery ceiling expired with zero attempts before the window
@@ -92,6 +96,10 @@ This project follows SemVer release headings.
   scripts are checked.
 
 ### Docs
+- The twelve documentation screenshots are recaptured from the quickstart
+  demo stack instead of a production deployment: synthetic sources only, the
+  current navigation and the "needs me" block, and a picture that shows the
+  thesis (60 alerts in, 39 suppressed, 21 delivered, 100% delivery success).
 - `.agents/README.md`, `docs/capabilities.md` and the observability
   query-tools page no longer describe the removed `.claude/` and `.codex/`
   directories; the Chinese README gains the one-command trial section.
