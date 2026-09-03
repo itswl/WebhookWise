@@ -151,6 +151,32 @@ execution, same audit trail, `actor=feishu:<open_id>` — and the toast mirrors
 the dashboard's three outcomes. A stale button (already decided, expired)
 answers with an error toast and an idempotency receipt, not a failure.
 
+## Approved is not the same as fixed
+
+`run_remediation` returning `changed=true` means an API call worked. It does not
+mean the replayed dead letters completed, the requeued outbox row went out, or
+the re-enabled rule now delivers.
+
+So every executed command — from an approved proposal or from the dashboard
+button — arms a readback `REMEDIATION_VERIFY_DELAY_SECONDS` later (default 300;
+0 disables). A worker reads the **same target** back and records one of:
+
+| Verdict | Meaning |
+| --- | --- |
+| `verified` | the target's own state confirms the fix held |
+| `unrecovered` | the target still shows the condition, or never moved |
+| `unverifiable` | there is nothing to read back (row gone, empty batch, an action with no readback defined) |
+
+What it reads: outbox status, the replayed events' `processing_status`, incident
+`summary_status`, the rule's `enabled` flag, the workflow status. The verdict
+lands on the proposal row (`verify_status` / `verify_detail` / `verified_at`), in
+the audit trail always, and an `unrecovered` one surfaces as a critical Action
+Center card — the consumer that makes the loop worth having.
+
+Scheduling is best-effort by design: the execution a person just approved must
+not fail because the readback could not be armed. The cost is honest — a
+proposal left at `scheduled` with no verdict says the readback never ran.
+
 ## Not built yet
 
 - **Card refresh after a decision.** The card answers with a toast, but its

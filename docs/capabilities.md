@@ -64,6 +64,24 @@ Rules of thumb: gates ①⑤ are **opt-in** (default off); ②③⑥ are automat
 noise control; ④⑦⑧ are operator-authored policy. Every skip is visible —
 nothing is dropped without a decision-trace row naming the gate.
 
+### When the built-in identity is wrong for a source
+
+Deduplication keys on the identity the adapter extracts. For a source that
+buries a timestamp or a sequence number where the adapter looks, every
+restatement becomes a new thread and the window never fires.
+
+`DEDUP_FINGERPRINT_FIELDS` is a JSON object mapping a source to the dot-paths
+that *are* its identity — `{"grafana": ["labels.alertname", "labels.instance"]}`
+— and `DEDUP_FINGERPRINT_MODE` rolls it out on the ladder above: in `shadow` the
+configured key is computed and its disagreement with the built-in one counted
+(`dedup.fingerprint/diverged`) while behaviour stays byte-identical.
+
+Two properties worth knowing: `alert_hash` never moves (history keeps its name;
+only the threading key is overridable), and a payload the configured paths do
+not match falls back to the built-in key in **every** mode, reporting
+`dedup.fingerprint/unextractable`. A half-matching config fragments rather than
+collapsing everything into one bucket.
+
 ## Runtime settings
 
 Most config is static process configuration (env is its home, change = redeploy).
@@ -84,6 +102,34 @@ cadence, KB cards, trace retention). Every key tagged `[runtime-policy]` in
 - **Failure posture:** fail-open. If the DB or Redis is unhealthy the last
   snapshot (or plain env config) keeps serving; the hot path never depends on
   this plane.
+
+### The off / shadow / enforce ladder
+
+A knob that can *change what the system does* is a three-position switch rather
+than a boolean:
+
+| Position | What happens |
+| --- | --- |
+| `off` | nothing is computed |
+| `shadow` | the decision is computed and **recorded**, and nothing acts on it |
+| `enforce` | the decision is acted on |
+
+`shadow` is the point of the ladder: a feature earns `enforce` by producing a
+clean ledger, not by an argument. An unrecognised value degrades to `off` and
+says so in the log — a typo must never enforce something nobody asked for.
+
+The switch has three positions; the *promotion* has four rungs, because one of
+them is not a setting. Between `shadow` and `enforce` sits **sampled** — a
+person reads the shadow ledger against reality on a stated cadence, and
+`enforce` waits on what that reading says. See
+[`.agents/notes/implemented/2026-08-31-shadow-first-promotion-needs-a-ladder.md`](../.agents/notes/implemented/2026-08-31-shadow-first-promotion-needs-a-ladder.md)
+for the rungs and the evidence each one owes.
+
+Current consumers: `AI_COST_BUDGET_MODE` (the monthly spend brake — in shadow it
+records `ai.budget/shadow_exhausted` and lets the call through) and
+`DEDUP_FINGERPRINT_MODE` below. Where a boolean predates the ladder
+(`AI_COST_BUDGET_ENFORCE`), leaving the mode unset keeps the boolean
+authoritative, so an existing deployment does not move.
 
 ## Delivery semantics
 

@@ -32,6 +32,12 @@ the failure mode of shadow-first is not bad promotion, it is NO promotion:
 shadow ledgers nobody reads rot into permanent default-off, which is the demo
 state this repository's own "what consumes it" rule forbids.
 
+## Related
+
+The switch these rungs are climbed on is
+`2026-08-31-risky-automation-shares-one-mode-ladder.md` — `feature_modes.py`,
+its three positions, and the fail-to-`off` on an unknown value.
+
 ## Consequences
 
 Each shadow mode now owes a review date, or it is admitting nobody will look:

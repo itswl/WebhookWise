@@ -25,6 +25,14 @@ position means a feature earns `enforce` with a ledger (signals, decision
 traces) instead of an argument, and a typo in a mode value fails safe instead of
 enforcing something nobody asked for.
 
+## Related
+
+This note is the SWITCH. The practice of climbing it — off → shadow → sampled →
+enforce, and what evidence each rung owes — is
+`2026-08-31-shadow-first-promotion-needs-a-ladder.md`, written the same day from
+the other direction. Neither is the whole story: a mechanism with three
+positions and no stated cadence for reading its ledger never leaves `shadow`.
+
 ## Consequences
 
 Two switches now express the same idea two ways (`AI_COST_BUDGET_ENFORCE` and
