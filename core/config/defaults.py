@@ -617,6 +617,15 @@ class RetryConfig(StaticSettings):
     # (the dedup.fingerprint signal) without changing behaviour.
     DEDUP_FINGERPRINT_MODE: str = Field(default="off")
     DEDUP_FINGERPRINT_FIELDS: str = Field(default="")
+    # The complement, for the sender whose identity is ALMOST right: a JSON
+    # object mapping a source name to the label names that are NOT part of its
+    # alert identity, e.g. {"grafana": ["payload"]}. Grafana hashes its own
+    # `fingerprint` over the alert's labels, so a rule embedding volatile detail
+    # in a label fragments every firing; dropping that one label leaves every
+    # other label still doing identity work, which the inclusion list above
+    # cannot do (it would collapse the source's per-instance threads). Rides the
+    # same DEDUP_FINGERPRINT_MODE ladder; FIELDS wins if a source sets both.
+    DEDUP_FINGERPRINT_EXCLUDE_LABELS: str = Field(default="")
     ANALYSIS_REUSE_WINDOW_SECONDS: int = Field(default=43200, gt=0)
     ENABLE_PERIODIC_REMINDER: bool = Field(default=True)
     REMINDER_INTERVAL_HOURS: int = Field(default=6, gt=0)

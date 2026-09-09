@@ -78,7 +78,12 @@ def _cast_float(minimum: float | None = None, maximum: float | None = None) -> C
 
 
 def _cast_fingerprint_fields(raw: str) -> str:
-    """Validate the JSON {source: [dot.paths]} shape without normalizing it."""
+    """Validate the JSON {source: [name, ...]} shape without normalizing it.
+
+    Shared by DEDUP_FINGERPRINT_FIELDS (dot-paths that ARE the identity) and
+    DEDUP_FINGERPRINT_EXCLUDE_LABELS (label names that are not); the shape a
+    setting has to satisfy is the same, only the meaning of the strings differs.
+    """
     from core import json
 
     text = raw.strip()
@@ -89,7 +94,7 @@ def _cast_fingerprint_fields(raw: str) -> str:
         raise ValueError("expected a JSON object mapping source -> field list")
     for source, fields in loaded.items():
         if not isinstance(fields, list) or not fields or not all(isinstance(f, str) and f.strip() for f in fields):
-            raise ValueError(f"fields for {source!r} must be a non-empty list of dot-paths")
+            raise ValueError(f"entries for {source!r} must be a non-empty list of strings")
     return text
 
 
@@ -269,6 +274,12 @@ _SPEC_LIST: tuple[SettingSpec, ...] = (
         "ingest",
         _cast_fingerprint_fields,
         "JSON {source: [dot.paths]} naming the fields that ARE that source's alert identity",
+    ),
+    SettingSpec(
+        "DEDUP_FINGERPRINT_EXCLUDE_LABELS",
+        "ingest",
+        _cast_fingerprint_fields,
+        "JSON {source: [label names]} naming labels that are NOT identity; the rest of the labels become it",
     ),
     SettingSpec(
         "ANALYSIS_REUSE_WINDOW_SECONDS", "ingest", _cast_int(0, 86400), "How long one analysis answers restatements"

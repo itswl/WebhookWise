@@ -78,6 +78,7 @@
             'rs.desc.DEDUP_WINDOW_SECONDS': '该窗口内的重复告警并入同一线程',
             'rs.desc.DEDUP_FINGERPRINT_MODE': '按源去重指纹三段位：off / shadow（只统计分歧）/ enforce',
             'rs.desc.DEDUP_FINGERPRINT_FIELDS': 'JSON：源 → 构成其告警身份的字段路径列表',
+            'rs.desc.DEDUP_FINGERPRINT_EXCLUDE_LABELS': 'JSON：源 → 不参与身份判定的标签名；其余标签构成身份',
             'rs.desc.ANALYSIS_REUSE_WINDOW_SECONDS': '一次分析可复用于同义告警的时长',
             'rs.desc.WEBHOOK_RETRY_MAX_RETRIES': '进入死信前的尝试次数',
             'rs.desc.WEBHOOK_RETRY_INITIAL_DELAY_SECONDS': '首次重试延迟',
