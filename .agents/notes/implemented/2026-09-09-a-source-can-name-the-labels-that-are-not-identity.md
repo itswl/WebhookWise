@@ -58,6 +58,29 @@ Narrower blast radius, but it has to be written again for every new offender and
 each entry re-enumerates the stable fields, which is the collapse above waiting
 to happen one rule at a time.
 
+**Also rejected, and it was already staged on production:**
+`DEDUP_FINGERPRINT_FIELDS={"grafana": ["groupKey"]}`, sitting in `shadow` when
+this landed. It looks like the cheap fix, because a Grafana `groupKey` reads
+`{}/{}:{alertname="...", grafana_folder="..."}` and so does exclude the volatile
+`payload` label. But that IS alertname+folder, the collapse measured above, and
+promoting it to `enforce` was the obvious next step for whoever staged it.
+
+Counted over 30 days, per rule, distinct dedup keys today vs. under each config:
+
+| rule | today | excl. `payload` | `groupKey` |
+| --- | --- | --- | --- |
+| 示例充值超限告警 | 359 | 1 | 1 |
+| 示例提现超限告警 | 223 | 1 | 1 |
+| `DatasourceNoData` | 4 | 4 | 2 |
+| `CertificateExpiredAlertRule` | 2 | 2 | 1 |
+| `[SES] Bounce rate > 10%` | 3 | 3 | 1 |
+| a voice-escalation rule | 4 | 4 | 1 |
+
+Nine rules lose threads under `groupKey` and none do under the exclusion. The
+override was cleared rather than left in shadow: with `FIELDS` winning over
+`EXCLUDE_LABELS` for the same source, leaving it would also have silenced the
+fix.
+
 Upstream remains the better cure and is not ours to apply: moving the detail
 into **annotations** would fix the identity at the source, but these webhooks
 arrive from an external Grafana — 325 events in 7 days from a single off-estate
@@ -76,3 +99,9 @@ Emptying the label map falls back rather than collapsing, so the dangerous
 failure (one bucket per source, every alert after the first swallowed) cannot
 happen from a typo — but like the inclusion list, the safe failure is silent,
 and `unextractable` remains the only tell.
+
+Verified on production after promoting to `enforce`, by running the deployed
+key generation over 400 real stored payloads with the live override loaded: the
+two offending rules collapse 88 keys to 1 and 59 to 1, `CertificateExpiredAlertRule`
+and `DatasourceNoData` keep 2 each, no rule gains a key, and `alert_hash` moved
+on 0 of the 400.
