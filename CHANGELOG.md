@@ -3,6 +3,77 @@
 All notable project changes should be summarized here after merge or release.
 This project follows SemVer release headings.
 
+## [0.3.0] - 2026-09-09
+
+### Security
+- `httpx2` and `httpcore2` to 2.12.0, clearing five advisories against 2.9.1
+  (CVE-2026-84378/84379/84380/84382 and CVE-2026-84381). Both arrive
+  transitively through `mcp` and neither is imported directly. The bump is
+  targeted (`uv pip compile --upgrade-package`) rather than a re-resolve, so
+  the lock diff is two lines instead of a security fix buried in churn.
+
+### Added
+- `DEDUP_FINGERPRINT_EXCLUDE_LABELS` names, per source, the labels that are
+  **not** part of an alert's identity; the dedup key becomes a hash of the
+  remaining labels. The complement of `DEDUP_FINGERPRINT_FIELDS`, on the same
+  off/shadow/enforce ladder, and `alert_hash` still never moves.
+  Grafana computes its own `fingerprint` over an alert's labels, so a rule that
+  embeds volatile detail in a label hands over a new identity on every firing:
+  two production rules ran 689 events over 360 dedup keys and 379 over 223,
+  keys equalling originals exactly. Naming the identity *fields* instead is
+  per-source and measured as harmful — keying Grafana on alertname+folder would
+  have collapsed two different expiring certificates into one thread and four
+  dead datasources into one. Excluding one label preserved the thread count on
+  all 35 Grafana rules while collapsing only the two that were fragmenting.
+- The forward-rules page sorts enabled rules above disabled ones (priority
+  order preserved within each group) and gains an all/enabled/disabled status
+  filter beside the search box. Status, text search and paging compose.
+
+### Fixed
+- A forward rule's hit count now comes from the ledger its traffic actually
+  lands in. An alert forwarded by decisioning writes a `decision_trace`; an
+  internal system event queued by `resolve_notification_target` writes only an
+  outbox row. A rule matching only system event types therefore counted zero
+  traces forever and wore the "matched nothing" badge while its delivery-health
+  badge, computed from the same outbox rows, reported 44 sent and no failures —
+  two badges on one row contradicting each other. `hit_count_source` says which
+  ledger answered, so the badge can say "delivered" rather than "matched".
+  `SYSTEM_EVENT_TYPES` and its predicate move to `services/forwarding/types.py`;
+  the noise centre's private copy is gone, so one definition backs both panels.
+- The action centre no longer reports a digest row as a delayed delivery. "Pending
+  or retrying for more than five minutes" describes a batched row exactly, and a
+  batched row is held on purpose until its window closes: all three pending rows
+  on production were digest rows with `attempts = 0`, no error, and
+  `next_attempt_at` equal to `digest_window_end`. The window is hourly, so rows
+  accumulated inside it all hour and the warning was effectively always on —
+  which is how a real backlog would have gone unnoticed underneath it. A
+  delivery is late only once its scheduled attempt time has passed.
+- `hit_count_source` is declared on `ForwardRuleSchema`. The list endpoint
+  annotated it and the response model dropped it, so the dashboard read
+  `undefined` on every row and kept the alert noun. Green unit tests sat on both
+  sides of the serializer; the added contract asserts that every field
+  `_rules_with_roi` assigns is a declared schema field.
+- The new ROI tests seed the `forward_rules` rows they point at. SQLite does not
+  enforce `forward_outboxes.forward_rule_id`, so they passed locally and failed
+  five ways on the PostgreSQL replay. `tests/helpers/db.ensure_forward_rules`
+  already existed for exactly this.
+
+### Changed
+- `requirements.lock` joins the `docker_e2e` paths filter. The image installs
+  from that file, so a lock change is an image change — but the filter did not
+  say so, and a dependency bump skipped the e2e on its own PR and first built
+  the image only after landing on `main`.
+
+### Docs
+- `capabilities.md` gains the off/shadow/enforce ladder and the per-source dedup
+  fingerprint; `approval-gated-remediation.md` gains what "approved" now means.
+  The operator-facing half of five mechanisms that `ai-engineering.md` indexed
+  one line each.
+- Two decision notes: why a source names the labels that are *not* its identity
+  (with the rejected alternatives and the numbers behind them, including a
+  `groupKey` config found already staged in shadow on production and cleared),
+  and why a rule's hit count comes from the ledger its traffic lands in.
+
 ## [0.2.0] - 2026-09-03
 
 ### Security
