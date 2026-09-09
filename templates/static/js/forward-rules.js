@@ -221,17 +221,33 @@ function renderRuleRow(rule) {
                 ? '<span class="badge badge-success">' + wwIcon('check') + ' ' + t('rules.health.healthy') + '</span>'
                 : ''));
 
-    // ROI: how many alerts this rule has matched. A high count = it's carrying
-    // load; an enabled rule with zero matches is a "zombie" rule worth reviewing.
+    // ROI: how many times this rule has fired. A high count = it's carrying
+    // load; an enabled rule with zero is a "zombie" rule worth reviewing.
+    //
+    // A rule matching only system event types (incident_created and friends) is
+    // counted from its OUTBOX deliveries, because those never write a decision
+    // trace. Its badge says "delivered", not "matched": the count is not about
+    // alerts, and there is no trace to drill into. Rule 29 on production wore
+    // the zombie badge beside 44 healthy deliveries until this distinction.
     const hits = Number(rule.hit_count || 0);
+    const fromDeliveries = rule.hit_count_source === 'system_event_delivery';
+    const countLabel = fromDeliveries
+        ? t('rules.roi.delivered', { count: hits })
+        : t('rules.roi.hits', { count: hits });
+    const zombieBadge = fromDeliveries
+        ? '<span class="badge badge-danger" title="' + escapeHtml(t('rules.roi.zombieSystemTooltip')) + '">' +
+            t('rules.roi.zombieSystem') + '</span>'
+        : '<span class="badge badge-danger" title="' + escapeHtml(t('rules.roi.zombieTooltip')) + '">' +
+            t('rules.roi.zombie') + '</span>';
     const hitBadge = hits > 0
-        ? '<button type="button" class="badge badge-success badge-drill" title="' + escapeHtml(t('rules.roi.tooltip')) + '"' +
-            ' data-drill-rule="' + escapeHtml(rule.name) + '">' +
-            t('rules.roi.hits', { count: hits }) + '</button>'
-        : (isEnabled
-            ? '<span class="badge badge-danger" title="' + escapeHtml(t('rules.roi.zombieTooltip')) + '">' +
-                t('rules.roi.zombie') + '</span>'
-            : '<span class="badge badge-outline">' + t('rules.roi.hits', { count: 0 }) + '</span>');
+        // A delivery count has no trace to drill into — the rows are in the
+        // delivery queue, not the decision trace — so it is a plain badge.
+        ? (fromDeliveries
+            ? '<span class="badge badge-success" title="' + escapeHtml(t('rules.roi.deliveredTooltip')) + '">' +
+                countLabel + '</span>'
+            : '<button type="button" class="badge badge-success badge-drill" title="' + escapeHtml(t('rules.roi.tooltip')) + '"' +
+                ' data-drill-rule="' + escapeHtml(rule.name) + '">' + countLabel + '</button>')
+        : (isEnabled ? zombieBadge : '<span class="badge badge-outline">' + countLabel + '</span>');
 
     const rowClass = 'rule-row' + (isEnabled ? '' : ' is-disabled') +
         (health.unhealthy ? ' is-unhealthy' : '') + (expanded ? ' is-open' : '');

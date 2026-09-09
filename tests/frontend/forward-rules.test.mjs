@@ -208,4 +208,30 @@ M.setQuery('');
 M.setStatus('all');
 check('恢复「全部」后四条都在', order(container.innerHTML).every((i) => i >= 0));
 
+
+// ── 系统事件规则：计数来自投递，而不是决策链路 ──────────────────────────
+// 只匹配 incident_created/incident_resolved 的规则从不写决策链路，命中数因此
+// 永远是 0，规则页在 44 条健康投递旁边挂着「未命中任何告警」——两个面板对同
+// 一条规则给出相反结论。这类规则读的是投递数，措辞也随之改变。
+const systemRule = {
+  ...unconstrained, id: 29, name: '事件通知 -> 值班群', priority: 500,
+  match_event_type: 'incident_created,incident_resolved',
+  hit_count: 44, hit_count_source: 'system_event_delivery',
+};
+M.render([systemRule]);
+const sysRow = container.innerHTML;
+check('系统事件规则显示投递数', sysRow.includes('近 90 天投递 44 次'));
+check('系统事件规则不说「命中」', !sysRow.includes('近 90 天命中'));
+check('投递数无下钻(无决策链路可看)', !sysRow.includes('data-drill-rule'));
+check('健康投递不再显示僵尸徽章', !sysRow.includes('未命中任何告警'));
+
+M.render([{ ...systemRule, hit_count: 0 }]);
+const sysZero = container.innerHTML;
+check('零投递的系统事件规则说「未投递」', sysZero.includes('未投递任何事件') && !sysZero.includes('未命中任何告警'));
+
+// 普通告警规则不受影响：仍是可下钻的命中数。
+M.render([{ ...unconstrained, hit_count: 87, hit_count_source: 'decision_trace' }]);
+check('告警规则仍显示可下钻命中数', container.innerHTML.includes('近 90 天命中 87 次') && container.innerHTML.includes('data-drill-rule'));
+
+
 process.exit(fails ? 1 : 0);

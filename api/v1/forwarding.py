@@ -27,12 +27,12 @@ from services.forwarding.rules import (
     delete_forward_rule,
     get_forward_rule,
     get_forward_rule_delivery_health,
+    get_forward_rule_roi,
     get_forward_rules,
     update_forward_rule,
 )
 from services.forwarding.target_validation import validated_target_url
 from services.operations.audit_logger import add_audit
-from services.webhooks.decision_trace_queries import get_forward_rule_hit_counts
 
 logger = get_logger("api.v1.forwarding")
 
@@ -216,9 +216,15 @@ def _deep_analysis_destination(gateway_name: str = "") -> JSONDict:
 
 
 async def _rules_with_roi(session: AsyncSession, rules: list[Any], *, mask_target_url: bool) -> list[JSONDict]:
-    """Annotate each rule with its hit count (ROI): how many alerts it matched,
-    and when it last did. A zero count on an enabled rule is a zombie rule."""
-    hits = await get_forward_rule_hit_counts(session, rule_names=[r.name for r in rules])
+    """Annotate each rule with its hit count (ROI): how many times it fired, and
+    when it last did. A zero count on an enabled rule is a zombie rule.
+
+    The count comes from whichever ledger the rule's traffic lands in — see
+    ``get_forward_rule_roi``. A rule matching only system event types is read
+    from its outbox deliveries, because those never write a decision trace and
+    the panel used to call such a rule a zombie next to a healthy delivery
+    badge."""
+    hits = await get_forward_rule_roi(session, list(rules))
     delivery_health = await get_forward_rule_delivery_health(session, [int(r.id) for r in rules])
     # Per rule now: different rules may name different gateways. Cached by name
     # so a page of rules sharing one gateway still resolves it once.
@@ -229,6 +235,7 @@ async def _rules_with_roi(session: AsyncSession, rules: list[Any], *, mask_targe
         stat = hits.get(rule.name)
         item["hit_count"] = stat["count"] if stat else 0
         item["last_matched_at"] = stat["last_matched_at"] if stat else None
+        item["hit_count_source"] = stat["hit_count_source"] if stat else "decision_trace"
         item.update(delivery_health.get(int(rule.id), {}))
         if rule.target_type == "deep_analysis":
             name = str(getattr(rule, "target_gateway", "") or "")

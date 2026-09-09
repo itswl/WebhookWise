@@ -12,10 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.app_context import get_config_manager
 from core.datetime_utils import utc_isoformat, utcnow
-from core.text import split_csv_lower
 from models import DecisionTrace, ForwardRule, InboundRule, NoiseReductionAction, Silence, WebhookEvent
 from services.forwarding.outbox_records import digest_window_start
 from services.forwarding.rules import update_forward_rule
+from services.forwarding.types import matches_only_system_events
 from services.incidents.grouping import is_recovery_payload
 from services.operations import runtime_settings as rt
 from services.operations.audit_logger import add_audit
@@ -40,21 +40,6 @@ _MAX_RECOVERY_SAMPLE = 20_000
 # the share is not, because below it a digest has almost nothing to batch.
 _DIGEST_MIN_REPEAT_RATE = 40.0
 
-# Event types that are WebhookWise reporting on ITSELF — an incident opening, an
-# SLA breaching, a forward giving up. `outbox_exhausted` is the name this system
-# emits; `forward_exhausted` is accepted as the same idea under an older name.
-_SYSTEM_EVENT_TYPES = frozenset(
-    {
-        "incident_created",
-        "incident_resolved",
-        "sla_breached",
-        "deep_analysis",
-        "ai_error",
-        "ai_degraded",
-        "outbox_exhausted",
-        "forward_exhausted",
-    }
-)
 # Targets that exist to COMPARE this system against another one rather than to
 # tell a person something.
 _COMPARISON_TARGET_TYPES = frozenset({"feishu_relay", "relay"})
@@ -83,10 +68,9 @@ def _is_tunable_forward_rule(rule: ForwardRule) -> bool:
         return False
     if str(rule.name or "").strip().lower().startswith(_COMPARISON_NAME_PREFIX):
         return False
-    event_types = split_csv_lower(str(rule.match_event_type or ""))
     # An empty criterion matches everything, including alerts; only a rule whose
     # every named type is a system event is excluded.
-    return not (event_types and all(event_type in _SYSTEM_EVENT_TYPES for event_type in event_types))
+    return not matches_only_system_events(str(rule.match_event_type or ""))
 
 
 def _pct(value: int, total: int) -> float:

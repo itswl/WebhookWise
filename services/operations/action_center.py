@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.datetime_utils import utc_isoformat, utcnow
@@ -324,6 +324,15 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
             )
         )
 
+    # "Older than five minutes" is not the same as stuck. A digest row is HELD
+    # on purpose until its window closes, and a retrying row is waiting out its
+    # backoff; neither is late until its scheduled attempt time has passed.
+    #
+    # Measured on production 2026-09-09: all three pending rows were digest rows
+    # for rule "所有告警通知" with next_attempt_at = digest_window_end = 03:00,
+    # attempts 0 and no error — batched exactly as configured. Because that
+    # window is hourly, rows accumulate inside it all hour and this warning was
+    # effectively always on, which is how a real backlog would go unnoticed.
     stale_outbox_count = int(
         (
             await session.execute(
@@ -332,6 +341,10 @@ async def get_action_center(session: AsyncSession) -> dict[str, Any]:
                 .where(
                     ForwardOutbox.status.in_([ForwardOutboxStatus.PENDING, ForwardOutboxStatus.RETRYING]),
                     ForwardOutbox.created_at < outbox_stale_cutoff,
+                    or_(
+                        ForwardOutbox.next_attempt_at.is_(None),
+                        ForwardOutbox.next_attempt_at <= now,
+                    ),
                 )
             )
         ).scalar_one()
