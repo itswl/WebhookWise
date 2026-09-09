@@ -8,6 +8,10 @@ let forwardRules = [];
 // Client-side search + page over the loaded list; mirrors silences.js.
 let ruleQuery = '';
 let rulePage = 1;
+// 'all' | 'enabled' | 'disabled'. The list sorts enabled rules first, but on a
+// page of twenty-three rules "what is live right now" still means reading every
+// row's switch; the filter answers it without reading any.
+let ruleStatus = 'all';
 // Rows the operator has unfolded; a re-render (toggle, search, paging)
 // rebuilds them open so comparing two rules' conditions survives a click.
 const expandedRuleIds = new Set();
@@ -69,8 +73,18 @@ function renderForwardRules(rules) {
         return;
     }
 
-    // Sort by priority (higher priority first)
-    const sortedRules = [...rules].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    // Enabled first, then by priority (higher first). Priority alone interleaved
+    // disabled rules with live ones, so the answer to "what is actually
+    // forwarding" was spread down the whole list; a disabled rule keeps its
+    // priority order, it just sorts below every enabled one.
+    const isLive = (r) => r.enabled !== false;
+    const statusFiltered = ruleStatus === 'all'
+        ? rules
+        : rules.filter((r) => isLive(r) === (ruleStatus === 'enabled'));
+    const sortedRules = [...statusFiltered].sort((a, b) => {
+        const byStatus = Number(isLive(b)) - Number(isLive(a));
+        return byStatus !== 0 ? byStatus : (b.priority || 0) - (a.priority || 0);
+    });
 
     const paged = wwFilterPage(sortedRules, ruleQuery, rulePage, 20, (r) =>
         [r.name, r.match_source, r.match_project, r.match_region, r.match_environment,
@@ -748,6 +762,13 @@ const ForwardRulesModule = {
     },
     search: function (value) {
         ruleQuery = String(value || '');
+        rulePage = 1;
+        renderForwardRules(forwardRules);
+    },
+    // Status filter: page 1 again, because page 3 of "all" is usually past the
+    // end of "enabled" and would render the no-matches state on a hit.
+    setStatus: function (value) {
+        ruleStatus = String(value || 'all');
         rulePage = 1;
         renderForwardRules(forwardRules);
     },

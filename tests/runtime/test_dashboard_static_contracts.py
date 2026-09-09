@@ -1777,3 +1777,28 @@ def test_forward_rules_render_as_compact_rows() -> None:
     assert row and "display: flex" in row.group(1) and "flex-wrap: wrap" in row.group(1)
     assert "min-width: 0" in row.group(1)
     assert ".rule-row-delete { color: var(--danger); }" in css
+
+
+def test_forward_rules_sort_enabled_first_and_filter_by_status() -> None:
+    """Priority alone interleaved disabled rules with live ones, so "what is
+    actually forwarding" was spread down all twenty-three rows. Enabled sorts
+    above disabled (priority order kept inside each group) and a status select
+    narrows the list; both run before the shared search+page helper, so
+    filtering and paging still compose."""
+    rules = _static_js("forward-rules.js")
+    assert "let ruleStatus = 'all';" in rules
+    assert "setStatus: function" in rules
+    # Status wins, priority breaks the tie — the order the assertions describe.
+    assert "Number(isLive(b)) - Number(isLive(a))" in rules
+    assert "(b.priority || 0) - (a.priority || 0)" in rules
+    # A filter change must reset to page 1: page 3 of "all" is usually past the
+    # end of "enabled", which would render no-matches on a hit.
+    status = rules[rules.index("setStatus: function") :]
+    assert "rulePage = 1;" in status[: status.index("renderForwardRules")]
+
+    html = _dashboard_html()
+    assert 'id="ruleStatusFilter"' in html
+    for value in ("all", "enabled", "disabled"):
+        assert f'<option value="{value}"' in html
+    assert 'data-sb="sb41"' in html
+    assert "bind('[data-sb=\"sb41\"]', 'change'" in _static_js("static-bindings.js")
