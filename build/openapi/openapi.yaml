@@ -5454,6 +5454,10 @@ components:
           type: integer
           title: Hit Count
           default: 0
+        hit_count_source:
+          type: string
+          title: Hit Count Source
+          default: decision_trace
         last_matched_at:
           anyOf:
           - type: string

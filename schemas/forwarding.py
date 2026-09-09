@@ -166,10 +166,17 @@ class ForwardRuleSchema(BaseModel):
     stop_on_match: bool
     created_at: datetime | str | None = None
     updated_at: datetime | str | None = None
-    # ROI signals: how many alerts this rule has matched (lifetime, from the
-    # decision trace) and when it last did. Annotated by the list endpoint;
-    # absent on create/update responses (no trace lookup there), hence defaults.
+    # ROI signals: how many times this rule has fired and when it last did.
+    # Annotated by the list endpoint; absent on create/update responses (no ROI
+    # lookup there), hence defaults.
+    #
+    # hit_count_source names the ledger the count came from, because two paths
+    # reach a target and only one keeps a decision trace: a rule matching only
+    # system event types is counted from its outbox deliveries. The dashboard
+    # needs it to pick the right noun — "matched" is about alerts and would be a
+    # lie about an incident card.
     hit_count: int = 0
+    hit_count_source: str = "decision_trace"
     last_matched_at: datetime | str | None = None
     delivery_status: str = "unknown"
     delivery_failure_count_24h: int = 0

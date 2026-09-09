@@ -149,3 +149,31 @@ async def test_forward_rule_mutations_invalidate_cache(monkeypatch: pytest.Monke
     # one post-commit invalidation and one cross-process publication.
     await db_session._run_after_commit_actions(session)  # type: ignore[arg-type]
     assert calls == ["invalidated", "invalidated", "invalidated", "invalidated", "published"]
+
+
+def test_every_field_the_roi_annotator_adds_survives_the_response_model() -> None:
+    """A field the list endpoint annotates but the schema does not declare is
+    silently dropped by the response_model, and only production shows it.
+
+    Shipped exactly that: `_rules_with_roi` set `hit_count_source` so the badge
+    could say "delivered" rather than "matched" for a system-event rule, the
+    schema did not declare it, and the dashboard read undefined on every row —
+    green unit tests either side of the hole, because the service test called
+    the function and the frontend test called the renderer, and nothing crossed
+    the serializer between them.
+    """
+    import inspect
+    import re
+
+    from api.v1 import forwarding
+    from schemas.forwarding import ForwardRuleSchema
+
+    source = inspect.getsource(forwarding._rules_with_roi)
+    annotated = set(re.findall(r'item\[\s*"([a-z_0-9]+)"\s*\]\s*=', source))
+    assert annotated, "expected _rules_with_roi to annotate at least one field"
+
+    declared = set(ForwardRuleSchema.model_fields)
+    assert annotated <= declared, (
+        f"annotated by the endpoint but not declared on ForwardRuleSchema, so "
+        f"the response_model drops them: {sorted(annotated - declared)}"
+    )

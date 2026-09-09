@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.datetime_utils import utcnow
 from models import DecisionTrace, ForwardOutbox, ForwardRule
 from services.forwarding.rules import get_forward_rule_roi, get_system_event_delivery_counts
+from tests.helpers.db import ensure_forward_rules, ensure_webhook_events
 
 
 @pytest.fixture
@@ -73,6 +74,7 @@ async def test_system_event_rule_counts_its_deliveries_not_its_empty_traces(
     async with session_factory.begin() as session:
         session.add(_rule(29, "示例事件通知规则", "incident_created,incident_resolved"))
     async with session_factory.begin() as session:
+        await ensure_forward_rules(session, 29)
         session.add_all(
             [
                 _outbox(29, "incident_created"),
@@ -99,6 +101,8 @@ async def test_alert_rule_still_counts_decision_traces(
     # the outbox must not be consulted — a rule naming NO event type is not a
     # system-event rule, however many system cards happen to pass through it.
     async with session_factory.begin() as session:
+        await ensure_webhook_events(session, 801, 802)
+        await ensure_forward_rules(session, 7)
         session.add_all([_trace(801, ["feishu"]), _trace(802, ["feishu"])])
         session.add_all([_outbox(7, "incident_created"), _outbox(7, "incident_created")])
 
@@ -116,6 +120,7 @@ async def test_mixed_event_rule_reads_as_an_alert_rule(
     # incident_created is a system event, webhook_forward is not: the rule can
     # carry an alert, so its traces remain the honest count.
     async with session_factory.begin() as session:
+        await ensure_forward_rules(session, 8)
         session.add_all([_outbox(8, "incident_created"), _outbox(8, "incident_created")])
 
     async with session_factory() as session:
@@ -150,6 +155,7 @@ async def test_delivery_counts_are_windowed_and_scoped(
     # a system-event rule is not counted (it cannot legitimately be there, and
     # counting it would make the number mean two things).
     async with session_factory.begin() as session:
+        await ensure_forward_rules(session, 11)
         session.add_all(
             [
                 _outbox(11, "incident_created"),
@@ -172,6 +178,7 @@ async def test_delivery_counts_ignore_rules_that_are_not_system_only(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     async with session_factory.begin() as session:
+        await ensure_forward_rules(session, 12)
         session.add(_outbox(12, "incident_created"))
 
     async with session_factory() as session:
@@ -187,6 +194,7 @@ async def test_a_queued_delivery_counts_before_it_is_sent(
     # delivery-health badge beside it answers, so a pending or exhausted row
     # still counts as a hit here.
     async with session_factory.begin() as session:
+        await ensure_forward_rules(session, 13)
         session.add_all(
             [
                 _outbox(13, "incident_created", status="pending"),
