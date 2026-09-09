@@ -25,6 +25,10 @@ jobs:
             docker_e2e:
               - ".github/workflows/ci.yml"
               - "Dockerfile"
+              # The image installs from requirements.lock, so a lock change IS
+              # an image change. Without this a dependency bump skipped the
+              # e2e on its own PR and only ran it after landing on main.
+              - "requirements.lock"
               - "deploy/compose/**"
               - "entrypoint.sh"
               - "alembic/**"
