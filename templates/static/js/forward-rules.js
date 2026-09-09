@@ -8,6 +8,10 @@ let forwardRules = [];
 // Client-side search + page over the loaded list; mirrors silences.js.
 let ruleQuery = '';
 let rulePage = 1;
+// 'all' | 'enabled' | 'disabled'. The list sorts enabled rules first, but on a
+// page of twenty-three rules "what is live right now" still means reading every
+// row's switch; the filter answers it without reading any.
+let ruleStatus = 'all';
 // Rows the operator has unfolded; a re-render (toggle, search, paging)
 // rebuilds them open so comparing two rules' conditions survives a click.
 const expandedRuleIds = new Set();
@@ -69,8 +73,18 @@ function renderForwardRules(rules) {
         return;
     }
 
-    // Sort by priority (higher priority first)
-    const sortedRules = [...rules].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    // Enabled first, then by priority (higher first). Priority alone interleaved
+    // disabled rules with live ones, so the answer to "what is actually
+    // forwarding" was spread down the whole list; a disabled rule keeps its
+    // priority order, it just sorts below every enabled one.
+    const isLive = (r) => r.enabled !== false;
+    const statusFiltered = ruleStatus === 'all'
+        ? rules
+        : rules.filter((r) => isLive(r) === (ruleStatus === 'enabled'));
+    const sortedRules = [...statusFiltered].sort((a, b) => {
+        const byStatus = Number(isLive(b)) - Number(isLive(a));
+        return byStatus !== 0 ? byStatus : (b.priority || 0) - (a.priority || 0);
+    });
 
     const paged = wwFilterPage(sortedRules, ruleQuery, rulePage, 20, (r) =>
         [r.name, r.match_source, r.match_project, r.match_region, r.match_environment,
@@ -207,17 +221,33 @@ function renderRuleRow(rule) {
                 ? '<span class="badge badge-success">' + wwIcon('check') + ' ' + t('rules.health.healthy') + '</span>'
                 : ''));
 
-    // ROI: how many alerts this rule has matched. A high count = it's carrying
-    // load; an enabled rule with zero matches is a "zombie" rule worth reviewing.
+    // ROI: how many times this rule has fired. A high count = it's carrying
+    // load; an enabled rule with zero is a "zombie" rule worth reviewing.
+    //
+    // A rule matching only system event types (incident_created and friends) is
+    // counted from its OUTBOX deliveries, because those never write a decision
+    // trace. Its badge says "delivered", not "matched": the count is not about
+    // alerts, and there is no trace to drill into. Rule 29 on production wore
+    // the zombie badge beside 44 healthy deliveries until this distinction.
     const hits = Number(rule.hit_count || 0);
+    const fromDeliveries = rule.hit_count_source === 'system_event_delivery';
+    const countLabel = fromDeliveries
+        ? t('rules.roi.delivered', { count: hits })
+        : t('rules.roi.hits', { count: hits });
+    const zombieBadge = fromDeliveries
+        ? '<span class="badge badge-danger" title="' + escapeHtml(t('rules.roi.zombieSystemTooltip')) + '">' +
+            t('rules.roi.zombieSystem') + '</span>'
+        : '<span class="badge badge-danger" title="' + escapeHtml(t('rules.roi.zombieTooltip')) + '">' +
+            t('rules.roi.zombie') + '</span>';
     const hitBadge = hits > 0
-        ? '<button type="button" class="badge badge-success badge-drill" title="' + escapeHtml(t('rules.roi.tooltip')) + '"' +
-            ' data-drill-rule="' + escapeHtml(rule.name) + '">' +
-            t('rules.roi.hits', { count: hits }) + '</button>'
-        : (isEnabled
-            ? '<span class="badge badge-danger" title="' + escapeHtml(t('rules.roi.zombieTooltip')) + '">' +
-                t('rules.roi.zombie') + '</span>'
-            : '<span class="badge badge-outline">' + t('rules.roi.hits', { count: 0 }) + '</span>');
+        // A delivery count has no trace to drill into — the rows are in the
+        // delivery queue, not the decision trace — so it is a plain badge.
+        ? (fromDeliveries
+            ? '<span class="badge badge-success" title="' + escapeHtml(t('rules.roi.deliveredTooltip')) + '">' +
+                countLabel + '</span>'
+            : '<button type="button" class="badge badge-success badge-drill" title="' + escapeHtml(t('rules.roi.tooltip')) + '"' +
+                ' data-drill-rule="' + escapeHtml(rule.name) + '">' + countLabel + '</button>')
+        : (isEnabled ? zombieBadge : '<span class="badge badge-outline">' + countLabel + '</span>');
 
     const rowClass = 'rule-row' + (isEnabled ? '' : ' is-disabled') +
         (health.unhealthy ? ' is-unhealthy' : '') + (expanded ? ' is-open' : '');
@@ -748,6 +778,13 @@ const ForwardRulesModule = {
     },
     search: function (value) {
         ruleQuery = String(value || '');
+        rulePage = 1;
+        renderForwardRules(forwardRules);
+    },
+    // Status filter: page 1 again, because page 3 of "all" is usually past the
+    // end of "enabled" and would render the no-matches state on a hit.
+    setStatus: function (value) {
+        ruleStatus = String(value || 'all');
         rulePage = 1;
         renderForwardRules(forwardRules);
     },

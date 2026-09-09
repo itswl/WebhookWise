@@ -370,6 +370,12 @@
                             <label class="sr-only" for="ruleSearch" data-i18n="rules.searchLabel">Search rules</label>
                             <input id="ruleSearch" type="search" class="filter-input" style="width: 200px;"
                                    data-i18n-placeholder="rules.searchPlaceholder" placeholder="Search rules…" data-sb="sb33">
+                            <select id="ruleStatusFilter" class="filter-input" data-sb="sb41"
+                                    data-i18n-aria-label="rules.filter.statusLabel" aria-label="Filter rules by status">
+                                <option value="all" data-i18n="rules.filter.all">All</option>
+                                <option value="enabled" data-i18n="rules.filter.enabled">Enabled</option>
+                                <option value="disabled" data-i18n="rules.filter.disabled">Disabled</option>
+                            </select>
                             <button data-sb="sb4" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-flask"/></svg> <span data-i18n="routing.view.sandbox">Test Payload</span></button>
                             <button data-sb="sb5" class="btn"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg> <span data-i18n="routing.view.audit">Audit</span></button>
                             <button data-sb="sb6" class="btn btn-primary"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> <span data-i18n="rules.add">Add Rule</span></button>

@@ -33,6 +33,7 @@ from schemas.analysis import deep_analysis_to_dict, deep_analysis_to_summary_dic
 from schemas.silences import silence_to_dict
 from services.analysis.analysis_queries import get_ai_usage_stats, get_deep_analyses_for_webhook
 from services.forwarding.outbox_queries import list_outbox_records as query_outbox_records
+from services.forwarding.rules import get_forward_rule_roi as _forward_rule_roi
 from services.incidents.queries import list_incidents as query_incidents
 from services.incidents.service_profiles import global_response_metrics
 from services.kb.retrieval import retrieve as kb_retrieve
@@ -49,7 +50,6 @@ from services.silences.store import list_silences
 from services.webhooks.decision_trace_queries import (
     get_decision_trace_for_event,
     get_decision_trace_quality_stats,
-    get_forward_rule_hit_counts,
     get_overview_stats,
     get_silence_suppression_counts,
     list_decision_traces,
@@ -212,11 +212,14 @@ async def get_alert_overview_stats(period: str = "day") -> dict[str, Any]:
     description="Return per-forward-rule match counts over a rolling 90-day window and last-matched timestamps — the "
     "ROI view that answers which rule is carrying the load and which enabled rule has gone quiet (a zombie rule). "
     "Counts are windowed, unlike get_silence_roi which is lifetime: a rule idle for over 90 days reports 0. "
-    "Returns a mapping of rule_name -> {count, last_matched_at}.",
+    "Returns a mapping of rule_name -> {count, last_matched_at, hit_count_source}. hit_count_source names the "
+    "ledger the count came from: 'decision_trace' for forwarded alerts, 'system_event_delivery' for a rule that "
+    "matches only internal system events (incident_created and friends), which are queued straight to the outbox "
+    "and never write a trace — so for those the count is deliveries, not alert matches.",
 )
 async def get_forward_rule_roi() -> dict[str, dict[str, Any]]:
     async with session_scope() as session:
-        return await get_forward_rule_hit_counts(session)
+        return await _forward_rule_roi(session)
 
 
 @mcp_server.tool(

@@ -51,6 +51,7 @@ document.addEventListener('DOMContentLoaded', function () {
     bind('[data-sb="sb35"]', 'click', function (event) { DeliveryQueueModule.load(); });
     bind('[data-sb="sb36"]', 'change', function (event) { DeliveryQueueModule.reloadOutbox(); });
     bind('[data-sb="sb33"]', 'input', function (event) { ForwardRulesModule.search(event.target.value); });
+    bind('[data-sb="sb41"]', 'change', function (event) { ForwardRulesModule.setStatus(event.target.value); });
     bind('[data-sb="sb34"]', 'input', function (event) { SilencesModule.search(event.target.value); });
     bind('[data-sb="sb37"]', 'input', function (event) { InboundRulesModule.search(event.target.value); });
     bind('[data-sb="sb38"]', 'input', function (event) { KbDraftsModule.search(event.target.value); });

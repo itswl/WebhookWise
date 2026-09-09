@@ -8,12 +8,17 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.datetime_utils import utcnow
+from core.datetime_utils import utc_isoformat, utcnow
 from core.logger import mask_url
 from core.pubsub_cache import TtlPubSubCache
 from db.session import session_scope
 from models import ForwardOutbox, ForwardRule
-from services.forwarding.types import ForwardRuleSnapshot
+from services.forwarding.types import (
+    SYSTEM_EVENT_TYPES,
+    ForwardRuleSnapshot,
+    matches_only_system_events,
+)
+from services.webhooks.decision_trace_queries import get_forward_rule_hit_counts
 
 _RULES_INVALIDATION_CHANNEL = "webhookwise:forward_rules:invalidate"
 _URL_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
@@ -88,6 +93,105 @@ async def get_forward_rule_delivery_health(
         for row in latest_rows
         if row.rule_id is not None
     }
+
+
+# The ROI panel's window. Matched to get_forward_rule_hit_counts' 90 days so the
+# two halves of one badge cannot disagree about what "recently" means.
+_ROI_WINDOW = timedelta(days=90)
+
+
+async def get_system_event_delivery_counts(
+    session: AsyncSession,
+    rules: list[ForwardRule],
+    *,
+    window: timedelta | None = _ROI_WINDOW,
+) -> dict[str, dict[str, Any]]:
+    """Deliveries per rule that matches ONLY system event types, keyed by name.
+
+    The ROI panel counts a rule's hits from ``decision_trace`` rows, but internal
+    system events (incident_created / incident_resolved and friends) are queued
+    straight to the outbox by ``resolve_notification_target`` and never write a
+    trace. A rule matching only those therefore counted 0 forever and wore the
+    "matched nothing" badge while its deliveries were healthy — measured on
+    production 2026-09-08: rule 29 had 44 sent outbox rows and zero failures next
+    to a zombie badge, two panels contradicting each other over one rule.
+
+    Counts every queued row rather than only ``sent`` ones, because this is the
+    analogue of a "forwarded" decision trace: it records that the rule matched
+    and produced a delivery. Whether that delivery then succeeded is what the
+    delivery-health badge beside it already answers.
+    """
+    targets = {
+        int(rule.id): str(rule.name)
+        for rule in rules
+        if rule.id is not None and matches_only_system_events(str(getattr(rule, "match_event_type", "") or ""))
+    }
+    if not targets:
+        return {}
+
+    stmt = select(
+        ForwardOutbox.forward_rule_id,
+        func.count(),
+        func.max(ForwardOutbox.created_at),
+    ).where(
+        ForwardOutbox.forward_rule_id.in_(list(targets)),
+        ForwardOutbox.event_type.in_(sorted(SYSTEM_EVENT_TYPES)),
+    )
+    if window is not None:
+        stmt = stmt.where(ForwardOutbox.created_at >= utcnow() - window)
+    rows = (await session.execute(stmt.group_by(ForwardOutbox.forward_rule_id))).all()
+
+    return {
+        targets[int(rule_id)]: {
+            "count": int(count),
+            "last_matched_at": utc_isoformat(last_at) if last_at is not None else None,
+        }
+        for rule_id, count, last_at in rows
+        if rule_id is not None and int(rule_id) in targets
+    }
+
+
+async def get_forward_rule_roi(
+    session: AsyncSession,
+    rules: list[ForwardRule] | None = None,
+    *,
+    window: timedelta | None = _ROI_WINDOW,
+) -> dict[str, dict[str, Any]]:
+    """One hit count per rule for the ROI panel, from whichever ledger records it.
+
+    Two ledgers, because two paths reach a target: an alert forwarded by the
+    decisioning pipeline writes a ``decision_trace``, and an internal system
+    event queued by ``resolve_notification_target`` writes only an outbox row.
+    A rule is read from the ledger its traffic actually lands in, and says which
+    one in ``hit_count_source`` so the badge can name the right noun — "matched"
+    is about alerts and would be a lie about an incident card.
+
+    Every rule passed in gets an entry, zeros included: this is the view that
+    answers "which enabled rule has gone quiet", and a rule that has gone quiet
+    was previously absent from the answer rather than present with a 0.
+    """
+    if rules is None:
+        rules = await get_forward_rules(session)
+    if not rules:
+        return {}
+
+    system_only = {
+        str(rule.name) for rule in rules if matches_only_system_events(str(getattr(rule, "match_event_type", "") or ""))
+    }
+    traces = await get_forward_rule_hit_counts(session, rule_names=[str(r.name) for r in rules], window=window)
+    deliveries = await get_system_event_delivery_counts(session, rules, window=window)
+
+    roi: dict[str, dict[str, Any]] = {}
+    for rule in rules:
+        name = str(rule.name)
+        source = "system_event_delivery" if name in system_only else "decision_trace"
+        stat = (deliveries if name in system_only else traces).get(name)
+        roi[name] = {
+            "count": stat["count"] if stat else 0,
+            "last_matched_at": stat["last_matched_at"] if stat else None,
+            "hit_count_source": source,
+        }
+    return roi
 
 
 async def create_forward_rule(

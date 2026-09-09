@@ -270,6 +270,85 @@ def _fingerprint_dedup_key(
     return hashlib.sha256(json.dumps_bytes(key_fields, sort_keys=True)).hexdigest()
 
 
+# Where an alert's label map lives, most specific first. `alerts.0` rather than
+# the whole list because the built-in grafana identity is also the FIRST alert's
+# fingerprint (`_norm_grafana`), and an identity that keyed on a different alert
+# than the adapter does would be a second, silent disagreement.
+_LABEL_MAP_PATHS = ("alerts.0.labels", "commonLabels", "labels")
+
+
+@lru_cache(maxsize=8)
+def _parse_excluded_labels(raw: str) -> dict[str, frozenset[str]]:
+    """Parse the JSON {source: [label names]} setting; anything malformed is {}."""
+    text = raw.strip()
+    if not text:
+        return {}
+    try:
+        loaded = json.loads(text)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        logger.warning("[Dedup] DEDUP_FINGERPRINT_EXCLUDE_LABELS is not valid JSON; exclusion config ignored")
+        return {}
+    if not isinstance(loaded, dict):
+        logger.warning("[Dedup] DEDUP_FINGERPRINT_EXCLUDE_LABELS must be a JSON object; exclusion config ignored")
+        return {}
+    parsed: dict[str, frozenset[str]] = {}
+    for source, labels in loaded.items():
+        if not isinstance(labels, list):
+            continue
+        cleaned = frozenset(str(label).strip() for label in labels if str(label).strip())
+        if cleaned:
+            parsed[str(source).strip().lower()] = cleaned
+    return parsed
+
+
+def _excluded_labels_for_source(source: str) -> frozenset[str]:
+    from services.operations import runtime_settings as rt
+
+    cfg = get_config_manager().retry
+    raw = rt.override_or(
+        "DEDUP_FINGERPRINT_EXCLUDE_LABELS",
+        str(getattr(cfg, "DEDUP_FINGERPRINT_EXCLUDE_LABELS", "") or ""),
+    )
+    return _parse_excluded_labels(raw).get(source.strip().lower(), frozenset())
+
+
+def _label_identity_dedup_key(
+    data: Mapping[str, Any], source: str, excluded: frozenset[str], namespace: str | None
+) -> str | None:
+    """Dedup key from the alert's labels with the named volatile ones removed.
+
+    The complement of DEDUP_FINGERPRINT_FIELDS, and the shape the Grafana case
+    needs. Grafana computes its own `fingerprint` over the alert's LABELS, so a
+    rule that embeds volatile detail in a label makes the upstream identity
+    volatile too and every firing arrives as a new alert. Naming the identity
+    fields instead (the inclusion list) fixes that rule and breaks the others:
+    measured on production 2026-09-08, keying grafana on alertname+folder would
+    have collapsed CertificateExpiredAlertRule's two threads (two different
+    domains, `domain_name`/`certificate_arn`) into one and DatasourceNoData's
+    four (four different `rulename`s) into one — the second expiring cert
+    swallowed as a duplicate of the first.
+
+    Dropping ONE label keeps every other label doing identity work, so those
+    threads stay separate while the volatile one stops fragmenting its own.
+
+    Returns None when no label map is found, or when the exclusions would empty
+    it — falling back to the built-in key, because a config that matches nothing
+    must fragment as before rather than collapse a whole source into one bucket.
+    """
+    for path in _LABEL_MAP_PATHS:
+        labels = _extract_field_path(data, path)
+        if not isinstance(labels, Mapping) or not labels:
+            continue
+        kept = {str(name): value for name, value in labels.items() if str(name) not in excluded}
+        if not kept:
+            return None
+        key_fields: dict[str, object] = {"source": source.strip().lower(), "labels": kept}
+        if namespace:
+            key_fields["namespace"] = namespace
+        return hashlib.sha256(json.dumps_bytes(key_fields, sort_keys=True)).hexdigest()
+    return None
+
+
 def generate_event_keys(
     data: Mapping[str, Any],
     source: str,
@@ -280,8 +359,11 @@ def generate_event_keys(
 
     alert_hash always comes from the adapter identity — it names the alert for
     history and must not move under an operator's fingerprint experiments. The
-    dedup_key (what threads repeats together) can be overridden per source by
-    DEDUP_FINGERPRINT_FIELDS, rolled out on the off/shadow/enforce ladder:
+    dedup_key (what threads repeats together) can be overridden per source two
+    ways: DEDUP_FINGERPRINT_FIELDS names the fields that ARE the identity, and
+    DEDUP_FINGERPRINT_EXCLUDE_LABELS names the labels that are NOT (identity
+    becomes the remaining labels). Fields win when a source configures both.
+    Either is rolled out on the off/shadow/enforce ladder:
     shadow computes the configured key and counts disagreement with the
     built-in one (signal dedup.fingerprint/diverged) while behaviour stays
     unchanged. A payload the configured paths do not match falls back to the
@@ -296,9 +378,16 @@ def generate_event_keys(
     if mode is _Mode.OFF:
         return alert_hash, dedup_key
     fields = _fingerprint_fields_for_source(source)
-    if not fields:
+    excluded = _excluded_labels_for_source(source)
+    if not fields and not excluded:
         return alert_hash, dedup_key
-    configured = _fingerprint_dedup_key(data, source, fields, namespace)
+    # Naming the identity fields outright wins over naming what is NOT identity:
+    # the inclusion list is the more specific statement about the same source.
+    configured = (
+        _fingerprint_dedup_key(data, source, fields, namespace)
+        if fields
+        else _label_identity_dedup_key(data, source, excluded, namespace)
+    )
     if configured is None:
         record_signal("dedup.fingerprint", "unextractable", {"webhook.source": source})
         return alert_hash, dedup_key
